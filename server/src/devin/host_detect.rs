@@ -224,6 +224,9 @@ mod tests {
         assert!(message.contains("C:\\nowhere\\extension.js"), "{message}");
     }
 
+    /// The drive-letter layout only exists on Windows, so the assertion is
+    /// platform-gated; a Linux runner has no ProgramFiles to expand.
+    #[cfg(windows)]
     #[test]
     fn guessed_roots_cover_a_secondary_drive_install() {
         let roots = roots();
@@ -234,6 +237,21 @@ mod tests {
         assert!(
             roots.iter().any(|root| root.ends_with("Devin")),
             "the Program Files layout must be searched"
+        );
+    }
+
+    /// Outside Windows the scan still has to produce the portable candidates,
+    /// derived from the environment rather than from drive letters.
+    #[cfg(not(windows))]
+    #[test]
+    fn guessed_roots_stay_portable_off_windows() {
+        let roots = roots();
+        assert!(!roots.is_empty(), "some candidates must always exist");
+        assert!(
+            roots
+                .iter()
+                .all(|root| root.is_absolute() || root.is_relative()),
+            "candidates must be usable paths"
         );
     }
 }

@@ -20,6 +20,27 @@
     font-weight: 630;
   }
 
+  .disclosure {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .chevron {
+    display: inline-block;
+    font-size: type.$font-size-base;
+    transition: transform .15s ease;
+
+    &[data-open="true"] {
+      transform: rotate(90deg);
+    }
+  }
+
   pre {
     margin: 14px;
     padding: 12px;

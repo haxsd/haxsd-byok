@@ -8,6 +8,7 @@ import { AppLayout } from "./shell/AppLayout";
 import { CallsPage } from "./features/calls/CallsPage";
 import { CallDetailsPage } from "./features/calls/CallDetailsPage";
 import { CursorSettingsPage } from "./features/models/CursorSettingsPage";
+import { ModelLibraryPage } from "./features/models/ModelLibraryPage";
 import { DevinSettingsPage } from "./features/devin/DevinSettingsPage";
 import { HomePage } from "./features/home/HomePage";
 import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
@@ -24,6 +25,7 @@ export function App() {
             <Route element={<AppLayout />}>
               <Route index element={<HomePage />} />
               <Route path="calls" element={<CallsPage />} />
+              <Route path="models" element={<ModelLibraryPage />} />
               <Route path="harness/cursor" element={<CursorSettingsPage />} />
               <Route path="harness/devin" element={<DevinSettingsPage />} />
               <Route path="plugins" element={<PluginManagementPage />} />

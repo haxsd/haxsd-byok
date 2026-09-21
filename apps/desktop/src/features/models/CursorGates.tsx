@@ -3,18 +3,13 @@ import { useAppStore } from "../../shared/store/appStore";
 import controls from "../../shared/ui/Controls.module.scss";
 import styles from "./CursorSettings.module.scss";
 
-const CaReady = createContext(false);
 const ModelsReady = createContext(false);
 
-export function CursorCaProvider({ children }: { children: ReactNode }) {
-  const { cursorHarness } = useAppStore();
-  return <CaReady.Provider value={cursorHarness?.ca === "ready"}>{children}</CaReady.Provider>;
-}
-
 export function CursorCaGate({ busy, waitingForRefresh, onInitialize, onRefresh, children }: { busy: boolean; waitingForRefresh: boolean; onInitialize: () => void; onRefresh: () => void; children: ReactNode }) {
-  const ready = useContext(CaReady);
+  // Read the harness state directly. A context that the page had to provide made
+  // the gate depend on its caller remembering to wrap it, and the caller stopped.
   const { cursorHarness } = useAppStore();
-  if (ready) return children;
+  if (cursorHarness?.ca === "ready") return children;
   const installedLocally = cursorHarness?.ca === "untrusted";
   return <div className={styles.gate}>
     <strong>{installedLocally ? t("需要在系统中信任本地 CA") : t("需要先初始化本地 CA")}</strong>
