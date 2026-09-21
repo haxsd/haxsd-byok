@@ -28,8 +28,8 @@ export function CursorModelGate({ busy, previewingImport, onAdd, onImport, child
   const ready = useContext(ModelsReady);
   if (ready) return children;
   return <div className={styles.gate}>
-    <strong>{t("还没有可供 Cursor 使用的模型")}</strong>
-    <span>{t("Cursor 接管已生效；添加模型配置后即可使用 BYOK 模型。")}</span>
+    <strong>{t("模型库还是空的")}</strong>
+    <span>{t("添加一个模型后，Cursor 与 Devin 都能用它。")}</span>
     <div className={styles.gateActions}>
       <button className={controls.primary} disabled={busy} onClick={onAdd}>{t("添加模型")}</button>
       <button className={controls.secondary} disabled={busy} onClick={onImport}>{previewingImport ? t("读取中…") : t("导入旧版配置")}</button>

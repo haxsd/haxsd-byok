@@ -2019,8 +2019,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 413,
-          "column": 281
+          "line": 417,
+          "column": 32
         }
       ]
     },
@@ -3044,18 +3044,6 @@
         }
       ]
     },
-    "656ab25e264cc4e4": {
-      "source": "还没有可供 Cursor 使用的模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorGates.tsx",
-          "line": 31,
-          "column": 14
-        }
-      ]
-    },
     "65a6318e07ec1e07": {
       "source": "工具数",
       "kind": "text",
@@ -3799,6 +3787,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 55,
           "column": 17
+        }
+      ]
+    },
+    "87c9273f7ba1b39e": {
+      "source": "添加一个模型后，Cursor 与 Devin 都能用它。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorGates.tsx",
+          "line": 32,
+          "column": 12
         }
       ]
     },
@@ -4570,7 +4570,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 416,
+          "line": 420,
           "column": 116
         },
         {
@@ -5092,18 +5092,6 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 314,
           "column": 85
-        }
-      ]
-    },
-    "b16c3b2ecedd6fe1": {
-      "source": "Cursor 接管已生效；添加模型配置后即可使用 BYOK 模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorGates.tsx",
-          "line": 32,
-          "column": 12
         }
       ]
     },
@@ -5659,8 +5647,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 413,
-          "column": 81
+          "line": 414,
+          "column": 11
         }
       ]
     },
@@ -7244,6 +7232,18 @@
         }
       ]
     },
+    "fafcf53fab8444b0": {
+      "source": "模型库还是空的",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorGates.tsx",
+          "line": 31,
+          "column": 14
+        }
+      ]
+    },
     "fb11aa6f29827095": {
       "source": "检查中…",
       "kind": "text",
@@ -7447,7 +7447,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 416,
+          "line": 420,
           "column": 104
         },
         {

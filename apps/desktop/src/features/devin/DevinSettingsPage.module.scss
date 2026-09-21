@@ -5,7 +5,6 @@
 
 /* 顶部状态：一眼看出通没通、还差哪一步 */
 .status { display: grid; gap: 14px; padding: 16px; }
-.statusHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .badge { padding: 2px 10px; border-radius: 999px; font-size: type.$font-size-xs; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
 .badgeOk { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
 .badgeWarn { color: var(--vscode-editorWarning-foreground, #d29922); border-color: currentColor; }
