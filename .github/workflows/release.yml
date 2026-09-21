@@ -154,9 +154,11 @@ jobs:
         with:
           name: manual-build-windows
           # Cargo builds this workspace into the workspace-level target, so the
-          # bundle lands there, not under apps/desktop/src-tauri.
+          # bundle lands there, not under apps/desktop/src-tauri. The .sig files
+          # travel with the installer because the updater verifies them.
           path: |
             target/release/bundle/nsis/*.exe
+            target/release/bundle/nsis/*.sig
           if-no-files-found: error
 
   finalize:
