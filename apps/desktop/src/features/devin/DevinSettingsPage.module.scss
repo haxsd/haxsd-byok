@@ -1,0 +1,47 @@
+@use "../../styles/typography" as type;
+
+.page { display: grid; gap: 16px; }
+.loading, .empty, .note { padding: 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+
+/* 顶部状态：一眼看出通没通、还差哪一步 */
+.status { display: grid; gap: 14px; padding: 16px; }
+.statusHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.badge { padding: 2px 10px; border-radius: 999px; font-size: type.$font-size-xs; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+.badgeOk { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
+.badgeWarn { color: var(--vscode-editorWarning-foreground, #d29922); border-color: currentColor; }
+.badgeIdle { color: var(--vscode-descriptionForeground); }
+.statusItems { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.statusItem { display: grid; gap: 3px; }
+.statusItem > span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.statusItem > strong { font-weight: 600; overflow-wrap: anywhere; }
+.steps { display: grid; gap: 8px; padding: 0 16px 16px; }
+.step { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 10px; }
+.stepMark { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.stepMarkDone { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
+.stepText { display: grid; gap: 2px; }
+.stepText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.stepAction { color: var(--vscode-textLink-foreground); background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.stepAction:hover { color: var(--vscode-textLink-activeForeground); }
+.stepAction:disabled { opacity: .5; cursor: default; }
+
+.settingRow, .bindingFooter { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; }
+.settingRow > div { display: grid; gap: 5px; }
+.settingRow small, .note { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.fields, .bindingFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
+.bindings { display: grid; gap: 12px; }
+.binding { border-top: 1px solid var(--vscode-panel-border); }
+.bindingFooter { padding-top: 10px; }
+.routes { display: grid; gap: 10px; padding: 0 16px 16px; }
+.routesHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.routesHeader > span { font-size: type.$font-size-base; }
+.routeHint { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.route { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; }
+.routeFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.routeFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.routeActions { display: flex; align-items: center; gap: 8px; }
+.remove { padding: 4px; color: var(--vscode-textLink-foreground); background: transparent; border: 0; cursor: pointer; }
+.remove:hover { color: var(--vscode-textLink-activeForeground); }
+.remove:disabled { opacity: .5; cursor: default; }
+.hostActions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 16px 16px; }
+.hostStatus { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+@media (max-width: 700px) { .fields, .bindingFields, .routeFields { grid-template-columns: 1fr; } }
