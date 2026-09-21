@@ -1,0 +1,172 @@
+name: Release haxsd byok desktop app
+
+# 触发方式：
+#   1. 打版本标签：git tag haxsd-byok-v1.0.0 && git push origin haxsd-byok-v1.0.0
+#   2. 在 Actions 页面手动触发（用于验证构建是否能通过）
+#
+# 说明：本工作流运行在产品自己的仓库里，只构建 Windows 安装包。
+# 需要 macOS / Linux 产物时，把下面 publish 任务的 matrix 补齐即可。
+#
+# 发布正式版本需要仓库机密 TAURI_SIGNING_PRIVATE_KEY；
+# 应用内更新读取 Release 里的 latest.json，由 tauri-action 用该密钥签名产生。
+on:
+  push:
+    tags:
+      - "haxsd-byok-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: haxsd-byok-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.release.outputs.should_publish }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release author
+        env:
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        shell: bash
+        run: |
+          if [[ "${GITHUB_ACTOR}" != "${REPOSITORY_OWNER}" ]]; then
+            echo "Only ${REPOSITORY_OWNER} may publish a release" >&2
+            exit 1
+          fi
+
+      # 三处版本号必须一致，且标签名必须是 haxsd-byok-v<版本号>；
+      # 手动触发时跳过标签校验，只校验三处版本号一致。
+      - name: Read and verify app version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          package_version=$(node -p "require('./apps/desktop/package.json').version")
+          cargo_version=$(sed -n '/^version = / { s/version = "\([^"]*\)"/\1/p; q; }' apps/desktop/src-tauri/Cargo.toml)
+          test "${version}" = "${package_version}"
+          test "${version}" = "${cargo_version}"
+          if [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
+            test "${GITHUB_REF_NAME}" = "haxsd-byok-v${version}"
+            git fetch origin main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+              echo "haxsd byok release tag must point to a commit contained in main" >&2
+              exit 1
+            fi
+          else
+            echo "Manual run: skipping tag checks for version ${version}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check whether this version is already published
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+        shell: bash
+        run: |
+          if [[ "${REF_TYPE}" != "tag" ]]; then
+            echo "Manual run: building without publishing a release."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          state=$(gh release view "haxsd-byok-v${VERSION}" --json isDraft --jq 'if .isDraft then "draft" else "published" end' 2>/dev/null || true)
+          if [[ "${state}" = "published" ]]; then
+            echo "Version ${VERSION} is already published; nothing to do."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_publish=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+  publish:
+    name: Publish (windows-x86_64)
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            os: windows-latest
+            args: "--bundles nsis"
+            target: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      # 打标签时由 tauri-action 直接建 Release 并上传安装包；
+      # 手动触发时只产出 Actions 产物，便于先验证构建是否通过。
+      # TAURI_SIGNING_PRIVATE_KEY 存在时，tauri-action 会同时签名并上传 latest.json，
+      # 应用内更新据此工作：https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
+      - uses: tauri-apps/tauri-action@v1
+        if: needs.prepare.outputs.should_publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: haxsd-byok-v__VERSION__
+          releaseName: haxsd byok v__VERSION__
+          releaseBody: 从下方资源中下载 haxsd byok Windows 安装包（`-setup.exe`）。应用内「检查更新」会自动找到这里的最新版本。
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Build without publishing (manual run)
+        if: needs.prepare.outputs.should_publish != 'true'
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri:build -- ${{ matrix.args }}
+
+      - name: Upload manual build output
+        if: needs.prepare.outputs.should_publish != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-build-windows
+          # Cargo builds this workspace into the workspace-level target, so the
+          # bundle lands there, not under apps/desktop/src-tauri.
+          path: |
+            target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+  finalize:
+    name: Publish GitHub Release
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.should_publish == 'true' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the completed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release edit "haxsd-byok-v${VERSION}" --draft=false --latest
