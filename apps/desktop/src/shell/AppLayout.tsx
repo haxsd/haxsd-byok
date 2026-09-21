@@ -22,7 +22,7 @@ type MenuItem =
   | { kind: "external"; id: string; label: string; icon: IconifyIcon | string }
   | { kind: "group"; label: string };
 
-const keptAlivePages = ["/", "/calls", "/settings", "/harness/cursor", "/harness/devin", "/plugins"];
+const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor", "/harness/devin", "/plugins"];
 const tutorialReadStorageKey = "haxsd-byok:tutorial-read";
 const tutorialUrl = "https://docs.leokun.cn";
 
@@ -43,9 +43,11 @@ export function AppLayout() {
   const menuItems: MenuItem[] = [
     { kind: "page", path: "/", label: t("数据概览"), icon: flatColorAreaChartIcon },
     { kind: "page", path: "/calls", label: t("调用详细"), icon: flatColorSalesPerformanceIcon },
-    { kind: "group", label: t("模型配置") },
+    { kind: "group", label: t("接入模块") },
     { kind: "page", path: "/harness/cursor", label: "Cursor", icon: cursorIconUrl },
     { kind: "page", path: "/harness/devin", label: "Devin", icon: flatColorCrystalOscillatorIcon },
+    { kind: "group", label: t("共享") },
+    { kind: "page", path: "/models", label: t("模型"), icon: flatColorCrystalOscillatorIcon },
     { kind: "group", label: t("设置") },
     { kind: "page", path: "/plugins", label: t("插件配置"), icon: flatColorCrystalOscillatorIcon },
     { kind: "page", path: "/settings", label: t("系统设置"), icon: flatColorSettingsIcon },

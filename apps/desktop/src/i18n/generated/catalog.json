@@ -168,8 +168,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 153,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 146,
           "column": 27
         }
       ]
@@ -183,6 +183,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 71,
           "column": 54
+        }
+      ]
+    },
+    "0643b347c77ab070": {
+      "source": "宿主接入只对这里显示的 extension.js 操作。应用补丁前会校验四个版本锚点并创建 SHA-256 备份；未知版本、部分补丁或备份不一致时会拒绝写入。路径已自动探测，通常无需修改。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 402,
+          "column": 35
         }
       ]
     },
@@ -205,7 +217,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 379,
+          "line": 370,
           "column": 37
         }
       ]
@@ -249,9 +261,21 @@
           "column": 16
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 388,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 338,
           "column": 73
+        }
+      ]
+    },
+    "0820fda944c74d12": {
+      "source": "留空即自动探测；仅在自动结果不正确时才需要填写。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 404,
+          "column": 67
         }
       ]
     },
@@ -300,8 +324,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 399,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 349,
           "column": 89
         }
       ]
@@ -351,7 +375,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 335,
+          "line": 391,
           "column": 44
         }
       ]
@@ -453,8 +477,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 346,
-          "column": 24
+          "line": 335,
+          "column": 23
         }
       ]
     },
@@ -590,8 +614,8 @@
           "column": 16
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 398,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 348,
           "column": 36
         }
       ]
@@ -602,21 +626,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 322,
-          "column": 213
-        }
-      ]
-    },
-    "13527e1b3be295c6": {
-      "source": "安全边界",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 398,
-          "column": 24
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 291,
+          "column": 211
         }
       ]
     },
@@ -627,7 +639,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 21,
+          "line": 16,
           "column": 65
         }
       ]
@@ -692,22 +704,17 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 39,
+          "line": 34,
           "column": 77
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 326,
-          "column": 51
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 294,
+          "column": 70
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 326,
-          "column": 130
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 74
         }
       ]
@@ -747,18 +754,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 123,
           "column": 16
-        }
-      ]
-    },
-    "186af386ba53b0b0": {
-      "source": "Devin 接入",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 329,
-          "column": 24
         }
       ]
     },
@@ -888,7 +883,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 335,
+          "line": 391,
           "column": 27
         }
       ]
@@ -899,8 +894,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 362,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 312,
           "column": 52
         }
       ]
@@ -1058,8 +1053,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 392,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 342,
           "column": 89
         }
       ]
@@ -1106,9 +1101,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 320,
-          "column": 136
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 289,
+          "column": 134
         }
       ]
     },
@@ -1119,7 +1114,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 336,
+          "line": 392,
           "column": 132
         }
       ]
@@ -1169,7 +1164,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 339,
+          "line": 395,
           "column": 27
         }
       ]
@@ -1193,7 +1188,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 363,
+          "line": 354,
           "column": 50
         }
       ]
@@ -1205,7 +1200,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 48,
+          "line": 33,
           "column": 43
         }
       ]
@@ -1233,8 +1228,8 @@
           "column": 27
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 391,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 341,
           "column": 186
         }
       ]
@@ -1263,18 +1258,18 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 331,
+          "line": 89,
           "column": 20
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 362,
-          "column": 76
         },
         {
           "file": "features/models/LegacyModelImport.tsx",
           "line": 58,
           "column": 20
+        },
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 312,
+          "column": 76
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
@@ -1328,7 +1323,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 116,
+          "line": 118,
           "column": 20
         }
       ]
@@ -1340,7 +1335,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 330,
+          "line": 88,
           "column": 14
         }
       ]
@@ -1356,6 +1351,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 100,
           "column": 5
+        }
+      ]
+    },
+    "2e1d61a59454ee35": {
+      "source": "打开上方的开关即可让 Cursor 的请求经过本机代理。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 59,
+          "column": 13
         }
       ]
     },
@@ -1396,8 +1403,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 405,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 355,
           "column": 70
         }
       ]
@@ -1445,7 +1452,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 115,
+          "line": 117,
           "column": 14
         }
       ]
@@ -1466,8 +1473,8 @@
           "column": 102
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 362,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 312,
           "column": 99
         },
         {
@@ -1524,13 +1531,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 355,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 305,
           "column": 35
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 358,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 308,
           "column": 41
         }
       ]
@@ -1581,7 +1588,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 40,
+          "line": 35,
           "column": 101
         },
         {
@@ -1614,8 +1621,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 340,
           "column": 123
         }
       ]
@@ -1853,6 +1860,18 @@
         }
       ]
     },
+    "3ef479fcc792596f": {
+      "source": "留空自动探测",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 405,
+          "column": 111
+        }
+      ]
+    },
     "3f6c25aa329163a4": {
       "source": "原接口路径会追加到此服务地址。",
       "kind": "text",
@@ -1871,9 +1890,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 322,
-          "column": 199
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 291,
+          "column": 197
         }
       ]
     },
@@ -1884,7 +1903,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 346,
+          "line": 99,
           "column": 80
         },
         {
@@ -1993,6 +2012,18 @@
         }
       ]
     },
+    "45655337dff172e3": {
+      "source": "兼容版本，尚未应用补丁",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 413,
+          "column": 281
+        }
+      ]
+    },
     "461d6a57900c2ed7": {
       "source": "连通性测试失败：{error}",
       "kind": "template",
@@ -2001,8 +2032,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 162,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 155,
           "column": 27
         }
       ]
@@ -2138,8 +2169,8 @@
           "column": 25
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 391,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 341,
           "column": 34
         }
       ]
@@ -2165,8 +2196,8 @@
           "column": 92
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 703
         }
       ]
@@ -2226,7 +2257,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 85,
+          "line": 87,
           "column": 67
         }
       ]
@@ -2240,6 +2271,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 286,
           "column": 46
+        }
+      ]
+    },
+    "4d6a4bc105dd3f07": {
+      "source": "共享",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 49,
+          "column": 29
         }
       ]
     },
@@ -2361,7 +2404,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 384,
+          "line": 375,
           "column": 281
         }
       ]
@@ -2373,7 +2416,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 348,
+          "line": 339,
           "column": 72
         }
       ]
@@ -2398,8 +2441,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 199,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 192,
           "column": 13
         }
       ]
@@ -2423,12 +2466,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 306,
+          "line": 68,
           "column": 68
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 105,
+          "line": 107,
           "column": 51
         }
       ]
@@ -2442,6 +2485,18 @@
           "file": "features/settings/TabSettingsCard.tsx",
           "line": 44,
           "column": 90
+        }
+      ]
+    },
+    "5404a67e4d4a93fc": {
+      "source": "应用于该分组下的全部模型，并作为模型选择器中的徽章标签；清空则恢复显示服务器域名。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 301,
+          "column": 44
         }
       ]
     },
@@ -2476,7 +2531,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 22,
+          "line": 17,
           "column": 205
         }
       ]
@@ -2487,8 +2542,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 257,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 250,
           "column": 47
         }
       ]
@@ -2502,18 +2557,6 @@
           "file": "features/settings/CommitSettingsCard.tsx",
           "line": 185,
           "column": 26
-        }
-      ]
-    },
-    "56432ba297009bdc": {
-      "source": "请先初始化 CA",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 326,
-          "column": 63
         }
       ]
     },
@@ -2545,9 +2588,23 @@
           "column": 27
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 391,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 341,
           "column": 83
+        }
+      ]
+    },
+    "56d0094552e2de7d": {
+      "source": "当前模型库里有 {count} 个模型。",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 60,
+          "column": 16
         }
       ]
     },
@@ -2558,7 +2615,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 362,
+          "line": 353,
           "column": 33
         }
       ]
@@ -2670,9 +2727,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 321,
-          "column": 124
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 290,
+          "column": 122
         }
       ]
     },
@@ -2707,12 +2764,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 378,
+          "line": 369,
           "column": 37
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 378,
+          "line": 369,
           "column": 115
         }
       ]
@@ -2724,7 +2781,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 373,
+          "line": 364,
           "column": 117
         }
       ]
@@ -2803,12 +2860,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 385,
+          "line": 376,
           "column": 156
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 392,
+          "line": 383,
           "column": 101
         }
       ]
@@ -2994,7 +3051,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 36,
+          "line": 31,
           "column": 14
         }
       ]
@@ -3078,8 +3135,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 384,
+          "line": 375,
           "column": 269
+        }
+      ]
+    },
+    "689b2f2a8c90b66f": {
+      "source": "恢复原文件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 411,
+          "column": 107
         }
       ]
     },
@@ -3090,7 +3159,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 40,
+          "line": 35,
           "column": 113
         }
       ]
@@ -3102,8 +3171,20 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 51,
+          "line": 53,
           "column": 47
+        }
+      ]
+    },
+    "692873ddd8f40e66": {
+      "source": "基础设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 329,
+          "column": 24
         }
       ]
     },
@@ -3199,7 +3280,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 391,
+          "line": 382,
           "column": 56
         }
       ]
@@ -3230,15 +3311,27 @@
         }
       ]
     },
+    "722ed4780851b278": {
+      "source": "接入模块",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 46,
+          "column": 29
+        }
+      ]
+    },
     "72644ec4389da2f7": {
       "source": "默认平铺",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 319,
-          "column": 105
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 288,
+          "column": 103
         }
       ]
     },
@@ -3290,7 +3383,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 341,
+          "line": 397,
           "column": 27
         }
       ]
@@ -3412,8 +3505,8 @@
           "column": 16
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 386,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 336,
           "column": 67
         }
       ]
@@ -3449,7 +3542,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 22,
+          "line": 17,
           "column": 121
         }
       ]
@@ -3555,8 +3648,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 197,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 190,
           "column": 11
         }
       ]
@@ -3767,18 +3860,6 @@
         }
       ]
     },
-    "8cbcf741e727dbf7": {
-      "source": "模型配置",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 46,
-          "column": 29
-        }
-      ]
-    },
     "8ccaf87ddb9ca3f4": {
       "source": "旧版配置",
       "kind": "text",
@@ -3866,8 +3947,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 406,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 356,
           "column": 87
         }
       ]
@@ -3920,6 +4001,18 @@
         }
       ]
     },
+    "92e589f025034ee9": {
+      "source": "应用补丁",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 410,
+          "column": 150
+        }
+      ]
+    },
     "9305c0e13642cab4": {
       "source": "未接管",
       "kind": "text",
@@ -3927,12 +4020,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 306,
+          "line": 68,
           "column": 79
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 105,
+          "line": 107,
           "column": 62
         }
       ]
@@ -3967,8 +4060,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 362,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 312,
           "column": 250
         }
       ]
@@ -4014,7 +4107,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 48,
+          "line": 33,
           "column": 61
         }
       ]
@@ -4052,8 +4145,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 346,
-          "column": 112
+          "line": 336,
+          "column": 78
         }
       ]
     },
@@ -4064,7 +4157,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 372,
+          "line": 363,
           "column": 24
         }
       ]
@@ -4076,7 +4169,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 22,
+          "line": 17,
           "column": 188
         }
       ]
@@ -4100,7 +4193,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 121,
+          "line": 123,
           "column": 11
         }
       ]
@@ -4112,7 +4205,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 340,
+          "line": 396,
           "column": 27
         }
       ]
@@ -4136,7 +4229,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 341,
+          "line": 397,
           "column": 49
         }
       ]
@@ -4175,8 +4268,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 399,
+          "line": 401,
           "column": 35
+        }
+      ]
+    },
+    "9d47d5a6d66cbe2c": {
+      "source": "模型库",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 295,
+          "column": 25
         }
       ]
     },
@@ -4358,8 +4463,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 208,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 201,
           "column": 22
         }
       ]
@@ -4383,7 +4488,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 370,
+          "line": 361,
           "column": 67
         }
       ]
@@ -4395,12 +4500,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 363,
+          "line": 354,
           "column": 33
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 364,
+          "line": 355,
           "column": 79
         }
       ]
@@ -4453,7 +4558,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 382,
+          "line": 373,
           "column": 58
         }
       ]
@@ -4465,17 +4570,17 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 329,
-          "column": 155
+          "line": 416,
+          "column": 116
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 432
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 349,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 299,
           "column": 193
         },
         {
@@ -4536,7 +4641,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 22,
+          "line": 17,
           "column": 153
         }
       ]
@@ -4585,8 +4690,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 136,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 129,
           "column": 15
         }
       ]
@@ -4598,7 +4703,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 117,
+          "line": 119,
           "column": 21
         }
       ]
@@ -4640,8 +4745,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 715
         }
       ]
@@ -4765,7 +4870,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 361,
+          "line": 352,
           "column": 33
         },
         {
@@ -4862,6 +4967,18 @@
         }
       ]
     },
+    "ad4ad77609aab74b": {
+      "source": "Cursor 的请求正经过本机代理，模型来自模型库。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 58,
+          "column": 13
+        }
+      ]
+    },
     "ad6a60ee93d3ba3e": {
       "source": "正在加载调用详情…",
       "kind": "text",
@@ -4908,12 +5025,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 127,
+          "line": 129,
           "column": 64
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 127,
+          "line": 129,
           "column": 125
         }
       ]
@@ -4985,7 +5102,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 37,
+          "line": 32,
           "column": 12
         }
       ]
@@ -5044,8 +5161,8 @@
           "column": 10
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 349,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 299,
           "column": 49
         }
       ]
@@ -5184,7 +5301,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 346,
+          "line": 99,
           "column": 103
         }
       ]
@@ -5290,8 +5407,8 @@
       ],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 200,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 193,
           "column": 13
         }
       ]
@@ -5310,6 +5427,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 74,
           "column": 20
+        }
+      ]
+    },
+    "bb7d2e5d5f248dec": {
+      "source": "把 Devin 的模型标识指向模型库里的模型；Devin 只会用到这里配置的映射。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 335,
+          "column": 50
         }
       ]
     },
@@ -5355,13 +5484,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 354,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 304,
           "column": 45
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 357,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 307,
           "column": 42
         }
       ]
@@ -5485,7 +5614,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 338,
+          "line": 394,
           "column": 27
         }
       ]
@@ -5519,6 +5648,22 @@
         }
       ]
     },
+    "c6276afddcef8eae": {
+      "source": "已接入：API {api} · 推理 {inference} · Local API {local}",
+      "kind": "template",
+      "placeholders": [
+        "api",
+        "inference",
+        "local"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 413,
+          "column": 81
+        }
+      ]
+    },
     "c6e7e1a9da356efc": {
       "source": "还没有资源，请先添加。",
       "kind": "text",
@@ -5537,8 +5682,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 62
         }
       ]
@@ -5581,6 +5726,11 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 123,
           "column": 77
+        },
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 50,
+          "column": 45
         }
       ]
     },
@@ -5786,7 +5936,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 356,
+          "line": 347,
           "column": 33
         }
       ]
@@ -5831,8 +5981,8 @@
           "column": 70
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 354,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 304,
           "column": 27
         }
       ]
@@ -5843,8 +5993,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 296,
           "column": 675
         },
         {
@@ -5924,6 +6074,18 @@
         }
       ]
     },
+    "d6e61888b07853ea": {
+      "source": "高级",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 389,
+          "column": 24
+        }
+      ]
+    },
     "d71b0171c44b668a": {
       "source": "关闭后将移除 Cursor 本地代理配置。如果你需要登陆官方账号，通常不需要关闭操作，推荐直接登陆你的账号即可(byok模型与官方账号的模型已支持无缝衔接)，是否继续关闭并清理代理？",
       "kind": "text",
@@ -5931,7 +6093,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 339,
+          "line": 97,
           "column": 11
         }
       ]
@@ -5970,8 +6132,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 351,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 301,
           "column": 27
         }
       ]
@@ -5997,7 +6159,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 71,
+          "line": 73,
           "column": 54
         }
       ]
@@ -6033,7 +6195,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 347,
+          "line": 100,
           "column": 47
         }
       ]
@@ -6168,6 +6330,18 @@
         }
       ]
     },
+    "df31805bd8f6fa23": {
+      "source": "管理模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 83,
+          "column": 65
+        }
+      ]
+    },
     "df3d58c7d84b85f2": {
       "source": "设置",
       "kind": "text",
@@ -6185,7 +6359,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 49,
+          "line": 51,
           "column": 29
         }
       ]
@@ -6255,6 +6429,18 @@
         }
       ]
     },
+    "e082f04824bbc02e": {
+      "source": "接管状态",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 56,
+          "column": 18
+        }
+      ]
+    },
     "e0fae77446a389a3": {
       "source": "速度：{speed} tokens/s",
       "kind": "template",
@@ -6299,8 +6485,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 220,
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 213,
           "column": 26
         }
       ]
@@ -6381,6 +6567,18 @@
           "file": "features/settings/CommitSettingsCard.tsx",
           "line": 197,
           "column": 24
+        }
+      ]
+    },
+    "e32e40b1644c293e": {
+      "source": "检查宿主",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 409,
+          "column": 109
         }
       ]
     },
@@ -6554,7 +6752,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 20,
+          "line": 15,
           "column": 33
         }
       ]
@@ -6629,18 +6827,6 @@
         }
       ]
     },
-    "eb4a3db23661fb52": {
-      "source": "应用于该分组下的全部模型，并作为 Cursor 模型选择器中的徽章标签；清空则恢复显示服务器域名。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 351,
-          "column": 44
-        }
-      ]
-    },
     "eb77492c9f76a7e1": {
       "source": "安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码。",
       "kind": "text",
@@ -6648,7 +6834,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 347,
+          "line": 100,
           "column": 77
         }
       ]
@@ -6690,9 +6876,9 @@
           "column": 15
         },
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 318,
-          "column": 98
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 287,
+          "column": 96
         }
       ]
     },
@@ -6703,7 +6889,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 346,
+          "line": 99,
           "column": 53
         }
       ]
@@ -6767,12 +6953,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 357,
+          "line": 348,
           "column": 33
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 357,
+          "line": 348,
           "column": 122
         }
       ]
@@ -6883,7 +7069,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 375,
+          "line": 366,
           "column": 67
         }
       ]
@@ -6900,7 +7086,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 50,
+          "line": 52,
           "column": 46
         }
       ]
@@ -7069,6 +7255,11 @@
           "column": 13
         },
         {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 409,
+          "column": 97
+        },
+        {
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 112,
           "column": 19
@@ -7104,7 +7295,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 20,
+          "line": 15,
           "column": 54
         }
       ]
@@ -7148,7 +7339,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 332,
+          "line": 90,
           "column": 21
         }
       ]
@@ -7232,7 +7423,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 52,
+          "line": 54,
           "column": 48
         }
       ]
@@ -7256,8 +7447,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 329,
-          "column": 143
+          "line": 416,
+          "column": 104
         },
         {
           "file": "features/settings/CommitSettingsCard.tsx",
@@ -7305,7 +7496,7 @@
       "refs": [
         {
           "file": "features/models/CursorGates.tsx",
-          "line": 21,
+          "line": 16,
           "column": 31
         }
       ]

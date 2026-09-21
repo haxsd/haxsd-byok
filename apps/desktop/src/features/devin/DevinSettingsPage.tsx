@@ -326,24 +326,15 @@ export function DevinSettingsPage() {
         </div>
       </TitledCard>;
     })()}
-    <TitledCard title={t("Devin 接入") } action={<Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>}>
+    <TitledCard title={t("基础设置")} collapsible={false}>
       <div className={styles.settingRow}>
         <div><strong>{t("启用 Devin 网关")}</strong><small>{t("关闭时不会打开任何 Devin 端口，也不会影响 Cursor。")}</small></div>
         <Switch checked={settings.enabled} label={t("启用 Devin 网关")} onChange={(enabled) => update("enabled", enabled)} />
       </div>
-      <div className={styles.fields}>
-        <FormField label={t("控制令牌")} hint={t("可选；Devin 请求可通过 x-devin-router-token 或 Bearer 令牌认证。")}>
-          <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
-        </FormField>
-        <FormField label={t("API 端口")}><TextInput type="number" value={settings.api_port} onChange={(event) => update("api_port", Number(event.target.value))} /></FormField>
-        <FormField label={t("推理端口")}><TextInput type="number" value={settings.inference_port} onChange={(event) => update("inference_port", Number(event.target.value))} /></FormField>
-        <FormField label={t("本地 API 端口")}><TextInput type="number" value={settings.local_api_port} onChange={(event) => update("local_api_port", Number(event.target.value))} /></FormField>
-        <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
-          <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.self-serve.windsurf.com" />
-        </FormField>
+      <div className={styles.settingRow}>
+        <div><strong>{t("模型映射")}</strong><small>{t("把 Devin 的模型标识指向模型库里的模型；Devin 只会用到这里配置的映射。")}</small></div>
+        <Button size="small" disabled={!models.length} onClick={addBinding}>{t("添加映射")}</Button>
       </div>
-    </TitledCard>
-    <TitledCard title={t("模型映射")} action={<Button size="small" disabled={!models.length} onClick={addBinding}>{t("添加映射")}</Button>}>
       <div className={styles.bindings}>
         {!settings.bindings.length && <small className={styles.empty}>{t("还没有映射。添加一个 haxsd byok 模型后，Devin 才能使用它。")}</small>}
         {settings.bindings.map((binding, index) => {
@@ -395,22 +386,39 @@ export function DevinSettingsPage() {
         })}
       </div>
     </TitledCard>
-    <TitledCard title={t("安全边界")}>
-      <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
-    </TitledCard>
-    <TitledCard title="Devin 宿主接入（可选）">
-      <p className={styles.note}>只对你明确填写的 extension.js 操作。应用补丁前会校验四个版本锚点并创建 SHA-256 备份；未知版本、部分补丁或备份不一致时会拒绝写入。</p>
+    <TitledCard title={t("高级")} collapsible>
       <div className={styles.fields}>
-        <FormField label="Devin / Windsurf extension.js 路径" hint="例如：C:\\Program Files\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js">
-          <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder="请输入绝对路径" />
+        <FormField label={t("控制令牌")} hint={t("可选；Devin 请求可通过 x-devin-router-token 或 Bearer 令牌认证。")}>
+          <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
+        </FormField>
+        <FormField label={t("API 端口")}><TextInput type="number" value={settings.api_port} onChange={(event) => update("api_port", Number(event.target.value))} /></FormField>
+        <FormField label={t("推理端口")}><TextInput type="number" value={settings.inference_port} onChange={(event) => update("inference_port", Number(event.target.value))} /></FormField>
+        <FormField label={t("本地 API 端口")}><TextInput type="number" value={settings.local_api_port} onChange={(event) => update("local_api_port", Number(event.target.value))} /></FormField>
+        <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
+          <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.self-serve.windsurf.com" />
+        </FormField>
+      </div>
+      <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
+      <p className={styles.note}>{t("宿主接入只对这里显示的 extension.js 操作。应用补丁前会校验四个版本锚点并创建 SHA-256 备份；未知版本、部分补丁或备份不一致时会拒绝写入。路径已自动探测，通常无需修改。")}</p>
+      <div className={styles.fields}>
+        <FormField label="Devin / Windsurf extension.js 路径" hint={t("留空即自动探测；仅在自动结果不正确时才需要填写。")}>
+          <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
       <div className={styles.hostActions}>
-        <Button size="small" disabled={!hostPath.trim() || hostBusy} onClick={() => void inspectHost()}>{hostBusy ? "检查中…" : "检查宿主"}</Button>
-        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>应用补丁</Button>
-        <Button size="small" disabled={!hostReceipt || hostBusy} onClick={() => void restoreHostPatch()}>恢复原文件</Button>
+        <Button size="small" disabled={hostBusy} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("检查宿主")}</Button>
+        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
+        <Button size="small" disabled={!hostReceipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
       </div>
-      {hostStatus && <small className={styles.hostStatus}>{hostStatus.patched ? `已接入：API ${hostStatus.ports?.api_port} · 推理 ${hostStatus.ports?.inference_port} · Local API ${hostStatus.ports?.local_api_port}` : hostStatus.clean ? "兼容版本，尚未应用补丁" : hostStatus.message}</small>}
+      {hostStatus && <small className={styles.hostStatus}>{hostStatus.patched && hostStatus.ports
+        ? t("已接入：API {api} · 推理 {inference} · Local API {local}", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
+        : hostStatus.patched
+          ? hostStatus.message
+          : hostStatus.clean ? t("兼容版本，尚未应用补丁") : hostStatus.message}</small>}
+      <div className={styles.bindingFooter}>
+        <span />
+        <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
+      </div>
     </TitledCard>
   </div>;
   return <PageContent title="Devin" sections={[{ key: "devin", estimatedHeight: 900, content }]} />;
