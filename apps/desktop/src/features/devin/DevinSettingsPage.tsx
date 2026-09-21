@@ -298,23 +298,21 @@ export function DevinSettingsPage() {
       ];
       return <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
         <div className={styles.status}>
-          <div className={styles.statusHead}>
-            <div className={styles.statusItems}>
-              <div className={styles.statusItem}>
-                <span>{t("网关")}</span>
-                <strong><span className={`${styles.badge} ${gatewayTone === "ok" ? styles.badgeOk : gatewayTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{gatewayLabel}</span></strong>
-              </div>
-              <div className={styles.statusItem}><span>{t("端口")}</span><strong>{settings.api_port} / {settings.inference_port} / {settings.local_api_port}</strong></div>
-              <div className={styles.statusItem}>
-                <span>Devin</span>
-                <strong><span className={`${styles.badge} ${devinTone === "ok" ? styles.badgeOk : devinTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{devinLabel}</span></strong>
-              </div>
-              <div className={styles.statusItem}>
-                <span>{t("当前生效模型")}</span>
-                <strong>{activeModel ? activeModel.display_name : standard.length ? t("模型已删除或哈希无效") : t("未绑定")}</strong>
-              </div>
-              <div className={styles.statusItem}><span>{t("上下文压缩绑定")}</span><strong>{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}</strong></div>
+          <div className={styles.statusItems}>
+            <div className={styles.statusItem}>
+              <span>{t("网关")}</span>
+              <strong><span className={`${styles.badge} ${gatewayTone === "ok" ? styles.badgeOk : gatewayTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{gatewayLabel}</span></strong>
             </div>
+            <div className={styles.statusItem}><span>{t("端口")}</span><strong>{settings.api_port} / {settings.inference_port} / {settings.local_api_port}</strong></div>
+            <div className={styles.statusItem}>
+              <span>Devin</span>
+              <strong><span className={`${styles.badge} ${devinTone === "ok" ? styles.badgeOk : devinTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{devinLabel}</span></strong>
+            </div>
+            <div className={styles.statusItem}>
+              <span>{t("当前生效模型")}</span>
+              <strong>{activeModel ? activeModel.display_name : standard.length ? t("模型已删除或哈希无效") : t("未绑定")}</strong>
+            </div>
+            <div className={styles.statusItem}><span>{t("上下文压缩绑定")}</span><strong>{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}</strong></div>
           </div>
           <div className={styles.steps}>
             {steps.map((step, index) => <div key={step.key} className={styles.step}>
