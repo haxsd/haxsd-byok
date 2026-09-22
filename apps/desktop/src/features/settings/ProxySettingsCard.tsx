@@ -38,7 +38,7 @@ export function ProxySettingsCard({
     </button>
   );
 
-  return <TitledCard title={t("代理设置")} action={action}>
+  return <TitledCard title={t("代理设置")} action={action} collapsible storageKey="settings-proxy">
     <div className={styles.content}>
       {editing ? <>
         <div className={styles.row}>

@@ -190,7 +190,7 @@ export function PricingSettingsCard() {
   );
 
   return (
-    <TitledCard title={t("Token 定价")} action={action}>
+    <TitledCard title={t("Token 定价")} action={action} collapsible storageKey="settings-pricing">
       <div className={styles.content}>
         <small>{t("用于首页价值估算的 Token 单价，单位：{unit} / 百万 Token。", { unit })}</small>
         <small className={styles.rule}>{t("价格币种跟随界面语言：简体中文用人民币，英文用美元，两套价格各自独立维护。")}</small>

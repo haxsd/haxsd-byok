@@ -182,7 +182,7 @@ export function CommitSettingsCard() {
 
   return (
     <>
-      <TitledCard title={t("Commit 提交代码模型设置")} action={action}>
+      <TitledCard title={t("Commit 提交代码模型设置")} action={action} collapsible storageKey="settings-commit">
         <div className={styles.content}>
           <div className={styles.row}>
             <div className={styles.details}>

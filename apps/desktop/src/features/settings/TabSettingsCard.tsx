@@ -43,6 +43,8 @@ export function TabSettingsCard({
   return <TitledCard
     title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{t("TAB 设置")}</span></div>}
     action={action}
+    collapsible
+    storageKey="settings-tab"
   >
     <div className={styles.content}>
       {editing ? <>
