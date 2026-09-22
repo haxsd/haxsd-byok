@@ -76,19 +76,30 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: C:\Users\Administrator\AppData\Local\haxsd byok
-版本:     1.0.1
+版本:     1.0.1（机器上装的仍是这一版；1.0.2 已发布，可应用内升级）
 数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
 ```
+
+### 已发布
+
+```
+Release:   haxsd-byok-v1.0.2（Latest），2026-09-22
+产物:      haxsd.byok_1.0.2_x64-setup.exe / .sig / latest.json
+更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
+```
+
+**产品仓库必须保持公开**，否则应用内更新会 404：更新器请求时不带凭证，私有仓库的
+release 资源不接受匿名下载（实测私有 404 / 公开 302）。签名链已用
+`.e2e-devin\tools\verify-update-signature.mjs` 验过，公钥与签名密钥标识一致。
 
 ### 仓库
 
 ```
-开发仓库  https://github.com/haxsd/cursor-byok.git   分支 feat/devin-router
-产品仓库  https://github.com/haxsd/haxsd-byok.git    分支 main（私有，更新通道指向它）
+开发仓库  https://github.com/haxsd/cursor-byok.git   分支 feat/devin-router（私有）
+产品仓库  https://github.com/haxsd/haxsd-byok.git    分支 main（**公开**，更新通道指向它）
 ```
 
-> ⚠️ **接手时必做**：产品仓库落后开发仓库 6 个提交，整轮 UI 升级都没同步过去。
-> 同步方式见第七节。
+两个仓库的**内容**已逐文件一致（git blob 哈希比对）：610 个文件，只有 4 个文档不同。
 
 ### 用户环境中有两个独立产品，不要搞混
 
@@ -148,6 +159,12 @@ default-light   亮色
 canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `features/home/charts/chartTheme.ts` 的 `chartPalette()` 运行时读回。
 **新增图表必须走这个函数**，不要写死颜色。
 
+色板是**按主题分别声明**的：`_themes.scss` 里的 `chart-palette` mixin，三个主题各一份
+（`--oa-chart-axis` / `--oa-chart-grid` / `--oa-heat-0` 例外，它们引用 `--vscode-*`，会自动跟主题走）。
+只在基础 `:root` 里声明一份的后果是**三个主题共用同一套数据色**——曾经如此，亮色主题拿到的
+是暗色那套（背景 `#f5f5f5`、热力档位 1 却是 `#1d3a63`）。改色板后跑
+`tools/measure-theme-tokens.mjs`，它会直接列出哪些 token 不随主题变化。
+
 ---
 
 ## 六、必须知道的陷阱（都实际踩过）
@@ -161,7 +178,10 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **i18n 插件强制静态字面量** | `t()` 参数必须是字符串字面量，不能是变量，也不能传 JSX。违反会**构建失败** |
 | **i18n 缺译文会构建失败** | 加新文案后跑 `npm run i18n:scan`，填 `en-US.json` 里的空词条 |
 | **GitHub 推送偶发 `SSL_ERROR_SYSCALL`** | 重试即可 |
-| **本机 git 走代理** | 两个仓库都配了 `http.proxy=http://127.0.0.1:7897`，新克隆的仓库要补上，否则推送被重置 |
+| **git 自己不走系统代理** | 两个仓库都**没有**配 `http.proxy`。系统代理在 `127.0.0.1:7897`（Clash/mihomo），`gh` 和 PowerShell 会自动用，**git 不会**：直接推送会报 `Failed to connect to github.com port 443`。推送时显式带上 `-c http.proxy=http://127.0.0.1:7897`，或在仓库里配上 |
+| **`tar -x` 从不删除文件** | 第七节的同步方式只会覆盖/新增。开发仓库删掉的文件会在产品仓库里留下旧副本（已遇到一次）。同步后必须用 blob 哈希比对确认，见第七节 |
+| **`finalize` 任务没有 checkout** | `gh release edit` 无法推断仓库，报 `not a git repository`，草稿不会转正。已修为显式 `--repo "${GITHUB_REPOSITORY}"`。**改这个工作流时别删掉 `--repo`** |
+| **更新地址必须能匿名读取** | 产品仓库若改回私有，`releases/latest/download/latest.json` 立刻 404，应用内更新全断 |
 | **Devin 宿主补丁仍指向 43110/43111/43112** | 网关端口若改动，宿主补丁要重打 |
 | **不要启动厂商路由器** | `D:\devin-model-router\...\Devin Model Router.exe` 的 `autoPatch` 会把宿主文件改回 43100 端口，把我们的补丁冲掉 |
 
@@ -189,6 +209,8 @@ git push origin main
 **校验同步结果**（必须用 git blob 哈希，不能直接比文件——行尾差异会伪装成内容不同）：
 
 ```powershell
+$src = "D:\cursor-byok\byok-dev\cursor-byok-devin-router"
+$new = "D:\cursor-byok\byok-dev\haxsd-byok"
 $files = git -C $src ls-files | Where-Object { $_ -notlike ".github/*" }
 foreach ($f in $files) {
   if ((git -C $src hash-object -- $f) -ne (git -C $new hash-object -- $f)) { "内容不同: $f" }
@@ -196,6 +218,12 @@ foreach ($f in $files) {
 ```
 
 预期只有 4 个文件不同：`BRANCH_ISOLATION.md`、`README-EN.md`、`README.md`、`docs/devin-go-live.md`（产品仓库地址不同，有意为之）。
+
+⚠️ **`tar -x` 只会覆盖和新增，不会删除。** 开发仓库删掉的文件会在产品仓库里留下旧副本，
+"只差 4 个文档" 就不再成立。曾经因此残留过 `LatencyChart.tsx` / `TokenTrendChart.tsx`。
+所以每次同步后都要跑上面这段比对，**不要只看文件数对不对**：两侧数量可能相同（一边多一个、
+一边少一个），哈希比对才看得出来。另外两侧文件数不同时，用
+`Compare-Object (git ls-tree -r HEAD) ...` 可以直接列出差集。
 
 ---
 
@@ -208,6 +236,12 @@ foreach ($f in $files) {
 | `tools/preview-ui.ps1` | **看新 UI 用这个**：独立进程服务工作区构建的前端 + 真实数据库，不安装、不影响已运行应用 |
 | `tools/measure-layout.mjs` | 通过 CDP 在**真实视口**量元素几何。**判断布局必须用它** |
 | `tools/measure-typography.mjs` | 量实际生效的字号/行高/字重 |
+| `tools/measure-bars.mjs` | 量 canvas 图表的柱子几何（位置、数量、每根的高度）。注意网格线会横跨所有列，会干扰"找最高墨迹"的判读 |
+| `tools/measure-theme-tokens.mjs` | 量三个主题下 `--oa-*` 色板的**计算值**，直接列出哪些 token 不随主题变化 |
+| `tools/zoom-shot.mjs` | 把页面某块区域按高倍率截出来。**canvas 里的文字（坐标轴标签等）只能这样读**，全页缩略图会看错 |
+| `tools/render-theme.mjs` | 三个主题各渲染一张截图（通过 localStorage 种入主题，和真实启动路径一致） |
+| `tools/set-theme.mjs` | 把主题设回指定值或清掉；截图工具种过主题后用它复位 |
+| `tools/verify-update-signature.mjs` | 用应用里编译进去的公钥验已发布的安装包签名，**不需要私钥**。每次发版后都该跑 |
 | `tools/perf-probe.mjs` | 页面加载 + API 调用计数 |
 | `tools/render-app.mjs` | 渲染已安装应用自己的前端并 dump 结构 |
 | `tools/capture-window.py` | 截取真实窗口（需 Pillow 的 python） |
@@ -215,6 +249,11 @@ foreach ($f in $files) {
 | `tools/inspect-db.py` / `dump-table.py` / `show-setting.py` | 读数据库与设置（排查配置问题） |
 | `tools/set-takeover-off.py` | 显式关闭 Cursor 接管开关 |
 | `tools/serve-dist.py` | 按 Vite base 提供 dist（普通静态服务器会 404 导致空白页） |
+
+**CDP 工具都会自动给 URL 加 cache-buster。** 这不是可选项：preview server 会继续把浏览器
+已持有的旧 bundle 发给你，`Network.setCacheDisabled` 也拦不住，于是**重新构建后的前端会被量成
+"没有任何变化"**——这个假阴性已经骗过一次（误判"主题色板没生效"）。工具里已经有 `cacheBust()`，
+自己写新脚本时要照做。
 
 **血泪教训：我从截图误判布局两次、误判请求归因一次。缩略图不能用来判断布局，必须用测量脚本。** 例如「状态项被挤成单列」的观感被 CDP 实测推翻——实际是 5 列 × 235px。
 
@@ -254,11 +293,25 @@ Start-Process "$env:LOCALAPPDATA\haxsd byok\haxsd-byok-desktop.exe"
 发布会产生**对外可见**的 release，**必须先问用户**。
 
 ```
-1. 确认版本号（apps/desktop/package.json + tauri.conf.json，两处要一致）
-2. 打 tag 并推送：haxsd-byok-v1.0.1
-3. Release workflow 读取 tag → 构建 → 签名 → 发布 → 生成 latest.json
-4. 用户安装后，应用内更新才会真正可用
+1. 改版本号。**四处**必须一致，少一处就会发布失败或产物对不上：
+     apps/desktop/package.json
+     apps/desktop/package-lock.json   ← 根 version 和 packages[""].version 两行
+     apps/desktop/src-tauri/tauri.conf.json
+     apps/desktop/src-tauri/Cargo.toml
+     Cargo.lock                       ← haxsd-byok-desktop 那一条（改 Cargo.toml 后
+                                         cargo 不一定会自动改写，`cargo check --locked`
+                                         能验证你改对了）
+     （`npm version 1.0.x --no-git-tag-version` 能正确改前两个文件）
+2. 提交并推送到**产品仓库的 main**（不是开发仓库），再同步一次，见第七节
+3. 在产品仓库上打 tag 并推送：haxsd-byok-v1.0.x
+     - tag 名字必须等于 haxsd-byok-v<版本号>
+     - tag 指向的提交必须**在产品仓库的 origin/main 上**，否则 prepare 任务直接拒绝
+     - 开发仓库也有一份同名工作流，但它的 origin/main 是别的东西，**不要在开发仓库打这个 tag**
+4. Release workflow：构建（Windows/MSVC）→ 签名 → 建**草稿** Release → finalize 转正为 latest
+5. 应用内更新才真正可用（前提：产品仓库公开）
 ```
+
+**版本号必须往上抬。** 更新器只认严格更新的版本：已装 1.0.1 时再发一个 1.0.1，用户那边什么都不会发生。
 
 **签名密钥**（已在 GitHub Secret `TAURI_SIGNING_PRIVATE_KEY` 配好）：
 
@@ -269,6 +322,26 @@ D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.pub
 
 > ⚠️ **不要读取或外传私钥内容。丢了它，后续所有签名更新都不可能。**
 > 不要在输出里打印私钥或设置后的环境变量。
+
+工作流还会引用 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，但产品仓库里**没有**这个 secret——
+签名能成功，说明这把密钥没有设密码。将来换带密码的密钥时必须补上这个 secret。
+
+**发布后必须验三件事**（发布页看起来正常，更新仍可能是坏的）：
+
+```powershell
+# 1. 草稿真的转正了吗
+gh release view haxsd-byok-v1.0.x --repo haxsd/haxsd-byok --json isDraft,assets
+
+# 2. 更新地址能匿名读吗（私有仓库会 404）
+curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json"
+
+# 3. 签名与应用里编译进去的公钥对得上吗（不需要私钥）
+node D:\cursor-byok\byok-dev\.e2e-devin\tools\verify-update-signature.mjs `
+  D:\cursor-byok\byok-dev\haxsd-byok\apps\desktop\src-tauri\tauri.conf.json `
+  <下载的安装包> <下载的 .sig>
+```
+
+第 3 条尤其值得每次跑：公钥和签名密钥一旦不一致，**每个客户端都会拒绝每一次更新，而发布页上看不出任何异常**。
 
 ---
 
@@ -310,12 +383,14 @@ D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.pub
 
 | 优先级 | 事项 | 说明 |
 |---|---|---|
-| **高** | 同步产品仓库 | 落后 6 个提交，见第七节 |
-| **高** | 发布正式 Release | 需用户确认；完成后应用内更新才可用 |
+| ~~高~~ | ~~同步产品仓库~~ | 已完成，两仓库逐文件一致（只差那 4 个文档） |
+| ~~高~~ | ~~发布正式 Release~~ | 已完成：`haxsd-byok-v1.0.2`，签名链已验证，应用内更新可用 |
+| 中 | 图表**形态**重设计 | 已修：空柱等高、日历数据源、三主题色板、仪表盘硬编码绿色、tooltip 走 token。**形态本身（柱状/热力图）未做** |
 | 中 | 日期选择器、命令面板等长尾控件 | 未逐一走查 |
-| 中 | 图表**形态**重设计 | 目前只统一了颜色，柱状图/热力图还是常规形态 |
 | 低 | 偶发测试 `database is locked` | `newer_run_request_on_one_bidi_stream_replaces_the_active_run` 出现过一次；源仓库 12 次运行未复现。**无复现证据前不要改池配置** |
 | 低 | 页面切换过渡动效 | 只做了基础动效（按钮/弹窗/折叠） |
+| 低 | 图表的 memo 不依赖主题 | `DailyTokenUsageChart` / `ContributionCalendarChart` 的 `useMemo` / `useLayoutEffect` 依赖里没有主题，主题变了颜色不会重算。**当前不可见**（主题开关只在设置页，切主题时首页已卸载，回来是重新挂载），但如果哪天把主题开关挪到常驻位置就会露出来 |
+| 低 | `latest.json` 里的下载地址走 `api.github.com` | tauri-action 生成的是 API 资源地址，受匿名 60 次/小时的限制。本机走共享代理出口，实测被限流时 403（配额恢复后正常）。要彻底免疫，需要在 finalize 阶段把 url 改写成 `github.com/.../releases/download/<tag>/<asset>` 形式（不限流） |
 | 待定 | 把 `midnight` 设为默认主题 | 用户尚未表态 |
 
 ### 明确挂起（不要擅自推进）
@@ -351,11 +426,9 @@ D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.pub
 
 ## 十三、接手后的建议顺序
 
-1. **同步产品仓库**（第七节），确认 609 个文件里只有 4 个文档不同
-2. 跑一遍验证（第八节），确认基线是绿的
-3. 跑 `tools/preview-ui.ps1` 看一眼当前界面，建立视觉基线
-4. **问用户要不要发 Release**（第九节）——这是唯一能解锁应用内更新的动作
-5. 然后按第十一节的优先级推进
+1. 跑一遍验证（第八节），确认基线是绿的
+2. 跑 `tools/preview-ui.ps1` 看一眼当前界面，建立视觉基线
+3. 按第十一节的优先级推进
 
 ### 快速自检清单
 
