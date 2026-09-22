@@ -4,6 +4,18 @@
   }
 }
 
+/* Chart palette, declared once per theme. A canvas chart cannot inherit CSS, so
+   these are read back at runtime by features/home/charts/chartTheme.ts. Keeping
+   only the default set in :root meant every theme drew with the dark palette:
+   measured values were identical in default-dark, midnight and default-light,
+   which left the light theme with a dark navy heat ramp on a near-white surface.
+   Axis and grid are not listed here because they already track --vscode-*. */
+@mixin chart-palette($palette) {
+  @each $name, $value in $palette {
+    --oa-#{$name}: #{$value};
+  }
+}
+
 :root {
   --oa-card-radius: 9px;
   --oa-overlay-radius: 8px;
@@ -32,25 +44,30 @@
 
   /* Chart palette. Charts used to carry hardcoded hex values and grey axis
      labels, so they kept the old look under every theme. These are read back at
-     runtime, which is what keeps a canvas chart in step with the theme. */
-  --oa-chart-input: #0091ff;
-  --oa-chart-cache-read: #2ecc8f;
-  --oa-chart-cache-write: #6c7cf0;
-  --oa-chart-output: #e0a92c;
-  --oa-chart-line: #7c9cff;
+     runtime, which is what keeps a canvas chart in step with the theme. The axis
+     and grid entries track --vscode-*, so only the data colours are repeated per
+     theme below. */
   --oa-chart-axis: var(--vscode-descriptionForeground);
   --oa-chart-grid: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
-  --oa-chart-1: #7c9cff;
-  --oa-chart-2: #2ecc8f;
-  --oa-chart-3: #e0a92c;
-  --oa-chart-4: #f0796b;
-  --oa-chart-5: #b98cf0;
   /* Contribution calendar ramps from the surface colour to the accent. */
   --oa-heat-0: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
-  --oa-heat-1: #1d3a63;
-  --oa-heat-2: #2f5da8;
-  --oa-heat-3: #4d7fe0;
-  --oa-heat-4: #8fb0ff;
+
+  @include chart-palette((
+    chart-input: #0091ff,
+    chart-cache-read: #2ecc8f,
+    chart-cache-write: #6c7cf0,
+    chart-output: #e0a92c,
+    chart-line: #7c9cff,
+    chart-1: #7c9cff,
+    chart-2: #2ecc8f,
+    chart-3: #e0a92c,
+    chart-4: #f0796b,
+    chart-5: #b98cf0,
+    heat-1: #1d3a63,
+    heat-2: #2f5da8,
+    heat-3: #4d7fe0,
+    heat-4: #8fb0ff,
+  ));
 }
 
 :root:not([data-platform="macos"]) {
@@ -164,6 +181,24 @@
     checkbox-border: #ffffff2b,
   ));
   color-scheme: dark;
+
+  /* Lifted against the deeper indigo base so the series stay legible on it. */
+  @include chart-palette((
+    chart-input: #3f9dff,
+    chart-cache-read: #2fd39b,
+    chart-cache-write: #8b9cff,
+    chart-output: #e8b04a,
+    chart-line: #8fa8ff,
+    chart-1: #8fa8ff,
+    chart-2: #2fd39b,
+    chart-3: #e8b04a,
+    chart-4: #ff8577,
+    chart-5: #c79cff,
+    heat-1: #24304f,
+    heat-2: #3b5090,
+    heat-3: #6284dc,
+    heat-4: #a2b8ff,
+  ));
 }
 
 :root[data-theme="default-light"] {
@@ -214,4 +249,23 @@
     checkbox-border: #00000024,
   ));
   color-scheme: light;
+
+  /* Darkened for a near-white surface, and the heat ramp is reversed: more usage
+     now means darker, which is the only direction that reads on a light page. */
+  @include chart-palette((
+    chart-input: #0a66d0,
+    chart-cache-read: #0d8a58,
+    chart-cache-write: #4f5ad0,
+    chart-output: #a86a00,
+    chart-line: #317cff,
+    chart-1: #317cff,
+    chart-2: #0d8a58,
+    chart-3: #a86a00,
+    chart-4: #cf4436,
+    chart-5: #7f4fd0,
+    heat-1: #d3e2fe,
+    heat-2: #a7c4fa,
+    heat-3: #6b93ea,
+    heat-4: #2b5ac2,
+  ));
 }

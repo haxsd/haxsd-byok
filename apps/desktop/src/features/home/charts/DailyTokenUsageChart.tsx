@@ -18,8 +18,13 @@ type TooltipItem = {
   dataIndex: number;
 };
 
-const EMPTY_BAR_RATIO = 1;
-const DATA_HEIGHT_RATIO = 1;
+/**
+ * Zero-usage days are drawn as a thin baseline rather than a bar: a fraction of
+ * the axis, so its pixel height stays constant however the data moves. It used to
+ * be drawn at the full height of the tallest bar, which made a month with a single
+ * active day read as a month where every day used the same amount.
+ */
+const EMPTY_BAR_RATIO = 0.014;
 
 const seriesFocus = {
   emphasis: { focus: "series" },
@@ -59,6 +64,18 @@ function totalTokens(day: DailyTokenUsage) {
   return day.inputTokens + day.cacheReadTokens + day.cacheWriteTokens + day.outputTokens;
 }
 
+/**
+ * Rounds an axis maximum up to a readable step, so the tick labels land on round
+ * numbers instead of on whatever the busiest day happened to be.
+ */
+function niceMaximum(value: number) {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((candidate) => normalized <= candidate) ?? 10;
+  return step * magnitude;
+}
+
 export function DailyTokenUsageChart({
   data,
   granularity,
@@ -79,7 +96,7 @@ export function DailyTokenUsageChart({
   const levelLineColor = palette.output;
   const emptyBarColor = palette.grid;
   const maximumTotal = data.reduce((maximum, day) => Math.max(maximum, totalTokens(day)), 0);
-  const axisMaximum = Math.max(1, maximumTotal / DATA_HEIGHT_RATIO);
+  const axisMaximum = niceMaximum(maximumTotal);
   const emptyBarHeight = axisMaximum * EMPTY_BAR_RATIO;
   const nonZeroTotals = data.map(totalTokens).filter((total) => total !== 0);
   const averageLevel = nonZeroTotals.length === 0
@@ -89,14 +106,16 @@ export function DailyTokenUsageChart({
   const option = useMemo<EChartsCoreOption>(() => ({
     animationDuration: 450,
     animationEasing: "cubicOut",
-    grid: { top: 8, right: 0, bottom: 0, left: 0 },
+    grid: { top: 8, right: 8, bottom: 0, left: 0, containLabel: true },
     tooltip: {
       trigger: "axis",
       confine: true,
       backgroundColor: "var(--vscode-editorHoverWidget-background)",
       borderColor: "var(--vscode-editorHoverWidget-border)",
       textStyle: { color: "var(--vscode-foreground)", fontFamily: "PingFang-Medium" },
-      extraCssText: "border-radius: 8px; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); font-size: var(--daily-token-tooltip-font-size); line-height: 1.5;",
+      // The tooltip is HTML, so unlike the bars it can read the theme tokens
+      // directly instead of carrying its own radius and shadow.
+      extraCssText: "border-radius: var(--oa-radius-md); box-shadow: var(--oa-tooltip-shadow); font-size: var(--daily-token-tooltip-font-size); line-height: 1.5;",
       axisPointer: {
         type: "shadow",
         shadowStyle: { color: palette.grid },
@@ -130,9 +149,19 @@ export function DailyTokenUsageChart({
     },
     yAxis: {
       type: "value",
-      show: false,
       min: 0,
       max: axisMaximum,
+      // Four steps keeps the labels on round numbers instead of letting the axis
+      // engine add a final tick that breaks the interval.
+      splitNumber: 4,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: palette.grid } },
+      axisLabel: {
+        color: palette.axis,
+        fontFamily: "HFKos",
+        formatter: (value: number) => formatCompactInteger(value),
+      },
     },
     series: [
       {
@@ -143,7 +172,7 @@ export function DailyTokenUsageChart({
         barMaxWidth: 18,
         silent: true,
         z: 0,
-        itemStyle: { color: emptyBarColor, borderRadius: [2, 2, 0, 0] },
+        itemStyle: { color: emptyBarColor, borderRadius: 1 },
         emphasis: { disabled: true },
       },
       {

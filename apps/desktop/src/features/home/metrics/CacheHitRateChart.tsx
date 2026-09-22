@@ -1,13 +1,16 @@
 import type { EChartsCoreOption } from "echarts/core";
 import { useEffect, useMemo, useState } from "react";
 import { EChart } from "../charts/EChart";
+import { chartPalette } from "../charts/chartTheme";
 import styles from "./CacheHitRateChart.module.scss";
-
-const valueColor = "#40c463";
-const trackColor = "rgba(139, 148, 158, 0.20)";
 
 export function CacheHitRateChart({ rate, animationKey = 0 }: { rate: number; animationKey?: number }) {
   const finiteRate = Number.isFinite(rate) ? rate : 0;
+  // Read from the theme like every other chart. This gauge used to carry GitHub's
+  // green and a fixed track colour, so it stayed green under all three themes.
+  const palette = chartPalette();
+  const valueColor = palette.cacheRead;
+  const trackColor = palette.grid;
   const percentage = Math.max(0, Math.min(100, finiteRate * 100));
   const [displayedPercentage, setDisplayedPercentage] = useState(0);
   const label = Number.isFinite(rate) ? `${percentage.toFixed(2)}%` : "--";

@@ -110,7 +110,10 @@ export function HomePage() {
     cacheWriteTokens: bucket.cache_write_tokens,
     outputTokens: bucket.output_tokens,
   }));
-  const contribution = contributionCalendarData(filteredOverview, selectedRange?.endMs ?? Date.now());
+  // The calendar is labelled as the past year, so it reads the unfiltered overview.
+  // Feeding it the range-filtered series left eleven of the twelve months empty
+  // whenever a short range was selected, which is the default.
+  const contribution = contributionCalendarData(overview, Date.now());
   const metrics = {
     llmCalls: filteredOverview.metrics.llm_calls,
     successfulCalls: filteredOverview.metrics.successful_calls,
