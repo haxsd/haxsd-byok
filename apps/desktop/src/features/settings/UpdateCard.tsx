@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -13,22 +13,34 @@ import styles from "./SettingsPage.module.scss";
  */
 export function UpdateCard() {
   const [version, setVersion] = useState<string | null>(null);
+  const [versionError, setVersionError] = useState<string | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const showVersion = async () => {
-    if (!version) setVersion(await getVersion());
-    return version ?? await getVersion();
-  };
+  // The version is the one thing this card can always show, so it is read on
+  // mount rather than on the first click.
+  useEffect(() => {
+    let cancelled = false;
+    void getVersion()
+      .then((value) => {
+        if (!cancelled) setVersion(value);
+      })
+      .catch((cause) => {
+        if (!cancelled) setVersionError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const checkForUpdate = async () => {
     setBusy(true);
     setMessage(null);
     setUpdate(null);
     try {
-      const current = await showVersion();
+      const current = version ?? await getVersion();
       const found = await check();
       if (!found) {
         setMessage(t("已是最新版本（{version}）", { version: current }));
@@ -78,7 +90,7 @@ export function UpdateCard() {
     <div className={styles.settingRow}>
       <div>
         <strong>{t("当前版本")}</strong>
-        <small>{version ?? t("读取中…")}</small>
+        <small>{version ?? versionError ?? t("读取中…")}</small>
       </div>
       {update && <div>
         <strong>{t("可更新到 {version}", { version: update.version })}</strong>

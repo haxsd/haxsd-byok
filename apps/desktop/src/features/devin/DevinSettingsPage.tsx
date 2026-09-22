@@ -384,7 +384,7 @@ export function DevinSettingsPage() {
         })}
       </div>
     </TitledCard>
-    <TitledCard title={t("高级")} collapsible>
+    <TitledCard title={t("高级")} collapsible storageKey="devin-advanced">
       <div className={styles.fields}>
         <FormField label={t("控制令牌")} hint={t("可选；Devin 请求可通过 x-devin-router-token 或 Bearer 令牌认证。")}>
           <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
