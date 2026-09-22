@@ -27,7 +27,7 @@ const tutorialReadStorageKey = "haxsd-byok:tutorial-read";
 const tutorialUrl = "https://docs.leokun.cn";
 
 export function AppLayout() {
-  const { busy, cursorHarness } = useAppStore();
+  const { busy, cursorHarness, devinStatus } = useAppStore();
   const message = useMessage();
   const location = useLocation();
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
@@ -40,6 +40,26 @@ export function AppLayout() {
       return false;
     }
   });
+
+  // The sidebar shows the same kind of state for both harnesses, so Cursor and
+  // Devin read as parallel modules rather than one annotated and one bare. Both
+  // values come from the shared store refresh, so there is one source of truth.
+  const menuStatus = (path: string) => {
+    if (path === "/harness/cursor" && cursorHarness) {
+      return {
+        label: cursorHarness.settings_applied ? t("已接管") : t("未接管"),
+        active: cursorHarness.settings_applied,
+      };
+    }
+    if (path === "/harness/devin" && devinStatus) {
+      return {
+        label: devinStatus.listening ? t("运行中") : devinStatus.enabled ? t("待重启") : t("未启用"),
+        active: devinStatus.enabled && devinStatus.listening,
+      };
+    }
+    return null;
+  };
+
   const menuItems: MenuItem[] = [
     { kind: "page", path: "/", label: t("概览"), icon: flatColorAreaChartIcon },
     { kind: "page", path: "/calls", label: t("调用"), icon: flatColorSalesPerformanceIcon },
@@ -100,12 +120,11 @@ export function AppLayout() {
                 ? <Icon src={item.icon} size="1.3em" />
                 : <Icon icon={item.icon} size="1.3em" />}
               <span>{item.label}</span>
-              {item.path === "/harness/cursor" && cursorHarness && <span
-                className={styles.menuStatusTag}
-                data-taken={cursorHarness.settings_applied || undefined}
-              >
-                {cursorHarness.settings_applied ? t("已接管") : t("未接管")}
-              </span>}
+              {(() => {
+                const status = menuStatus(item.path);
+                if (!status) return null;
+                return <span className={styles.menuStatusTag} data-taken={status.active || undefined}>{status.label}</span>;
+              })()}
             </NavLink>
           </div>}
         </VirtualList>

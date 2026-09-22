@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CurrencyPricing, type CursorHarnessStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, type CurrencyPricing, type CursorHarnessStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
 
 /**
@@ -69,6 +69,8 @@ export type AppSnapshot = {
   error: string | null;
   theme: ThemeId;
   cursorHarness: CursorHarnessStatus | null;
+  /** Gateway state for the Devin module, refreshed with everything else. */
+  devinStatus: DevinStatus | null;
   cursorBusy: boolean;
   pluginRuntime: PluginRuntimeStatus | null;
   plugins: PluginDescriptor[];
@@ -104,6 +106,7 @@ let snapshot: AppSnapshot = {
   error: null,
   theme: savedTheme(),
   cursorHarness: null,
+  devinStatus: null,
   cursorBusy: false,
   pluginRuntime: null,
   plugins: [],
@@ -135,7 +138,7 @@ export const appStore = {
   async refresh() {
     update({ busy: true, error: null });
     try {
-      const [models, calls, overview, settings, ports, pricing, cursorHarness, pluginRuntime, plugins] = await Promise.all([
+      const [models, calls, overview, settings, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins] = await Promise.all([
         api.models(),
         api.calls(),
         api.overview(),
@@ -143,10 +146,11 @@ export const appStore = {
         api.ports(),
         api.pricingSettings(),
         api.cursorHarness(),
+        api.devinStatus(),
         api.pluginRuntime(),
         api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, pluginRuntime, plugins });
+      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins });
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {

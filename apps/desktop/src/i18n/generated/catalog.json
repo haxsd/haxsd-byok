@@ -1005,6 +1005,11 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 252,
           "column": 15
+        },
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 73,
+          "column": 40
         }
       ]
     },
@@ -1323,7 +1328,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 118,
+          "line": 154,
           "column": 20
         }
       ]
@@ -1452,7 +1457,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 117,
+          "line": 153,
           "column": 14
         }
       ]
@@ -2238,6 +2243,18 @@
         }
       ]
     },
+    "4ae418c9564311d2": {
+      "source": "待重启",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 73,
+          "column": 73
+        }
+      ]
+    },
     "4b458e6e147221d7": {
       "source": "系统会根据请求协议自动追加标准端点路径。",
       "kind": "text",
@@ -2257,7 +2274,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 87,
+          "line": 124,
           "column": 67
         }
       ]
@@ -2281,7 +2298,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 49,
+          "line": 86,
           "column": 29
         }
       ]
@@ -2471,8 +2488,8 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 107,
-          "column": 51
+          "line": 67,
+          "column": 49
         }
       ]
     },
@@ -3044,7 +3061,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 45,
+          "line": 82,
           "column": 44
         }
       ]
@@ -3164,7 +3181,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 53,
+          "line": 90,
           "column": 47
         }
       ]
@@ -3311,7 +3328,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 46,
+          "line": 83,
           "column": 29
         }
       ]
@@ -4018,8 +4035,8 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 107,
-          "column": 62
+          "line": 67,
+          "column": 60
         }
       ]
     },
@@ -4186,7 +4203,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 123,
+          "line": 159,
           "column": 11
         }
       ]
@@ -4696,7 +4713,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 119,
+          "line": 155,
           "column": 21
         }
       ]
@@ -5018,12 +5035,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 129,
+          "line": 165,
           "column": 64
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 129,
+          "line": 165,
           "column": 125
         }
       ]
@@ -5710,7 +5727,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 50,
+          "line": 87,
           "column": 45
         }
       ]
@@ -6140,7 +6157,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 73,
+          "line": 110,
           "column": 54
         }
       ]
@@ -6340,7 +6357,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 51,
+          "line": 88,
           "column": 29
         }
       ]
@@ -7055,7 +7072,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 52,
+          "line": 89,
           "column": 46
         }
       ]
@@ -7107,6 +7124,11 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 72,
           "column": 132
+        },
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 73,
+          "column": 84
         }
       ]
     },
@@ -7397,7 +7419,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 44,
+          "line": 81,
           "column": 39
         }
       ]
@@ -7409,7 +7431,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 54,
+          "line": 91,
           "column": 48
         }
       ]
