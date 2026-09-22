@@ -44,5 +44,5 @@
   color: var(--vscode-checkbox-foreground, var(--vscode-button-foreground));
   background: var(--vscode-checkbox-background, var(--vscode-input-background));
   border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border));
-  border-radius: 3px;
+  border-radius: var(--oa-radius-xs);
 }

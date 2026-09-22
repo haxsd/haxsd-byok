@@ -7,7 +7,16 @@
   display: grid;
   place-items: center;
   padding: var(--window-header-height) 24px 24px;
-  background: rgb(0 0 0 / 52%);
+  /* A slight blur pushes the page back instead of only dimming it, which keeps
+     the dialog readable even over a busy table. */
+  background: rgb(0 0 0 / 50%);
+  backdrop-filter: blur(3px);
+  animation: mask-in var(--oa-transition-base) both;
+}
+
+@keyframes mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .dragLayer {
@@ -31,22 +40,50 @@
   background: var(--vscode-editorWidget-background);
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: var(--oa-overlay-radius);
-  box-shadow: 0 20px 50px rgb(0 0 0 / 45%);
+  box-shadow:
+    0 1px 0 0 color-mix(in srgb, var(--vscode-foreground) 6%, transparent) inset,
+    0 24px 64px rgb(0 0 0 / 52%);
+  animation: dialog-in var(--oa-transition-base) both;
 
   header {
     flex: 0 0 auto;
+    min-height: 46px;
+    display: flex;
+    align-items: center;
     padding: 10px 18px;
     border-bottom: 1px solid var(--vscode-editorWidget-border);
     font-size: type.$font-size-base;
-    font-weight: 630;
+    font-weight: type.$font-weight-semibold;
+    letter-spacing: type.$letter-spacing-tight;
   }
+
   footer {
     flex: 0 0 auto;
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    padding: 10px 18px;
+    padding: 12px 18px;
     border-top: 1px solid var(--vscode-editorWidget-border);
+    background: color-mix(in srgb, var(--vscode-editor-background) 60%, transparent);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Motion is decoration; respect a user who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .dialog {
+    animation: none;
   }
 }
 

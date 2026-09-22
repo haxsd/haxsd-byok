@@ -7,6 +7,50 @@
 :root {
   --oa-card-radius: 9px;
   --oa-overlay-radius: 8px;
+  /* Layout rhythm, overridable per theme so a theme can breathe more. */
+  --oa-section-gap: 16px;
+  --oa-card-padding: 16px;
+
+  /* Radius scale. Components should read from here instead of picking numbers,
+     which is how 69 border-radius declarations ended up with 59 different values. */
+  --oa-radius-xs: 4px;
+  --oa-radius-sm: 6px;
+  --oa-radius-md: 8px;
+  --oa-radius-lg: 12px;
+  --oa-radius-xl: 16px;
+
+  /* Resting elevation for surfaces that float above the page. */
+  --oa-shadow-card: 0 1px 2px rgb(0 0 0 / 24%);
+  --oa-shadow-raised: 0 2px 8px rgb(0 0 0 / 28%);
+
+  /* One motion vocabulary: fast for feedback, base for entrances. */
+  --oa-transition-fast: 120ms cubic-bezier(.4, 0, .2, 1);
+  --oa-transition-base: 180ms cubic-bezier(.2, 0, 0, 1);
+
+  /* A single focus ring, so keyboard focus looks the same everywhere. */
+  --oa-focus-ring: 0 0 0 2px var(--vscode-focusBorder);
+
+  /* Chart palette. Charts used to carry hardcoded hex values and grey axis
+     labels, so they kept the old look under every theme. These are read back at
+     runtime, which is what keeps a canvas chart in step with the theme. */
+  --oa-chart-input: #0091ff;
+  --oa-chart-cache-read: #2ecc8f;
+  --oa-chart-cache-write: #6c7cf0;
+  --oa-chart-output: #e0a92c;
+  --oa-chart-line: #7c9cff;
+  --oa-chart-axis: var(--vscode-descriptionForeground);
+  --oa-chart-grid: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  --oa-chart-1: #7c9cff;
+  --oa-chart-2: #2ecc8f;
+  --oa-chart-3: #e0a92c;
+  --oa-chart-4: #f0796b;
+  --oa-chart-5: #b98cf0;
+  /* Contribution calendar ramps from the surface colour to the accent. */
+  --oa-heat-0: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  --oa-heat-1: #1d3a63;
+  --oa-heat-2: #2f5da8;
+  --oa-heat-3: #4d7fe0;
+  --oa-heat-4: #8fb0ff;
 }
 
 :root:not([data-platform="macos"]) {
@@ -61,6 +105,63 @@
     checkbox-background: #ffffff0d,
     checkbox-foreground: #ffffff,
     checkbox-border: #ffffff0a,
+  ));
+  color-scheme: dark;
+}
+
+:root[data-theme="midnight"] {
+  /* Deeper base than the default theme, with each surface lifted further than
+     the last so the layout reads as layers instead of one flat grey slab. The
+     borders stay visible so cards do not dissolve into the background. */
+  --oa-tooltip-shadow: 0 16px 40px rgb(0 0 0 / 55%);
+  --oa-dropdown-shadow: 0 18px 44px rgb(0 0 0 / 62%);
+  --oa-card-radius: 12px;
+  --oa-overlay-radius: 10px;
+  --oa-section-gap: 22px;
+  --oa-card-padding: 20px;
+
+  @include vscode-theme((
+    foreground: #eef1f8,
+    errorForeground: #ff6b6b,
+    descriptionForeground: #9aa4bb,
+    focusBorder: #7c9cff,
+    textLink-foreground: #8fa8ff,
+    textCodeBlock-background: #1b2130,
+    editor-background: #0b0e14,
+    editor-selectionBackground: #7c9cff40,
+    editor-selectionForeground: #ffffff,
+    editorCursor-foreground: #ffffff,
+    editorLineNumber-foreground: #64708a,
+    editorLineNumber-activeForeground: #eef1f8,
+    editorWidget-background: #161b25,
+    editorWidget-border: #ffffff1f,
+    editorHoverWidget-background: #1c2330,
+    editorHoverWidget-border: #ffffff2b,
+    editorHoverWidget-foreground: #eef1f8,
+    sideBar-border: #ffffff1f,
+    list-activeSelectionBackground: #7c9cff24,
+    list-activeSelectionForeground: #ffffff,
+    list-hoverBackground: #1c2330,
+    input-background: #11161f,
+    input-foreground: #eef1f8,
+    input-border: #ffffff24,
+    button-background: #6d8cff,
+    button-foreground: #ffffff,
+    dropdown-background: #1c2330,
+    dropdown-foreground: #eef1f8,
+    dropdown-border: #ffffff24,
+    badge-background: #6d8cff,
+    badge-foreground: #ffffff,
+    scrollbarSlider-background: #ffffff1f,
+    scrollbarSlider-hoverBackground: #ffffff2e,
+    scrollbarSlider-activeBackground: #ffffff3d,
+    gitDecoration-addedResourceForeground: #3ddc97,
+    notifications-background: #1c2330,
+    notifications-foreground: #eef1f8,
+    notifications-border: #ffffff24,
+    checkbox-background: #ffffff14,
+    checkbox-foreground: #ffffff,
+    checkbox-border: #ffffff2b,
   ));
   color-scheme: dark;
 }

@@ -2,7 +2,7 @@
 
 .page {
   display: grid;
-  gap: 16px;
+  gap: var(--oa-section-gap);
 }
 
 .settingRow {
@@ -94,7 +94,7 @@
     color: var(--vscode-foreground);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 5px;
+    border-radius: var(--oa-radius-sm);
   }
 }
 

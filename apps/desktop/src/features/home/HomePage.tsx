@@ -187,7 +187,7 @@ export function HomePage() {
     },
     {
       key: "metrics",
-      estimatedHeight: 130,
+      estimatedHeight: 152,
       content: <HomeMetrics data={metrics} pricingSeries={pricingSeries} refreshVersion={refreshVersion} />,
     },
 

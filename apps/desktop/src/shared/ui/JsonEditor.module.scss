@@ -10,7 +10,7 @@
   overflow: hidden;
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
 
   &:focus-within {
     border-color: var(--vscode-focusBorder);
@@ -32,7 +32,7 @@
   color: var(--vscode-descriptionForeground);
   background: var(--vscode-editorWidget-background);
   border: 1px solid var(--vscode-editorWidget-border, var(--vscode-input-border));
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
   box-shadow: 0 2px 6px color-mix(in srgb, #000 22%, transparent);
 }
 
@@ -41,7 +41,7 @@
   color: inherit;
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-xs);
   font-size: type.$font-size-xs;
 
   &:hover {

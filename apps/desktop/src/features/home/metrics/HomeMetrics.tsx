@@ -175,10 +175,10 @@ export function HomeMetrics({ data, pricingSeries = null, refreshVersion = 0 }: 
         <div className={styles.label}>{t("LLM 调用")}<InfoTooltip content={callsTooltip} /></div>
         <div className={styles.body}>
           <div className={styles.value} title={formatInteger(data.llmCalls)}>{formatCompactInteger(data.llmCalls)}</div>
-          <div className={styles.secondary}>{t("成功 {successful} / 异常 {failed}", {
-            successful: formatCompactInteger(data.successfulCalls),
-            failed: formatCompactInteger(data.failedCalls),
-          })}</div>
+          <div className={styles.secondary}>
+            {t("成功 {successful} / 异常", { successful: formatCompactInteger(data.successfulCalls) })}
+            <span data-tone={data.failedCalls > 0 ? "bad" : undefined}>{formatCompactInteger(data.failedCalls)}</span>
+          </div>
         </div>
       </article>
       <article className={styles.metric}>

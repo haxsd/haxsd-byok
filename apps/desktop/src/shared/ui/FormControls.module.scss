@@ -4,7 +4,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
 }
@@ -14,14 +14,18 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  font-weight: type.$font-weight-medium;
   line-height: 20px;
 }
+
 .hint {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--vscode-descriptionForeground);
   cursor: help;
+  transition: color var(--oa-transition-fast);
+
   &:hover {
     color: var(--vscode-foreground);
   }
@@ -29,24 +33,38 @@
 
 .input {
   width: 100%;
+  height: 34px;
+  padding: 0 11px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 5px;
+  /* A nearly invisible input border made fields look like empty space; a visible
+     hairline plus a hover state shows the field is editable before it is focused. */
+  border: 1px solid var(--vscode-input-border, var(--vscode-sideBar-border));
+  border-radius: var(--oa-radius-md);
   outline: none;
   font: inherit;
+  transition:
+    border-color var(--oa-transition-fast),
+    box-shadow var(--oa-transition-fast),
+    background var(--oa-transition-fast);
+
+  &::placeholder {
+    color: color-mix(in srgb, var(--vscode-descriptionForeground) 80%, transparent);
+  }
+
+  &:hover:not(:disabled):not(:focus) {
+    border-color: color-mix(in srgb, var(--vscode-foreground) 26%, transparent);
+  }
 
   &:focus {
     border-color: var(--vscode-focusBorder);
+    box-shadow: var(--oa-focus-ring);
   }
-  &:disabled {
-    opacity: 0.6;
-  }
-}
 
-.input {
-  height: 34px;
-  padding: 0 10px;
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
 
   &[type="number"] {
     appearance: textfield;
@@ -64,7 +82,7 @@
   width: 100%;
 
   input {
-    padding-right: 34px;
+    padding-right: 36px;
   }
 }
 
@@ -72,7 +90,7 @@
   position: absolute;
   top: 0;
   right: 0;
-  width: 30px;
+  width: 32px;
   height: 34px;
   display: grid;
   place-items: center;
@@ -80,7 +98,9 @@
   color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 0;
+  border-radius: 0 var(--oa-radius-md) var(--oa-radius-md) 0;
   cursor: pointer;
+  transition: color var(--oa-transition-fast);
 
   &:hover {
     color: var(--vscode-foreground);

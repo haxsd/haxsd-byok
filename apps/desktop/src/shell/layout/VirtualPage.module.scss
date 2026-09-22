@@ -27,7 +27,11 @@
   top: 0;
   margin: 0;
   padding-left: 0;
-  font-size: type.$font-size-xxl;
-  font-weight: bolder;
+  /* A step above card titles, and a step below the dashboard figures, which are
+     the largest text on the page by design. */
+  font-size: type.$font-size-2xl;
+  font-weight: type.$font-weight-bold;
+  letter-spacing: type.$letter-spacing-tight;
+  line-height: type.$line-height-tight;
   transform: translateY(-150%);
 }

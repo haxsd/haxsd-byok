@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { TokenUsageGranularity } from "../../../shared/api";
 import { formatCompactInteger } from "../../../shared/utils/numberFormat";
 import { EChart } from "./EChart";
+import { chartPalette } from "./chartTheme";
 import styles from "./DailyTokenUsageChart.module.scss";
 
 export type DailyTokenUsage = {
@@ -17,14 +18,6 @@ type TooltipItem = {
   dataIndex: number;
 };
 
-const seriesColors = {
-  input: "#0091ff",
-  cacheRead: "#40c463",
-  cacheWrite: "#3A62BA",
-  output: "#E7B40B",
-} as const;
-const levelLineColor = "#E7B40B";
-const emptyBarColor = "rgba(139, 148, 158, 0.20)";
 const EMPTY_BAR_RATIO = 1;
 const DATA_HEIGHT_RATIO = 1;
 
@@ -74,6 +67,17 @@ export function DailyTokenUsageChart({
   granularity: TokenUsageGranularity;
 }) {
   const [hovered, setHovered] = useState(false);
+  // Read from the theme rather than module constants, so the bars follow a theme
+  // change instead of keeping whatever colours this file was written with.
+  const palette = chartPalette();
+  const seriesColors = {
+    input: palette.input,
+    cacheRead: palette.cacheRead,
+    cacheWrite: palette.cacheWrite,
+    output: palette.output,
+  };
+  const levelLineColor = palette.output;
+  const emptyBarColor = palette.grid;
   const maximumTotal = data.reduce((maximum, day) => Math.max(maximum, totalTokens(day)), 0);
   const axisMaximum = Math.max(1, maximumTotal / DATA_HEIGHT_RATIO);
   const emptyBarHeight = axisMaximum * EMPTY_BAR_RATIO;
@@ -95,7 +99,7 @@ export function DailyTokenUsageChart({
       extraCssText: "border-radius: 8px; box-shadow: 0 12px 32px rgb(0 0 0 / 30%); font-size: var(--daily-token-tooltip-font-size); line-height: 1.5;",
       axisPointer: {
         type: "shadow",
-        shadowStyle: { color: "rgba(139, 148, 158, 0.14)" },
+        shadowStyle: { color: palette.grid },
       },
       formatter: (params: unknown) => {
         const first = (params as TooltipItem[])[0];
@@ -114,12 +118,12 @@ export function DailyTokenUsageChart({
       type: "category",
       data: data.map(({ bucketStartMs }) => bucketStartMs),
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: "rgba(139, 148, 158, 0.32)" } },
+      axisLine: { lineStyle: { color: palette.grid } },
       axisLabel: {
         interval: "auto",
         hideOverlap: true,
         formatter: (_value: string, index: number) => formatAxisLabel(data[index].bucketStartMs, granularity),
-        color: "#8c8c8c",
+        color: palette.axis,
         fontFamily: "HFKos",
         margin: 14,
       },

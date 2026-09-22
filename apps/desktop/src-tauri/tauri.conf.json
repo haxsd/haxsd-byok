@@ -22,6 +22,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "resources": {
+      "webview2/WebView2Loader.dll": "WebView2Loader.dll"
+    },
     "icon": [
       "icons/linux-32x32.png",
       "icons/linux-128x128.png",

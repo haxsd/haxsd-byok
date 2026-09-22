@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { init, Rect, type ElementEvent } from "zrender";
 import type { Locale } from "../../../i18n/runtime";
 import { useI18n } from "../../../i18n/store";
+import { chartPalette } from "./chartTheme";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import styles from "./ContributionCalendarChart.module.scss";
 
@@ -34,13 +35,9 @@ type AxisLabel = {
   left: number;
 };
 
-const levelColors = [
-  "rgba(139, 148, 158, 0.20)",
-  "#9be9a8",
-  "#40c463",
-  "#30a14e",
-  "#216e39",
-];
+/* Level colours come from the theme: the calendar used GitHub's green ramp, which
+   was the only green surface left once the rest of the interface moved to the
+   accent family. */
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const CALENDAR_CONFIG = {
   cellAspectRatio: 0.9,
@@ -91,6 +88,8 @@ function buildCalendarLayout(data: ContributionDay[], locale: Locale) {
 
 export function ContributionCalendarChart({ data }: ContributionCalendarChartProps) {
   const { locale } = useI18n();
+  const palette = chartPalette();
+  const levelColors = palette.heat;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<ReturnType<typeof buildCalendarLayout>>(null);
@@ -214,7 +213,7 @@ export function ContributionCalendarChart({ data }: ContributionCalendarChartPro
           shape,
           style: {
             fill: levelColors[cell.level],
-            stroke: "rgba(139, 148, 158, 0.10)",
+            stroke: palette.grid,
             lineWidth: 1,
           },
           cursor: "default",
