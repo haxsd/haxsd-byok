@@ -83,7 +83,9 @@ export function HomePage() {
       if (active) setRangeBusy(false);
     });
     return () => { active = false; };
-  }, [preset, customRange, overview, refreshVersion, appliedModels]);
+    // overview 只在渲染里当兜底数据用，不参与这次请求；把它列进依赖会让每次
+    // store 刷新都重复抓同一段范围。
+  }, [preset, customRange, refreshVersion, appliedModels]);
 
   // 分时计价需要按小时聚合的用量；固定单价模式不需要额外请求。
   // 这里不把 selectedRange 放进依赖：非自定义范围每次都返回新对象，会导致重复请求。
@@ -97,7 +99,8 @@ export function HomePage() {
       .then((series) => { if (active) setPricingSeries(series); })
       .catch(() => { if (active) setPricingSeries(null); });
     return () => { active = false; };
-  }, [preset, customRange, overview, refreshVersion, appliedModels, pricing.mode]);
+    // 同理：overview 不是这次请求的输入。
+  }, [preset, customRange, refreshVersion, appliedModels, pricing.mode]);
 
   const filteredOverview = rangeOverview ?? overview;
   const dailyTokenUsage = filteredOverview.token_usage_series.map((bucket) => ({
