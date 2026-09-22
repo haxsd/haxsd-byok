@@ -27,7 +27,7 @@
     padding: 10px;
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 5px;
+    border-radius: var(--oa-radius-sm);
   }
 
   small {
@@ -49,7 +49,7 @@
   min-width: 0;
   padding: 9px 10px;
   background: var(--vscode-list-inactiveSelectionBackground);
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
 
   > div {
     display: grid;

@@ -7,7 +7,7 @@
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
   outline: none;
   font-size: type.$font-size-xs;
   &:focus {
@@ -56,7 +56,7 @@
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 6px;
+  border-radius: var(--oa-radius-sm);
   background: var(--vscode-input-background);
   &:focus-within {
     border-color: var(--vscode-focusBorder);
@@ -101,7 +101,7 @@
   padding: 4px;
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 6px;
+  border-radius: var(--oa-radius-sm);
   box-shadow: var(--oa-dropdown-shadow);
 
   button {
@@ -113,7 +113,7 @@
     text-align: left;
     background: transparent;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--oa-radius-xs);
     font-size: type.$font-size-xs;
     &:hover,
     &[data-active],

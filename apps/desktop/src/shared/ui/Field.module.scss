@@ -13,7 +13,7 @@
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 5px;
+    border-radius: var(--oa-radius-sm);
     outline: 0;
 
     &:focus {

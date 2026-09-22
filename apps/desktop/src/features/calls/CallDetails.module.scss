@@ -13,7 +13,7 @@
   margin: 0;
   overflow: hidden;
   background: var(--vscode-sideBar-border);
-  border-radius: 6px;
+  border-radius: var(--oa-radius-sm);
 
   > div {
     min-width: 0;

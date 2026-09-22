@@ -5,12 +5,27 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
-  transition: background 160ms ease;
+  background: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
+  transition: background var(--oa-transition-base), box-shadow var(--oa-transition-fast);
 
-  &[data-checked] { background: var(--vscode-button-background); }
-  &:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-  &:disabled { opacity: 0.5; }
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
+  }
+
+  &[data-checked] {
+    background: var(--vscode-button-background);
+
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--vscode-button-background) 88%, white);
+    }
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  &:disabled { opacity: 0.45; }
 
   span {
     position: absolute;
@@ -20,8 +35,8 @@
     height: 18px;
     border-radius: 50%;
     background: var(--vscode-button-foreground);
-    box-shadow: 0 1px 4px rgb(0 0 0 / 28%);
-    transition: transform 160ms ease;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 32%);
+    transition: transform var(--oa-transition-base);
   }
 
   &[data-checked] span { transform: translateX(16px); }

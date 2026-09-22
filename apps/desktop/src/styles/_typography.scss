@@ -1,7 +1,29 @@
+// Typography scale.
+//
+// Sizes, weights and line heights all come from here. Components used to write
+// font-weight and line-height by hand, which is why text rendered at 13px with
+// no explicit line height and several near-identical bold weights.
+
 $font-size-2xs: 12px;
 $font-size-xs: 13px;
 $font-size-base: 14px;
 $font-size-lg: 16px;
 $font-size-xl: 18px;
+$font-size-2xl: 24px;
 $font-size-xxl: 20px;
 $font-size-3xl: 30px;
+
+// Line heights pair with the sizes above: tight for figures, normal for prose.
+$line-height-tight: 1.2;
+$line-height-snug: 1.35;
+$line-height-normal: 1.55;
+
+$font-weight-regular: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// Small text needs a touch more tracking; large text needs less.
+$letter-spacing-tight: -0.01em;
+$letter-spacing-normal: 0;
+$letter-spacing-wide: 0.01em;

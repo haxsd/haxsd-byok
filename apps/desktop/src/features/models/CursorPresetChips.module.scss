@@ -42,6 +42,6 @@
 .icon {
   width: 14px;
   height: 14px;
-  border-radius: 3px;
+  border-radius: var(--oa-radius-xs);
   object-fit: contain;
 }

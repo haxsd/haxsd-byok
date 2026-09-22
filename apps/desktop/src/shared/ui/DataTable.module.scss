@@ -20,6 +20,7 @@
   background: var(--vscode-editorWidget-background);
   border: 1px solid var(--vscode-sideBar-border);
   border-radius: var(--oa-card-radius);
+  box-shadow: var(--oa-shadow-card);
 }
 
 .viewport {
@@ -60,33 +61,47 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: type.$font-size-base;
+  font-size: type.$font-size-xs;
 
   th,
   td {
     max-width: 220px;
-    height: 36px;
-    padding: 0 12px;
+    height: 40px;
+    padding: 0 14px;
     overflow: hidden;
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border-bottom: 1px solid var(--vscode-sideBar-border);
+    border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
   }
 
   th {
     position: sticky;
     top: 0;
     z-index: 2;
-    height: 33px;
+    height: 36px;
     color: var(--vscode-descriptionForeground);
     background: var(--vscode-editor-background);
-    font-size: type.$font-size-xs;
-    font-weight: 400;
+    font-size: type.$font-size-2xs;
+    /* A tracked, semibold header reads as a label row; plain 13px regular text
+       made it look like just another data row. */
+    font-weight: type.$font-weight-semibold;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  tbody tr {
+    transition: background var(--oa-transition-fast);
   }
 
   tbody tr:hover td {
     background: var(--vscode-list-hoverBackground);
+  }
+
+  /* Figures line up in columns only when they share a tabular numeral width. */
+  td:has(> [class*="numeric"]),
+  td[class*="numeric"] {
+    font-variant-numeric: tabular-nums;
   }
 }
 

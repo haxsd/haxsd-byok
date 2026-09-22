@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { api, type CurrencyPricing, type CursorHarnessStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
-import { applyTheme, isThemeId, type ThemeId } from "../theme/theme";
+import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
 
 /**
  * 首页「价值估算」的默认价格：DeepSeek-V4.1-Flash 官方单价（每百万 token）。
@@ -78,7 +78,7 @@ export type AppSnapshot = {
 
 const savedTheme = (): ThemeId => {
   const saved = localStorage.getItem("haxsd-byok.theme");
-  return isThemeId(saved) ? saved : "default-dark";
+  return isThemeId(saved) ? saved : defaultThemeId;
 };
 
 let snapshot: AppSnapshot = {

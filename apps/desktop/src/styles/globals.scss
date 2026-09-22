@@ -25,10 +25,44 @@
   --oa-number-font: "HFKos", "PingFang-Medium", var(--oa-ui-font);
   font-family: var(--oa-ui-font);
   font-size: type.$font-size-base;
+  /* A real default line height: most components never set one, so text used to
+     inherit the browser default and read as cramped. */
+  line-height: type.$line-height-normal;
+  letter-spacing: type.$letter-spacing-wide;
   color: var(--vscode-foreground);
   background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Headings carry weight and tracking rather than a bigger size alone. */
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-size: type.$font-size-base;
+  font-weight: type.$font-weight-semibold;
+  line-height: type.$line-height-snug;
+  letter-spacing: type.$letter-spacing-tight;
+}
+
+/* Numbers line up in columns and charts. */
+strong,
+b {
+  font-weight: type.$font-weight-semibold;
+}
+
+small {
+  font-size: type.$font-size-xs;
+  line-height: type.$line-height-snug;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--oa-focus-ring);
+  border-radius: var(--oa-radius-sm);
 }
 
 * {

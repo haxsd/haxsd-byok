@@ -41,37 +41,66 @@
 .navigationGroup {
   display: flex;
   align-items: center;
-  color: color-mix(in srgb, var(--vscode-descriptionForeground) 65%, transparent);
-  font-size: type.$font-size-xs;
-  font-weight: normal;
-  padding: 5px 9px 2px;
+  color: var(--vscode-descriptionForeground);
+  /* Group labels are scaffolding, not content: small caps with tracking reads as
+     a section marker instead of another menu row. */
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 12px 10px 4px;
   margin-top: 0;
+
+  &:first-child { padding-top: 4px; }
 }
 
 .navigationRow {
-  flex: 0 0 36px;
+  flex: 0 0 34px;
   display: flex;
   align-items: stretch;
 
   a,
   button {
+    position: relative;
     width: 100%;
-    height: 36px;
+    height: 34px;
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 0 11px;
+    gap: 8px;
+    padding: 0 10px;
     color: inherit;
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: var(--oa-radius-sm);
+    transition:
+      background var(--oa-transition-fast),
+      color var(--oa-transition-fast);
 
     &:hover {
       background: var(--vscode-list-hoverBackground);
     }
 
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--oa-focus-ring);
+    }
+
     &[aria-current="page"] {
       color: var(--vscode-list-activeSelectionForeground);
       background: var(--vscode-list-activeSelectionBackground);
+
+      /* A leading accent bar makes the current page unmistakable without
+         shouting: the tint alone was easy to miss in a long list. */
+      &::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        width: 2px;
+        height: 16px;
+        border-radius: 999px;
+        background: var(--vscode-focusBorder);
+        transform: translateY(-50%);
+      }
     }
   }
 

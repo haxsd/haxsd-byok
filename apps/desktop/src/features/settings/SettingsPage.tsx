@@ -275,7 +275,7 @@ export function SettingsPage() {
               key={id}
               onClick={() => appStore.selectTheme(id)}
             >
-              {id === "default-dark" ? t("默认暗色") : t("默认亮色")}
+              {id === "midnight" ? t("午夜靛蓝") : id === "default-dark" ? t("默认暗色") : t("默认亮色")}
             </button>
           ))}
         </div>

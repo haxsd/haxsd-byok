@@ -8,7 +8,7 @@
   overflow: hidden;
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
 
   &:focus-within,
   &[data-open] { border-color: var(--vscode-focusBorder); }
@@ -122,7 +122,7 @@
   box-sizing: border-box;
   color: var(--vscode-dropdown-foreground);
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-xs);
   font-size: type.$font-size-xs;
   cursor: pointer;
 
@@ -154,7 +154,7 @@
   color: var(--vscode-checkbox-foreground, var(--vscode-button-foreground));
   background: var(--vscode-checkbox-background, var(--vscode-input-background));
   border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border));
-  border-radius: 3px;
+  border-radius: var(--oa-radius-xs);
 }
 
 .optionRow:has(input:checked) .checkbox,
@@ -206,7 +206,7 @@
     color: var(--vscode-textLink-foreground);
     background: transparent;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--oa-radius-xs);
     font-size: type.$font-size-xs;
 
     &:hover { background: var(--vscode-list-hoverBackground); }

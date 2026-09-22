@@ -6,35 +6,51 @@
 
   .header {
     position: relative;
-    min-height: 36px;
+    min-height: 40px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 10px;
-    border-bottom: 1px solid var(--vscode-sideBar-border);
+    gap: 12px;
+    padding: 0 14px;
+    /* The divider only needs to suggest a boundary; a full-strength line across
+       every card adds visual noise at this density. */
+    border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
   }
 
   .title {
     margin: 0;
     font-size: type.$font-size-base;
-    font-weight: 630;
+    font-weight: type.$font-weight-semibold;
+    letter-spacing: type.$letter-spacing-tight;
   }
 
   .disclosure {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0;
+    gap: 7px;
+    padding: 2px 4px 2px 0;
     color: inherit;
     background: transparent;
     border: 0;
+    border-radius: var(--oa-radius-xs);
     cursor: pointer;
+    transition: color var(--oa-transition-fast);
+
+    &:hover { color: var(--vscode-textLink-foreground); }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--oa-focus-ring);
+    }
   }
 
   .chevron {
     display: inline-block;
-    font-size: type.$font-size-base;
-    transition: transform .15s ease;
+    width: 12px;
+    font-size: type.$font-size-lg;
+    line-height: 1;
+    text-align: center;
+    transition: transform var(--oa-transition-base);
 
     &[data-open="true"] {
       transform: rotate(90deg);
@@ -47,9 +63,9 @@
     overflow-wrap: anywhere;
     white-space: pre-wrap;
     background: var(--vscode-input-background);
-    border-radius: 6px;
+    border-radius: var(--oa-radius-sm);
     font-family: var(--oa-code-font);
     font-size: type.$font-size-xs;
-    line-height: 1.55;
+    line-height: type.$line-height-normal;
   }
 }

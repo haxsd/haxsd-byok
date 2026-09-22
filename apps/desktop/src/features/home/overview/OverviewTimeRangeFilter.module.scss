@@ -15,7 +15,7 @@
 .presets {
   overflow: hidden;
   // border: 1px solid var(--vscode-sideBar-border);
-  border-radius: 5px;
+  border-radius: var(--oa-radius-sm);
 
   button {
     height: 25px;
@@ -63,7 +63,7 @@
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border);
-    border-radius: 5px;
+    border-radius: var(--oa-radius-sm);
     outline: none;
     font: inherit;
 
@@ -87,7 +87,7 @@
     color: var(--vscode-descriptionForeground);
     background: var(--vscode-button-secondaryBackground, var(--vscode-sideBar-background));
     border: 1px solid var(--vscode-sideBar-border);
-    border-radius: 4px;
+    border-radius: var(--oa-radius-xs);
     font-size: type.$font-size-xs;
     white-space: nowrap;
 
