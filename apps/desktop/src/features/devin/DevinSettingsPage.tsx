@@ -318,7 +318,6 @@ export function DevinSettingsPage() {
             {steps.map((step, index) => <div key={step.key} className={styles.step}>
               <span className={`${styles.stepMark} ${step.done ? styles.stepMarkDone : ""}`}>{step.done ? "✓" : index + 1}</span>
               <span className={styles.stepText}><strong>{step.label}</strong><small>{step.hint}</small></span>
-              <span />
             </div>)}
           </div>
         </div>
