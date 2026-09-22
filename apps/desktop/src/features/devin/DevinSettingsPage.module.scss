@@ -14,12 +14,11 @@
 .statusItem > span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 .statusItem > strong { font-weight: 600; overflow-wrap: anywhere; }
 .steps { display: grid; gap: 8px; padding: 0 16px 16px; }
-.step { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 10px; }
+.step { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 10px; }
 .stepMark { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 .stepMarkDone { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
 .stepText { display: grid; gap: 2px; }
 .stepText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.stepAction { color: var(--vscode-textLink-foreground); background: transparent; border: 0; cursor: pointer; padding: 4px; }
 .stepAction:hover { color: var(--vscode-textLink-activeForeground); }
 .stepAction:disabled { opacity: .5; cursor: default; }
 
