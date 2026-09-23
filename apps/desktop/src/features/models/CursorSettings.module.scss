@@ -287,6 +287,16 @@
   flex-direction: column;
   gap: 14px;
 }
+
+/* 冲突说明：这一页当前唯一需要用户处理的事，所以给它一块底色，而不是混在普通说明里。 */
+.foreignWarning {
+  padding: 10px 12px;
+  color: var(--vscode-foreground);
+  background: var(--oa-warn-soft);
+  border-left: 3px solid var(--oa-warn);
+  border-radius: var(--oa-radius-sm);
+  line-height: 1.5;
+}
 .command {
   margin: 0;
   padding: 10px;

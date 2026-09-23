@@ -103,6 +103,8 @@ export interface CursorHarnessStatus {
   enabled_models: number;
   integration: IntegrationState;
   settings_applied: boolean;
+  /** Cursor 的代理配置由另一个软件写入：我们不覆盖它，界面要把这件事说出来。 */
+  foreign_configuration: boolean;
   proxy_url: string | null;
   ca_install_command: string | null;
 }

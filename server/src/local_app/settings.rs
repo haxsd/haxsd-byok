@@ -118,6 +118,29 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
     Ok(is_our_configuration(&settings, proxy_url))
 }
 
+/// 文件里现在的代理配置是不是**别人写的**。
+///
+/// 判据只看一项：`http.proxy` 与我们留下的标记是否一致。
+///
+/// - 没有 `http.proxy`：谁都没占用，可以写；
+/// - 标记与它一致：这是我们自己写的（值可能已经过期，比如代理换了端口），可以改写；
+/// - 没有标记，或标记与它不一致：有人在我们之后动过这几个键。同一个代码库分叉出来的
+///   兄弟产品就在同一台机器上，它写的是同样的五个键，而且会**保留不认识的键**（我们的
+///   标记），所以「标记还在」不等于「值还是我们的」——必须比较两者的当前值。
+///
+/// 认出这种情况后调用方会停手：两个软件轮流覆盖同一份配置，只会让用户的两条链路
+/// 都不稳定，该由用户自己决定留哪一个。
+pub fn proxy_configuration_is_foreign() -> Result<bool> {
+    Ok(is_foreign_configuration(&read_from(&path()?)?))
+}
+
+fn is_foreign_configuration(settings: &BTreeMap<String, Value>) -> bool {
+    let Some(proxy) = settings.get(KEYS[0]) else {
+        return false;
+    };
+    !matches!(settings.get(MANAGED_MARKER_KEY), Some(marker) if marker == proxy)
+}
+
 fn is_our_configuration(settings: &BTreeMap<String, Value>, proxy_url: &str) -> bool {
     settings.get(KEYS[0]) == Some(&Value::String(proxy_url.into()))
         && settings.get(KEYS[1]) == Some(&Value::String(proxy_url.into()))
@@ -240,5 +263,53 @@ mod tests {
         clear_proxy_settings_at(&path).unwrap();
 
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_sibling_products_configuration_is_recognised_as_foreign() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(&path, SIBLING_PRODUCT_SETTINGS).unwrap();
+
+        assert!(is_foreign_configuration(&read_from(&path).unwrap()));
+    }
+
+    #[test]
+    fn our_own_configuration_is_never_foreign_even_when_the_port_changed() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+
+        // 换端口之后 http.proxy 与「当前代理地址」不一致，但那仍然是我们写的：
+        // 标记与文件里的值一致，所以可以放心改写。
+        assert!(!is_foreign_configuration(&read_from(&path).unwrap()));
+        assert!(!is_our_configuration(
+            &read_from(&path).unwrap(),
+            "http://127.0.0.1:1635"
+        ));
+    }
+
+    #[test]
+    fn another_product_rewriting_the_keys_makes_the_file_foreign_again() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+
+        // 兄弟产品与我们同源：它认不出我们的标记，会把它原样留在文件里，只改那五个键。
+        let mut settings = read_from(&path).unwrap();
+        settings.insert(KEYS[0].into(), json!("http://127.0.0.1:15524"));
+        settings.insert(KEYS[1].into(), json!("http://127.0.0.1:15524"));
+        write_to(&path, &settings).unwrap();
+
+        assert!(is_foreign_configuration(&read_from(&path).unwrap()));
+    }
+
+    #[test]
+    fn a_file_without_proxy_entries_is_not_foreign() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(&path, r#"{"editor.fontSize": 14}"#).unwrap();
+
+        assert!(!is_foreign_configuration(&read_from(&path).unwrap()));
     }
 }
