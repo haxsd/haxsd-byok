@@ -116,6 +116,32 @@ fn desktop_api_router(app: AppHandle) -> Router {
         .layer(Extension(app))
 }
 
+/// 窗口默认尺寸：按显示器可用区域算，而不是写死一个固定值。
+///
+/// 之前固定 820×558（逻辑像素），在 1536×960 的桌面上只占半屏：导航条右侧的状态区与
+/// 搜索入口被裁掉，概览的四个磁贴挤成两列，调用表格要横向滚动。现在取可用区域减去
+/// 边距，并设上限，避免在超宽屏上铺满整屏。
+fn default_window_size(app: &AppHandle) -> (f64, f64) {
+    /// 每边留出的边距，让窗口看起来是放在桌面上而不是贴满。
+    const MARGIN: f64 = 48.0;
+    const MAX_WIDTH: f64 = 1560.0;
+    const MAX_HEIGHT: f64 = 980.0;
+    const FALLBACK: (f64, f64) = (1100.0, 720.0);
+
+    let Some(monitor) = app.primary_monitor().ok().flatten() else {
+        return FALLBACK;
+    };
+    // work_area 是物理像素，inner_size 收逻辑像素。
+    let scale = monitor.scale_factor();
+    let work_area = monitor.work_area();
+    let width = work_area.size.width as f64 / scale - MARGIN;
+    let height = work_area.size.height as f64 / scale - MARGIN;
+    (
+        width.clamp(880.0, MAX_WIDTH),
+        height.clamp(600.0, MAX_HEIGHT),
+    )
+}
+
 fn create_main_window(
     app: &AppHandle,
     address: std::net::SocketAddr,
@@ -123,10 +149,11 @@ fn create_main_window(
     let url = format!("http://{address}/__byok-api__/")
         .parse()
         .expect("local frontend URL");
+    let (width, height) = default_window_size(app);
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::External(url))
         .title("haxsd byok")
-        .inner_size(820.0, 558.0)
-        .min_inner_size(820.0, 558.0)
+        .inner_size(width, height)
+        .min_inner_size(880.0, 600.0)
         .center()
         .background_color(Color(20, 20, 20, 255))
         .decorations(cfg!(target_os = "macos"))
