@@ -20,6 +20,7 @@
     "allow-open-terminal-with-command",
     "clipboard-manager:allow-write-text",
     "autostart:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "updater:default"
   ]
 }
