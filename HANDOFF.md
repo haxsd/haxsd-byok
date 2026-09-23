@@ -178,7 +178,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **GNU 工具链构建的 Tauri 安装包缺 `WebView2Loader.dll`** | 不打包的话干净机器上启动报「找不到 WebView2Loader.dll 系统错误」。已修为 `tauri.conf.json` 的 `bundle.resources` 带上 `webview2/WebView2Loader.dll`。**改打包配置时别删掉它。** |
 | **应用是单实例的** | 已装应用在跑时，第二个副本会被自己踢掉。要验证源码改动必须走 `.e2e-devin/tools/preview-ui.ps1`，它用独立 server 进程服务新构建的前端 |
 | **前端编译进二进制** | 改了前端必须重新 `tauri:build` + 安装才能在应用里看到；光 build 前端不够 |
-| **`cursor_takeover_enabled` 默认是 `true`** | 数据库里没有这一行时默认开启；一旦用户初始化 CA，启动就会去改 **Cursor 的配置**。当前库里已显式写入 `false`。**动这块前先确认这行还在**（`server/src/store/settings.rs` 的 `cursor_takeover_enabled`） |
+| **`cursor_takeover_enabled` 缺席时默认是 `false`** | 数据库里没有这一行**不会**接管：接管会改用户的 Cursor 配置并强制结束编辑器，必须是用户明确选过的（`store/settings.rs` 有测试锁住）。当前库里显式写入 `false`。**改这一行的语义前先想清楚：默认接管会让「只是装了这个软件」变成一次对用户编辑器的操作** |
 | **i18n 插件强制静态字面量** | `t()` 参数必须是字符串字面量，不能是变量，也不能传 JSX。违反会**构建失败** |
 | **i18n 缺译文会构建失败** | 加新文案后跑 `npm run i18n:scan`，填 `en-US.json` 里的空词条 |
 | **GitHub 推送偶发 `SSL_ERROR_SYSCALL`** | 重试即可 |
@@ -188,7 +188,8 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **更新地址必须能匿名读取** | 产品仓库若改回私有，`releases/latest/download/latest.json` 立刻 404，应用内更新全断 |
 | **Cursor 的 `settings.json` 是本机共享资源** | 同机另一个产品（Cursor BYOK）也写它，键名与我们完全相同。**任何"清理"都必须凭归属标记，不能凭内容形状推断**，否则会把对方的配置删掉——已经真实发生过一次，见第十四节 |
 | **启动时不要碰用户的其他东西** | `desktop.rs` 的 `setup` 里那一串调用，每一个都在用户开机的路径上。`cleanup_stale_settings()` 曾经无条件删 Cursor 配置；**给它加任何新动作前，先想清楚它会不会碰别人的文件** |
-| **开启接管会 `taskkill /F /T /IM Cursor.exe`** | 强杀所有 Cursor 进程与进程树，未保存内容会丢。开关前已有确认框，**文案里这句话不要删** |
+| **只有「打开接管」那一刻会结束 Cursor** | 用户按开关 + 确认框之后才 `taskkill /F /T /IM Cursor.exe`（判定在 `local_app/mod.rs` 的 `should_terminate_cursor`）。**读取状态那条每几秒一次的路径永远不许结束进程**：曾经它会这么做，于是同机另一个软件写回自己的配置后，我们下一次刷新就把用户正在编辑的 Cursor 杀掉。**确认框文案里那句话不要删** |
+| **别人写进 `settings.json` 的代理配置不覆盖** | `proxy_configuration_is_foreign()` 比较 `http.proxy` 与我们留下的标记：不一致就说明有人在我们之后改过（兄弟产品会保留不认识的键）。这时读状态不写、不启动代理、不碰进程，只在 Cursor 页报「配置冲突」。要接管必须由用户明确打开开关 |
 | **Devin 宿主补丁仍指向 43110/43111/43112** | 网关端口若改动，宿主补丁要重打 |
 | **不要启动厂商路由器** | `D:\devin-model-router\...\Devin Model Router.exe` 的 `autoPatch` 会把宿主文件改回 43100 端口，把我们的补丁冲掉 |
 
@@ -495,12 +496,23 @@ cursor.general.disableHttp2 / http.experimental.systemCertificatesV2
 
 同一个原则适用于以后任何"清理"逻辑：**能证明是自己的，才能删。**
 
-### 同类风险：开启接管会强杀 Cursor
+### 同类风险：结束 Cursor 这件事只允许发生在「用户明确打开接管」那一刻
 
-`local_app::enable()` 在配置尚未生效时会调用 `process::terminate_cursor()`，
-在 Windows 上是 `taskkill /F /T /IM Cursor.exe`——**强杀所有 Cursor 进程和整棵进程树**。
-未保存的编辑内容会丢。它被 `cursor_takeover_enabled` 门控，所以关闭接管时不会触发。
-开关前已加确认框（`CursorSettingsPage` 的"开启接管Cursor？"），**那句话不要删**。
+`local_app::apply_takeover(explicit_takeover)` 在配置尚未生效时会调用
+`process::terminate_cursor()`，在 Windows 上是 `taskkill /F /T /IM Cursor.exe`——
+**强杀所有 Cursor 进程和整棵进程树**，未保存的编辑内容会丢。
+
+判定是 `should_terminate_cursor(explicit, already_ours)`，只有**两件事同时成立**才结束进程：
+
+1. `explicit == true`，即用户按下接管开关并在确认框上点了继续（`set_enabled(true)`）；
+   读取状态（`status()`，前端每几秒调一次）恒传 `false`，**任何刷新都不可能结束进程**；
+2. 配置还不是我们的（已经是我们的再杀一次只有代价）。
+
+开关前已有确认框（`CursorSettingsPage` 的"开启接管Cursor？"），**那句话不要删**。
+
+另外：`settings.json` 里现在是别人写的代理配置时，读状态连写都不写
+（`proxy_configuration_is_foreign()`）——两个软件轮流覆盖同一份配置，只会让用户
+两条链路都不稳定，要不要抢过来只能由用户在开关上决定。
 
 ### 已经核对过、确认互不干扰的面
 
