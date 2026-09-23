@@ -1,0 +1,113 @@
+@use "../../styles/typography" as type;
+
+.root {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--oa-space-3);
+  padding: var(--oa-space-4);
+  color: inherit;
+  text-align: left;
+  background: var(--oa-surface-raised);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-card-radius);
+  font: inherit;
+
+  &[data-interactive] {
+    cursor: pointer;
+    transition:
+      border-color var(--oa-transition-fast),
+      background var(--oa-transition-fast),
+      transform var(--oa-transition-fast);
+
+    &:hover {
+      background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--oa-surface-raised));
+      border-color: var(--oa-border-strong);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--oa-focus-ring);
+    }
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-1);
+  min-width: 0;
+}
+
+/* Small caps rather than sentence case: it separates the label from the figure
+   without needing a second size in the type scale. */
+.label {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.body {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-3);
+}
+
+.figures {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.value {
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  font-family: var(--oa-number-font);
+  font-size: type.$font-size-2xl;
+  font-weight: type.$font-weight-medium;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: type.$letter-spacing-tight;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &[data-tone="ok"] { color: var(--oa-ok); }
+  &[data-tone="warn"] { color: var(--oa-warn); }
+  &[data-tone="bad"] { color: var(--oa-bad); }
+  &[data-tone="accent"] { color: var(--oa-accent); }
+}
+
+.hint {
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  line-height: type.$line-height-snug;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.visualRight {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.visualBottom {
+  margin-top: auto;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}

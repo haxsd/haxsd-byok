@@ -1,6 +1,12 @@
 .shell {
   --app-edge: 8px;
-  --app-menu-width: 204px;
+  --app-page-gutter: 18px;
+  /* The navigation is a horizontal bar under the window header, so the content
+     spans the full width and only the vertical stack has to be accounted for. */
+  --app-nav-height: 46px;
+  /* The page title gets a band of its own between the bar and the content. */
+  --app-title-band: 44px;
+  --app-content-left: 0px;
   --window-safe-top: var(--window-header-height);
   --window-menu-top: var(--window-safe-top);
   --window-corner-safe-bottom: 0px;

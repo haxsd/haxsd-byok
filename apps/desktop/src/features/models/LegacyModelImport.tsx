@@ -22,7 +22,7 @@ export function LegacyModelImport({ children }: { children: (control: LegacyMode
       setPreviewing(true);
       setPreview(await api.previewV0049Models());
     } catch (cause) {
-      message(errorText(cause));
+      message.error(cause);
     } finally {
       setPreviewing(false);
     }
@@ -42,7 +42,7 @@ export function LegacyModelImport({ children }: { children: (control: LegacyMode
         ? t("导入完成：新增 {imported} 个模型，跳过 {skipped} 个已存在模型", { imported: result.imported, skipped: result.skipped })
         : t("配置中的 {count} 个模型均已存在，无需重复导入", { count: result.skipped }));
     } catch (cause) {
-      message(errorText(cause));
+      message.error(cause);
     } finally {
       setImporting(false);
     }
@@ -85,8 +85,4 @@ export function LegacyModelImport({ children }: { children: (control: LegacyMode
       </div>}
     </ConfirmDialog>
   </>;
-}
-
-function errorText(cause: unknown) {
-  return cause instanceof Error ? cause.message : String(cause);
 }

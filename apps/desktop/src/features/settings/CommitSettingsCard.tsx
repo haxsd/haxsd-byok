@@ -13,10 +13,6 @@ import controls from "../../shared/ui/Controls.module.scss";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 import styles from "./CommitSettingsCard.module.scss";
 
-function errorText(cause: unknown) {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
 export function CommitSettingsCard() {
   const { models, plugins } = useAppStore();
   const { locale } = useI18n();
@@ -47,7 +43,7 @@ export function CommitSettingsCard() {
           setModelDraft(loaded.model_id);
         }
       } catch (cause) {
-        if (active) message(errorText(cause));
+        if (active) message.error(cause);
       }
     })();
     return () => {
@@ -127,7 +123,7 @@ export function CommitSettingsCard() {
         setEditing(false);
       }
     } catch (cause) {
-      message(errorText(cause));
+      message.error(cause);
     } finally {
       setSavingModel(false);
     }
@@ -148,7 +144,7 @@ export function CommitSettingsCard() {
       setPromptOpen(false);
       message(t("提示词设置已保存"));
     } catch (cause) {
-      message(errorText(cause));
+      message.error(cause);
     } finally {
       setSavingPrompt(false);
     }

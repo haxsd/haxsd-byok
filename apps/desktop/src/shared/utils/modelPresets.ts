@@ -26,9 +26,10 @@ export interface ModelPresetEndpoint {
 
 export interface ModelPreset {
   key: string;
-  name: string;
+  /** 显示名与提示语在渲染期解析，语言切换后跟着变。 */
+  name: () => string;
   icon: string;
-  keyHint: string;
+  keyHint: () => string;
   /** 五家服务商均同时提供 Anthropic 与 OpenAI 兼容协议 */
   endpoints: { anthropic: ModelPresetEndpoint; openai: ModelPresetEndpoint };
   models: ModelPresetEntry[];
@@ -57,9 +58,9 @@ const openaiFullUrl = (url: string): ModelPresetEndpoint => ({ baseUrl: url, use
 export const modelPresets: ModelPreset[] = [
   {
     key: "zhipu",
-    name: "智谱 GLM",
+    name: () => t("智谱 GLM"),
     icon: zhipuIcon,
-    keyHint: "bigmodel.cn → GLM Coding Plan → API Key（套餐 Key 与普通 Key 不通用）",
+    keyHint: () => t("bigmodel.cn → GLM Coding Plan → API Key（套餐 Key 与普通 Key 不通用）"),
     endpoints: {
       anthropic: anthropic("https://open.bigmodel.cn/api/anthropic"),
       openai: openaiFullUrl("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions"),
@@ -72,9 +73,9 @@ export const modelPresets: ModelPreset[] = [
   },
   {
     key: "kimi",
-    name: "Kimi (Moonshot)",
+    name: () => "Kimi (Moonshot)",
     icon: kimiIcon,
-    keyHint: "Kimi Code 编程套餐页获取 API Key（api.kimi.com/coding 端点）",
+    keyHint: () => t("Kimi Code 编程套餐页获取 API Key（api.kimi.com/coding 端点）"),
     endpoints: {
       anthropic: anthropic("https://api.kimi.com/coding"),
       openai: openaiChat("https://api.kimi.com/coding"),
@@ -86,9 +87,9 @@ export const modelPresets: ModelPreset[] = [
   },
   {
     key: "deepseek",
-    name: "DeepSeek",
+    name: () => "DeepSeek",
     icon: deepseekIcon,
-    keyHint: "platform.deepseek.com → API Keys",
+    keyHint: () => "platform.deepseek.com → API Keys",
     endpoints: {
       anthropic: anthropic("https://api.deepseek.com/anthropic"),
       openai: openaiChat("https://api.deepseek.com"),
@@ -100,9 +101,9 @@ export const modelPresets: ModelPreset[] = [
   },
   {
     key: "volcengine",
-    name: "火山引擎方舟",
+    name: () => t("火山引擎方舟"),
     icon: huoshanIcon,
-    keyHint: "火山方舟 Coding Plan（ark-code-latest 路由多款代码模型）",
+    keyHint: () => t("火山方舟 Coding Plan（ark-code-latest 路由多款代码模型）"),
     endpoints: {
       anthropic: anthropic("https://ark.cn-beijing.volces.com/api/coding"),
       openai: openaiFullUrl("https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions"),
@@ -111,9 +112,9 @@ export const modelPresets: ModelPreset[] = [
   },
   {
     key: "minimax",
-    name: "MiniMax",
+    name: () => "MiniMax",
     icon: minimaxIcon,
-    keyHint: "platform.minimaxi.com → 订阅 Coding Plan → API Key",
+    keyHint: () => t("platform.minimaxi.com → 订阅 Coding Plan → API Key"),
     endpoints: {
       anthropic: anthropic("https://api.minimaxi.com/anthropic"),
       openai: { baseUrl: "https://api.minimaxi.com", useFullUrl: false, openaiEndpoint: "/v1/responses", customHeaders: null },

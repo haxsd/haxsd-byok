@@ -1,12 +1,240 @@
 @use "../../styles/typography" as type;
 
-.status {
-  padding: 3px 7px;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-input-background);
-  border-radius: 999px;
-  font-size: type.$font-size-xs;
+.root {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--oa-space-2);
+
+  /* Pagination is a sibling of the viewport in this layout. */
+  > :last-child {
+    flex: 0 0 auto;
+  }
 }
 
-.completed { color: #56b870; }
-.failed { color: var(--vscode-errorForeground, #f48771); }
+.viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tableContent {
+  min-width: 0;
+}
+
+/* One grid template shared by the header and every row, so columns line up without
+   a <table> and without the 4180px of horizontal scrolling the old column set
+   needed. Nine columns is what fits a 1280px page; everything else moved into the
+   expandable panel. */
+$columns: 28px 104px minmax(150px, 1.5fr) 96px 68px 82px 82px minmax(150px, 1fr) 40px;
+
+.table {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.head,
+.row {
+  display: grid;
+  grid-template-columns: $columns;
+  align-items: center;
+  gap: var(--oa-space-3);
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 32px;
+  padding: 0 var(--oa-space-4);
+  color: var(--vscode-descriptionForeground);
+  background: var(--oa-surface-sunken);
+  border-bottom: 1px solid var(--oa-border);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sortable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+
+  &:hover { color: var(--vscode-foreground); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+.sortMark {
+  color: var(--oa-accent);
+  opacity: 0;
+
+  &[data-active] { opacity: 1; }
+}
+
+.rowGroup + .rowGroup {
+  border-top: 1px solid var(--oa-border);
+}
+
+.row {
+  min-height: 44px;
+  padding: var(--oa-space-1) var(--oa-space-4);
+  transition: background var(--oa-transition-fast);
+
+  &:hover {
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  &[data-open] {
+    background: color-mix(in srgb, var(--oa-accent) 7%, transparent);
+  }
+}
+
+.expanderCell {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-xs);
+
+  &:hover { color: var(--vscode-foreground); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+.chevron {
+  transition: transform var(--oa-transition-fast);
+
+  &[data-open] { transform: rotate(90deg); }
+}
+
+.model {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.modelName,
+.modelId {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelName {
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+}
+
+.modelId {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.time,
+.number {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.time { color: var(--vscode-foreground); }
+
+.route {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  color: var(--oa-accent);
+  background: var(--oa-accent-soft);
+  border-radius: var(--oa-radius-xs);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-medium;
+  letter-spacing: 0.04em;
+
+  &[data-route="cursor_official"] {
+    color: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  }
+}
+
+/* Total next to the part: the number answers "how much", the bar answers "of what". */
+.tokens {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.tokenValue {
+  font-family: var(--oa-number-font);
+  font-size: type.$font-size-xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.tokenMeter {
+  display: block;
+  max-width: 130px;
+}
+
+.actionsCell {
+  display: grid;
+  place-items: center;
+}
+
+.rowAction {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-sm);
+  opacity: 0;
+  transition: opacity var(--oa-transition-fast), background var(--oa-transition-fast), color var(--oa-transition-fast);
+
+  .row:hover &,
+  &:focus-visible {
+    opacity: 1;
+  }
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+/* The expanded panel: the same facts the details page shows, in place. */
+.expansion {
+  padding: var(--oa-space-3) var(--oa-space-4) var(--oa-space-4) 52px;
+  background: color-mix(in srgb, var(--oa-accent) 5%, transparent);
+  border-top: 1px solid var(--oa-border);
+}

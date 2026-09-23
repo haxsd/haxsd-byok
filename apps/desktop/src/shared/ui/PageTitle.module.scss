@@ -1,0 +1,26 @@
+@use "../../styles/typography" as type;
+
+.root {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--oa-space-3);
+}
+
+.title {
+  margin: 0;
+  font-size: type.$font-size-2xl;
+  font-weight: type.$font-weight-bold;
+  letter-spacing: type.$letter-spacing-tight;
+  line-height: type.$line-height-tight;
+  white-space: nowrap;
+}
+
+.meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -18,10 +18,67 @@
   padding: 28px 0 40px;
   margin-right: auto;
   margin-left: auto;
+}
+
+.header {
+  display: grid;
+  gap: var(--oa-space-2);
+  margin-bottom: var(--oa-space-5);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-3);
+  min-width: 0;
 
   h1 {
-    margin: 0 0 20px;
-    font-size: type.$font-size-lg;
-    font-weight: 630;
+    margin: 0;
+    overflow: hidden;
+    font-size: type.$font-size-xl;
+    font-weight: type.$font-weight-semibold;
+    letter-spacing: type.$letter-spacing-tight;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+}
+
+.route {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  color: var(--oa-accent);
+  background: var(--oa-accent-soft);
+  border-radius: var(--oa-radius-xs);
+  font-size: type.$font-size-3xs;
+  letter-spacing: 0.04em;
+
+  &[data-route="cursor_official"] {
+    color: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  }
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oa-space-2) var(--oa-space-4);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.modelId {
+  font-family: var(--oa-code-font);
+}
+
+.body {
+  min-width: 0;
+}
+
+.bodyInner {
+  padding: var(--oa-card-padding);
 }

@@ -1,0 +1,69 @@
+@use "../../styles/typography" as type;
+
+.root {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
+  height: 30px;
+  padding: 0 var(--oa-space-2) 0 9px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
+  transition: border-color var(--oa-transition-fast);
+
+  &:focus-within {
+    border-color: var(--oa-accent);
+  }
+}
+
+.icon {
+  flex: 0 0 auto;
+  color: var(--vscode-descriptionForeground);
+}
+
+.input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100%;
+  padding: 0;
+  color: var(--vscode-input-foreground);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: type.$font-size-xs;
+
+  /* The native search affordance duplicates the button next to it. */
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+
+  &::placeholder {
+    color: color-mix(in srgb, var(--vscode-descriptionForeground) 80%, transparent);
+  }
+}
+
+.clear {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-xs);
+  transition: color var(--oa-transition-fast), background var(--oa-transition-fast);
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}

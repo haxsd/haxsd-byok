@@ -3,11 +3,14 @@ import { formatCompactInteger, formatInteger } from "../../../shared/utils/numbe
 import { useAppStore } from "../../../shared/store/appStore";
 import { useI18n } from "../../../i18n/store";
 import { Icon } from "../../../shared/ui/Icon";
+import { ProgressRing } from "../../../shared/ui/ProgressRing";
+import { Sparkline } from "../../../shared/ui/Sparkline";
+import { StatTile } from "../../../shared/ui/StatTile";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import { informationOutlineIcon } from "../../../shared/ui/icons";
-import { CacheHitRateChart } from "./CacheHitRateChart";
 import { priceAt, sumHourlyCost } from "./peakOffPeakPricing";
 import { currencyOf, currencySymbol, formatMoney, formatPrice, priceTokens, pricingFor } from "./tokenCost";
+import type { BucketStat } from "../overview/overviewStats";
 import styles from "./HomeMetrics.module.scss";
 
 export type HomeMetricsData = {
@@ -39,6 +42,17 @@ function averagePrice(cost: number, tokens: number) {
   return tokens > 0 ? (cost / tokens) * 1_000_000 : 0;
 }
 
+/**
+ * 不足一分钱的用量按「<$0.01」显示。
+ *
+ * 美元的单价低，一段真实用量的估算值经常落在 0 到 0.01 之间，两位小数会把它显示成
+ * $0.00——那不是「没花钱」，而是「花了但显示不出来」，两者必须区分。
+ */
+function formatCost(value: number, currency: Parameters<typeof formatMoney>[1]) {
+  if (value > 0 && value < 0.01) return `<${formatMoney(0.01, currency)}`;
+  return formatMoney(value, currency);
+}
+
 function elementAnchor(element: HTMLElement): TooltipAnchor {
   return {
     contextElement: element,
@@ -60,8 +74,18 @@ function InfoTooltip({ content }: { content: string }) {
   ><Icon icon={informationOutlineIcon} size="1.1em" /></button>;
 }
 
-export function HomeMetrics({ data, pricingSeries = null, refreshVersion = 0 }: {
+/**
+ * 首页的四个结论。
+ *
+ * 每个数字都配一条趋势线：图上的分桶数据本来就有，只是以前只有总和被取走，
+ * 于是「这个月比上个月多吗」这种问题在界面上无迹可寻。
+ */
+export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, refreshVersion = 0 }: {
   data: HomeMetricsData;
+  /** 当前范围的逐分桶统计，用于趋势线。 */
+  stats: BucketStat[];
+  /** 与 stats 对齐的逐分桶调用次数。 */
+  callCounts: number[];
   /** 按小时聚合的用量分桶；分时计价就绪时为数组，否则为 null。 */
   pricingSeries?: OverviewTokenUsageBucket[] | null;
   refreshVersion?: number;
@@ -165,36 +189,55 @@ export function HomeMetrics({ data, pricingSeries = null, refreshVersion = 0 }: 
     t("合计：{cost}", { cost: formatMoney(totalCost, currency) }),
   ].join("\n");
 
-  return <div className={styles.scroller}>
-    <section className={styles.root} aria-label={t("调用统计")}>
-      <article className={styles.metric}>
-        <div className={styles.label}>{t("缓存命中率")}<InfoTooltip content={cacheTooltip} /></div>
-        <CacheHitRateChart rate={defaultCacheHitRate ?? 0} animationKey={refreshVersion} />
-      </article>
-      <article className={styles.metric}>
-        <div className={styles.label}>{t("LLM 调用")}<InfoTooltip content={callsTooltip} /></div>
-        <div className={styles.body}>
-          <div className={styles.value} title={formatInteger(data.llmCalls)}>{formatCompactInteger(data.llmCalls)}</div>
-          <div className={styles.secondary}>
-            {t("成功 {successful} / 异常", { successful: formatCompactInteger(data.successfulCalls) })}
-            <span data-tone={data.failedCalls > 0 ? "bad" : undefined}>{formatCompactInteger(data.failedCalls)}</span>
-          </div>
-        </div>
-      </article>
-      <article className={styles.metric}>
-        <div className={styles.label}>{t("Token 消耗")}<InfoTooltip content={tokensTooltip} /></div>
-        <div className={styles.body}>
-          <div className={styles.value} title={formatInteger(data.tokenUsage)}>{formatCompactInteger(data.tokenUsage)}</div>
-          <div className={styles.secondary}>{t("提示词 {tokens}", { tokens: formatCompactInteger(data.promptTokens) })}</div>
-        </div>
-      </article>
-      <article className={styles.metric}>
-        <div className={styles.label}>{t("价值估算")}<InfoTooltip content={costTooltip} /></div>
-        <div className={styles.body}>
-          <div className={styles.value} title={formatMoney(totalCost, currency)}>{formatMoney(totalCost, currency)}</div>
-          <div className={styles.secondary}>{t("缓存读写 {cost}", { cost: formatMoney(cacheCost, currency) })}</div>
-        </div>
-      </article>
-    </section>
-  </div>;
+  const trend = (values: number[]) => values.length < 2 ? undefined : values;
+  const tokenTrend = trend(stats.map((stat) => stat.totalTokens));
+  const costTrend = trend(stats.map((stat) => stat.cost));
+  const callTrend = trend(callCounts);
+
+  return <section className={styles.root} aria-label={t("调用统计")}>
+    <StatTile
+      label={t("缓存命中率")}
+      info={<InfoTooltip content={cacheTooltip} />}
+      value={formatRate(defaultCacheHitRate)}
+      hint={t("缓存读取 /（缓存读取 + 非缓存输入）")}
+      visualPosition="right"
+      visual={<ProgressRing
+        value={defaultCacheHitRate ?? 0}
+        size={62}
+        thickness={6}
+        tone={(defaultCacheHitRate ?? 0) >= 0.5 ? "ok" : (defaultCacheHitRate ?? 0) > 0 ? "warn" : "bad"}
+        animationKey={refreshVersion}
+        ariaLabel={t("缓存命中率 {rate}", { rate: formatRate(defaultCacheHitRate) })}
+      />}
+    />
+    <StatTile
+      label={t("LLM 调用")}
+      info={<InfoTooltip content={callsTooltip} />}
+      value={formatCompactInteger(data.llmCalls)}
+      title={formatInteger(data.llmCalls)}
+      hint={t("成功 {successful} / 异常 {failed}", {
+        successful: formatCompactInteger(data.successfulCalls),
+        failed: formatCompactInteger(data.failedCalls),
+      })}
+      visual={callTrend && <Sparkline values={callTrend} tone="accent" ariaLabel={t("调用次数趋势")} />}
+    />
+    <StatTile
+      label={t("Token 消耗")}
+      info={<InfoTooltip content={tokensTooltip} />}
+      value={formatCompactInteger(data.tokenUsage)}
+      title={formatInteger(data.tokenUsage)}
+      hint={t("提示词 {prompt} · 输出 {output}", {
+        prompt: formatCompactInteger(data.promptTokens),
+        output: formatCompactInteger(outputTokens),
+      })}
+      visual={tokenTrend && <Sparkline values={tokenTrend} tone="accent" ariaLabel={t("Token 用量趋势")} />}
+    />
+    <StatTile
+      label={t("价值估算")}
+      info={<InfoTooltip content={costTooltip} />}
+      value={formatCost(totalCost, currency)}
+      hint={t("缓存读写 {cost}", { cost: formatCost(cacheCost, currency) })}
+      visual={costTrend && <Sparkline values={costTrend} tone="warn" ariaLabel={t("费用趋势")} />}
+    />
+  </section>;
 }

@@ -2,10 +2,70 @@
   height: 100%;
 }
 
+/* The page is a fixed-height workspace: a summary strip, a filter bar, and a table
+   that scrolls inside whatever is left. The old page put a 4180px table in a fixed
+   viewport and left the bottom third of the window empty. */
 .page {
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+  gap: var(--oa-space-3);
+}
+
+.summary {
+  flex: 0 0 auto;
+  padding: var(--oa-space-3) var(--oa-card-padding);
+}
+
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oa-space-2);
+  min-width: 0;
+}
+
+.search {
+  width: 240px;
+  flex: 0 1 240px;
+}
+
+/* The model filter is a dropdown rather than a fourth segmented control: the list is
+   unbounded, and a status-style strip of every model would not fit a toolbar. */
+.modelFilter {
+  width: 170px;
+  flex: 0 0 170px;
+}
+
+.tableRegion {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  background: var(--oa-surface-raised);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-card-radius);
+  overflow: hidden;
+
+  > * {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+  }
+}
+
+/* 服务不可达时表格区域是空的，所以这段说明自己占满这块空间。 */
+.offline {
+  display: grid;
+  align-content: start;
+  padding: var(--oa-space-4);
+}
+
+@media (max-width: 900px) {
+  .search {
+    flex: 1 1 160px;
+  }
 }

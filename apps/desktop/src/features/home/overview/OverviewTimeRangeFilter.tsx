@@ -5,6 +5,7 @@ import { parseTimeInput } from "../../../shared/utils/parseTimeInput";
 import controls from "../../../shared/ui/Controls.module.scss";
 import { Icon } from "../../../shared/ui/Icon";
 import { ModelSelect, type ModelSelectOption } from "../../../shared/ui/ModelSelect";
+import { Segmented } from "../../../shared/ui/Segmented";
 import { TooltipTrigger } from "../../../shared/ui/TooltipTrigger";
 import { refreshIcon } from "../../../shared/ui/icons";
 import styles from "./OverviewTimeRangeFilter.module.scss";
@@ -31,11 +32,11 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
   onRefresh: () => void;
 }) {
   const presets: Array<{ value: Exclude<OverviewRangePreset, "custom">; label: string }> = [
-    { value: "hour", label: t("近1小时") },
-    { value: "today", label: t("近1自然日") },
-    { value: "ten-minutes", label: t("近10分钟") },
-    { value: "week", label: t("近一周") },
-    { value: "month", label: t("近一个月") },
+    { value: "ten-minutes", label: t("10 分钟") },
+    { value: "hour", label: t("1 小时") },
+    { value: "today", label: t("今天") },
+    { value: "week", label: t("7 天") },
+    { value: "month", label: t("30 天") },
   ];
   const quickPresets: Array<{ value: QuickPreset; label: string }> = [
     { value: "four-hours", label: t("近4小时") },
@@ -44,13 +45,13 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
   const customButton = useRef<HTMLButtonElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const popoverId = useId();
-  const [position, setPosition] = useState({ left: 0, top: 0, width: 300, maxHeight: 480 });
+  const [position, setPosition] = useState({ left: 0, top: 0, width: 320, maxHeight: 480 });
 
   useLayoutEffect(() => {
     if (!customOpen || !customButton.current || !popover.current) return;
     return autoUpdate(customButton.current, popover.current, () => void computePosition(customButton.current!, popover.current!, {
       placement: "bottom-end",
-      middleware: [offset(5), flip({ padding: 10 }), shift({ padding: 10 }), size({
+      middleware: [offset(6), flip({ padding: 10 }), shift({ padding: 10 }), size({
         padding: 10,
         apply: ({ availableHeight }) => setPosition((current) => ({
           ...current,
@@ -74,23 +75,22 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
   const parsedEnd = parseTimeInput(customEnd);
   const customValid = parsedStart !== null && parsedEnd !== null && parsedStart < parsedEnd;
   return <div className={styles.root} aria-label={t("概览时间范围")}>
-    <div className={styles.presets}>
-      {presets.map((preset) => <button
-        key={preset.value}
-        type="button"
-        aria-pressed={value === preset.value}
-        onClick={() => onSelect(preset.value)}
-      >{preset.label}</button>)}
-      <button
-        ref={customButton}
-        type="button"
-        aria-haspopup="dialog"
-        aria-controls={customOpen ? popoverId : undefined}
-        aria-expanded={customOpen}
-        aria-pressed={value === "custom"}
-        onClick={() => onCustomOpenChange(!customOpen)}
-      >{t("自定义")}</button>
-    </div>
+    <Segmented<OverviewRangePreset>
+      ariaLabel={t("概览时间范围")}
+      value={value}
+      options={presets}
+      onChange={(next) => { if (next !== "custom") onSelect(next); }}
+    />
+    <button
+      ref={customButton}
+      type="button"
+      className={styles.customTrigger}
+      aria-haspopup="dialog"
+      aria-controls={customOpen ? popoverId : undefined}
+      aria-expanded={customOpen}
+      aria-pressed={value === "custom"}
+      onClick={() => onCustomOpenChange(!customOpen)}
+    >{t("自定义")}</button>
     <TooltipTrigger label={t("刷新")}><button className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={onRefresh}>
       <Icon className={busy ? controls.spin : ""} icon={refreshIcon} size="1.1em" />
     </button></TooltipTrigger>
@@ -110,6 +110,7 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
         }
       }}
     >
+      <div className={styles.popoverTitle}>{t("自定义时间范围")}</div>
       <div className={styles.quickPresets} aria-label={t("快捷时间范围")}>
         {quickPresets.map((preset) => <button
           key={preset.value}

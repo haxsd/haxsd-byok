@@ -28,7 +28,7 @@ export function AppLifecycleSettingsCard() {
     if (native) {
       void readAutostart()
         .then((enabled) => { if (!disposed) setAutostart(enabled); })
-        .catch((cause) => message(cause instanceof Error ? cause.message : String(cause)))
+        .catch((cause) => message.error(cause))
         .finally(() => { if (!disposed) setLoadingAutostart(false); });
       void readDesktopSettings()
         .then((settings) => {
@@ -52,7 +52,7 @@ export function AppLifecycleSettingsCard() {
       setAutostart(await readAutostart());
       message(enabled ? t("已开启开机启动") : t("已关闭开机启动"));
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setLoadingAutostart(false);
     }
@@ -65,7 +65,7 @@ export function AppLifecycleSettingsCard() {
       setSilentStart(enabled);
       message(enabled ? t("已开启静默启动") : t("已关闭静默启动"));
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setLoadingDesktopSettings(false);
     }
@@ -78,7 +78,7 @@ export function AppLifecycleSettingsCard() {
       setDockIconVisible(visible);
       message(visible ? t("已显示 Dock 栏图标") : t("已隐藏 Dock 栏图标"));
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setLoadingDesktopSettings(false);
     }

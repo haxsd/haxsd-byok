@@ -1,36 +1,109 @@
 @use "../../../styles/typography" as type;
 
 .root {
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--oa-space-3);
+  align-items: flex-start;
 }
 
-.scroller {
+.frame {
   width: 100%;
-  overflow: hidden;
+  display: flex;
+  gap: var(--oa-space-2);
+  padding-left: 2px;
 }
 
-.canvas {
-  width: 100%;
-  flex: 0 0 auto;
-}
-
-.axis {
+/* Weekday labels sit in their own column so the grid itself stays a clean matrix.
+   The previous version had no labels at all, which made the rows indistinguishable
+   from each other and from the columns. */
+.weekdays {
   position: relative;
-  width: 100%;
-  height: 18px;
-  margin-top: 10px;
+  flex: 0 0 auto;
+  width: 26px;
   color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-2xs;
+  font-size: type.$font-size-3xs;
 
   span {
     position: absolute;
-    top: 0;
-    width: 28px;
-    white-space: nowrap;
+    right: 0;
+    line-height: 1;
   }
+}
+
+.grid {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.month {
+  fill: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  font-family: var(--oa-ui-font);
+}
+
+.cell {
+  fill: var(--oa-heat-0);
+  stroke: transparent;
+  transition:
+    fill var(--oa-transition-fast),
+    stroke var(--oa-transition-fast);
+
+  &[data-level="1"] { fill: var(--oa-heat-1); }
+  &[data-level="2"] { fill: var(--oa-heat-2); }
+  &[data-level="3"] { fill: var(--oa-heat-3); }
+  &[data-level="4"] { fill: var(--oa-heat-4); }
+
+  /* An empty day is still drawn, so the year keeps its shape; it just sits back. */
+  &[data-dim] {
+    fill: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  }
+
+  &:hover:not([data-dim]),
+  &[data-focused]:not([data-dim]) {
+    stroke: var(--vscode-foreground);
+    stroke-width: 1;
+  }
+
+  &:focus-visible {
+    outline: none;
+    stroke: var(--oa-accent);
+    stroke-width: 1.5;
+  }
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.legendCell {
+  width: 10px;
+  height: 10px;
+  background: var(--oa-heat-0);
+  border-radius: 2px;
+
+  &[data-level="1"] { background: var(--oa-heat-1); }
+  &[data-level="2"] { background: var(--oa-heat-2); }
+  &[data-level="3"] { background: var(--oa-heat-3); }
+  &[data-level="4"] { background: var(--oa-heat-4); }
+}
+
+.legendHint {
+  margin-left: var(--oa-space-2);
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 80%, transparent);
+  font-style: italic;
 }
 
 .tooltipContent {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+.tooltipHint {
+  color: var(--vscode-descriptionForeground);
 }

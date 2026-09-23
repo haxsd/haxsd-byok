@@ -4,8 +4,8 @@ import Sortable from "sortablejs";
 import type { Model, PluginModelDescriptor } from "../../shared/api";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
-import { chevronDownIcon, chevronRightIcon, claudeIcon, dragIcon, editIcon, flatColorOrganizationIcon, openAiIcon } from "../../shared/ui/icons";
-import { TruncatedButton } from "../../shared/ui/TruncatedButton";
+import { ActionMenu, type ActionMenuItem } from "../../shared/ui/ActionMenu";
+import { chevronRightIcon, claudeIcon, dragIcon, dotsIcon, flatColorOrganizationIcon, openAiIcon, playIcon } from "../../shared/ui/icons";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import styles from "./CursorSettings.module.scss";
 
@@ -23,6 +23,8 @@ type CursorModelCardsProps = {
   pluginModels: PluginModelDescriptor[];
   grouping: CursorModelGrouping;
   disabled: boolean;
+  /** 搜索筛选生效时关闭拖拽：排序提交的是完整列表，筛选后的子集提交会破坏顺序。 */
+  allowReorder: boolean;
   testingModelHashes: Set<string>;
   testResults: Map<string, CursorModelTestState>;
   onTest: (model: Model) => void;
@@ -38,7 +40,6 @@ type CursorModelCardsProps = {
 type ModelGridProps = Omit<CursorModelCardsProps, "grouping" | "pluginModels" | "onTestPluginModel" | "onPluginSettings"> & {
   sortable: boolean;
 };
-
 export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModelGrouping, "flat">): CursorModelGroup[] {
   const groups = new Map<string, CursorModelGroup>();
   for (const model of models) {
@@ -55,12 +56,13 @@ export function cursorModelGroups(models: Model[], grouping: Exclude<CursorModel
 
 export function CursorModelCards(props: CursorModelCardsProps) {
   const builtins = props.grouping === "flat"
-    ? <div style={{ paddingTop: "10px" }}><ModelGrid {...props} sortable /></div>
+    ? <ModelGrid {...props} sortable={props.allowReorder} />
     : <div className={styles.modelGroups}>
       {cursorModelGroups(props.models, props.grouping).map((group) => <CollapsibleGroup
         key={group.key}
         label={group.label}
         icon={group.icon}
+        count={group.models.length}
         defaultOpen={false}
         onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
       >
@@ -83,6 +85,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
       key={`${props.grouping}:${group.pluginId}`}
       label={group.pluginName}
       iconSrc={group.icon}
+      count={group.models.length}
       defaultOpen={props.grouping === "flat"}
     >
       {group.models.map((model) => <PluginModelRow
@@ -111,10 +114,11 @@ function pluginGroups(models: PluginModelDescriptor[]) {
   return groups;
 }
 
-function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, onSettings, children }: {
+function CollapsibleGroup({ label, icon, iconSrc, count, defaultOpen = true, onSettings, children }: {
   label: string;
   icon?: IconifyIcon;
   iconSrc?: string;
+  count: number;
   defaultOpen?: boolean;
   onSettings?: () => void;
   children: ReactNode;
@@ -128,23 +132,15 @@ function CollapsibleGroup({ label, icon, iconSrc, defaultOpen = true, onSettings
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
+        <span className={styles.groupChevron} data-open={open}><Icon icon={chevronRightIcon} size="1em" /></span>
         {icon && <Icon icon={icon} size="1.1em" />}
         {iconSrc && <Icon src={iconSrc} size="1.1em" />}
         <span className={styles.groupLabel}>{label}</span>
+        <span className={styles.groupCount}>{count}</span>
       </button>
       {onSettings && <button type="button" className={styles.groupSettings} onClick={onSettings}>
-        <Icon icon={editIcon} size="1em" />
         {t("分组设置")}
       </button>}
-      <button
-        type="button"
-        className={styles.groupChevron}
-        tabIndex={-1}
-        aria-hidden="true"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Icon icon={open ? chevronDownIcon : chevronRightIcon} size="1em" />
-      </button>
     </div>
     {open && <div className={styles.modelList}>{children}</div>}
   </Card>;
@@ -165,12 +161,15 @@ function ModelListRow({ model, disabled, testing, result, onTest, onEdit, onDupl
       <span className={styles.modelRowNameText}>{model.display_name}</span>
       <span className={styles.modelRowModelId}>{model.model_id}</span>
     </div>
+    <div className={styles.modelRowChips}>
+      <ModelChips model={model} />
+    </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
-      <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={onEdit} />
-      <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={onDuplicate} />
-      <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={onDelete} />
+      <button type="button" className={styles.testButton} disabled={disabled && !testing} onClick={onTest}>
+        <Icon icon={playIcon} size="1em" />{testing ? t("取消测试") : t("测试")}
+      </button>
+      <ActionMenu label={t("更多")} disabled={disabled} items={rowActions({ onEdit, onDuplicate, onDelete })} />
     </div>
   </div>;
 }
@@ -188,14 +187,36 @@ function PluginModelRow({ model, disabled, testing, result, onTest, onSettings }
       <span className={styles.modelRowNameText}>{model.displayName}</span>
       <span className={styles.modelRowModelId}>{model.modelId}</span>
     </div>
+    <div className={styles.modelRowChips}>
+      <span className={styles.chip}>{t("插件提供")}</span>
+      {model.images && <span className={styles.chip}>{t("支持图片")}</span>}
+    </div>
     <CursorModelTestResult compact state={result} testing={testing} />
     <div className={styles.modelCardActions}>
-      <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={onTest} />
-      <TruncatedButton size="small" disabled={disabled} label={t("设置")} onClick={onSettings} />
+      <button type="button" className={styles.testButton} disabled={disabled && !testing} onClick={onTest}>
+        <Icon icon={playIcon} size="1em" />{testing ? t("取消测试") : t("测试")}
+      </button>
+      <button type="button" className={styles.secondaryAction} disabled={disabled} onClick={onSettings}>{t("设置")}</button>
     </div>
   </div>;
 }
 
+function rowActions({ onEdit, onDuplicate, onDelete }: {
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}): ActionMenuItem[] {
+  return [
+    { id: "edit", label: t("编辑"), onSelect: onEdit },
+    { id: "duplicate", label: t("复制"), onSelect: onDuplicate },
+    { id: "delete", label: t("删除"), onSelect: onDelete },
+  ];
+}
+
+/**
+ * 一张模型卡要说清三件事：它是什么（名称、模型 ID、协议），它有多大（上下文、输出上限），
+ * 它现在还通不通（最近一次测试）。原来只有前两行的名字和 ID，其余靠点开编辑器去看。
+ */
 function ModelGrid({
   models,
   sortable: sortableEnabled,
@@ -269,27 +290,64 @@ function ModelGrid({
         <div className={styles.modelCardContent}>
           <div className={styles.modelCardTop}>
             <div className={styles.modelCardName}>
-              <span className={styles.modelCardNameText}>{model.display_name}</span>
-              <span className={styles.modelCardModelId}>{model.model_id}</span>
+              <span className={styles.modelCardNameText} title={model.display_name}>{model.display_name}</span>
+              <span className={styles.modelCardModelId} title={model.model_id}>{model.model_id}</span>
             </div>
-            <span className={styles.modelTypeBadge}>
+            <ActionMenu icon={dotsIcon} quiet label={t("更多")} disabled={disabled} items={rowActions({
+              onEdit: () => onEdit(model),
+              onDuplicate: () => onDuplicate(model),
+              onDelete: () => onDelete(model),
+            })} />
+          </div>
+          <div className={styles.modelCardMeta}>
+            <span className={styles.providerBadge}>
               <Icon icon={model.type === "anthropic" ? claudeIcon : openAiIcon} />
-              {model.type === "anthropic" ? "Anthropic" : "OpenAI"}
+              {model.type === "anthropic" ? "Anthropic" : endpointLabel(model)}
             </span>
+            <ModelChips model={model} />
           </div>
           <div className={styles.modelCardTest}>
             <CursorModelTestResult state={result} testing={testing} />
           </div>
           <div className={styles.modelCardActions}>
-            <TruncatedButton size="small" disabled={disabled && !testing} label={testing ? t("取消测试") : t("测试")} onClick={() => onTest(model)} />
-            <TruncatedButton size="small" disabled={disabled} label={t("编辑")} onClick={() => onEdit(model)} />
-            <TruncatedButton size="small" disabled={disabled} label={t("复制")} onClick={() => onDuplicate(model)} />
-            <TruncatedButton size="small" className={styles.deleteButton} disabled={disabled} label={t("删除")} onClick={() => onDelete(model)} />
+            <button type="button" className={styles.testButton} disabled={disabled && !testing} onClick={() => onTest(model)}>
+              <Icon icon={playIcon} size="1em" />{testing ? t("取消测试") : t("测试")}
+            </button>
+            <button type="button" className={styles.secondaryAction} disabled={disabled} onClick={() => onEdit(model)}>{t("编辑")}</button>
+            {model.group_name && <span className={styles.groupTag} title={t("分组名称")}>{model.group_name}</span>}
           </div>
         </div>
       </Card>;
     })}
   </div>;
+}
+
+/** 上下文、输出上限和思考强度：决定一个模型能不能接住这个活的三个数字。 */
+function ModelChips({ model }: { model: Model }) {
+  const maxOutput = model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens;
+  return <>
+    {model.context_window_tokens !== null && <span className={styles.chip}>
+      {t("上下文 {tokens}", { tokens: formatTokens(model.context_window_tokens) })}
+    </span>}
+    {maxOutput !== null && <span className={styles.chip}>
+      {t("输出上限 {tokens}", { tokens: formatTokens(maxOutput) })}
+    </span>}
+    {model.reasoning_effort && <span className={styles.chip} data-tone="accent">{t("思考 {effort}", { effort: model.reasoning_effort })}</span>}
+    {model.anthropic_thinking_effort && <span className={styles.chip} data-tone="accent">{t("思考 {effort}", { effort: model.anthropic_thinking_effort })}</span>}
+    {model.custom_headers_enabled && <span className={styles.chip}>{t("自定义 Headers")}</span>}
+  </>;
+}
+
+function formatTokens(value: number) {
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`;
+  if (value >= 1000) return `${Number((value / 1000).toFixed(value % 1000 === 0 ? 0 : 1))}K`;
+  return String(value);
+}
+
+function endpointLabel(model: Model) {
+  if (model.use_full_url) return "OpenAI · URL";
+  if (model.openai_endpoint === "/v1/chat/completions") return "OpenAI · Chat";
+  return "OpenAI · Responses";
 }
 
 function providerGroup(model: Model) {

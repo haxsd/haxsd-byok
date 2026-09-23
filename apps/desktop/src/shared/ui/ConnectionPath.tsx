@@ -1,11 +1,11 @@
 import { Fragment } from "react";
-import styles from "./DevinPath.module.scss";
+import styles from "./ConnectionPath.module.scss";
 
 export type PathState = "up" | "down" | "unknown";
 
 export type PathStage = {
   key: string;
-  /** Node name, e.g. "Devin". */
+  /** Node name, e.g. "Cursor" or "本机网关". */
   label: string;
   /** The fact that makes this node up or down, e.g. "已指向本机网关". */
   detail: string;
@@ -15,14 +15,15 @@ export type PathStage = {
 /**
  * The request path: the client, this machine's gateway, and the model library.
  *
- * It exists to answer the one question a reader arrives with — is a request from
- * Devin reaching a model right now — before anything else on the page. The old
- * layout spread that answer over four status values and a four-step checklist, so
- * the reader had to assemble it. Here the state lives on the wire: a node is a
+ * It exists to answer the one question a reader arrives with — is a request from this
+ * client reaching a model right now — before anything else on the page. Both harness
+ * pages draw the same wire, because they answer the same question about a different
+ * client; the old layout spread that answer over four status values and a checklist,
+ * so the reader had to assemble it. Here the state lives on the wire: a node is a
  * point on it, lit when traffic can pass and hollow when it cannot, so a broken hop
  * is visible without reading a word.
  */
-export function DevinPath({ stages }: { stages: PathStage[] }) {
+export function ConnectionPath({ stages }: { stages: PathStage[] }) {
   return <div className={styles.root}>
     {stages.map((stage, index) => {
       const previous = stages[index - 1];

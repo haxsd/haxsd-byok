@@ -1,0 +1,100 @@
+@use "../../styles/typography" as type;
+
+.root {
+  display: grid;
+  gap: var(--oa-space-4);
+  padding: var(--oa-card-padding);
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-3);
+  padding: var(--oa-space-3) var(--oa-space-4);
+  background: var(--oa-surface-well);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
+}
+
+.verdict[data-tone="ok"] { border-color: color-mix(in srgb, var(--oa-ok) 35%, transparent); }
+.verdict[data-tone="warn"] { border-color: color-mix(in srgb, var(--oa-warn) 35%, transparent); }
+
+/* A lamp rather than an icon: the state is the colour, so it reads at any size. */
+.lamp {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  background: var(--oa-warn);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--oa-warn-soft);
+}
+
+.verdict[data-tone="ok"] .lamp {
+  background: var(--oa-ok);
+  box-shadow: 0 0 0 4px var(--oa-ok-soft);
+}
+
+.text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+/* 这一页存在的理由，所以它比卡片标题更重。 */
+.text > strong {
+  font-size: type.$font-size-xl;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: type.$letter-spacing-tight;
+}
+
+.text > small {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
+.aside {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-3);
+}
+
+.todo {
+  display: grid;
+  gap: var(--oa-space-2);
+}
+
+.todoItem {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: start;
+  gap: var(--oa-space-3);
+}
+
+.todoIndex {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--oa-warn);
+  background: var(--oa-warn-soft);
+  border: 1px solid color-mix(in srgb, var(--oa-warn) 40%, transparent);
+  border-radius: 50%;
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+}
+
+.todoText {
+  display: grid;
+  gap: 2px;
+
+  > strong { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
+  > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
+}
+
+.footnotes {
+  padding-top: 2px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}

@@ -1,0 +1,58 @@
+@use "../../styles/typography" as type;
+
+/* The two insight panels: a year of days next to what just happened. The calendar
+   gets the wider column because it is read as a shape, and the call list only needs
+   room for a name, a time and a number. */
+.twoColumn {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--oa-section-gap);
+  align-items: start;
+}
+
+.chartBlock {
+  padding: var(--oa-card-padding);
+  padding-top: var(--oa-space-4);
+}
+
+.calendarBlock {
+  padding: var(--oa-card-padding);
+}
+
+.emptyBlock {
+  padding: var(--oa-card-padding);
+}
+
+.rangeBadge {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border-radius: 999px;
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.linkButton {
+  padding: 3px 6px;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-xs);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+
+  &:hover { color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+@media (max-width: 1120px) {
+  .twoColumn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

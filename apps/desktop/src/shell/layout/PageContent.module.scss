@@ -9,23 +9,41 @@
   overflow: hidden;
 }
 
+/*
+ * 顶部那一条是导航栏与标题带的底盘，页面内容是**整窗滚动**的：没有这层底色，
+ * 正文滚上来会从导航栏和标题栏底下透出来，和导航项的文字叠在一起（使用教程这类
+ * 长页面最明显）。
+ *
+ * 它必须留在页面内部：页面切换时缓存节点会短暂带上 transform/opacity，从而
+ * 自成一个层叠上下文；放在这之外的覆盖层会连标题一起盖住（真实发生过）。在这里
+ * 它只压住滚动内容（z-index 高于内容、低于标题 21），标题始终在它上面。
+ */
+.topScrim {
+  position: absolute;
+  z-index: 19;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--app-content-top);
+  background: var(--vscode-editor-background);
+  pointer-events: none;
+}
+
 .title {
   position: absolute;
   z-index: 21;
-  top: var(--app-content-top);
+  /* The same band the virtual pages use, so both page shapes place their title
+     identically under the navigation bar. */
+  top: calc(var(--app-content-top) - var(--app-title-band));
   left: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
+  height: var(--app-title-band);
+  display: flex;
+  align-items: center;
   margin: 0;
-  padding-left:0;
-  font-size: type.$font-size-2xl;
-  font-weight: type.$font-weight-bold;
-  letter-spacing: type.$letter-spacing-tight;
-  line-height: type.$line-height-tight;
-  transform: translateY(-150%);
+  padding-left: 0;
+  /* Type is owned by PageTitle, which also carries the page's status line. */
   -webkit-user-select: none;
   user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
   -webkit-app-region: drag;

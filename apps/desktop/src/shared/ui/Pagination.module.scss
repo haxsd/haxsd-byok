@@ -1,22 +1,26 @@
 @use "../../styles/typography" as type;
 
+/* The table's footer. It carries the same hairline and horizontal padding as the
+   header row so the two read as the top and bottom of one surface. */
 .root {
   flex: 0 0 auto;
-  min-height: 34px;
+  min-height: 42px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-  padding: 0px 0 6px 0;
+  gap: var(--oa-space-3);
+  padding: 0 var(--oa-card-padding);
   color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-xs;
+  border-top: 1px solid var(--oa-border);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
   background: transparent;
 }
 
 .controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 
   > button {
     width: 26px;
@@ -26,7 +30,7 @@
 
 .pageSize {
   width: 92px;
-  margin-right: 4px;
+  margin-right: var(--oa-space-1);
 
   > button {
     height: 26px;

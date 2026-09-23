@@ -3,68 +3,6 @@
 .page { display: grid; gap: var(--oa-section-gap); }
 .loading, .empty, .note { padding: 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 
-/* The status card: one verdict, the request path, and only the steps that are still
-   missing. The old layout listed four status values and four checklist rows on every
-   visit, so what mattered had to be assembled by the reader. */
-.status { display: grid; gap: 16px; padding: var(--oa-card-padding); }
-
-.verdict {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--oa-surface-sunken);
-  border: 1px solid var(--oa-border);
-  border-radius: var(--oa-radius-md);
-}
-
-.verdict[data-tone="ok"] { border-color: color-mix(in srgb, var(--oa-ok) 35%, transparent); }
-.verdict[data-tone="warn"] { border-color: color-mix(in srgb, var(--oa-warn) 35%, transparent); }
-
-/* A lamp rather than an icon: the state is the colour, so it reads at any size. */
-.verdictLamp {
-  flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--oa-warn);
-  box-shadow: 0 0 0 4px var(--oa-warn-soft);
-}
-
-.verdict[data-tone="ok"] .verdictLamp {
-  background: var(--oa-ok);
-  box-shadow: 0 0 0 4px var(--oa-ok-soft);
-}
-
-.verdictText { display: grid; gap: 3px; min-width: 0; }
-/* The one line the page exists to deliver, so it outranks the card heading. */
-.verdictText > strong { font-size: type.$font-size-xl; font-weight: type.$font-weight-semibold; letter-spacing: type.$letter-spacing-tight; }
-.verdictText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-
-.todo { display: grid; gap: 10px; }
-.todoItem { display: grid; grid-template-columns: 20px 1fr; align-items: start; gap: 10px; }
-.todoIndex {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  color: var(--oa-warn);
-  background: var(--oa-warn-soft);
-  border: 1px solid color-mix(in srgb, var(--oa-warn) 40%, transparent);
-  border-radius: 50%;
-  font-size: type.$font-size-2xs;
-  font-weight: type.$font-weight-semibold;
-}
-.todoText { display: grid; gap: 2px; }
-.todoText > strong { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
-.todoText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
-
-.footnotes {
-  padding-top: 2px;
-  color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-2xs;
-}
-
 .settingRow, .bindingFooter { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; }
 .settingRow > div { display: grid; gap: 5px; }
 .settingRow small, .note { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }

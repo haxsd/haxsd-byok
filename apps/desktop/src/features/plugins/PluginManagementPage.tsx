@@ -1,22 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, pluginText, type PluginDescriptor, type PluginImportFile, type PluginRuntimePhase, type PluginRuntimeStatus } from "../../shared/api";
 import { useI18n } from "../../i18n/store";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { ActionMenu, type ActionMenuItem } from "../../shared/ui/ActionMenu";
-import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
+import { EmptyState } from "../../shared/ui/EmptyState";
+import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
+import { PageTitle } from "../../shared/ui/PageTitle";
+import { SearchInput } from "../../shared/ui/SearchInput";
+import { ServiceOfflineState } from "../../shared/ui/ServiceOfflineState";
+import { StatusPill, type StatusTone } from "../../shared/ui/StatusPill";
 import { useMessage } from "../../shared/ui/message";
-import { TruncatedButton } from "../../shared/ui/TruncatedButton";
+import { alertCircleIcon, downloadIcon, puzzleIcon, uploadIcon } from "../../shared/ui/icons";
 import { PluginAddPanel, PluginSettingsPanel } from "./PluginResourcePanels";
 import styles from "./PluginManagementPage.module.scss";
+import toolbar from "../../shared/ui/Toolbar.module.scss";
 
 export function PluginManagementPage() {
-  const { pluginRuntime, plugins } = useAppStore();
+  const { pluginRuntime, plugins, offline } = useAppStore();
   const [progressOpen, setProgressOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [selected, setSelected] = useState<{ pluginId: string; mode: "add" | "settings" } | null>(null);
+  const [search, setSearch] = useState("");
   const cancelRequested = useRef(false);
   const selectedPlugin = selected ? plugins.find((plugin) => plugin.id === selected.pluginId) ?? null : null;
 
@@ -53,17 +60,78 @@ export function PluginManagementPage() {
     }
   };
 
-  const content = pluginRuntime?.state === "ready"
-    ? <PluginCards plugins={plugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
-    : <RuntimeGate status={pluginRuntime} starting={starting} onInitialize={() => void initialize()} />;
+  const query = search.trim().toLowerCase();
+  const visiblePlugins = useMemo(() => query
+    ? plugins.filter((plugin) => [plugin.name, plugin.id, plugin.author ?? ""]
+      .some((field) => field.toLowerCase().includes(query)))
+    : plugins, [plugins, query]);
+  const ready = pluginRuntime?.state === "ready";
+  const runtimeTone: StatusTone = !pluginRuntime
+    ? "idle"
+    : pluginRuntime.state === "ready"
+      ? "ok"
+      : pluginRuntime.state === "failed" || pluginRuntime.state === "unsupported"
+        ? "bad"
+        : pluginRuntime.state === "initializing"
+          ? "info"
+          : "warn";
+  const runtimeLabel = !pluginRuntime
+    ? t("检查中…")
+    : pluginRuntime.state === "ready"
+      ? t("已就绪")
+      : pluginRuntime.state === "initializing"
+        ? phaseText(pluginRuntime.phase)
+        : pluginRuntime.state === "failed"
+          ? t("初始化失败")
+          : pluginRuntime.state === "unsupported"
+            ? t("不受支持")
+            : t("未初始化");
+  const accountTotal = plugins.reduce((total, plugin) => total + plugin.resources.reduce((count, resource) => count + resource.resources.length, 0), 0);
+  const modelTotal = plugins.reduce((total, plugin) => total + plugin.providers.reduce((count, provider) => count + (provider.configured ? provider.models.filter((model) => model.enabled).length : 0), 0), 0);
+
+  const content = ready
+    ? <div className={styles.page}>      <Card className={styles.pluginToolbar}>
+        <SearchInput
+          className={styles.pluginSearch}
+          value={search}
+          onValueChange={setSearch}
+          ariaLabel={t("搜索插件")}
+          placeholder={t("搜插件名称或作者…")}
+        />
+        <span className={toolbar.spacer} />
+        <span className={toolbar.count}>{t("共 {count} 个插件", { count: plugins.length })}</span>
+      </Card>
+      <PluginCards plugins={visiblePlugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
+    </div>
+    : offline
+      ? <ServiceOfflineState />
+      : <RuntimeGate status={pluginRuntime} starting={starting} onInitialize={() => void initialize()} />;
   const estimatedHeight = plugins.length > 0
-    ? Math.max(320, Math.ceil(plugins.length / 3) * 180)
-    : 320;
+    ? Math.max(320, Math.ceil(plugins.length / 3) * 210 + 120)
+    : 360;
 
   return <>
     <PageContent
-      title={t("插件配置")}
-      sections={[{ key: "installed-plugins", estimatedHeight, content }]}
+      title={<PageTitle
+        title={t("插件配置")}
+        status={<StatusPill tone={runtimeTone}>{runtimeLabel}</StatusPill>}
+        meta={t("插件把第三方账号接入模型库；运行时负责承载它们")}
+      />}
+      sections={[{
+        key: "installed-plugins",
+        estimatedHeight,
+        content: ready
+          ? <>
+            <div className={toolbar.facts}>
+              <Fact label={t("插件")} value={String(plugins.length)} />
+              <Fact label={t("账号")} value={String(accountTotal)} tone={accountTotal > 0 ? "ok" : "none"} />
+              <Fact label={t("可用模型")} value={String(modelTotal)} />
+              <Fact label={t("运行时")} value={pluginRuntime?.version || "-"} />
+            </div>
+            {content}
+          </>
+          : content,
+      }]}
     />
     <RuntimeProgressModal
       open={progressOpen}
@@ -87,31 +155,62 @@ export function PluginManagementPage() {
   </>;
 }
 
+function Fact({ label, value, tone = "none" }: { label: string; value: string; tone?: "none" | "ok" | "warn" | "bad" }) {
+  return <div className={toolbar.fact}>
+    <span className={toolbar.factLabel}>{label}</span>
+    <span className={toolbar.factValue} data-tone={tone}>{value}</span>
+  </div>;
+}
+
+/**
+ * 插件运行时的引导。
+ *
+ * 这一步要下载几十兆的东西，所以它必须交代清楚「会发生什么」和「现在到哪一步了」：
+ * 三个步骤对应三种状态，下载进度直接画在同一个位置，用户不需要在两个弹窗之间来回看。
+ */
 function RuntimeGate({ status, starting, onInitialize }: { status: PluginRuntimeStatus | null; starting: boolean; onInitialize: () => void }) {
   const checking = status === null;
   const initializing = starting || status?.state === "initializing";
   const failed = status?.state === "failed";
   const unsupported = status?.state === "unsupported";
-  const title = checking
-    ? t("正在检查插件运行时")
-    : failed
-      ? t("插件运行时初始化失败")
-      : unsupported
-        ? t("当前系统不支持插件运行时")
-        : t("需要先初始化插件运行时");
-  const description = failed
-    ? t("请重试初始化")
-    : unsupported
-      ? status.error ?? t("当前操作系统或 CPU 架构暂不受支持")
-      : t("初始化将下载并安装插件运行时。");
+  const downloaded = status?.downloaded_bytes ?? 0;
+  const total = status?.total_bytes ?? null;
+  const percent = total && total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null;
 
-  return <div className={styles.gate}>
-    <strong>{title}</strong>
-    <span>{description}</span>
-    {!unsupported && <Button variant="primary" disabled={checking || initializing} onClick={onInitialize}>
-      {checking ? t("检查中…") : initializing ? t("初始化中…") : failed ? t("重新初始化插件") : t("初始化插件")}
-    </Button>}
-  </div>;
+  return <EmptyState
+    icon={unsupported || failed ? alertCircleIcon : puzzleIcon}
+    tone={unsupported || failed ? "bad" : "info"}
+    title={checking
+      ? t("正在检查插件运行时")
+      : failed
+        ? t("插件运行时初始化失败")
+        : unsupported
+          ? t("当前系统不支持插件运行时")
+          : initializing
+            ? phaseText(status?.phase ?? null)
+            : t("需要先初始化插件运行时")}
+    description={failed
+      ? status.error ?? t("请重试初始化；下载失败通常是网络问题。")
+      : unsupported
+        ? status.error ?? t("当前操作系统或 CPU 架构暂不受支持")
+        : t("初始化会下载并安装插件运行时；完成之后，装在这里的插件才能被 Cursor 与 Devin 使用。")}
+    steps={!failed && !unsupported && !initializing ? [
+      { title: t("下载运行时"), detail: t("来自插件的发布源，只下一次。") },
+      { title: t("安装并校验"), detail: t("应用会校验下载文件的完整性。") },
+      { title: t("插件出现在下方"), detail: t("之后即可添加账号、同步模型。") },
+    ] : undefined}
+    actions={!unsupported && <>
+      {initializing && <span className={styles.progress}>
+        <span className={styles.progressBar} role="progressbar" aria-label={t("下载进度")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}>
+          <span className={styles.progressFill} style={{ width: `${percent ?? 100}%` }} />
+        </span>
+        <small>{total ? t("已下载 {downloaded} / {total}", { downloaded: formatBytes(downloaded), total: formatBytes(total) }) : t("已下载 {downloaded}", { downloaded: formatBytes(downloaded) })}</small>
+      </span>}
+      <button type="button" className={styles.primaryAction} disabled={checking || initializing} onClick={onInitialize}>
+        {checking ? t("检查中…") : initializing ? t("初始化中…") : failed ? t("重新初始化插件") : t("初始化插件")}
+      </button>
+    </>}
+  />;
 }
 
 function PluginCards({ plugins, onOpen }: {
@@ -119,10 +218,11 @@ function PluginCards({ plugins, onOpen }: {
   onOpen: (pluginId: string, mode: "add" | "settings") => void;
 }) {
   if (plugins.length === 0) {
-    return <div className={styles.empty}>
-      <strong>{t("还没有安装插件")}</strong>
-      <span>{t("安装插件后会显示在这里。")}</span>
-    </div>;
+    return <EmptyState
+      icon={puzzleIcon}
+      title={t("没有匹配的插件")}
+      description={t("换个关键词，或清空搜索框。清空后仍为空，说明还没有安装插件。")}
+    />;
   }
   return <div className={styles.pluginGrid}>
     {plugins.map((plugin) => <PluginCard key={plugin.id} plugin={plugin} onOpen={onOpen} />)}
@@ -163,7 +263,7 @@ function PluginCard({ plugin, onOpen }: {
         message(summary);
       }
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause), { duration: 5000 });
+      message.error(cause, { duration: 5000 });
     } finally {
       setImporting(false);
       if (importInput.current) importInput.current.value = "";
@@ -197,55 +297,34 @@ function PluginCard({ plugin, onOpen }: {
           },
         ]
       : []),
-    ...(plugin.version
-      ? [{ id: "version", type: "text" as const, label: `v${plugin.version}` }]
-      : []),
   ];
 
   return (
     <Card className={styles.pluginCard}>
       <div className={styles.pluginCardTop}>
-        <img className={styles.pluginIcon} src={plugin.icon} />
+        <img className={styles.pluginIcon} src={plugin.icon} alt="" />
         <div className={styles.pluginIdentity}>
           <span className={styles.pluginName}>{plugin.name}</span>
           <span className={styles.pluginId}>{subtitle}</span>
         </div>
-        <span
-          className={`${styles.stateBadge} ${configured ? styles.stateReady : ""}`}
-        >
-          {configured ? t("已配置") : t("未配置")}
-        </span>
+        <StatusPill tone={configured ? "ok" : "idle"}>{configured ? t("已配置") : t("未配置")}</StatusPill>
       </div>
-      <div className={styles.pluginMeta}>
-        <span>
-          {t("{accounts} 个账号 · {models} 个模型", {
-            accounts: accountCount,
-            models: modelCount,
-          })}
-        </span>
-        {plugin.author && (
-          <span className={styles.pluginAuthor}>{plugin.author}</span>
-        )}
+      <div className={styles.pluginStats}>
+        <span><strong>{accountCount}</strong>{t("个账号")}</span>
+        <span><strong>{modelCount}</strong>{t("个模型")}</span>
+        {plugin.version && <span className={styles.pluginVersion}>v{plugin.version}</span>}
       </div>
+      {plugin.author && <div className={styles.pluginAuthor}>{plugin.author}</div>}
       <div className={styles.cardActions}>
-        <TruncatedButton
-          size="small"
-          variant="primary"
-          label={t("添加账号")}
-          onClick={() => onOpen(plugin.id, "add")}
-        />
-        {configured && (
-          <TruncatedButton
-            size="small"
-            label={t("账号管理")}
-            onClick={() => onOpen(plugin.id, "settings")}
-          />
-        )}
-        {moreItems.length > 0 && (
-          <span className={styles.moreAction}>
-            <ActionMenu label={t("更多")} items={moreItems} />
-          </span>
-        )}
+        <button type="button" className={styles.primaryAction} onClick={() => onOpen(plugin.id, "add")}>
+          <Icon icon={downloadIcon} size="1em" />{t("添加账号")}
+        </button>
+        {configured && <button type="button" className={styles.secondaryAction} onClick={() => onOpen(plugin.id, "settings")}>
+          <Icon icon={uploadIcon} size="1em" />{t("账号管理")}
+        </button>}
+        {moreItems.length > 0 && <span className={styles.moreAction}>
+          <ActionMenu label={t("更多")} items={moreItems} />
+        </span>}
         {importResource && (
           <input
             ref={importInput}
@@ -281,18 +360,8 @@ function RuntimeProgressModal({ open, status, starting, onClose }: { open: boole
     <div className={styles.progressContent} aria-live="polite">
       <strong>{stage}</strong>
       {status?.phase === "downloading" && <>
-        <div
-          className={styles.progressBar}
-          role="progressbar"
-          aria-label={t("下载进度")}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent ?? undefined}
-        >
-          <div
-            className={styles.progressFill}
-            style={{ width: `${percent ?? 100}%` }}
-          />
+        <div className={styles.progressBar} role="progressbar" aria-label={t("下载进度")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined}>
+          <div className={styles.progressFill} style={{ width: `${percent ?? 100}%` }} />
         </div>
         <span>
           {total ? t("已下载 {downloaded} / {total}", { downloaded: formatBytes(downloaded), total: formatBytes(total) }) : t("已下载 {downloaded}", { downloaded: formatBytes(downloaded) })}

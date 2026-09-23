@@ -1,0 +1,86 @@
+@use "../styles/typography" as type;
+
+/* 底部居中：页面底部唯一会被占用的位置是分页（右下）与保存条（滚动区内），
+   所以这个提示不会压住任何控件的点击区域。 */
+.root {
+  position: fixed;
+  z-index: 15500;
+  bottom: calc(16px + var(--window-corner-safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-3);
+  padding: 10px var(--oa-space-3) 10px var(--oa-space-4);
+  color: var(--vscode-foreground);
+  background: var(--vscode-notifications-background);
+  border: 1px solid color-mix(in srgb, var(--oa-bad) 45%, transparent);
+  border-radius: var(--oa-overlay-radius);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--oa-bad) 16%, transparent),
+    var(--oa-dropdown-shadow);
+  animation: slide-in var(--oa-transition-base) both;
+
+  > div:first-child {
+    flex: 0 0 auto;
+    color: var(--oa-bad);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+
+  > strong {
+    font-size: type.$font-size-xs;
+    font-weight: type.$font-weight-semibold;
+  }
+
+  > small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
+}
+
+.retry {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+  transition: background var(--oa-transition-fast);
+
+  &:hover:not(:disabled) { background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root { animation: none; }
+}

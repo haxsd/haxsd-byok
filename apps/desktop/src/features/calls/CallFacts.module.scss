@@ -1,0 +1,63 @@
+@use "../../styles/typography" as type;
+
+/* Four groups of facts, sized so a group never wraps a value. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--oa-space-4);
+}
+
+.factGroup {
+  min-width: 0;
+  display: grid;
+  gap: var(--oa-space-2);
+  align-content: start;
+}
+
+.factTitle {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.factGroup dl {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+
+  div {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: var(--oa-space-2);
+    align-items: baseline;
+  }
+
+  dt {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
+
+  dd {
+    margin: 0;
+    overflow: hidden;
+    font-size: type.$font-size-2xs;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.errorGroup {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+
+  p {
+    margin: 0;
+    color: var(--oa-bad);
+    font-size: type.$font-size-xs;
+    overflow-wrap: anywhere;
+  }
+}

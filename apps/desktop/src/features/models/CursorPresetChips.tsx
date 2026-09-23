@@ -13,11 +13,11 @@ export function CursorPresetChips({ type, baseUrl, onPick }: { type: ModelType; 
           type="button"
           key={preset.key}
           className={active ? `${styles.chip} ${styles.active}` : styles.chip}
-          title={preset.keyHint}
+          title={preset.keyHint()}
           onClick={() => onPick(preset)}
         >
           <img className={styles.icon} src={preset.icon} alt="" />
-          {preset.name}
+          {preset.name()}
         </button>;
       })}
     </div>

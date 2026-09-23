@@ -1,16 +1,13 @@
-/* A card is the primary content surface. It gets a soft top highlight so the
-   surface reads as lit from above, which separates stacked cards without
-   needing heavier borders. */
+/*
+ * A panel rather than a floating card. The previous surface carried a top highlight
+ * gradient and a drop shadow, which is exactly what the product this was forked from
+ * draws, so the two were indistinguishable even after the palette changed. This is a
+ * flat raised panel with a hairline edge: it reads as a region of the page instead of
+ * an object sitting on top of it.
+ */
 .root {
   padding: 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-foreground) 4%, transparent) 0,
-      transparent 64px
-    ),
-    var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-sideBar-border);
+  background: var(--oa-surface-raised);
+  border: 1px solid var(--oa-border);
   border-radius: var(--oa-card-radius);
-  box-shadow: var(--oa-shadow-card);
 }

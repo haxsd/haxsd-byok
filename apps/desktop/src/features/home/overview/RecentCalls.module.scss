@@ -1,0 +1,98 @@
+@use "../../../styles/typography" as type;
+
+.root {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li + li {
+    border-top: 1px solid var(--oa-border);
+  }
+}
+
+.row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto 22px;
+  align-items: center;
+  gap: var(--oa-space-3);
+  padding: var(--oa-space-2) var(--oa-card-padding);
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--oa-transition-fast);
+
+  &:hover {
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+.tone {
+  width: 6px;
+  height: 6px;
+  background: var(--oa-warn);
+  border-radius: 50%;
+
+  &[data-tone="ok"] { background: var(--oa-ok); }
+  &[data-tone="bad"] { background: var(--oa-bad); }
+  &[data-tone="info"] { background: var(--oa-info); }
+  /* 未知状态用中性色，不要默认成「警告」：黄色在这里表示「出错了」。 */
+  &[data-tone="idle"] { background: var(--vscode-descriptionForeground); }
+}
+
+.identity {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.name {
+  overflow: hidden;
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.tokens {
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--oa-number-font);
+  font-size: type.$font-size-xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.open {
+  display: grid;
+  place-items: center;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0;
+  transition: opacity var(--oa-transition-fast);
+
+  .row:hover &,
+  .row:focus-visible & {
+    opacity: 1;
+  }
+}
+
+.empty {
+  margin: 0;
+  padding: var(--oa-space-4) var(--oa-card-padding);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}

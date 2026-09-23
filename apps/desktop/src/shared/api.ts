@@ -103,7 +103,7 @@ export interface CursorHarnessStatus {
   enabled_models: number;
   integration: IntegrationState;
   settings_applied: boolean;
-  /** Cursor 的代理配置由另一个软件写入：我们不覆盖它，界面要把这件事说出来。 */
+  /** Cursor 的代理配置由另一个软件写入：我们不覆盖它，界面要说明这件事。 */
   foreign_configuration: boolean;
   proxy_url: string | null;
   ca_install_command: string | null;
@@ -543,6 +543,20 @@ const packagedDesktop = "__TAURI_INTERNALS__" in window
   || window.location.hostname === "tauri.localhost";
 const API_ROOT = "/__byok-api__/api";
 
+/**
+ * 本地管理服务不可达（进程还没起来、重启中、被防火墙挡住）。
+ *
+ * 单独一个类型是为了让界面能区分「服务没连上」和「服务答了一个错误」：前者要持续
+ * 重试并明确告诉用户，后者只是一条失败信息。以前两者都只是弹一条提示，于是服务挂了
+ * 的界面看起来像「还没有数据」。
+ */
+export class ServiceUnreachableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(t("无法连接本地管理服务"), options);
+    this.name = "ServiceUnreachableError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -551,7 +565,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
     });
   } catch (cause) {
-    throw new Error(t("无法连接本地管理服务"), { cause });
+    throw new ServiceUnreachableError({ cause });
   }
   if (!response.ok) {
     const body = await response.text();
