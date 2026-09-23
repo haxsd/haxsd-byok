@@ -186,6 +186,9 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **`tar -x` 从不删除文件** | 第七节的同步方式只会覆盖/新增。开发仓库删掉的文件会在产品仓库里留下旧副本（已遇到一次）。同步后必须用 blob 哈希比对确认，见第七节 |
 | **`finalize` 任务没有 checkout** | `gh release edit` 无法推断仓库，报 `not a git repository`，草稿不会转正。已修为显式 `--repo "${GITHUB_REPOSITORY}"`。**改这个工作流时别删掉 `--repo`** |
 | **更新地址必须能匿名读取** | 产品仓库若改回私有，`releases/latest/download/latest.json` 立刻 404，应用内更新全断 |
+| **Cursor 的 `settings.json` 是本机共享资源** | 同机另一个产品（Cursor BYOK）也写它，键名与我们完全相同。**任何"清理"都必须凭归属标记，不能凭内容形状推断**，否则会把对方的配置删掉——已经真实发生过一次，见第十四节 |
+| **启动时不要碰用户的其他东西** | `desktop.rs` 的 `setup` 里那一串调用，每一个都在用户开机的路径上。`cleanup_stale_settings()` 曾经无条件删 Cursor 配置；**给它加任何新动作前，先想清楚它会不会碰别人的文件** |
+| **开启接管会 `taskkill /F /T /IM Cursor.exe`** | 强杀所有 Cursor 进程与进程树，未保存内容会丢。开关前已有确认框，**文案里这句话不要删** |
 | **Devin 宿主补丁仍指向 43110/43111/43112** | 网关端口若改动，宿主补丁要重打 |
 | **不要启动厂商路由器** | `D:\devin-model-router\...\Devin Model Router.exe` 的 `autoPatch` 会把宿主文件改回 43100 端口，把我们的补丁冲掉 |
 
@@ -461,3 +464,81 @@ python D:\cursor-byok\byok-dev\.e2e-devin\tools\inspect-db.py "$env:USERPROFILE\
 # 5. Cursor BYOK 没被影响吗
 Get-Process -Name cursor-byok-desktop -EA SilentlyContinue
 ```
+
+---
+
+## 十四、与 Cursor BYOK 的隔离（硬性要求）
+
+用户明确要求：**本产品的开发与运行都不得影响另一个独立产品 Cursor BYOK 的正常使用。**
+这不是"尽量"，是出过一次真实事故之后的硬要求，下面是那次事故的完整记录。
+
+### 出过的事故（2026-09-23）
+
+安装 1.0.2 后应用被自动拉起，**用户正在使用的 Cursor BYOK 立刻失效**（他的 Cursor 失去了模型），
+他只能关掉 Cursor BYOK 重启。
+
+根因：两个产品是**同一个代码库分叉出来的**，往 Cursor 的 `APPDATA\Cursor\User\settings.json`
+写的是**同样五个键、同样的值、同样指向回环地址**：
+
+```
+http.proxy / http.proxyKerberosServicePrincipal / http.proxySupport
+cursor.general.disableHttp2 / http.experimental.systemCertificatesV2
+```
+
+而 `local_app::settings::clear_stale_managed_settings()` 的判据是**"这三个键在、且 proxy 指向回环"**
+就认定"这是我自己留下的旧配置"，然后把五个键**全部删掉**。于是：
+
+- 它分不清那是 Cursor BYOK 的配置还是自己的残留（内容上完全一样）
+- 这个调用在 `desktop.rs` 的 `setup` 里**无条件执行**，完全不看 `cursor_takeover_enabled`
+
+时间线（本地时间）：`08:53:49` 我们的 1.0.2 启动 → `08:54:20` 对方的配置被改写 → 用户重启对方恢复。
+
+### 修法：归属必须被记录，不能被推断
+
+`settings.rs` 现在会把自己的配置打上标记键 `haxsd-byok.managedProxy`，
+**所有删除动作都以标记为准**；没有标记的文件，无论长得多像，一律不碰。
+新增了 5 个回归测试（含"把对方那份配置原样留着"和"我们不写过的条目一律不动"）。
+
+同一个原则适用于以后任何"清理"逻辑：**能证明是自己的，才能删。**
+
+### 同类风险：开启接管会强杀 Cursor
+
+`local_app::enable()` 在配置尚未生效时会调用 `process::terminate_cursor()`，
+在 Windows 上是 `taskkill /F /T /IM Cursor.exe`——**强杀所有 Cursor 进程和整棵进程树**。
+未保存的编辑内容会丢。它被 `cursor_takeover_enabled` 门控，所以关闭接管时不会触发。
+开关前已加确认框（`CursorSettingsPage` 的"开启接管Cursor？"），**那句话不要删**。
+
+### 已经核对过、确认互不干扰的面
+
+| 面 | 状态 |
+|---|---|
+| 监听端口 | 我们 `1634 / 43110 / 43111 / 43112`；对方 `15524 / 35756`。不重叠 |
+| 数据目录 | 我们 `~\.haxsd-byok-devin-v3`；对方 `%LOCALAPPDATA%\dev.cursorbyok.desktop`。不重叠 |
+| 安装目录 | 我们 `%LOCALAPPDATA%\haxsd byok`；对方 `%LOCALAPPDATA%\Cursor BYOK` 与 `D:\cursor-byok\Cursor BYOK`。不重叠 |
+| productName / identifier | `haxsd byok` / `dev.haxsd.byok`，与对方不同 |
+| 窗口标题、托盘提示 | 都是 `haxsd byok` |
+| 开机自启 | 我们默认不注册（`tauri_plugin_autostart` 只是初始化，没有自动写注册表）；对方有自启项 |
+| Windows 根证书存储 | 我们**只读**打开做检查（`ca\windows.rs`），从不安装证书 |
+| Cursor `settings.json` | **曾经冲突，已修**（见上） |
+| 应用图标 | **曾经逐字节相同（同一 SHA256），已换**（见下） |
+| 卸载器 | 实测不动 `settings.json`（卸载前后哈希一致） |
+
+### 图标必须与对方不同
+
+两个产品的 `icon.ico` / `icon.icns` / `32x32.png` 等**曾经逐字节相同**，任务栏里根本分不清哪个是哪个。
+现在是一把钥匙（深靛蓝底 + 长春花蓝），生成方式见
+`apps/desktop/src-tauri/icons/generate-source.ps1`。
+
+⚠️ `tauri icon` **不会更新 `linux-*.png`**（那是 Tauri v1 的旧文件名，但仍在 `bundle.icon` 里被引用），
+所以换图标时必须跑那个脚本，否则这几个文件会留在旧图上。托盘图标也走 `icons/32x32.png`。
+
+### 改但不彻底的：插件 ID 与内部标识
+
+`server/plugins/build-in/*/plugin.json` 的 id 仍是 `dev.cursorbyok.*`（对方的命名空间）。
+**故意没改**：运行时 `~\.haxsd-byok-devin-v3\plugins\installed\` 里已经有同旧 ID 的副本，
+只改内置的那份会让同一个插件出现两份（而且那是用户已配好的 OAuth 提供方），需要配套迁移。
+副本在我们自己的数据目录里，**不构成跨产品干扰**，所以留作已知的外观问题。
+
+`search/` 的 User-Agent 曾经自称 `CursorBYOK/0.1`，已改为 `haxsd-byok/0.1`（对外可见的品牌泄漏）。
+插件运行时的 import map 名（`cursor-byok:plugin` 等）和 Monaco 主题名 `cursor-byok` 属于纯内部标识，
+改名要动上百处且收益为零，未动。

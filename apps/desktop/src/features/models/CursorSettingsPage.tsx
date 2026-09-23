@@ -26,6 +26,7 @@ export function CursorSettingsPage() {
   const message = useMessage();
   const [caCommand, setCaCommand] = useState<string | null>(null);
   const [waitingForCaRefresh, setWaitingForCaRefresh] = useState(false);
+  const [confirmEnableTakeover, setConfirmEnableTakeover] = useState(false);
   const [confirmDisableTakeover, setConfirmDisableTakeover] = useState(false);
 
   const caReady = cursorHarness?.ca === "ready";
@@ -72,7 +73,7 @@ export function CursorSettingsPage() {
             disabled={cursorBusy || (!cursorTakenOver && !caReady)}
             label={takeoverLabel}
             onChange={(enabled) => {
-              if (enabled) void appStore.setCursorEnabled(true);
+              if (enabled) setConfirmEnableTakeover(true);
               else setConfirmDisableTakeover(true);
             }}
           />
@@ -83,6 +84,19 @@ export function CursorSettingsPage() {
       <Button size="small" onClick={() => navigate("/models")}>{t("管理模型")}</Button>
     </PageActions>
     <PageContent title="Cursor" sections={[{ key: "cursor-settings", estimatedHeight: 380, content }]} />
+    <ConfirmDialog
+      open={confirmEnableTakeover}
+      title={t("开启接管Cursor？")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("开启接管")}
+      onCancel={() => setConfirmEnableTakeover(false)}
+      onConfirm={() => {
+        setConfirmEnableTakeover(false);
+        void appStore.setCursorEnabled(true);
+      }}
+    >
+      <p>{t("这一步会强制结束所有正在运行的 Cursor 进程，未保存的编辑内容会丢失。请先保存工作；配置写入后需要你手动重新打开 Cursor。是否继续？")}</p>
+    </ConfirmDialog>
     <ConfirmDialog
       open={confirmDisableTakeover}
       title={t("关闭接管Cursor？")}

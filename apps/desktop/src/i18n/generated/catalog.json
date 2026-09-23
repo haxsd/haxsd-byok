@@ -431,12 +431,12 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 109,
+          "line": 132,
           "column": 47
         },
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 173,
+          "line": 206,
           "column": 15
         }
       ]
@@ -576,6 +576,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 196,
           "column": 41
+        }
+      ]
+    },
+    "10d714d11fbb2cff": {
+      "source": "这一步会强制结束所有正在运行的 Cursor 进程，未保存的编辑内容会丢失。请先保存工作；配置写入后需要你手动重新打开 Cursor。是否继续？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 98,
+          "column": 11
         }
       ]
     },
@@ -1205,7 +1217,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 33,
+          "line": 34,
           "column": 43
         }
       ]
@@ -1263,7 +1275,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 89,
+          "line": 90,
+          "column": 20
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 103,
           "column": 20
         },
         {
@@ -1340,7 +1357,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 88,
+          "line": 102,
           "column": 14
         }
       ]
@@ -1366,7 +1383,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 59,
+          "line": 60,
           "column": 13
         }
       ]
@@ -1732,12 +1749,12 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 107,
+          "line": 130,
           "column": 50
         },
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 155,
+          "line": 188,
           "column": 15
         }
       ]
@@ -1807,18 +1824,6 @@
         }
       ]
     },
-    "3c94b4c75940c178": {
-      "source": "输入 Token",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/charts/TokenTrendChart.tsx",
-          "line": 16,
-          "column": 15
-        }
-      ]
-    },
     "3cfae5728b92b334": {
       "source": "Token 用量：{tokens}",
       "kind": "template",
@@ -1828,7 +1833,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 128,
+          "line": 127,
           "column": 16
         }
       ]
@@ -1893,7 +1898,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 99,
+          "line": 113,
           "column": 80
         },
         {
@@ -1951,12 +1956,12 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 106,
+          "line": 129,
           "column": 46
         },
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 146,
+          "line": 179,
           "column": 15
         }
       ]
@@ -1975,18 +1980,6 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 63,
           "column": 68
-        }
-      ]
-    },
-    "42aa8e01e98c0d8c": {
-      "source": "总耗时",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/charts/LatencyChart.tsx",
-          "line": 18,
-          "column": 15
         }
       ]
     },
@@ -2468,7 +2461,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 68,
+          "line": 69,
           "column": 68
         },
         {
@@ -2605,7 +2598,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 60,
+          "line": 61,
           "column": 16
         }
       ]
@@ -2833,12 +2826,12 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 108,
+          "line": 131,
           "column": 51
         },
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 164,
+          "line": 197,
           "column": 15
         }
       ]
@@ -4015,7 +4008,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 68,
+          "line": 69,
           "column": 79
         },
         {
@@ -4102,7 +4095,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 33,
+          "line": 34,
           "column": 61
         }
       ]
@@ -4402,18 +4395,6 @@
         }
       ]
     },
-    "a026f37e613cf48b": {
-      "source": "输出 Token",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/charts/TokenTrendChart.tsx",
-          "line": 17,
-          "column": 15
-        }
-      ]
-    },
     "a03a1a0cb35414f8": {
       "source": "必须是 0–65535 之间的整数",
       "kind": "text",
@@ -4672,7 +4653,7 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 187,
+          "line": 220,
           "column": 24
         }
       ]
@@ -4909,6 +4890,18 @@
         }
       ]
     },
+    "aa76cdd40d1c1901": {
+      "source": "开启接管Cursor？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 89,
+          "column": 14
+        }
+      ]
+    },
     "ab9084a640fbb864": {
       "source": "全不选",
       "kind": "text",
@@ -4969,7 +4962,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 58,
+          "line": 59,
           "column": 13
         }
       ]
@@ -5296,7 +5289,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 99,
+          "line": 113,
           "column": 103
         }
       ]
@@ -5511,7 +5504,7 @@
       "refs": [
         {
           "file": "features/home/metrics/CacheHitRateChart.tsx",
-          "line": 58,
+          "line": 61,
           "column": 62
         }
       ]
@@ -5680,6 +5673,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 296,
           "column": 62
+        }
+      ]
+    },
+    "c812741847bc05cb": {
+      "source": "开启接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 91,
+          "column": 21
         }
       ]
     },
@@ -6088,7 +6093,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 97,
+          "line": 111,
           "column": 11
         }
       ]
@@ -6204,7 +6209,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 100,
+          "line": 114,
           "column": 47
         }
       ]
@@ -6286,7 +6291,7 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 105,
+          "line": 128,
           "column": 14
         }
       ]
@@ -6346,7 +6351,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 83,
+          "line": 84,
           "column": 65
         }
       ]
@@ -6445,7 +6450,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 56,
+          "line": 57,
           "column": 18
         }
       ]
@@ -6471,7 +6476,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 252,
+          "line": 251,
           "column": 50
         }
       ]
@@ -6507,7 +6512,7 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 135,
+          "line": 168,
           "column": 15
         }
       ]
@@ -6831,7 +6836,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 100,
+          "line": 114,
           "column": 77
         }
       ]
@@ -6886,7 +6891,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 99,
+          "line": 113,
           "column": 53
         }
       ]
@@ -6898,7 +6903,7 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 54,
+          "line": 52,
           "column": 25
         }
       ]
@@ -7018,7 +7023,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 258,
+          "line": 257,
           "column": 23
         }
       ]
@@ -7164,7 +7169,7 @@
       "refs": [
         {
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
-          "line": 53,
+          "line": 51,
           "column": 25
         }
       ]
@@ -7353,7 +7358,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 90,
+          "line": 104,
           "column": 21
         }
       ]
@@ -7425,7 +7430,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 220,
+          "line": 223,
           "column": 25
         },
         {
