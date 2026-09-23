@@ -52,6 +52,22 @@
   /* Contribution calendar ramps from the surface colour to the accent. */
   --oa-heat-0: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
 
+  /* Semantic tokens for surfaces and states.
+     Components used to reach for --vscode-* names this theme never defined
+     (panel-border, testing-iconPassed, editorWarning-foreground), so borders
+     quietly fell back to currentColor and the "ok" colour was GitHub's green,
+     identical in all three themes. */
+  --oa-accent: var(--vscode-focusBorder);
+  --oa-accent-soft: color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
+  --oa-border: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  --oa-border-strong: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
+  --oa-surface-raised: var(--vscode-editorWidget-background);
+  --oa-surface-sunken: var(--vscode-editor-background);
+  --oa-ok: var(--vscode-gitDecoration-addedResourceForeground);
+  --oa-ok-soft: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground) 15%, transparent);
+  --oa-warn: #e0a92c;
+  --oa-warn-soft: color-mix(in srgb, var(--oa-warn) 15%, transparent);
+
   @include chart-palette((
     chart-input: #0091ff,
     chart-cache-read: #2ecc8f,
@@ -268,4 +284,8 @@
     heat-3: #6b93ea,
     heat-4: #2b5ac2,
   ));
+
+  /* The amber needs to be darker to read on a near-white surface. */
+  --oa-warn: #a86a00;
+  --oa-warn-soft: color-mix(in srgb, #a86a00 14%, transparent);
 }

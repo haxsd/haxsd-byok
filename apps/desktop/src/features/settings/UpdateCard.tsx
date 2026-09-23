@@ -90,7 +90,9 @@ export function UpdateCard() {
     <div className={styles.settingRow}>
       <div>
         <strong>{t("当前版本")}</strong>
-        <small>{version ?? versionError ?? t("读取中…")}</small>
+        {/* The raw failure used to be printed here, which put a JavaScript error
+            where a version number belongs. It stays reachable on hover. */}
+        <small title={versionError ?? undefined}>{version ?? (versionError ? t("读取失败") : t("读取中…"))}</small>
       </div>
       {update && <div>
         <strong>{t("可更新到 {version}", { version: update.version })}</strong>

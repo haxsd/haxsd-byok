@@ -7,6 +7,7 @@ import { Select } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
+import { DevinPath, type PathStage } from "./DevinPath";
 import { PageContent } from "../../shell/layout/PageContent";
 import styles from "./DevinSettingsPage.module.scss";
 
@@ -51,6 +52,10 @@ export function DevinSettingsPage() {
   const message = useMessage();
   const navigate = useNavigate();
   const [settings, setSettings] = useState<DevinSettings>(emptySettings);
+  // The last persisted snapshot, so the page can say whether anything is pending.
+  // The save button used to live inside the collapsed section, which meant a change
+  // made in the open one looked applied while nothing had been written.
+  const [saved, setSaved] = useState<DevinSettings>(emptySettings);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,6 +63,9 @@ export function DevinSettingsPage() {
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
   const [hostReceipt, setHostReceipt] = useState<DevinHostPatchReceipt | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
+  // Which mapping rows are showing their optional fields. Collapsed by default: the
+  // page should read as two decisions per mapping, not as a form of five fields.
+  const [expandedBindings, setExpandedBindings] = useState<Record<string, boolean>>({});
   const [gatewayPortsUp, setGatewayPortsUp] = useState<boolean | null>(null);
   const [devinCalls, setDevinCalls] = useState<number | null>(null);
 
@@ -73,6 +81,7 @@ export function DevinSettingsPage() {
   useEffect(() => {
     void Promise.all([api.devinSettings(), api.models()]).then(([nextSettings, nextModels]) => {
       setSettings(nextSettings);
+      setSaved(nextSettings);
       setModels(nextModels);
     }).catch((cause) => message(cause instanceof Error ? cause.message : String(cause))).finally(() => setLoading(false));
   }, [message]);
@@ -215,8 +224,9 @@ export function DevinSettingsPage() {
   const save = async () => {
     try {
       setSaving(true);
-      const saved = await api.setDevinSettings(settings);
-      setSettings(saved);
+      const next = await api.setDevinSettings(settings);
+      setSettings(next);
+      setSaved(next);
       message(t("Devin 设置已保存，重启软件后监听端口生效"), { duration: 5_000 });
     } catch (cause) {
       message(cause instanceof Error ? cause.message : String(cause));
@@ -224,6 +234,7 @@ export function DevinSettingsPage() {
       setSaving(false);
     }
   };
+  const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
 
   const modelOptions = models.map((model) => ({ value: model.model_hash, label: `${model.display_name} · ${model.model_hash.slice(0, 8)}` }));
   const kindOptions = [
@@ -296,29 +307,54 @@ export function DevinSettingsPage() {
               : t("还没有 Devin 调用记录"),
         },
       ];
+      const stages: PathStage[] = [
+        {
+          key: "devin",
+          label: "Devin",
+          detail: devinLabel,
+          state: devinPointsHere ? "up" : devinTone === "warn" ? "down" : "unknown",
+        },
+        {
+          key: "gateway",
+          label: t("本机网关"),
+          // The ports are the useful detail only while it is listening; otherwise the
+          // reason it is not carries more information.
+          detail: gatewayTone === "ok"
+            ? `${settings.api_port} · ${settings.inference_port} · ${settings.local_api_port}`
+            : gatewayLabel,
+          state: gatewayTone === "ok" ? "up" : gatewayTone === "warn" ? "down" : "unknown",
+        },
+        {
+          key: "model",
+          label: t("模型库"),
+          detail: activeModel ? activeModel.display_name : standard.length ? t("模型已删除或哈希无效") : t("未绑定"),
+          state: activeModel ? "up" : standard.length ? "down" : "unknown",
+        },
+      ];
+      // Only what is still missing stays on screen. A checklist that keeps showing
+      // four ticks after everything works is noise on every later visit.
+      const outstanding = steps.filter((step) => !step.done);
+      const connected = stages.every((stage) => stage.state === "up");
       return <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
         <div className={styles.status}>
-          <div className={styles.statusItems}>
-            <div className={styles.statusItem}>
-              <span>{t("网关")}</span>
-              <strong><span className={`${styles.badge} ${gatewayTone === "ok" ? styles.badgeOk : gatewayTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{gatewayLabel}</span></strong>
+          <div className={styles.verdict} data-tone={connected ? "ok" : "warn"}>
+            <span className={styles.verdictLamp} aria-hidden="true" />
+            <div className={styles.verdictText}>
+              <strong>{connected ? t("已接通") : t("还差 {count} 步", { count: outstanding.length })}</strong>
+              <small>{connected
+                ? t("Devin 的请求正在走本机网关，由 {model} 回答。", { model: activeModel?.display_name ?? "" })
+                : outstanding[0]?.label ?? ""}</small>
             </div>
-            <div className={styles.statusItem}><span>{t("端口")}</span><strong>{settings.api_port} / {settings.inference_port} / {settings.local_api_port}</strong></div>
-            <div className={styles.statusItem}>
-              <span>Devin</span>
-              <strong><span className={`${styles.badge} ${devinTone === "ok" ? styles.badgeOk : devinTone === "warn" ? styles.badgeWarn : styles.badgeIdle}`}>{devinLabel}</span></strong>
-            </div>
-            <div className={styles.statusItem}>
-              <span>{t("当前生效模型")}</span>
-              <strong>{activeModel ? activeModel.display_name : standard.length ? t("模型已删除或哈希无效") : t("未绑定")}</strong>
-            </div>
-            <div className={styles.statusItem}><span>{t("上下文压缩绑定")}</span><strong>{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}</strong></div>
           </div>
-          <div className={styles.steps}>
-            {steps.map((step, index) => <div key={step.key} className={styles.step}>
-              <span className={`${styles.stepMark} ${step.done ? styles.stepMarkDone : ""}`}>{step.done ? "✓" : index + 1}</span>
-              <span className={styles.stepText}><strong>{step.label}</strong><small>{step.hint}</small></span>
+          <DevinPath stages={stages} />
+          {outstanding.length > 0 && <div className={styles.todo}>
+            {outstanding.map((step, index) => <div key={step.key} className={styles.todoItem}>
+              <span className={styles.todoIndex}>{index + 1}</span>
+              <span className={styles.todoText}><strong>{step.label}</strong><small>{step.hint}</small></span>
             </div>)}
+          </div>}
+          <div className={styles.footnotes}>
+            {t("上下文压缩绑定")}：{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}
           </div>
         </div>
       </TitledCard>;
@@ -339,49 +375,82 @@ export function DevinSettingsPage() {
           const activeRouteId = activeRouteIdForDisplay(binding);
           const hasRoutes = binding.routes.length > 0;
           const isCompression = binding.kind === "context_compression";
-          return <div className={styles.binding} key={`${binding.model_uid}-${index}`}>
-            <div className={styles.bindingFields}>
+          const rowKey = `${binding.model_uid}-${index}`;
+          const expanded = expandedBindings[rowKey] ?? false;
+          // A mapping is a two-value decision: which UID Devin asks for, and which
+          // model answers. Display name, context size, kind and fallback routes are
+          // kept behind the disclosure, because a page that shows every field makes
+          // the two that matter impossible to find.
+          return <div className={styles.binding} key={rowKey}>
+            <div className={styles.bindingRow}>
               <FormField label={t("Devin 模型 UID")}><TextInput value={binding.model_uid} onChange={(event) => updateBinding(index, { model_uid: event.target.value })} /></FormField>
               <FormField label={t("haxsd byok 模型")}><Select value={binding.model_hash} options={modelOptions} ariaLabel={t("haxsd byok 模型")} onChange={(model_hash) => {
                 const model = models.find((item) => item.model_hash === model_hash);
                 updateBinding(index, { model_hash, display_name: model?.display_name ?? binding.display_name, context_window_tokens: model?.context_window_tokens ?? null });
               }} /></FormField>
-              <FormField label={t("显示名称")}><TextInput value={binding.display_name} onChange={(event) => updateBinding(index, { display_name: event.target.value })} /></FormField>
-              <FormField label={t("上下文 token") }><TextInput type="number" min={1} value={binding.context_window_tokens ?? ""} onChange={(event) => updateBinding(index, { context_window_tokens: event.target.value ? Number(event.target.value) : null })} /></FormField>
-              <FormField label={t("绑定类型")} hint={t("上下文压缩绑定必须是单线路；切换为该类型会清空候选路由。")}>
-                <Select value={binding.kind} options={kindOptions} ariaLabel={t("绑定类型")} onChange={(kind) => {
-                  const nextKind = kind as DevinBindingKind;
-                  updateBinding(index, nextKind === "context_compression" ? { kind: nextKind, routes: [], active_route_id: null } : { kind: nextKind });
-                }} />
-              </FormField>
-            </div>
-            {isCompression ? <small className={styles.routeHint}>{t("上下文压缩绑定只使用上面的模型，不参与候选路由。")}</small> : <div className={styles.routes}>
-              <div className={styles.routesHeader}>
-                <span>{t("候选路由")}</span>
-                <Button size="small" disabled={!models.length} onClick={() => appendRoute(index, binding, routes)}>{t("添加候选路由")}</Button>
+              <div className={styles.bindingRowActions}>
+                {!binding.enabled && <span className={styles.bindingPaused}>{t("已停用")}</span>}
+                <button type="button" className={styles.more} aria-expanded={expanded} onClick={() => setExpandedBindings((current) => ({ ...current, [rowKey]: !expanded }))}>
+                  {expanded ? t("收起") : t("更多")}
+                </button>
+                <button type="button" className={styles.remove} onClick={() => removeBinding(index)}>{t("移除")}</button>
               </div>
-              {!hasRoutes && <small className={styles.routeHint}>{t("尚未配置候选路由，当前直接使用上面的主模型。")}</small>}
-              {routes.map((route, routeIndex) => <div className={styles.route} key={route.route_id}>
-                <div className={styles.routeFields}>
-                  <FormField label={t("路由模型")}><Select value={route.model_hash} options={modelOptions} ariaLabel={t("路由模型")} onChange={(model_hash) => updateRoute(index, binding, routes, routeIndex, { model_hash })} /></FormField>
-                  <FormField label={t("路由名称")}><TextInput value={route.label} onChange={(event) => updateRoute(index, binding, routes, routeIndex, { label: event.target.value })} /></FormField>
-                </div>
-                <div className={styles.routeFooter}>
-                  <Switch checked={route.enabled} label={t("启用此路由")} onChange={(enabled) => updateRoute(index, binding, routes, routeIndex, { enabled })} />
-                  <div className={styles.routeActions}>
-                    <Button size="small" variant={route.route_id === activeRouteId ? "primary" : "secondary"} disabled={!route.enabled || route.route_id === activeRouteId} onClick={() => commitRoutes(index, routes, route.route_id)}>{route.route_id === activeRouteId ? t("当前路由") : t("设为当前路由")}</Button>
-                    <button type="button" className={styles.remove} disabled={!hasRoutes} onClick={() => removeRoute(index, binding, routes, routeIndex)}>{t("移除")}</button>
-                  </div>
-                </div>
-              </div>)}
-            </div>}
-            <div className={styles.bindingFooter}>
-              <Switch checked={binding.enabled} label={t("启用此模型映射")} onChange={(enabled) => updateBinding(index, { enabled })} />
-              <button type="button" className={styles.remove} onClick={() => removeBinding(index)}>{t("移除")}</button>
             </div>
+            {expanded && <div className={styles.bindingExtra}>
+              <div className={styles.bindingFields}>
+                <FormField label={t("显示名称")}><TextInput value={binding.display_name} onChange={(event) => updateBinding(index, { display_name: event.target.value })} /></FormField>
+                <FormField label={t("上下文 token")}><TextInput type="number" min={1} value={binding.context_window_tokens ?? ""} onChange={(event) => updateBinding(index, { context_window_tokens: event.target.value ? Number(event.target.value) : null })} /></FormField>
+                <FormField label={t("绑定类型")} hint={t("上下文压缩绑定必须是单线路；切换为该类型会清空候选路由。")}>
+                  <Select value={binding.kind} options={kindOptions} ariaLabel={t("绑定类型")} onChange={(kind) => {
+                    const nextKind = kind as DevinBindingKind;
+                    updateBinding(index, nextKind === "context_compression" ? { kind: nextKind, routes: [], active_route_id: null } : { kind: nextKind });
+                  }} />
+                </FormField>
+              </div>
+              {isCompression ? <small className={styles.routeHint}>{t("上下文压缩绑定只使用上面的模型，不参与候选路由。")}</small> : <div className={styles.routes}>
+                <div className={styles.routesHeader}>
+                  <span>{t("候选路由")}</span>
+                  <Button size="small" disabled={!models.length} onClick={() => appendRoute(index, binding, routes)}>{t("添加候选路由")}</Button>
+                </div>
+                {!hasRoutes && <small className={styles.routeHint}>{t("尚未配置候选路由，当前直接使用上面的主模型。")}</small>}
+                {routes.map((route, routeIndex) => <div className={styles.route} key={route.route_id}>
+                  <div className={styles.routeFields}>
+                    <FormField label={t("路由模型")}><Select value={route.model_hash} options={modelOptions} ariaLabel={t("路由模型")} onChange={(model_hash) => updateRoute(index, binding, routes, routeIndex, { model_hash })} /></FormField>
+                    <FormField label={t("路由名称")}><TextInput value={route.label} onChange={(event) => updateRoute(index, binding, routes, routeIndex, { label: event.target.value })} /></FormField>
+                  </div>
+                  <div className={styles.routeFooter}>
+                    <Switch checked={route.enabled} label={t("启用此路由")} onChange={(enabled) => updateRoute(index, binding, routes, routeIndex, { enabled })} />
+                    <div className={styles.routeActions}>
+                      <Button size="small" variant={route.route_id === activeRouteId ? "primary" : "secondary"} disabled={!route.enabled || route.route_id === activeRouteId} onClick={() => commitRoutes(index, routes, route.route_id)}>{route.route_id === activeRouteId ? t("当前路由") : t("设为当前路由")}</Button>
+                      <button type="button" className={styles.remove} disabled={!hasRoutes} onClick={() => removeRoute(index, binding, routes, routeIndex)}>{t("移除")}</button>
+                    </div>
+                  </div>
+                </div>)}
+              </div>}
+              <div className={styles.bindingFooter}>
+                <Switch checked={binding.enabled} label={t("启用此模型映射")} onChange={(enabled) => updateBinding(index, { enabled })} />
+                <span />
+              </div>
+            </div>}
           </div>;
         })}
       </div>
+    </TitledCard>
+    <TitledCard
+      title={t("接入 Devin")}
+      action={<div className={styles.hostActions}>
+        <Button size="small" disabled={hostBusy} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("检查宿主")}</Button>
+        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
+        <Button size="small" disabled={!hostReceipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
+      </div>}
+    >
+      {hostStatus
+        ? <p className={styles.note}>{hostStatus.patched && hostStatus.ports
+          ? t("已接入：API {api} · 推理 {inference} · Local API {local}", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
+          : hostStatus.patched
+            ? hostStatus.message
+            : hostStatus.clean ? t("兼容版本，尚未应用补丁") : hostStatus.message}</p>
+        : <p className={styles.note}>{t("宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。")}</p>}
     </TitledCard>
     <TitledCard title={t("高级")} collapsible storageKey="devin-advanced">
       <div className={styles.fields}>
@@ -396,27 +465,16 @@ export function DevinSettingsPage() {
         </FormField>
       </div>
       <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
-      <p className={styles.note}>{t("宿主接入只对这里显示的 extension.js 操作。应用补丁前会校验四个版本锚点并创建 SHA-256 备份；未知版本、部分补丁或备份不一致时会拒绝写入。路径已自动探测，通常无需修改。")}</p>
       <div className={styles.fields}>
         <FormField label="Devin / Windsurf extension.js 路径" hint={t("留空即自动探测；仅在自动结果不正确时才需要填写。")}>
           <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
-      <div className={styles.hostActions}>
-        <Button size="small" disabled={hostBusy} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("检查宿主")}</Button>
-        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
-        <Button size="small" disabled={!hostReceipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
-      </div>
-      {hostStatus && <small className={styles.hostStatus}>{hostStatus.patched && hostStatus.ports
-        ? t("已接入：API {api} · 推理 {inference} · Local API {local}", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
-        : hostStatus.patched
-          ? hostStatus.message
-          : hostStatus.clean ? t("兼容版本，尚未应用补丁") : hostStatus.message}</small>}
-      <div className={styles.bindingFooter}>
-        <span />
-        <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
-      </div>
     </TitledCard>
+    {dirty && <div className={styles.saveBar}>
+      <span>{t("有未保存的改动")}</span>
+      <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
+    </div>}
   </div>;
   return <PageContent title="Devin" sections={[{ key: "devin", estimatedHeight: 900, content }]} />;
 }

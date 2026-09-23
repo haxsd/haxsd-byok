@@ -1,0 +1,144 @@
+@use "../../styles/typography" as type;
+
+/* The request path: a wire with a point per hop. The state is carried by the point
+   and by the segment that follows it, so the whole thing reads as one object and a
+   break is visible before any of the text is. */
+.root {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 6px 2px 2px;
+}
+
+.node {
+  /* A fixed width and a capped connector keep the diagram reading as one object
+     instead of three labels pushed to the edges of the card. */
+  flex: 0 0 auto;
+  width: 150px;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+}
+
+/* The point. Its box is a fixed 26px so the wire can be aligned to its centre
+   without measuring text. */
+.dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 6px 0;
+  border: 2px solid var(--oa-border-strong);
+  border-radius: 50%;
+  background: var(--oa-surface-sunken);
+  transition:
+    background var(--oa-transition-base),
+    border-color var(--oa-transition-base),
+    box-shadow var(--oa-transition-base);
+}
+
+.node[data-state="up"] .dot {
+  background: var(--oa-ok);
+  border-color: var(--oa-ok);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--oa-ok) 12%, transparent);
+}
+
+.node[data-state="down"] .dot {
+  background: var(--oa-warn);
+  border-color: var(--oa-warn);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--oa-warn) 14%, transparent);
+}
+
+.name {
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: type.$letter-spacing-tight;
+  color: var(--vscode-foreground);
+}
+
+.node[data-state="unknown"] .name {
+  color: var(--vscode-descriptionForeground);
+}
+
+.detail {
+  font-size: type.$font-size-2xs;
+  line-height: type.$line-height-snug;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+
+/* The wire. Lit, it is a solid line with a slow sweep travelling along it, which is
+   the "traffic is flowing" cue. Otherwise it is a dashed hairline. Its top margin
+   puts it through the centre of the points (6px pad + 7px half dot). */
+.link {
+  position: relative;
+  flex: 0 1 150px;
+  min-width: 32px;
+  height: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--oa-border-strong) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.link[data-lit] {
+  background: color-mix(in srgb, var(--oa-ok) 35%, transparent);
+}
+
+.link[data-lit]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--oa-ok), transparent);
+  animation: sweep 2.8s linear infinite;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .link[data-lit]::after { animation: none; }
+}
+
+/* A narrow window stacks the path rather than squeezing the labels. */
+@media (max-width: 760px) {
+  .root {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .node {
+    justify-items: start;
+    grid-template-columns: 26px 1fr;
+    gap: 2px 10px;
+    text-align: left;
+  }
+
+  .dot {
+    grid-row: span 2;
+    margin: 4px 0;
+  }
+
+  .link {
+    flex: 0 0 12px;
+    width: 2px;
+    min-width: 0;
+    height: 12px;
+    margin: 0 0 0 12px;
+    background: repeating-linear-gradient(
+      180deg,
+      var(--oa-border-strong) 0 4px,
+      transparent 4px 8px
+    );
+  }
+
+  .link[data-lit]::after { animation: none; }
+}

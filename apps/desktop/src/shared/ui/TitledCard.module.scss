@@ -19,7 +19,9 @@
 
   .title {
     margin: 0;
-    font-size: type.$font-size-base;
+    /* One clear step above a row title. At 14px a card heading, a checklist row and
+       a status value all rendered identically, so a page had no entry point. */
+    font-size: type.$font-size-lg;
     font-weight: type.$font-weight-semibold;
     letter-spacing: type.$letter-spacing-tight;
   }

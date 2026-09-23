@@ -3,43 +3,144 @@
 .page { display: grid; gap: var(--oa-section-gap); }
 .loading, .empty, .note { padding: 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 
-/* 顶部状态：一眼看出通没通、还差哪一步 */
-.status { display: grid; gap: 14px; padding: var(--oa-card-padding); }
-.badge { padding: 2px 10px; border-radius: 999px; font-size: type.$font-size-xs; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
-.badgeOk { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
-.badgeWarn { color: var(--vscode-editorWarning-foreground, #d29922); border-color: currentColor; }
-.badgeIdle { color: var(--vscode-descriptionForeground); }
-.statusItems { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-.statusItem { display: grid; gap: 3px; }
-.statusItem > span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.statusItem > strong { font-weight: 600; overflow-wrap: anywhere; }
-.steps { display: grid; gap: 8px; padding: 0 16px 16px; }
-.step { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 10px; }
-.stepMark { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.stepMarkDone { color: var(--vscode-testing-iconPassed, #3fb950); border-color: currentColor; }
-.stepText { display: grid; gap: 2px; }
-.stepText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.stepAction:hover { color: var(--vscode-textLink-activeForeground); }
-.stepAction:disabled { opacity: .5; cursor: default; }
+/* The status card: one verdict, the request path, and only the steps that are still
+   missing. The old layout listed four status values and four checklist rows on every
+   visit, so what mattered had to be assembled by the reader. */
+.status { display: grid; gap: 16px; padding: var(--oa-card-padding); }
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--oa-surface-sunken);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
+}
+
+.verdict[data-tone="ok"] { border-color: color-mix(in srgb, var(--oa-ok) 35%, transparent); }
+.verdict[data-tone="warn"] { border-color: color-mix(in srgb, var(--oa-warn) 35%, transparent); }
+
+/* A lamp rather than an icon: the state is the colour, so it reads at any size. */
+.verdictLamp {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--oa-warn);
+  box-shadow: 0 0 0 4px var(--oa-warn-soft);
+}
+
+.verdict[data-tone="ok"] .verdictLamp {
+  background: var(--oa-ok);
+  box-shadow: 0 0 0 4px var(--oa-ok-soft);
+}
+
+.verdictText { display: grid; gap: 3px; min-width: 0; }
+/* The one line the page exists to deliver, so it outranks the card heading. */
+.verdictText > strong { font-size: type.$font-size-xl; font-weight: type.$font-weight-semibold; letter-spacing: type.$letter-spacing-tight; }
+.verdictText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+
+.todo { display: grid; gap: 10px; }
+.todoItem { display: grid; grid-template-columns: 20px 1fr; align-items: start; gap: 10px; }
+.todoIndex {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--oa-warn);
+  background: var(--oa-warn-soft);
+  border: 1px solid color-mix(in srgb, var(--oa-warn) 40%, transparent);
+  border-radius: 50%;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-semibold;
+}
+.todoText { display: grid; gap: 2px; }
+.todoText > strong { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
+.todoText > small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
+
+.footnotes {
+  padding-top: 2px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
 
 .settingRow, .bindingFooter { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; }
 .settingRow > div { display: grid; gap: 5px; }
 .settingRow small, .note { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.fields, .bindingFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
 .bindings { display: grid; gap: 12px; }
-.binding { border-top: 1px solid var(--vscode-panel-border); }
-.bindingFooter { padding-top: 10px; }
-.routes { display: grid; gap: 10px; padding: 0 16px 16px; }
+/* These borders used --vscode-panel-border, which the theme never defines, so every
+   one of them fell back to currentColor and drew brighter than the card edge. */
+.binding { border-top: 1px solid var(--oa-border); }
+
+/* A mapping row: the two values that actually decide it, then the disclosure. */
+.bindingRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px;
+}
+.bindingRowActions { display: flex; align-items: center; gap: 10px; padding-bottom: 5px; }
+.bindingPaused {
+  padding: 1px 8px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 12%, transparent);
+  border-radius: 999px;
+  font-size: type.$font-size-2xs;
+}
+.more {
+  padding: 4px 10px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-xs);
+  font-size: type.$font-size-2xs;
+  cursor: pointer;
+  transition:
+    color var(--oa-transition-fast),
+    border-color var(--oa-transition-fast);
+
+  &:hover { color: var(--vscode-foreground); border-color: var(--oa-border-strong); }
+  &:focus-visible { outline: none; box-shadow: var(--oa-focus-ring); }
+}
+
+.bindingExtra { border-top: 1px dashed var(--oa-border); }
+.bindingFields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px 16px 0; }
+.bindingFooter { padding: 12px 16px 16px; }
+.routes { display: grid; gap: 10px; padding: 0 16px 4px; }
 .routesHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.routesHeader > span { font-size: type.$font-size-base; }
+.routesHeader > span { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
 .routeHint { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-.route { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--vscode-panel-border); border-radius: var(--oa-radius-xs); }
+.route { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--oa-border); border-radius: var(--oa-radius-xs); }
 .routeFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .routeFooter { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .routeActions { display: flex; align-items: center; gap: 8px; }
 .remove { padding: 4px; color: var(--vscode-textLink-foreground); background: transparent; border: 0; cursor: pointer; }
-.remove:hover { color: var(--vscode-textLink-activeForeground); }
+.remove:hover { color: var(--oa-accent); }
 .remove:disabled { opacity: .5; cursor: default; }
-.hostActions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 16px 16px; }
+.hostActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hostStatus { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
-@media (max-width: 700px) { .fields, .bindingFields, .routeFields { grid-template-columns: 1fr; } }
+
+/* Sticky, so a pending change is reachable from anywhere on the page. The save
+   button used to live inside the collapsed section, where a change made in the open
+   one looked applied while nothing had been written. */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--oa-surface-raised) 94%, transparent);
+  border: 1px solid var(--oa-border-strong);
+  border-radius: var(--oa-radius-md);
+  box-shadow: var(--oa-shadow-raised);
+  backdrop-filter: blur(8px);
+}
+.saveBar > span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+@media (max-width: 900px) { .bindingRow { grid-template-columns: 1fr; } .bindingFields { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .fields, .routeFields { grid-template-columns: 1fr; } }
