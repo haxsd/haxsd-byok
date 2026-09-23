@@ -135,7 +135,7 @@
   }
 
   &:hover {
-    color: var(--vscode-list-hoverForeground, var(--vscode-dropdown-foreground));
+    color: var(--vscode-dropdown-foreground);
     background: var(--vscode-list-hoverBackground);
   }
 

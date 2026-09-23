@@ -8,21 +8,23 @@
   left: 0;
   display: flex;
   justify-content: center;
-  padding: 0 16px;
+  padding: 0 var(--oa-space-4);
   pointer-events: none;
 }
 
 .message {
-  max-width: min(520px, calc(100vw - 32px));
-  padding: 10px 16px;
+  max-width: min(560px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: var(--oa-space-3);
+  padding: 10px var(--oa-space-4);
   color: var(--vscode-notifications-foreground);
   background: var(--vscode-notifications-background);
   border: 1px solid var(--vscode-notifications-border);
   border-radius: var(--oa-overlay-radius);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 38%);
-  font-size: type.$font-size-base;
-  line-height: 20px;
-  text-align: center;
+  box-shadow: var(--oa-dropdown-shadow);
+  font-size: type.$font-size-xs;
+  line-height: type.$line-height-snug;
   overflow-wrap: anywhere;
   pointer-events: auto;
   -webkit-user-select: text;
@@ -30,6 +32,27 @@
   cursor: text;
   animation: enter 200ms ease;
   transition: opacity 200ms ease, transform 200ms ease;
+
+  > div {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: var(--vscode-descriptionForeground);
+  }
+}
+
+/* 失败必须一眼看出来，并且要能从背景里跳出来。 */
+.message[data-tone="error"] {
+  color: var(--vscode-foreground);
+  border-color: color-mix(in srgb, var(--oa-bad) 45%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--oa-bad) 18%, transparent),
+    var(--oa-dropdown-shadow);
+
+  > div { color: var(--oa-bad); }
+}
+
+.text {
+  min-width: 0;
 }
 
 .leaving {

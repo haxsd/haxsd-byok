@@ -1,146 +1,240 @@
 @use "../styles/typography" as type;
 
 .root {
-  --app-region-gap: 16px;
-  --app-toolbar-height: 36px;
+  --app-toolbar-height: 34px;
   --app-page-max-width: 1280px;
-  --app-page-padding: 18px;
-  --app-content-left: calc(var(--app-edge) + var(--app-menu-width) );
-  --app-content-top: calc(var(--window-safe-top) + var(--app-toolbar-height) + 10px );
+  --app-page-padding: var(--app-page-gutter);
+  /* Header, then the navigation bar, then the band that holds the page title. */
+  --app-content-top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-title-band));
   background: var(--vscode-editor-background);
 }
 
-.menuCard {
-  position: fixed;
-  z-index: 10;
-  top: calc(var(--window-menu-top));
-  bottom: var(--app-edge);
-  left: var(--app-edge);
-  width: var(--app-menu-width);
-  overflow: hidden;
+/*
+ * The navigation is a single horizontal bar rather than a vertical sidebar. It is
+ * the change that makes this read as a different application: a sidebar with the
+ * same rows, the same group headings and the same icons in the same order is what
+ * the product it was forked from still shows.
+ */
+.topBar {
+  position: absolute;
+  z-index: 12500;
+  top: calc(var(--window-safe-top) + 5px);
+  right: var(--app-page-gutter);
+  left: var(--app-page-gutter);
+  height: var(--app-nav-height);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  /* The dedicated drag layer in the header owns window dragging; a control that
+     also acts as a drag handle gets dragged and double-click maximizes the window. */
+  -webkit-app-region: no-drag;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .navigation {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.navigationList {
-  --scroll-shadow-bottom-size: 28px;
   flex: 1 1 auto;
-  width: 100%;
-  min-height: 0;
-}
-
-.navigationGroup {
+  min-width: 0;
   display: flex;
   align-items: center;
-  color: var(--vscode-descriptionForeground);
-  /* Group labels are scaffolding, not content: small caps with tracking reads as
-     a section marker instead of another menu row. */
-  font-size: type.$font-size-2xs;
-  font-weight: type.$font-weight-semibold;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 12px 10px 4px;
-  margin-top: 0;
-
-  &:first-child { padding-top: 4px; }
+  gap: 2px;
+  overflow: hidden;
 }
 
-.navigationRow {
-  flex: 0 0 34px;
-  display: flex;
-  align-items: stretch;
-
-  a,
-  button {
-    position: relative;
-    width: 100%;
-    height: 34px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 10px;
-    color: inherit;
-    text-decoration: none;
-    border-radius: var(--oa-radius-sm);
-    transition:
-      background var(--oa-transition-fast),
-      color var(--oa-transition-fast);
-
-    &:hover {
-      background: var(--vscode-list-hoverBackground);
-    }
-
-    &:focus-visible {
-      outline: none;
-      box-shadow: var(--oa-focus-ring);
-    }
-
-    &[aria-current="page"] {
-      color: var(--vscode-list-activeSelectionForeground);
-      background: var(--vscode-list-activeSelectionBackground);
-
-      /* A leading accent bar makes the current page unmistakable without
-         shouting: the tint alone was easy to miss in a long list. */
-      &::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 50%;
-        width: 2px;
-        height: 16px;
-        border-radius: 999px;
-        background: var(--vscode-focusBorder);
-        transform: translateY(-50%);
-      }
-    }
-  }
-
-  button {
-    font: inherit;
-    text-align: left;
-    background: transparent;
-    border: 0;
-  }
-}
-
-.menuStatusTag {
+.navItem {
   flex: 0 0 auto;
-  margin-left: auto;
-  padding: 1px 5px;
+  /* 英文标签明显比中文长；窗口不够宽时应该由标签省略，而不是把整项压成一个字母
+     （真实发生过：英文下最后一项只剩一个 "U"）。 */
+  min-width: 0;
+  max-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
   color: var(--vscode-descriptionForeground);
-  background: color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 28%, transparent);
-  border-radius: 999px;
-  font-size: type.$font-size-2xs;
-  line-height: 1.4;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-md);
+  font: inherit;
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+  letter-spacing: type.$letter-spacing-tight;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--oa-transition-fast),
+    background var(--oa-transition-fast);
 
-  &[data-taken] {
-    color: var(--vscode-testing-iconPassed, #73c991);
-    background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 10%, transparent);
-    border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 28%, transparent);
+  /* 图标与状态永远保留，被压缩的只能是标签。 */
+  > span:not([class]) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  /* The active page is a filled pill in the product's own accent, which is a
+     different signal from a tinted row with a leading bar. */
+  &[aria-current="page"] {
+    color: var(--vscode-foreground);
+    background: var(--oa-accent-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--oa-accent) 45%, transparent);
   }
 }
 
-.menuIndicatorDot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  margin-left: auto;
-  background: #ef4444;
+/* Groups are separated by a hairline: a horizontal bar has no room for the section
+   headings a vertical list could carry. */
+.navDivider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  margin: 0 7px;
+  background: var(--oa-border);
+}
+
+/* A dot plus a word, not a filled badge: two of these sit inside a row that also
+   carries an icon and a label, and a second filled shape next to the active pill
+   made the bar read as two competing selections. */
+.navStatus {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-regular;
+  line-height: 1;
+
+  &::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 50%;
+  }
+
+  &[data-tone="ok"] { color: var(--oa-ok); }
+  &[data-tone="warn"] { color: var(--oa-warn); }
+  &[data-tone="bad"] { color: var(--oa-bad); }
+}
+
+.navDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  background: var(--oa-warn);
   border-radius: 50%;
 }
 
+/* Right end of the navigation bar: the machine's state, on every page. */
+.systemStatus {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 10px 3px 8px;
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  border: 1px solid var(--oa-border);
+  border-radius: 999px;
+}
+
+.statusFact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+
+  strong {
+    color: var(--vscode-foreground);
+    font-family: var(--oa-number-font);
+    font-weight: type.$font-weight-medium;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.statusDivider {
+  width: 1px;
+  height: 12px;
+  background: var(--oa-border);
+}
+
+/* 快捷键要么看得见，要么没人用。 */
+.commandButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 6px 0 4px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  transition: color var(--oa-transition-fast), background var(--oa-transition-fast);
+
+  kbd {
+    padding: 0 4px;
+    background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+    border-radius: var(--oa-radius-xs);
+    font-family: var(--oa-code-font);
+    font-size: type.$font-size-3xs;
+    line-height: 15px;
+  }
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+/* Sits in the title band, right-aligned with the page content, so the navigation bar
+   keeps its full width for the items. */
+.actionRegion {
+  position: absolute;
+  z-index: 12500;
+  top: calc(var(--window-safe-top) + var(--app-nav-height));
+  right: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
+  height: var(--app-title-band);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pageActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:empty {
+    display: none;
+  }
+}
+
 .content {
-  width: calc(100% - var(--app-content-left));
+  width: 100%;
   height: 100%;
   position: relative;
   min-width: 0;
@@ -157,45 +251,23 @@
   min-height: 0;
 }
 
-.actionRegion {
-  position: absolute;
-  z-index: 12500;
-  top: var(--window-safe-top);
-  right: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
-  height: calc(var(--app-content-top) - var(--window-safe-top));
-  display: flex;
-  align-items: center;
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-user-drag: none;
-  // Page actions (e.g. the overview time-range bar and the floating refresh
-  // button) must not act as a window drag handle; the dedicated drag layer in
-  // AppHeader owns window dragging. Otherwise these controls get dragged and
-  // double-click maximizes the window.
-  -webkit-app-region: no-drag;
+/* A page arriving. The cache node is detached from the container while inactive and
+   re-attached when its route comes back, which restarts this animation — so the
+   transition needs no routing code, and it plays under keep-alive exactly as it does
+   on a first visit. */
+.keepAlivePage:global(.active) {
+  animation: page-enter 220ms cubic-bezier(.2, 0, 0, 1);
 }
 
-.actions {
-  height: var(--app-toolbar-height);
-  min-width: var(--app-toolbar-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 6px;
-  gap: 3px;
-  box-shadow: 0 0px 6px 4px var(--vscode-editor-background);
-  transform: translateX(6px);
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
 }
 
-.pageActions {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-
-  &:empty {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .keepAlivePage:global(.active) {
+    animation: none;
   }
 }

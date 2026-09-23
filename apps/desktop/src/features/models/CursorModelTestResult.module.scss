@@ -14,27 +14,31 @@
 }
 
 .idle {
+  padding-left: 0;
   color: var(--vscode-descriptionForeground);
-  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  background: transparent;
+  border-color: transparent;
+}
+
+/* The state colours come from the semantic tokens, not from VS Code names this theme
+   never defines: `--vscode-testing-iconPassed` is not in any palette here, so every
+   success badge silently fell back to a hardcoded green that ignored the theme. */
+.success {
+  color: var(--oa-ok);
+  background: var(--oa-ok-soft);
+  border-color: color-mix(in srgb, var(--oa-ok) 28%, transparent);
 }
 
 .testing {
-  color: var(--vscode-textLink-foreground);
-  background: color-mix(in srgb, var(--vscode-textLink-foreground) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 24%, transparent);
-}
-
-.success {
-  color: var(--vscode-testing-iconPassed, #73c991);
-  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 11%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 28%, transparent);
+  color: var(--oa-accent);
+  background: var(--oa-accent-soft);
+  border-color: color-mix(in srgb, var(--oa-accent) 26%, transparent);
 }
 
 .error {
-  color: var(--vscode-errorForeground, #f48771);
-  background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 28%, transparent);
+  color: var(--oa-bad);
+  background: var(--oa-bad-soft);
+  border-color: color-mix(in srgb, var(--oa-bad) 28%, transparent);
 }
 
 .compact {

@@ -48,3 +48,21 @@
 .openIcon {
   transform: rotate(180deg);
 }
+
+/* A quiet trigger: no border and no label, for the corner of a dense card where a
+   full button would compete with the name it belongs to. */
+.iconTrigger {
+  width: 26px;
+  padding: 0;
+}
+
+.iconTrigger[data-quiet] {
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border-color: transparent;
+
+  &:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+    background: var(--vscode-list-hoverBackground);
+  }
+}

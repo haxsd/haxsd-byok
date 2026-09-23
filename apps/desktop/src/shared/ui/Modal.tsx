@@ -95,7 +95,9 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
       {banner && <div className={styles.banner}>{banner}</div>}
       <ScrollableContent alwaysShowVertical className={styles.body} contentClassName={styles.bodyContent}>{children}</ScrollableContent>
       <footer>
-        <button type="button" className={controls.primary} disabled={busy} onClick={onClose}>{closeLabel}</button>
+        {/* 「取消」是放弃当前编辑的动作，不能和「保存」长得一样：以前两个都套了
+            primary，footer 里最显眼的按钮反而是丢弃改动的那一个。 */}
+        <button type="button" className={controls.secondary} disabled={busy} onClick={onClose}>{closeLabel}</button>
         {secondaryAction}
         {onSubmit && <button ref={submitButton} type="button" className={controls.primary} disabled={busy || submitDisabled} onClick={onSubmit}>{busy ? t("处理中…") : submitLabel}</button>}
       </footer>

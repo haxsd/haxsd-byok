@@ -8,13 +8,12 @@ export type VirtualPageSection = {
   content: ReactNode;
 };
 
-export function VirtualPage({ title, sections, className, contentClassName }: { title?: ReactNode; sections: VirtualPageSection[]; className?: string; contentClassName?: string }) {
+export function VirtualPage({ sections, className, contentClassName }: { sections: VirtualPageSection[]; className?: string; contentClassName?: string }) {
   const getKey = useCallback((section: VirtualPageSection) => section.key, []);
   const estimateSize = useCallback((section: VirtualPageSection) => section.estimatedHeight, []);
-  const renderItem = useCallback((section: VirtualPageSection, { index }: { index: number }) => <section className={styles.section}>
-    {index === 0 && title != null && <div className={styles.title}>{title}</div>}
+  const renderItem = useCallback((section: VirtualPageSection) => <section className={styles.section}>
     {section.content}
-  </section>, [title]);
+  </section>, []);
 
   return <VirtualList
     items={sections}
@@ -22,7 +21,9 @@ export function VirtualPage({ title, sections, className, contentClassName }: { 
     estimateSize={estimateSize}
     renderItem={renderItem}
     overscan={2}
-    itemGap={16}
+    /* The gap lives in the section's own padding so it comes from the theme's
+       rhythm token, which the virtual list's pixel prop could not read. */
+    itemGap={0}
     scrollbarSize={7}
     scrollbarInsetTop="var(--app-content-top)"
     className={[styles.root, "scroll-shadow-top", className].filter(Boolean).join(" ")}

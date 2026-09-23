@@ -1,0 +1,57 @@
+@use "../../styles/typography" as type;
+
+.root {
+  position: relative;
+  display: grid;
+  place-items: center;
+
+  svg {
+    display: block;
+    overflow: visible;
+  }
+
+  circle {
+    fill: none;
+    stroke-linecap: round;
+  }
+}
+
+.track {
+  stroke: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.value {
+  stroke: var(--oa-ok);
+  transition: stroke-dasharray var(--oa-transition-base);
+}
+
+.root[data-tone="warn"] .value { stroke: var(--oa-warn); }
+.root[data-tone="bad"] .value { stroke: var(--oa-bad); }
+.root[data-tone="accent"] .value { stroke: var(--oa-accent); }
+
+.content {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  text-align: center;
+}
+
+.meter {
+  width: 100%;
+  display: flex;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  border-radius: 999px;
+
+  span {
+    display: block;
+    height: 100%;
+    transition: width var(--oa-transition-base);
+  }
+}
+
+.meterEmpty {
+  width: 100%;
+  background: transparent !important;
+}

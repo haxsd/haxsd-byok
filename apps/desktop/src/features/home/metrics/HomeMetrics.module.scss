@@ -1,69 +1,13 @@
 @use "../../../styles/typography" as type;
 
-.scroller {
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-/* The dashboard's headline figures. They were set at 20px — smaller than the
-   page title — so the numbers people open this page for were the quietest thing
-   on it. The figures now lead, the labels are scaffolding beneath them. */
+/* Four tiles rather than one joined strip. The strip read well as a row of numbers
+   and gave the sparkline and the ring nowhere to live, so the page's headline area
+   was also its least informative. */
 .root {
   width: 100%;
-  height: 152px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  overflow: hidden;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--vscode-foreground) 5%, transparent) 0,
-      transparent 72px
-    ),
-    var(--vscode-editorWidget-background);
-  border: 1px solid var(--vscode-sideBar-border);
-  border-radius: var(--oa-card-radius);
-  box-shadow: var(--oa-shadow-card);
-  font-family: var(--oa-metrics-font);
-}
-
-.metric {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 18px;
-
-  /* A gradient hairline divides the figures without drawing a hard grid. */
-  & + &::before {
-    content: "";
-    position: absolute;
-    top: 18px;
-    bottom: 18px;
-    left: 0;
-    width: 1px;
-    background: linear-gradient(
-      180deg,
-      transparent,
-      color-mix(in srgb, var(--vscode-foreground) 14%, transparent) 22%,
-      color-mix(in srgb, var(--vscode-foreground) 14%, transparent) 78%,
-      transparent
-    );
-  }
-}
-
-.label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-2xs;
-  font-weight: type.$font-weight-semibold;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  text-transform: uppercase;
+  gap: var(--oa-space-3);
 }
 
 .info {
@@ -73,12 +17,13 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  color: inherit;
+  color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 0;
   border-radius: var(--oa-radius-xs);
+  cursor: pointer;
+  opacity: 0.6;
   transition: color var(--oa-transition-fast), opacity var(--oa-transition-fast);
-  opacity: 0.55;
 
   &:hover,
   &:focus-visible {
@@ -92,54 +37,28 @@
   }
 }
 
-.body {
-  min-width: 0;
-}
-
-.value {
-  overflow: hidden;
+/* The ring's own number repeats the tile's figure, so it carries the percentage in
+   a size that fits inside the stroke instead of duplicating the headline. */
+.ringValue {
   color: var(--vscode-foreground);
   font-family: var(--oa-number-font);
-  font-size: type.$font-size-3xl;
-  font-weight: type.$font-weight-medium;
-  letter-spacing: type.$letter-spacing-tight;
-  /* Figures share one digit width so a changing value does not jitter. */
-  font-variant-numeric: tabular-nums;
-  line-height: 1.05;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.secondary {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-  color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-2xs;
-  line-height: type.$line-height-snug;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-
-  /* A small colour dot carries the "is this good or bad" signal that plain grey
-     text could not. */
-  &[data-tone="good"]::before,
-  &[data-tone="bad"]::before,
-  &[data-tone="warn"]::before {
-    content: "";
-    flex: 0 0 auto;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
-  &[data-tone="good"] { color: var(--vscode-testing-iconPassed, #3fb950); }
-  &[data-tone="bad"] { color: var(--vscode-errorForeground, #f48771); }
-  &[data-tone="warn"] { color: var(--vscode-editorWarning-foreground, #d29922); }
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .tooltipText {
   white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .root {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

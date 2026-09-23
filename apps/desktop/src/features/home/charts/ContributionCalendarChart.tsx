@@ -1,8 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { init, Rect, type ElementEvent } from "zrender";
 import type { Locale } from "../../../i18n/runtime";
 import { useI18n } from "../../../i18n/store";
-import { chartPalette } from "./chartTheme";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
 import styles from "./ContributionCalendarChart.module.scss";
 
@@ -11,70 +9,46 @@ export type ContributionDay = {
   tokens: number;
 };
 
-type ContributionCalendarChartProps = {
-  data: ContributionDay[];
-};
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const CELL_GAP = 3;
+/** Cell edge in CSS pixels: the grid used to stretch its cells to the card width,
+ *  which drew 13px squares across a 1280px page. It now grows only until the squares
+ *  are comfortable to point at, then stops. */
+const MIN_CELL_SIZE = 9;
+const MAX_CELL_SIZE = 17;
+const WEEKDAY_COLUMN = 30;
+const ROUNDED = 2;
 
-type CalendarCell = ContributionDay & {
+type Cell = ContributionDay & {
   column: number;
   row: number;
   level: number;
 };
 
-type CellExtra = CalendarCell & {
-  kind: "calendar-cell";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-type AxisLabel = {
-  key: string;
-  text: string;
-  left: number;
-};
-
-/* Level colours come from the theme: the calendar used GitHub's green ramp, which
-   was the only green surface left once the rest of the interface moved to the
-   accent family. */
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const CALENDAR_CONFIG = {
-  cellAspectRatio: 0.9,
-  cellGap: 3,
-  resizeTransitionMs: 180,
-  rowCount: 7,
-  axisLabelGap: 8,
-  axisLabelWidth: 28,
-} as const;
 function parseDate(date: string) {
   return new Date(`${date}T00:00:00Z`);
 }
 
+/** Monday-first weekday index, which is how the calendar is read in both locales. */
 function mondayIndex(date: Date) {
   return (date.getUTCDay() + 6) % 7;
 }
 
-function cellOffset(index: number, cellSize: number) {
-  return index * (cellSize + CALENDAR_CONFIG.cellGap);
-}
-
-function isCellExtra(value: unknown): value is CellExtra {
-  return typeof value === "object" && value !== null && (value as CellExtra).kind === "calendar-cell";
-}
-
-function buildCalendarLayout(data: ContributionDay[], locale: Locale) {
+function buildCalendar(data: ContributionDay[], locale: Locale) {
   if (data.length === 0) return null;
-
   const monthFormatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
   const maximum = Math.max(1, ...data.map(({ tokens }) => tokens));
   const firstDate = parseDate(data[0].date);
-  const calendarStart = new Date(firstDate.getTime() - mondayIndex(firstDate) * DAY_IN_MS);
-  const cells: CalendarCell[] = data.map((day) => {
+  const gridStart = new Date(firstDate.getTime() - mondayIndex(firstDate) * DAY_IN_MS);
+  const cells: Cell[] = data.map((day) => {
     const date = parseDate(day.date);
-    const daysFromStart = Math.round((date.getTime() - calendarStart.getTime()) / DAY_IN_MS);
-    const level = day.tokens === 0 ? 0 : Math.max(1, Math.ceil((day.tokens / maximum) * 4));
-    return { ...day, column: Math.floor(daysFromStart / 7), row: mondayIndex(date), level };
+    const daysFromStart = Math.round((date.getTime() - gridStart.getTime()) / DAY_IN_MS);
+    return {
+      ...day,
+      column: Math.floor(daysFromStart / 7),
+      row: mondayIndex(date),
+      level: day.tokens === 0 ? 0 : Math.max(1, Math.ceil((day.tokens / maximum) * 4)),
+    };
   });
   const columnCount = cells.at(-1)!.column + 1;
   const monthTicks = cells.reduce<Array<{ key: string; text: string; column: number }>>((ticks, cell) => {
@@ -86,180 +60,122 @@ function buildCalendarLayout(data: ContributionDay[], locale: Locale) {
   return { cells, columnCount, monthTicks };
 }
 
-export function ContributionCalendarChart({ data }: ContributionCalendarChartProps) {
+/**
+ * 过去一年的用量热力图。
+ *
+ * 画在 SVG 而不是 canvas 上：一格一个 <rect> 本来就是可聚焦、可悬停、可点击的元素，
+ * 而 canvas 版本必须手工把鼠标坐标映射回格子、自己读主题色、自己做尺寸重算。
+ * 371 个 rect 在一个桌面窗口里没有任何性能问题，换来的是一条真实的交互路径。
+ */
+export function ContributionCalendarChart({ data, onSelectDay }: {
+  data: ContributionDay[];
+  /** 点击某一天把页面范围收窄到那一天。 */
+  onSelectDay?: (date: string) => void;
+}) {
   const { locale } = useI18n();
-  const palette = chartPalette();
-  const levelColors = palette.heat;
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const layoutRef = useRef<ReturnType<typeof buildCalendarLayout>>(null);
-  const scheduleDrawRef = useRef<() => void>(() => undefined);
-  const { show: showTooltip, hide: hideTooltip } = useTooltip();
-  const [axisLabels, setAxisLabels] = useState<AxisLabel[]>([]);
-  const layout = useMemo(() => buildCalendarLayout(data, locale), [data, locale]);
-  const tokenFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
-  layoutRef.current = layout;
+  const { show, hide } = useTooltip();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const [cellSize, setCellSize] = useState(MIN_CELL_SIZE);
+  const layout = useMemo(() => buildCalendar(data, locale), [data, locale]);
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+  const weekdayFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }), [locale]);
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }), [locale]);
+  const columnCount = layout?.columnCount ?? 0;
 
+  // The cell is sized from the space the card actually has: small enough for a year
+  // to fit without a horizontal scrollbar, and capped so the squares stay something
+  // a person can aim at.
   useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    const node = canvasRef.current;
-    if (!scroller || !node) return;
-
-    const chart = init(node, {
-      renderer: "canvas",
-      width: 1,
-      height: 1,
-      useDirtyRect: true,
-    });
-
-    const handleMouseOver = (event: ElementEvent) => {
-      const extra = event.target?.extra;
-      if (!isCellExtra(extra)) return;
-      const anchor: TooltipAnchor = {
-        contextElement: node,
-        getBoundingClientRect: () => {
-          const bounds = node.getBoundingClientRect();
-          return new DOMRect(bounds.left + extra.x, bounds.top + extra.y, extra.width, extra.height);
-        },
-      };
-      showTooltip(anchor, undefined, <div className={styles.tooltipContent}>
-        <strong>{extra.date}</strong>
-        <span>{t("Token 用量：{tokens}", { tokens: tokenFormatter.format(extra.tokens) })}</span>
-      </div>);
+    const node = frameRef.current;
+    if (!node || columnCount === 0) return;
+    const update = () => {
+      const available = node.clientWidth - WEEKDAY_COLUMN;
+      const size = Math.floor((available - (columnCount - 1) * CELL_GAP) / columnCount);
+      setCellSize(Math.max(MIN_CELL_SIZE, Math.min(MAX_CELL_SIZE, size)));
     };
-    const handleMouseOut = (event: ElementEvent) => {
-      if (isCellExtra(event.target?.extra)) hideTooltip();
-    };
-
-    chart.on("mouseover", handleMouseOver);
-    chart.on("mouseout", handleMouseOut);
-
-    const cellRects = new Map<string, Rect>();
-    let drawFrame = 0;
-    let lastAvailableWidth = -1;
-    let lastCanvasHeight = -1;
-    let lastLayout: typeof layout = null;
-    const draw = () => {
-      const currentLayout = layoutRef.current;
-      if (!currentLayout) return;
-      const availableWidth = Math.floor(scroller.getBoundingClientRect().width);
-      if (availableWidth <= 0 || (availableWidth === lastAvailableWidth && currentLayout === lastLayout)) return;
-      const gapsWidth = (currentLayout.columnCount - 1) * CALENDAR_CONFIG.cellGap;
-      const cellWidth = Math.max(0, (availableWidth - gapsWidth) / currentLayout.columnCount);
-      const cellHeight = cellWidth / CALENDAR_CONFIG.cellAspectRatio;
-      const width = availableWidth;
-      const height = CALENDAR_CONFIG.rowCount * cellHeight
-        + (CALENDAR_CONFIG.rowCount - 1) * CALENDAR_CONFIG.cellGap;
-
-      let lastLabelEnd = -Infinity;
-      const nextAxisLabels = currentLayout.monthTicks.flatMap((tick) => {
-        const left = Math.min(
-          cellOffset(tick.column, cellWidth),
-          availableWidth - CALENDAR_CONFIG.axisLabelWidth,
-        );
-        if (left < lastLabelEnd + CALENDAR_CONFIG.axisLabelGap) return [];
-        lastLabelEnd = left + CALENDAR_CONFIG.axisLabelWidth;
-        return [{ ...tick, left }];
-      });
-      setAxisLabels(nextAxisLabels);
-
-      if (availableWidth !== lastAvailableWidth || height !== lastCanvasHeight) {
-        node.style.width = "100%";
-        node.style.height = `${height}px`;
-        chart.resize({ width, height });
-        lastAvailableWidth = availableWidth;
-        lastCanvasHeight = height;
-      }
-      lastLayout = currentLayout;
-
-      const currentDates = new Set(currentLayout.cells.map((cell) => cell.date));
-      for (const [date, rect] of cellRects) {
-        if (currentDates.has(date)) continue;
-        chart.remove(rect);
-        cellRects.delete(date);
-      }
-
-      for (const cell of currentLayout.cells) {
-        const x = cellOffset(cell.column, cellWidth);
-        const y = cellOffset(cell.row, cellHeight);
-        const shape = {
-          x,
-          y,
-          width: cellWidth,
-          height: cellHeight,
-          r: Math.min(3, Math.min(cellWidth, cellHeight) / 4),
-        };
-        const extra = {
-          ...cell,
-          kind: "calendar-cell" as const,
-          x,
-          y,
-          width: cellWidth,
-          height: cellHeight,
-        } satisfies CellExtra;
-        const current = cellRects.get(cell.date);
-
-        if (current) {
-          current.extra = extra;
-          current.stopAnimation();
-          current.animateTo(
-            { shape, style: { fill: levelColors[cell.level] } },
-            { duration: CALENDAR_CONFIG.resizeTransitionMs, easing: "cubicOut" },
-          );
-          continue;
-        }
-
-        const rect = new Rect({
-          shape,
-          style: {
-            fill: levelColors[cell.level],
-            stroke: palette.grid,
-            lineWidth: 1,
-          },
-          cursor: "default",
-          extra,
-        });
-        cellRects.set(cell.date, rect);
-        chart.add(rect);
-      }
-      hideTooltip();
-    };
-    const scheduleDraw = () => {
-      window.cancelAnimationFrame(drawFrame);
-      drawFrame = window.requestAnimationFrame(draw);
-    };
-    scheduleDrawRef.current = scheduleDraw;
-    const observer = new ResizeObserver(scheduleDraw);
-    observer.observe(scroller);
-    scheduleDraw();
-
-    return () => {
-      observer.disconnect();
-      window.cancelAnimationFrame(drawFrame);
-      scheduleDrawRef.current = () => undefined;
-      chart.dispose();
-    };
-  }, [layout !== null]);
-
-  useLayoutEffect(() => {
-    scheduleDrawRef.current();
-  }, [layout]);
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    update();
+    return () => observer.disconnect();
+  }, [columnCount]);
 
   if (!layout) return null;
+  const width = columnCount * (cellSize + CELL_GAP) - CELL_GAP;
+  const height = 7 * (cellSize + CELL_GAP) - CELL_GAP;
+  const label = (cell: Cell) => `${dateFormatter.format(parseDate(cell.date))} · ${t("Token 用量：{tokens}", { tokens: numberFormatter.format(cell.tokens) })}`;
 
-  return (
-    <section className={styles.root} aria-label={t("过去一年的 Token 用量")}>
-      <div ref={scrollerRef} className={styles.scroller}>
-        <div
-          ref={canvasRef}
-          className={styles.canvas}
-          role="img"
-          aria-label={t("过去一年的 Token 用量日历")}
-        />
-        <div className={styles.axis} aria-hidden="true">
-          {axisLabels.map((label) => <span key={label.key} style={{ left: label.left }}>{label.text}</span>)}
-        </div>
+  const revealTooltip = (element: SVGRectElement, cell: Cell) => {
+    const anchor: TooltipAnchor = {
+      contextElement: element,
+      getBoundingClientRect: () => element.getBoundingClientRect(),
+    };
+    show(anchor, undefined, <div className={styles.tooltipContent}>
+      <strong>{dateFormatter.format(parseDate(cell.date))}</strong>
+      <span>{t("Token 用量：{tokens}", { tokens: numberFormatter.format(cell.tokens) })}</span>
+      {onSelectDay && <span className={styles.tooltipHint}>{t("点击查看这一天的调用")}</span>}
+    </div>);
+  };
+
+  return <div className={styles.root}>
+    <div ref={frameRef} className={styles.frame}>
+      <div className={styles.weekdays} aria-hidden="true" style={{ height }}>
+        {[1, 3, 5].map((row) => <span key={row} style={{ top: row * (cellSize + CELL_GAP) - 5 }}>
+          {weekdayFormatter.format(new Date(Date.UTC(2024, 0, 1 + row)))}
+        </span>)}
       </div>
-    </section>
-  );
+      <svg
+        className={styles.grid}
+        width={width}
+        height={height + 16}
+        viewBox={`0 0 ${width} ${height + 16}`}
+        /* role="img" 会把所有后代从无障碍树里摘掉（img 的子节点被视为装饰），
+           而每一格是可以 Tab 到、可以按回车选中的按钮——那样键盘用户会停在
+           365 个没有任何名字的元素上。可交互时用 group，让每一格自己说话。 */
+        role={onSelectDay ? "group" : "img"}
+        aria-label={t("过去一年的 Token 用量日历")}
+      >
+        {layout.monthTicks.map((tick) => <text
+          key={tick.key}
+          className={styles.month}
+          x={tick.column * (cellSize + CELL_GAP)}
+          y={9}
+        >{tick.text}</text>)}
+        <g transform="translate(0 16)">
+          {layout.cells.map((cell) => <rect
+            key={cell.date}
+            className={styles.cell}
+            data-level={cell.level}
+            data-dim={cell.tokens === 0 || undefined}
+            data-focused={focused === cell.date || undefined}
+            x={cell.column * (cellSize + CELL_GAP)}
+            y={cell.row * (cellSize + CELL_GAP)}
+            width={cellSize}
+            height={cellSize}
+            rx={ROUNDED}
+            tabIndex={onSelectDay ? 0 : undefined}
+            role={onSelectDay ? "button" : undefined}
+            aria-label={label(cell)}
+            onMouseEnter={(event) => revealTooltip(event.currentTarget, cell)}
+            onMouseLeave={hide}
+            onFocus={(event) => { setFocused(cell.date); revealTooltip(event.currentTarget, cell); }}
+            onBlur={() => { setFocused(null); hide(); }}
+            onClick={onSelectDay ? () => onSelectDay(cell.date) : undefined}
+            onKeyDown={onSelectDay ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelectDay(cell.date);
+              }
+            } : undefined}
+          />)}
+        </g>
+      </svg>
+    </div>
+    <div className={styles.legend}>
+      <span>{t("少")}</span>
+      {[0, 1, 2, 3, 4].map((level) => <span key={level} className={styles.legendCell} data-level={level} />)}
+      <span>{t("多")}</span>
+      {onSelectDay && <span className={styles.legendHint}>{t("点一天看当天明细")}</span>}
+    </div>
+  </div>;
 }

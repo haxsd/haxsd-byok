@@ -2,154 +2,177 @@
 
 .page {
   display: grid;
-  gap: 16px;
+  gap: var(--oa-section-gap);
 }
 
-.takeoverActions {
+/* ---------- 模型库的工具条 ---------- */
+
+.modelToolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
+  gap: var(--oa-space-2);
+  padding: var(--oa-space-3) var(--oa-card-padding);
 }
 
-.takeoverStatus {
-  min-width: 39px;
+.modelSearch {
+  width: 260px;
+  flex: 0 1 260px;
+}
+
+/* 批量测试不是主操作，但它是这个页面最常用的动作：所有模型的连通性一次问清。 */
+.batchTest,
+.addModel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
   color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-xs;
-  text-align: right;
+  background: transparent;
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-medium;
   white-space: nowrap;
-}
+  transition:
+    color var(--oa-transition-fast),
+    background var(--oa-transition-fast),
+    border-color var(--oa-transition-fast);
 
-.groupActions {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  border-radius: var(--oa-radius-sm);
-
-  button {
-    height: 25px;
-    padding: 0 8px;
-    color: var(--vscode-descriptionForeground);
-    background: transparent;
-    border: 0;
-    border-right: 1px solid var(--vscode-sideBar-border);
-    font-size: type.$font-size-xs;
-    white-space: nowrap;
-
-    &:last-child { border-right: 0; }
-    &:hover:not(:disabled) { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
-    &[aria-pressed="true"] { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
-    &:disabled { opacity: 0.5; cursor: not-allowed; }
-  }
-}
-
-.gateActions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.gate {
-  min-height: 250px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  color: var(--vscode-descriptionForeground);
-  text-align: center;
-  border: 1px dashed var(--vscode-sideBar-border);
-  border-radius: var(--oa-overlay-radius);
-  strong {
+  &:hover:not(:disabled) {
     color: var(--vscode-foreground);
-    font-size: type.$font-size-base;
+    border-color: var(--oa-border-strong);
   }
-  span {
-    max-width: 440px;
-    font-size: type.$font-size-xs;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
   }
-  button {
-    margin-top: 6px;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
+
+.addModel {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-background);
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-semibold;
+
+  &:hover:not(:disabled) {
+    color: var(--vscode-button-foreground);
+    background: color-mix(in srgb, var(--vscode-button-background) 88%, white);
+    border-color: transparent;
+  }
+}
+
+/* ---------- 模型卡片 ---------- */
 
 .modelGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 12px;
-
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: var(--oa-space-3);
 }
+
 .modelGroups {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding-top: 10px;
+  gap: var(--oa-space-3);
 }
+
 .groupCard {
-  padding: 4px 12px 8px;
+  padding: 2px var(--oa-space-3) var(--oa-space-2);
 }
+
 .groupHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--oa-space-2);
 }
-.groupSettings {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 2px;
-  color: var(--vscode-descriptionForeground);
-  background: none;
-  border: none;
-  font-size: type.$font-size-xs;
-  white-space: nowrap;
-  cursor: pointer;
 
-  &:hover { color: var(--vscode-foreground); }
-}
-.groupChevron {
-  display: flex;
-  align-items: center;
-  padding: 4px 0;
-  color: var(--vscode-foreground);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
 .groupToggle {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 2px;
+  gap: var(--oa-space-2);
+  padding: var(--oa-space-2) 2px;
   color: var(--vscode-foreground);
+  text-align: left;
   background: none;
   border: none;
-  font-size: type.$font-size-base;
+  font: inherit;
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
   cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
 }
+
+.groupChevron {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--vscode-descriptionForeground);
+  transition: transform var(--oa-transition-base);
+
+  &[data-open="true"] { transform: rotate(90deg); }
+}
+
 .groupLabel {
-  flex: 1;
   overflow: hidden;
-  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.groupCount {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  border-radius: 999px;
+  font-size: type.$font-size-3xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.groupSettings {
+  flex: 0 0 auto;
+  padding: 4px 2px;
+  color: var(--vscode-descriptionForeground);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { color: var(--vscode-foreground); }
+}
+
 .modelList {
   display: flex;
   flex-direction: column;
 }
+
 .modelRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(0, 1.6fr) auto auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 12px;
-  padding: 10px 2px;
-  border-top: 1px solid var(--vscode-sideBar-border);
+  gap: var(--oa-space-2) var(--oa-space-3);
+  padding: var(--oa-space-2) 2px;
+  border-top: 1px solid var(--oa-border);
 }
+
 .modelRowName {
   min-width: 0;
-  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -160,38 +183,51 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .modelRowNameText {
     color: var(--vscode-foreground);
-    font-size: type.$font-size-base;
+    font-size: type.$font-size-xs;
+    font-weight: type.$font-weight-medium;
   }
+
   .modelRowModelId {
     color: var(--vscode-descriptionForeground);
     font-size: type.$font-size-2xs;
   }
 }
+
+.modelRowChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
 .modelCard {
   position: relative;
-  padding: 16px;
+  padding: var(--oa-card-padding);
 }
+
 .modelCardContent {
-  min-height: 120px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
+
 .modelCardTop {
   min-width: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--oa-space-2);
 }
+
 .modelCardName {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 
   .modelCardNameText,
   .modelCardModelId {
@@ -199,53 +235,149 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .modelCardNameText {
     color: var(--vscode-foreground);
     font-size: type.$font-size-base;
+    font-weight: type.$font-weight-medium;
+    letter-spacing: type.$letter-spacing-tight;
   }
+
   .modelCardModelId {
     color: var(--vscode-descriptionForeground);
+    font-family: var(--oa-code-font);
     font-size: type.$font-size-2xs;
   }
 }
-.modelTypeBadge {
-  flex: 0 0 auto;
+
+/* 协议与容量：决定一个模型能接什么活的三个数字，从编辑器里搬到了卡片上。 */
+.modelCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.providerBadge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
   color: var(--vscode-foreground);
-  border: 1px solid var(--vscode-sideBar-border);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
   border-radius: 999px;
-  font-size: type.$font-size-2xs;
+  font-size: type.$font-size-3xs;
+  white-space: nowrap;
+
+  > div {
+    width: 0.95em;
+    height: 0.95em;
+  }
 }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--oa-border);
+  border-radius: 999px;
+  font-size: type.$font-size-3xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  &[data-tone="accent"] {
+    color: var(--oa-accent);
+    background: var(--oa-accent-soft);
+    border-color: color-mix(in srgb, var(--oa-accent) 30%, transparent);
+  }
+}
+
 .modelCardTest {
-  min-height: 31px;
+  min-height: 32px;
   display: flex;
   align-items: center;
 }
+
 .modelCardActions {
   display: flex;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  gap: var(--oa-space-2);
 
-  // 空间不足时按钮收缩显示省略号,而不是换行。
-  > button {
-    min-width: 0;
+  .testButton,
+  .secondaryAction {
     flex: 0 1 auto;
+    min-width: 0;
   }
 }
+
+.testButton,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  border: 1px solid transparent;
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-medium;
+  white-space: nowrap;
+  transition: background var(--oa-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.secondaryAction {
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border-color: var(--oa-border);
+
+  &:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+    background: transparent;
+    border-color: var(--oa-border-strong);
+  }
+}
+
+.groupTag {
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .deleteButton:hover {
   color: var(--vscode-errorForeground, #f48771);
 }
+
 .sortHandle {
   position: absolute;
   top: 8px;
   left: 8px;
   z-index: 1;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -262,41 +394,137 @@
   .modelCard:hover & {
     color: var(--vscode-foreground);
     background: var(--vscode-list-hoverBackground);
-    border-color: var(--vscode-sideBar-border);
+    border-color: var(--oa-border);
     opacity: 1;
   }
+
   &:active {
     cursor: grabbing;
   }
+
   &:disabled {
     cursor: not-allowed;
     opacity: 0.3;
   }
 }
+
 .sortGhost {
   opacity: 0.4;
 }
+
 .sortChosen {
   border-color: var(--vscode-focusBorder);
 }
+
 .sortDragging {
   cursor: grabbing;
 }
+
+/* ---------- Cursor 页：证书与模型摘要 ---------- */
+
+.caBody {
+  display: grid;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
+}
+
+.caFact {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--oa-space-3);
+
+  > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
+  small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
+}
+
+/* 安装命令按代码排版：它要被复制到终端里，不是给人读的句子。 */
+.caCommand {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
+  padding: var(--oa-space-2) var(--oa-space-2) var(--oa-space-2) var(--oa-space-3);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: var(--oa-radius-sm);
+
+  code {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--vscode-textLink-foreground);
+    font-family: var(--oa-code-font);
+    font-size: type.$font-size-2xs;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  button {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--vscode-descriptionForeground);
+    background: transparent;
+    border: 0;
+    border-radius: var(--oa-radius-xs);
+
+    &:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: var(--oa-focus-ring);
+    }
+  }
+}
+
+.modelSummary {
+  display: grid;
+  gap: var(--oa-space-2);
+  padding: var(--oa-card-padding);
+}
+
+.modelCount {
+  color: var(--vscode-foreground);
+  font-family: var(--oa-number-font);
+  font-size: type.$font-size-lg;
+  font-variant-numeric: tabular-nums;
+}
+
+.modelNames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 3px 9px;
+    color: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+    border-radius: 999px;
+    font-size: type.$font-size-2xs;
+  }
+}
+
+.modelSummary small {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
+/* ---------- 编辑器与分组设置 ---------- */
 .editor {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--oa-space-4);
 }
 
-/* 冲突说明：这一页当前唯一需要用户处理的事，所以给它一块底色，而不是混在普通说明里。 */
-.foreignWarning {
-  padding: 10px 12px;
-  color: var(--vscode-foreground);
-  background: var(--oa-warn-soft);
-  border-left: 3px solid var(--oa-warn);
-  border-radius: var(--oa-radius-sm);
-  line-height: 1.5;
-}
 .command {
   margin: 0;
   padding: 10px;
@@ -307,36 +535,42 @@
   white-space: pre-wrap;
   user-select: text;
 }
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
+
 .fullWidth {
   width: 100%;
   grid-column: 1 / -1;
 }
+
 .discoverButton {
   min-height: 34px;
   height: 34px;
   flex: 0 0 auto;
 }
+
 .urlField {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
+
 .switches {
   display: flex;
   flex-direction: column;
   gap: 9px;
+
   label {
     min-width: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--oa-space-2);
     color: var(--vscode-descriptionForeground);
     font-size: type.$font-size-xs;
   }
@@ -345,15 +579,25 @@
 .jsonOption {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--oa-space-2);
 
   > label {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--oa-space-2);
     color: var(--vscode-descriptionForeground);
     font-size: type.$font-size-xs;
+  }
+}
+
+@media (max-width: 900px) {
+  .modelRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .modelRowChips {
+    grid-column: 1 / -1;
   }
 }
 
@@ -361,6 +605,7 @@
   .grid {
     grid-template-columns: 1fr;
   }
+
   .fullWidth {
     grid-column: auto;
   }

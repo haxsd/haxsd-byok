@@ -3,11 +3,11 @@
 .content,
 .fields {
   display: grid;
-  gap: 14px;
+  gap: var(--oa-space-3);
 }
 
 .content {
-  padding: 16px;
+  padding: var(--oa-card-padding);
 }
 
 .sectionTitle {

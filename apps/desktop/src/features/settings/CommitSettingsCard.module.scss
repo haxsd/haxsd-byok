@@ -1,7 +1,7 @@
 @use "../../styles/typography" as type;
 
 .content {
-  padding: 16px;
+  padding: var(--oa-card-padding);
 }
 
 .row {
@@ -61,7 +61,7 @@
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, var(--vscode-sideBar-border));
   border-radius: var(--oa-radius-sm);
-  font-family: var(--vscode-editor-font-family, monospace);
+  font-family: var(--oa-code-font);
   font-size: type.$font-size-xs;
   line-height: 1.6;
   resize: none;

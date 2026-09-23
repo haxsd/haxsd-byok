@@ -3,14 +3,14 @@
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
 
 .methodCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: var(--oa-space-2);
+  padding: var(--oa-card-padding);
 
   > span {
     color: var(--vscode-descriptionForeground);
@@ -29,7 +29,7 @@
 .deviceCode {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--oa-space-2);
 
   small {
     color: var(--vscode-descriptionForeground);
@@ -42,7 +42,7 @@
     background: var(--vscode-textCodeBlock-background);
     border: 1px solid var(--vscode-sideBar-border);
     border-radius: var(--oa-radius-xs);
-    font-family: var(--vscode-editor-font-family);
+    font-family: var(--oa-code-font);
     letter-spacing: 0.08em;
     cursor: pointer;
   }
@@ -146,7 +146,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--oa-space-3);
   padding: 12px;
 
   > div:first-child {
@@ -165,7 +165,7 @@
 .actionBody {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
 
 .actionDescription {
@@ -183,7 +183,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--oa-space-3);
   padding: 12px;
 }
 
@@ -200,11 +200,11 @@
 }
 
 .ready {
-  color: var(--vscode-testing-iconPassed, #73c991) !important;
+  color: var(--oa-ok) !important;
 }
 
 .cooling {
-  color: var(--vscode-editorWarning-foreground, #cca700) !important;
+  color: var(--oa-warn) !important;
 }
 
 .invalid {
@@ -212,7 +212,7 @@
 }
 
 .success {
-  color: var(--vscode-testing-iconPassed, #73c991);
+  color: var(--oa-ok);
   font-size: type.$font-size-xs;
 }
 

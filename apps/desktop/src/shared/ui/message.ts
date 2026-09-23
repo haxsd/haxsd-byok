@@ -1,13 +1,19 @@
 const MIN_VISIBLE_MS = 300;
 const EXIT_MS = 200;
+/** 失败信息停留更久：错误通常比确认信息更长，读完需要时间。 */
+const ERROR_DURATION_MS = 6000;
+
+export type MessageTone = "info" | "error";
 
 export type MessageOptions = {
   duration?: number;
+  tone?: MessageTone;
 };
 
 export type MessageItem = {
   id: string;
   content: string;
+  tone: MessageTone;
   leaving: boolean;
 };
 
@@ -18,6 +24,8 @@ type MessageSnapshot = {
 type MessageApi = ((content: unknown, options?: MessageOptions) => string | null) & {
   remove: (id: string) => void;
   clear: () => void;
+  /** 失败信息：红色、带图标、停留更久。 */
+  error: (cause: unknown, options?: MessageOptions) => string | null;
 };
 
 let seed = 0;
@@ -70,7 +78,7 @@ function showMessage(content: unknown, options: MessageOptions = {}) {
   const duration = Number.isFinite(options.duration) ? Math.max(0, options.duration!) : 2400;
   const id = `message-${Date.now()}-${seed += 1}`;
   shownAt = Date.now();
-  update({ id, content: normalizedContent, leaving: false });
+  update({ id, content: normalizedContent, tone: options.tone ?? "info", leaving: false });
 
   if (duration > 0) {
     dismissTimer = window.setTimeout(() => beginExit(id), Math.max(duration, MIN_VISIBLE_MS));
@@ -84,6 +92,10 @@ message.clear = () => {
   const id = snapshot.current?.id;
   if (id) beginExit(id, true);
 };
+message.error = (cause, options = {}) => showMessage(
+  cause instanceof Error ? cause.message : String(cause),
+  { tone: "error", duration: ERROR_DURATION_MS, ...options },
+);
 
 export function subscribeToMessages(listener: () => void) {
   listeners.add(listener);

@@ -3,13 +3,15 @@
 .trigger,
 .combo input {
   width: 100%;
-  height: 34px;
+  height: 30px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: var(--oa-radius-sm);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
   outline: none;
   font-size: type.$font-size-xs;
+  transition: border-color var(--oa-transition-fast);
+
   &:focus {
     border-color: var(--vscode-focusBorder);
   }

@@ -162,7 +162,7 @@ export function PricingSettingsCard() {
         message(t("定价设置已保存"));
       }
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setSaving(false);
     }

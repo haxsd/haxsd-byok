@@ -1,0 +1,60 @@
+@use "../../../styles/typography" as type;
+
+.root {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--oa-space-1) 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(60px, 1fr) auto;
+  align-items: center;
+  gap: var(--oa-space-3);
+  padding: var(--oa-space-2) var(--oa-card-padding);
+}
+
+.name {
+  overflow: hidden;
+  font-size: type.$font-size-xs;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share {
+  min-width: 0;
+}
+
+.value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--oa-space-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  strong {
+    font-family: var(--oa-number-font);
+    font-size: type.$font-size-xs;
+    font-weight: type.$font-weight-medium;
+  }
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
+}
+
+.note {
+  padding: var(--oa-space-2) var(--oa-card-padding) var(--oa-space-1);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--oa-space-4) var(--oa-card-padding);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}

@@ -1,34 +1,103 @@
 @use "../../styles/typography" as type;
 
+.pageContent {
+  height: 100%;
+}
+
+/* 设置页很长，所以它自带一条导航：左边是分组清单，右边是滚动内容。
+   分组与实际卡片一一对应，高亮由卡片是否进入视口决定，不靠滚动距离估算。 */
 .page {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
   display: grid;
-  gap: var(--oa-section-gap);
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: var(--oa-space-5);
 }
 
-.settingRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px;
+.rail {
+  align-self: start;
+  display: grid;
+  gap: var(--oa-space-4);
+  padding-top: 2px;
+}
 
-  div {
-    display: grid;
-    gap: 5px;
+.railGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.railGroupLabel {
+  padding: 0 8px 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.railItem {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--vscode-descriptionForeground);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-xs;
+  cursor: pointer;
+  transition:
+    color var(--oa-transition-fast),
+    background var(--oa-transition-fast);
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
   }
 
-  small {
-    color: var(--vscode-descriptionForeground);
-    font-size: type.$font-size-xs;
+  &[data-active] {
+    color: var(--vscode-foreground);
+    background: var(--oa-accent-soft);
+    box-shadow: inset 2px 0 0 var(--oa-accent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
   }
 }
 
+.content {
+  height: 100%;
+  min-width: 0;
+}
+
+.contentInner {
+  display: grid;
+  gap: var(--oa-space-4);
+  padding-bottom: var(--oa-space-5);
+}
+
+.cards {
+  display: grid;
+  gap: var(--oa-space-3);
+
+  /* 卡片落位时留出一点边距，跳转后标题不会被压在内容顶端。 */
+  > div {
+    scroll-margin-top: var(--oa-space-4);
+  }
+}
+
+.settingRow,
 .storageRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 16px;
+  gap: var(--oa-space-5);
+  padding: var(--oa-card-padding);
 
   > div {
     display: grid;
@@ -42,36 +111,26 @@
 }
 
 .textButton {
-  padding: 4px;
+  flex: 0 0 auto;
+  padding: 4px 6px;
   color: var(--vscode-textLink-foreground);
   background: transparent;
   border: 0;
+  border-radius: var(--oa-radius-xs);
+  font: inherit;
+  font-size: type.$font-size-xs;
 
-  &:hover { color: var(--vscode-textLink-activeForeground); }
-}
+  &:hover { color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); }
 
-.importRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px;
-
-  > div {
-    display: grid;
-    gap: 5px;
-  }
-
-  small {
-    color: var(--vscode-descriptionForeground);
-    font-size: type.$font-size-xs;
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
   }
 }
 
 .confirmContent {
   display: grid;
-  gap: 8px;
-
+  gap: var(--oa-space-2);
 
   small {
     color: var(--vscode-descriptionForeground);
@@ -79,23 +138,67 @@
   }
 }
 
-.themeActions {
+/* 主题选择器画成三张小色卡：文字名称看不出「午夜靛蓝」和「默认暗色」的差别。 */
+.themeOptions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 14px;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
+}
 
-  button {
-    min-height: 30px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 11px;
-    color: var(--vscode-foreground);
-    background: var(--vscode-input-background);
-    border: 1px solid var(--vscode-input-border);
-    border-radius: var(--oa-radius-sm);
+.themeOption {
+  display: grid;
+  gap: var(--oa-space-2);
+  padding: 0;
+  color: var(--vscode-foreground);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  cursor: pointer;
+
+  &[aria-pressed="true"] .themeSwatch {
+    outline: 2px solid var(--oa-accent);
+    outline-offset: 2px;
   }
+
+  &:focus-visible {
+    outline: none;
+
+    .themeSwatch { box-shadow: var(--oa-focus-ring); }
+  }
+}
+
+.themeSwatch {
+  display: block;
+  width: 84px;
+  height: 52px;
+  border: 1px solid var(--oa-border-strong);
+  border-radius: var(--oa-radius-md);
+
+  /* 用主题自己的两个颜色叠出预览：底色是编辑器背景，圆角方块是强调色。 */
+  &[data-theme-id="midnight"] {
+    background:
+      radial-gradient(circle at 68% 34%, #7c9cff 0 8px, transparent 8px),
+      #0b0e14;
+  }
+
+  &[data-theme-id="default-dark"] {
+    background:
+      radial-gradient(circle at 68% 34%, #49b0ff 0 8px, transparent 8px),
+      #141414;
+  }
+
+  &[data-theme-id="default-light"] {
+    background:
+      radial-gradient(circle at 68% 34%, #317cff 0 8px, transparent 8px),
+      #f5f5f5;
+  }
+}
+
+.themeLabel {
+  color: var(--vscode-descriptionForeground);
 }
 
 .languageControl {
@@ -105,21 +208,21 @@
 
 .portSettings {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
 }
 
 .portFields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
 
 .portFooter {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--oa-space-4);
 
   small {
     color: var(--vscode-descriptionForeground);
@@ -133,10 +236,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--oa-space-4);
 
   span {
     color: var(--vscode-descriptionForeground);
+    font-family: var(--oa-number-font);
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -146,18 +251,18 @@
   gap: 6px;
 }
 
+@media (max-width: 1080px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    display: none;
+  }
+}
+
 @media (max-width: 680px) {
   .portFields {
     grid-template-columns: 1fr;
   }
-
-  .importRow {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-}
-
-.themeActions .selected {
-  border-color: var(--vscode-focusBorder);
 }

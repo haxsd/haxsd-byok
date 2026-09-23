@@ -44,3 +44,27 @@ export const windowCloseIcon = icon('<path fill="currentColor" d="M13.46 12L19 1
 export const windowMaximizeIcon = icon('<path fill="currentColor" d="M4 4h16v16H4zm2 4v10h12V8z"/>');
 export const windowMinimizeIcon = icon('<path fill="currentColor" d="M20 14H4v-4h16"/>');
 export const windowRestoreIcon = icon('<path fill="currentColor" d="M4 8h4V4h12v12h-4v4H4zm12 0v6h2V6h-8v2zM6 12v6h8v-6z"/>');
+
+// Icons introduced with the redesigned surfaces: search and filter for the page
+// toolbars, a state set for status pills, and the small operations that used to be
+// text-only links.
+export const searchIcon = icon('<path fill="currentColor" d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5l-1.5 1.5l-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16A6.5 6.5 0 0 1 3 9.5A6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14S14 12 14 9.5S12 5 9.5 5"/>'); // mdi:magnify
+export const filterIcon = icon('<path fill="currentColor" d="M6 13h12v-2H6M3 6v2h18V6M10 18h4v-2h-4z"/>'); // mdi:filter-variant
+export const closeIcon = icon('<path fill="currentColor" d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12z"/>'); // mdi:close
+export const alertIcon = icon('<path fill="currentColor" d="M13 14h-2V9h2m0 9h-2v-2h2M1 21h22L12 2z"/>'); // mdi:alert
+export const alertCircleIcon = icon('<path fill="currentColor" d="M13 13h-2V7h2m0 10h-2v-2h2M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10a10 10 0 0 0 10-10A10 10 0 0 0 12 2"/>'); // mdi:alert-circle
+export const checkCircleIcon = icon('<path fill="currentColor" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10s10-4.5 10-10S17.5 2 12 2m-2 15l-5-5l1.41-1.41L10 14.17l7.59-7.59L19 8z"/>'); // mdi:check-circle
+export const clockIcon = icon('<path fill="currentColor" d="M12 20a8 8 0 0 0 8-8a8 8 0 0 0-8-8a8 8 0 0 0-8 8a8 8 0 0 0 8 8m0-18a10 10 0 0 1 10 10a10 10 0 0 1-10 10C6.47 22 2 17.5 2 12A10 10 0 0 1 12 2m.5 5v5.25l4.5 2.67l-.75 1.23L11 13V7z"/>'); // mdi:clock-outline
+export const arrowRightIcon = icon('<path fill="currentColor" d="M4 11v2h12l-5.5 5.5l1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5L16 11z"/>'); // mdi:arrow-right
+export const externalLinkIcon = icon('<path fill="currentColor" d="M14 3v2h3.59l-9.83 9.83l1.41 1.41L19 6.41V10h2V3m-2 16H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"/>'); // mdi:open-in-new
+export const terminalIcon = icon('<path fill="currentColor" d="M20 19V7H4v12zm0-16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm-8 8h8v2h-8z"/>'); // mdi:console
+export const keyIcon = icon('<path fill="currentColor" d="M7 14a2 2 0 0 1-2-2a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2m5.65-4A5.99 5.99 0 0 0 7 6a6 6 0 0 0-6 6a6 6 0 0 0 6 6a5.99 5.99 0 0 0 5.65-4H17v4h4v-4h2v-4z"/>'); // mdi:key-variant
+export const copyIcon = icon('<path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12z"/>'); // mdi:content-copy
+export const playIcon = icon('<path fill="currentColor" d="M10 16.5v-9l6 4.5M12 2A10 10 0 0 0 2 12a10 10 0 0 0 10 10a10 10 0 0 0 10-10A10 10 0 0 0 12 2"/>'); // mdi:play-circle
+export const shieldIcon = icon('<path fill="currentColor" d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12c5.16-1.26 9-6.45 9-12V5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11z"/>'); // mdi:shield-outline
+export const boltIcon = icon('<path fill="currentColor" d="M11 15H6l7-14v8h5l-7 14z"/>'); // mdi:lightning-bolt
+export const dotsIcon = icon('<path fill="currentColor" d="M16 12a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2a2 2 0 0 1-2-2m-6 0a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2a2 2 0 0 1-2-2m-6 0a2 2 0 0 1 2-2a2 2 0 0 1 2 2a2 2 0 0 1-2 2a2 2 0 0 1-2-2"/>'); // mdi:dots-horizontal
+export const downloadIcon = icon('<path fill="currentColor" d="M5 20h14v-2H5M19 9h-4V3H9v6H5l7 7z"/>'); // mdi:download
+export const uploadIcon = icon('<path fill="currentColor" d="M9 16h6v-6h4l-7-7l-7 7h4m-4 2h2v6h10v-6h2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>'); // mdi:upload
+export const puzzleIcon = icon('<path fill="currentColor" d="M20.5 11H19V7a2 2 0 0 0-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4a2 2 0 0 0-2 2v3.8h1.5a2.7 2.7 0 0 1 0 5.4H2V20a2 2 0 0 0 2 2h3.8v-1.5a2.7 2.7 0 0 1 5.4 0V22H18a2 2 0 0 0 2-2v-4h1.5a2.5 2.5 0 0 0 0-5"/>'); // mdi:puzzle
+export const trendUpIcon = icon('<path fill="currentColor" d="m16 6l2.29 2.29l-4.88 4.88l-4-4L2 16.59L3.41 18l6-6l4 4l6.3-6.29L22 12V6z"/>'); // mdi:trending-up

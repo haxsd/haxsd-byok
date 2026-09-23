@@ -1,0 +1,52 @@
+@use "../../styles/typography" as type;
+
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-md);
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  border: 0;
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-medium;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    color var(--oa-transition-fast),
+    background var(--oa-transition-fast),
+    box-shadow var(--oa-transition-fast);
+
+  &:hover:not(:disabled) {
+    color: var(--vscode-foreground);
+  }
+
+  &[aria-checked="true"] {
+    color: var(--vscode-foreground);
+    background: var(--oa-surface-raised);
+    box-shadow: var(--oa-shadow-card);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

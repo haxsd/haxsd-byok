@@ -1,0 +1,73 @@
+@use "../../styles/typography" as type;
+
+/* Filter and summary bars. They are utilities rather than components because the
+   content differs on every page — a search box here, a segmented control there — but
+   the geometry should not: rows are the same height, gaps are the same size, and the
+   count label always sits at the far end. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
+  min-width: 0;
+}
+
+.spacer {
+  flex: 1 1 auto;
+  min-width: var(--oa-space-2);
+}
+
+.count {
+  flex: 0 0 auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A row of read-only facts: label above value, divided by hairlines. */
+.facts {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fact {
+  min-width: 0;
+  flex: 1 1 0;
+  display: grid;
+  gap: 3px;
+  padding: 0 var(--oa-space-4);
+
+  &:first-child {
+    padding-left: 0;
+  }
+
+  & + & {
+    border-left: 1px solid var(--oa-border);
+  }
+}
+
+.factLabel {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-3xs;
+  font-weight: type.$font-weight-semibold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.factValue {
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  font-family: var(--oa-number-font);
+  font-size: type.$font-size-lg;
+  font-variant-numeric: tabular-nums;
+  line-height: type.$line-height-tight;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &[data-tone="ok"] { color: var(--oa-ok); }
+  &[data-tone="warn"] { color: var(--oa-warn); }
+  &[data-tone="bad"] { color: var(--oa-bad); }
+}

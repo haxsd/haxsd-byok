@@ -113,7 +113,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
         api_key: sameProvider ? draft.model.api_key : "",
         model_id: first?.model_id ?? draft.model.model_id,
         display_name: first?.display_name ?? draft.model.display_name,
-        tooltip_data: !draft.model.tooltip_data.trim() || draft.model.tooltip_data === t("备注") ? preset.name : draft.model.tooltip_data,
+        tooltip_data: !draft.model.tooltip_data.trim() || draft.model.tooltip_data === t("备注") ? preset.name() : draft.model.tooltip_data,
         context_window_tokens: first?.context_window_tokens ?? draft.model.context_window_tokens,
         ...(draft.model.type === "openai"
           ? { max_completion_tokens: first?.max_output_tokens ?? draft.model.max_completion_tokens }

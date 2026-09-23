@@ -22,7 +22,7 @@
 
   &:hover {
     color: var(--vscode-foreground);
-    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+    background: var(--vscode-list-hoverBackground);
   }
 
   &:focus-visible {

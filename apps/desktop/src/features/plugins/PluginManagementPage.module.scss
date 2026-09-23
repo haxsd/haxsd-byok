@@ -1,45 +1,55 @@
 @use "../../styles/typography" as type;
 
+.page {
+  display: grid;
+  gap: var(--oa-section-gap);
+}
+
+.pluginToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oa-space-2);
+  padding: var(--oa-space-3) var(--oa-card-padding);
+}
+
+.pluginSearch {
+  width: 260px;
+  flex: 0 1 260px;
+}
+
 .pluginGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 12px;
-  padding-top: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: var(--oa-space-3);
 }
 
 .pluginCard {
   min-width: 0;
-  min-height: 150px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 18px;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
 }
 
 .pluginCardTop {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--oa-space-3);
 }
 
 .pluginIcon {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-
+  width: 40px;
+  height: 40px;
   border-radius: var(--oa-radius-lg);
-
 }
 
 .pluginIdentity {
   min-width: 0;
-  display: flex;
   flex: 1 1 auto;
+  display: flex;
   flex-direction: column;
   gap: 3px;
 }
@@ -54,7 +64,8 @@
 .pluginName {
   color: var(--vscode-foreground);
   font-size: type.$font-size-base;
-  font-weight: 600;
+  font-weight: type.$font-weight-medium;
+  letter-spacing: type.$letter-spacing-tight;
 }
 
 .pluginId {
@@ -62,44 +73,43 @@
   font-size: type.$font-size-2xs;
 }
 
-.stateBadge {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  padding: 3px 8px;
-  color: var(--vscode-descriptionForeground);
-  border: 1px solid var(--vscode-sideBar-border);
-  border-radius: 999px;
-  font-size: type.$font-size-2xs;
-  white-space: nowrap;
-}
-
-.stateReady {
-  color: var(--vscode-testing-iconPassed, #73c991);
-  background: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 10%, transparent);
-  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #73c991) 28%, transparent);
-}
-
-.pluginMeta {
+/* 账号数和模型数是这张卡真正要回答的两个数字，所以给它们数字排版而不是一句话。 */
+.pluginStats {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: baseline;
+  gap: var(--oa-space-4);
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-2xs;
+
+  strong {
+    margin-right: 3px;
+    color: var(--vscode-foreground);
+    font-family: var(--oa-number-font);
+    font-size: type.$font-size-lg;
+    font-weight: type.$font-weight-medium;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.pluginVersion {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 
 .pluginAuthor {
   overflow: hidden;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.85;
 }
 
 .cardActions {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 7px;
+  gap: var(--oa-space-2);
+  margin-top: auto;
 
   > button {
     min-width: 0;
@@ -107,40 +117,66 @@
   }
 }
 
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 1px solid transparent;
+  border-radius: var(--oa-radius-sm);
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-medium;
+  white-space: nowrap;
+  transition: background var(--oa-transition-fast), color var(--oa-transition-fast);
 
-// 主操作靠左,"更多"推到行尾,两端对齐。
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-button-background) 88%, white);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.secondaryAction {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  }
+}
+
+/* 主操作靠左,"更多"推到行尾,两端对齐。 */
 .moreAction {
   display: flex;
   flex: 0 0 auto;
   margin-left: auto;
 }
 
-.gate,
-.empty {
-  min-height: 250px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  color: var(--vscode-descriptionForeground);
-  text-align: center;
-  border: 1px dashed var(--vscode-sideBar-border);
-  border-radius: var(--oa-overlay-radius);
+.progress {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  max-width: 320px;
 
-  strong {
-    color: var(--vscode-foreground);
-    font-size: type.$font-size-base;
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    font-variant-numeric: tabular-nums;
   }
-
-  span {
-    max-width: 500px;
-    font-size: type.$font-size-xs;
-  }
-}
-
-.gate button {
-  margin-top: 6px;
 }
 
 .progressBar {
@@ -151,10 +187,11 @@
   border-radius: 999px;
 }
 
-// 反向斜纹(-45°)+ 无限反向滚动;未知总量时以 100% 宽度作不确定态。
+/* 反向斜纹(-45°)+ 无限反向滚动;未知总量时以 100% 宽度作不确定态。 */
 .progressFill {
+  display: block;
   height: 100%;
-  background-color: var(--vscode-progressBar-background, #0e70c0);
+  background-color: var(--oa-accent);
   background-image: linear-gradient(
     -45deg,
     rgb(255 255 255 / 24%) 25%,
@@ -177,7 +214,7 @@
 .progressContent {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--oa-space-3);
 
   strong {
     font-size: type.$font-size-base;
@@ -189,7 +226,13 @@
   }
 
   .error {
-    color: var(--vscode-errorForeground);
+    color: var(--oa-bad);
     overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 640px) {
+  .pluginSearch {
+    flex: 1 1 100%;
   }
 }

@@ -7,8 +7,11 @@ import { Select } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
-import { DevinPath, type PathStage } from "./DevinPath";
+import { StatusHero } from "../../shared/ui/StatusHero";
+import type { PathStage } from "../../shared/ui/ConnectionPath";
 import { PageContent } from "../../shell/layout/PageContent";
+import { PageTitle } from "../../shared/ui/PageTitle";
+import { StatusPill } from "../../shared/ui/StatusPill";
 import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
@@ -48,6 +51,20 @@ function nextRouteId(routes: DevinRoute[]): string {
   return `route-${index}`;
 }
 
+/**
+ * 新增映射时给一个还没被占用的 UID。
+ *
+ * 服务端会拒绝重复的 UID，所以按「条数 + 1」命名在删掉中间一条之后重新添加时会
+ * 撞名：改完后保存只会得到一句「duplicate Devin model UID」，用户还得自己猜是
+ * 哪一条重复了。
+ */
+function nextModelUid(bindings: DevinModelBinding[]): string {
+  const used = new Set(bindings.map((binding) => binding.model_uid.trim()));
+  let index = bindings.length + 1;
+  while (used.has(`cursor-byok-${index}`)) index += 1;
+  return `cursor-byok-${index}`;
+}
+
 export function DevinSettingsPage() {
   const message = useMessage();
   const navigate = useNavigate();
@@ -83,7 +100,7 @@ export function DevinSettingsPage() {
       setSettings(nextSettings);
       setSaved(nextSettings);
       setModels(nextModels);
-    }).catch((cause) => message(cause instanceof Error ? cause.message : String(cause))).finally(() => setLoading(false));
+    }).catch((cause) => message.error(cause)).finally(() => setLoading(false));
   }, [message]);
 
   // 状态面板要回答"现在通没通"。端口是否在听只能由服务端回答：网关端口属于另一个源，
@@ -126,7 +143,7 @@ export function DevinSettingsPage() {
       })
       .catch((cause) => {
         // 探测失败要说出原因，不能静默成"未知"。
-        if (!cancelled) message(cause instanceof Error ? cause.message : String(cause));
+        if (!cancelled) message.error(cause);
       });
     return () => {
       cancelled = true;
@@ -155,7 +172,7 @@ export function DevinSettingsPage() {
   const addBinding = () => {
     const model = models[0];
     update("bindings", [...settings.bindings, {
-      model_uid: `cursor-byok-${settings.bindings.length + 1}`,
+      model_uid: nextModelUid(settings.bindings),
       model_hash: model?.model_hash ?? "",
       display_name: model?.display_name ?? "",
       context_window_tokens: model?.context_window_tokens ?? null,
@@ -189,7 +206,7 @@ export function DevinSettingsPage() {
       setHostBusy(true);
       setHostStatus(await api.devinHostStatus(hostPath));
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setHostBusy(false);
     }
@@ -200,9 +217,9 @@ export function DevinSettingsPage() {
       const receipt = await api.applyDevinHostPatch(hostPath);
       setHostReceipt(receipt);
       setHostStatus(await api.devinHostStatus(hostPath));
-      message("Devin 宿主补丁已应用；重启 Devin 后生效", { duration: 5_000 });
+      message(t("Devin 宿主补丁已应用；重启 Devin 后生效"), { duration: 5_000 });
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setHostBusy(false);
     }
@@ -214,9 +231,9 @@ export function DevinSettingsPage() {
       await api.restoreDevinHostPatch(hostReceipt);
       setHostReceipt(null);
       setHostStatus(await api.devinHostStatus(hostPath));
-      message("Devin 宿主文件已恢复");
+      message(t("Devin 宿主文件已恢复"));
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setHostBusy(false);
     }
@@ -229,12 +246,14 @@ export function DevinSettingsPage() {
       setSaved(next);
       message(t("Devin 设置已保存，重启软件后监听端口生效"), { duration: 5_000 });
     } catch (cause) {
-      message(cause instanceof Error ? cause.message : String(cause));
+      message.error(cause);
     } finally {
       setSaving(false);
     }
   };
   const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
+  const gatewayReady = settings.enabled && gatewayPortsUp === true;
+  const gatewaySummary = !settings.enabled ? t("未启用") : gatewayReady ? t("运行中") : gatewayPortsUp === null ? t("检查中…") : t("待重启");
 
   const modelOptions = models.map((model) => ({ value: model.model_hash, label: `${model.display_name} · ${model.model_hash.slice(0, 8)}` }));
   const kindOptions = [
@@ -336,30 +355,23 @@ export function DevinSettingsPage() {
       const outstanding = steps.filter((step) => !step.done);
       const connected = stages.every((stage) => stage.state === "up");
       return <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
-        <div className={styles.status}>
-          <div className={styles.verdict} data-tone={connected ? "ok" : "warn"}>
-            <span className={styles.verdictLamp} aria-hidden="true" />
-            <div className={styles.verdictText}>
-              <strong>{connected ? t("已接通") : t("还差 {count} 步", { count: outstanding.length })}</strong>
-              <small>{connected
-                ? t("Devin 的请求正在走本机网关，由 {model} 回答。", { model: activeModel?.display_name ?? "" })
-                : outstanding[0]?.label ?? ""}</small>
-            </div>
-          </div>
-          <DevinPath stages={stages} />
-          {outstanding.length > 0 && <div className={styles.todo}>
-            {outstanding.map((step, index) => <div key={step.key} className={styles.todoItem}>
-              <span className={styles.todoIndex}>{index + 1}</span>
-              <span className={styles.todoText}><strong>{step.label}</strong><small>{step.hint}</small></span>
-            </div>)}
-          </div>}
-          <div className={styles.footnotes}>
-            {t("上下文压缩绑定")}：{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}
-          </div>
-        </div>
+        <StatusHero
+          connected={connected}
+          title={connected ? t("已接通") : t("还差 {count} 步", { count: outstanding.length })}
+          description={connected
+            ? t("Devin 的请求正在走本机网关，由 {model} 回答。", { model: activeModel?.display_name ?? "" })
+            : outstanding[0]?.label ?? ""}
+          stages={stages}
+          steps={outstanding}
+          footnotes={<>{t("上下文压缩绑定")}：{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}</>}
+        />
       </TitledCard>;
     })()}
-    <TitledCard title={t("基础设置")} collapsible={false}>
+    <TitledCard
+      title={t("基础设置")}
+      description={t("网关开关与模型映射")}
+      collapsible={false}
+    >
       <div className={styles.settingRow}>
         <div><strong>{t("启用 Devin 网关")}</strong><small>{t("关闭时不会打开任何 Devin 端口，也不会影响 Cursor。")}</small></div>
         <Switch checked={settings.enabled} label={t("启用 Devin 网关")} onChange={(enabled) => update("enabled", enabled)} />
@@ -438,6 +450,14 @@ export function DevinSettingsPage() {
     </TitledCard>
     <TitledCard
       title={t("接入 Devin")}
+      description={t("改写 Devin 自己的配置文件，把它的请求指到本机网关")}
+      badge={hostStatus?.patched
+        ? <StatusPill tone="ok">{t("已打补丁")}</StatusPill>
+        : hostStatus?.clean
+          ? <StatusPill tone="idle">{t("尚未接入")}</StatusPill>
+          : hostStatus
+            ? <StatusPill tone="warn">{t("版本不匹配")}</StatusPill>
+            : undefined}
       action={<div className={styles.hostActions}>
         <Button size="small" disabled={hostBusy} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("检查宿主")}</Button>
         <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
@@ -452,7 +472,12 @@ export function DevinSettingsPage() {
             : hostStatus.clean ? t("兼容版本，尚未应用补丁") : hostStatus.message}</p>
         : <p className={styles.note}>{t("宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。")}</p>}
     </TitledCard>
-    <TitledCard title={t("高级")} collapsible storageKey="devin-advanced">
+    <TitledCard
+      title={t("高级")}
+      description={t("端口、令牌与宿主文件路径；默认值适用于绝大多数情况")}
+      collapsible
+      storageKey="devin-advanced"
+    >
       <div className={styles.fields}>
         <FormField label={t("控制令牌")} hint={t("可选；Devin 请求可通过 x-devin-router-token 或 Bearer 令牌认证。")}>
           <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
@@ -466,7 +491,7 @@ export function DevinSettingsPage() {
       </div>
       <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
       <div className={styles.fields}>
-        <FormField label="Devin / Windsurf extension.js 路径" hint={t("留空即自动探测；仅在自动结果不正确时才需要填写。")}>
+        <FormField label={t("Devin / Windsurf extension.js 路径")} hint={t("留空即自动探测；仅在自动结果不正确时才需要填写。")}>
           <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
@@ -476,5 +501,12 @@ export function DevinSettingsPage() {
       <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
     </div>}
   </div>;
-  return <PageContent title="Devin" sections={[{ key: "devin", estimatedHeight: 900, content }]} />;
+  return <PageContent
+    title={<PageTitle
+      title="Devin"
+      status={<StatusPill tone={gatewayReady ? "ok" : settings.enabled ? "warn" : "idle"}>{gatewaySummary}</StatusPill>}
+      meta={t("把 Devin 的模型请求指到本机网关，由模型库回答")}
+    />}
+    sections={[{ key: "devin", estimatedHeight: 900, content }]}
+  />;
 }

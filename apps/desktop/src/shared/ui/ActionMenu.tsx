@@ -1,4 +1,5 @@
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
+import type { IconifyIcon } from "@iconify/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./Button";
@@ -21,10 +22,14 @@ export type ActionMenuItem =
     };
 
 /** 触发器 + 动作列表的下拉菜单,用于容纳卡片上的次要操作。 */
-export function ActionMenu({ label, items, disabled }: {
+export function ActionMenu({ label, items, disabled, icon, quiet = false }: {
   label: string;
   items: ActionMenuItem[];
   disabled?: boolean;
+  /** 传图标时触发器只显示图标，label 转为无障碍名称。 */
+  icon?: IconifyIcon;
+  /** 安静形态：无边框的图标按钮，用在密集的卡片角上。 */
+  quiet?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -62,16 +67,19 @@ export function ActionMenu({ label, items, disabled }: {
       ref={trigger}
       size="small"
       disabled={disabled}
+      aria-label={icon ? label : undefined}
       aria-haspopup="menu"
       aria-controls={open ? menuId : undefined}
       aria-expanded={open}
+      data-quiet={quiet || undefined}
+      className={icon ? styles.iconTrigger : undefined}
       onClick={() => setOpen((current) => !current)}
       onKeyDown={(event) => {
         if (event.key === "Escape") close();
       }}
     >
-      {label}
-      <Icon icon={chevronDownIcon} size="1em" className={open ? styles.openIcon : undefined} />
+      {icon ? <Icon icon={icon} size="1.15em" /> : label}
+      {!icon && <Icon icon={chevronDownIcon} size="1em" className={open ? styles.openIcon : undefined} />}
     </Button>
     {open && createPortal(
       <div

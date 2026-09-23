@@ -13,6 +13,7 @@ import { DevinSettingsPage } from "./features/devin/DevinSettingsPage";
 import { HomePage } from "./features/home/HomePage";
 import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { TutorialPage } from "./features/tutorial/TutorialPage";
 import { useAppStore } from "./shared/store/appStore";
 
 export function App() {
@@ -30,6 +31,7 @@ export function App() {
               <Route path="harness/devin" element={<DevinSettingsPage />} />
               <Route path="plugins" element={<PluginManagementPage />} />
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="tutorial" element={<TutorialPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
@@ -46,7 +48,7 @@ function AppMessages() {
   const showMessage = useMessage();
 
   useEffect(() => {
-    if (error && error !== previousError.current) showMessage(error);
+    if (error && error !== previousError.current) showMessage(error, { tone: "error" });
     previousError.current = error;
   }, [error, showMessage]);
 

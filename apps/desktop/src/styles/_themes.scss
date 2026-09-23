@@ -23,6 +23,17 @@
   --oa-section-gap: 16px;
   --oa-card-padding: 16px;
 
+  /* Spacing scale. Padding used to be picked per component (14 on a card header,
+     16 in a row, 18 in a metric), which is why nothing lined up across a page. */
+  --oa-space-1: 4px;
+  --oa-space-2: 8px;
+  --oa-space-3: 12px;
+  --oa-space-4: 16px;
+  --oa-space-5: 24px;
+  --oa-space-6: 32px;
+  /* The one line-height-safe row height for list rows and table rows. */
+  --oa-row-height: 38px;
+
   /* Radius scale. Components should read from here instead of picking numbers,
      which is how 69 border-radius declarations ended up with 59 different values. */
   --oa-radius-xs: 4px;
@@ -63,10 +74,26 @@
   --oa-border-strong: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
   --oa-surface-raised: var(--vscode-editorWidget-background);
   --oa-surface-sunken: var(--vscode-editor-background);
+  /* A recessed area inside a card: the tint is mixed from the foreground so it works
+     in every theme without a second declaration per palette. */
+  --oa-surface-well: color-mix(in srgb, var(--vscode-foreground) 5%, var(--vscode-editorWidget-background));
   --oa-ok: var(--vscode-gitDecoration-addedResourceForeground);
   --oa-ok-soft: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground) 15%, transparent);
   --oa-warn: #e0a92c;
   --oa-warn-soft: color-mix(in srgb, var(--oa-warn) 15%, transparent);
+  /* Bad and info were the two states with no token at all, so a failing row and a
+     link each invented their own colour. */
+  --oa-bad: var(--vscode-errorForeground);
+  --oa-bad-soft: color-mix(in srgb, var(--vscode-errorForeground) 15%, transparent);
+  --oa-info: var(--oa-accent);
+  --oa-info-soft: var(--oa-accent-soft);
+  /* One wash for the top band of a page. Reading it from the accent keeps the header
+     of every page in the same family instead of each page inventing a gradient. */
+  --oa-hero-wash: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--oa-accent) 9%, transparent) 0,
+    transparent 100%
+  );
 
   @include chart-palette((
     chart-input: #0091ff,
@@ -102,6 +129,7 @@
     descriptionForeground: #FFFFFFB3,
     focusBorder: #49b0ff,
     textLink-foreground: #49b0ff,
+    textLink-activeForeground: #7cc4ff,
     textCodeBlock-background: #2a2a2a,
     editor-background: #141414,
     editor-selectionBackground: #49b0ff33,
@@ -159,6 +187,7 @@
     descriptionForeground: #9aa4bb,
     focusBorder: #7c9cff,
     textLink-foreground: #8fa8ff,
+    textLink-activeForeground: #b3c4ff,
     textCodeBlock-background: #1b2130,
     editor-background: #0b0e14,
     editor-selectionBackground: #7c9cff40,
@@ -227,6 +256,7 @@
     descriptionForeground: #888888,
     focusBorder: #317cff,
     textLink-foreground: #317cff,
+    textLink-activeForeground: #1a5fd0,
     textCodeBlock-background: #f0f0f0,
     editor-background: #f5f5f5,
     editor-selectionBackground: #317cff40,
@@ -288,4 +318,7 @@
   /* The amber needs to be darker to read on a near-white surface. */
   --oa-warn: #a86a00;
   --oa-warn-soft: color-mix(in srgb, #a86a00 14%, transparent);
+  /* Pure red vibrates on a near-white surface at this size. */
+  --oa-bad: #c62828;
+  --oa-bad-soft: color-mix(in srgb, #c62828 12%, transparent);
 }

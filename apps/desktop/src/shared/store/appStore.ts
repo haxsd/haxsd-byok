@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type CurrencyPricing, type CursorHarnessStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, ServiceUnreachableError, type CurrencyPricing, type CursorHarnessStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
 
 /**
@@ -67,6 +67,8 @@ export type AppSnapshot = {
   pricing: TokenPricingSettings;
   busy: boolean;
   error: string | null;
+  /** 本地管理服务连不上时为 true；界面据此持续重试并明确说明状态。 */
+  offline: boolean;
   theme: ThemeId;
   cursorHarness: CursorHarnessStatus | null;
   /** Gateway state for the Devin module, refreshed with everything else. */
@@ -104,6 +106,7 @@ let snapshot: AppSnapshot = {
   pricing: DEFAULT_TOKEN_PRICING,
   busy: false,
   error: null,
+  offline: false,
   theme: savedTheme(),
   cursorHarness: null,
   devinStatus: null,
@@ -123,8 +126,10 @@ async function perform(task: () => Promise<void>) {
   update({ error: null });
   try {
     await task();
+    if (snapshot.offline) update({ offline: false });
   } catch (cause) {
-    update({ error: cause instanceof Error ? cause.message : String(cause) });
+    if (cause instanceof ServiceUnreachableError) update({ offline: true, error: null });
+    else update({ error: cause instanceof Error ? cause.message : String(cause) });
   }
 }
 
@@ -150,9 +155,10 @@ export const appStore = {
         api.pluginRuntime(),
         api.plugins(),
       ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins });
+      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins, offline: false });
     } catch (cause) {
-      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      if (cause instanceof ServiceUnreachableError) update({ offline: true });
+      else update({ error: cause instanceof Error ? cause.message : String(cause) });
     } finally {
       update({ busy: false });
     }
@@ -297,9 +303,10 @@ export const appStore = {
 
   async refreshCalls() {
     try {
-      update({ calls: await api.calls() });
+      update({ calls: await api.calls(), offline: false });
     } catch (cause) {
-      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      if (cause instanceof ServiceUnreachableError) update({ offline: true });
+      else update({ error: cause instanceof Error ? cause.message : String(cause) });
     }
   },
 
