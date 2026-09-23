@@ -167,6 +167,47 @@ jobs:
     if: needs.prepare.outputs.should_publish == 'true' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      # tauri-action writes the API asset URL into latest.json. That host answers
+      # anonymously only within GitHub's 60-requests-per-hour budget, and an
+      # exhausted budget turns the installer download into a 403 for every client
+      # behind a shared address. The plain release download URL is not metered, so
+      # the manifest is rewritten before it goes live. This runs while the release
+      # is still a draft, so no client ever sees the metered URL.
+      - name: Rewrite the manifest onto unmetered download URLs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="haxsd-byok-v${VERSION}"
+          mkdir -p manifest
+          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern latest.json --dir manifest --clobber
+          python3 - "${GITHUB_REPOSITORY}" "${tag}" manifest/latest.json <<'PY'
+          import json, subprocess, sys
+          repo, tag, path = sys.argv[1], sys.argv[2], sys.argv[3]
+          assets = json.loads(subprocess.check_output(
+              ["gh", "release", "view", tag, "--repo", repo, "--json", "assets"]
+          ))["assets"]
+          by_api_url = {asset["apiUrl"]: asset["name"] for asset in assets}
+          with open(path) as handle:
+              manifest = json.load(handle)
+          for name, entry in manifest.get("platforms", {}).items():
+              asset = by_api_url.get(entry.get("url", ""))
+              if asset is None:
+                  raise SystemExit(f"no release asset matches the url for platform {name}")
+              entry["url"] = f"https://github.com/{repo}/releases/download/{tag}/{asset}"
+          with open(path, "w") as handle:
+              json.dump(manifest, handle, indent=2, ensure_ascii=False)
+          print("rewrote", ", ".join(sorted(manifest.get("platforms", {}))))
+          PY
+          # Fail loudly rather than publish a manifest that still points at the
+          # metered host.
+          if grep -q "api.github.com" manifest/latest.json; then
+            echo "latest.json still points at api.github.com" >&2
+            exit 1
+          fi
+          gh release upload "${tag}" manifest/latest.json --repo "${GITHUB_REPOSITORY}" --clobber
+
       # This job deliberately has no checkout, so gh cannot infer the repository
       # from a working tree. Naming it explicitly is what keeps the release from
       # staying a draft: without --repo, gh fails with "not a git repository".
