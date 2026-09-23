@@ -8,8 +8,12 @@ export const themeOptions = [
   { id: "default-light" },
 ] satisfies { id: ThemeId }[];
 
-/** Kept as the original theme: switching a product's default look is the owner's call. */
-export const defaultThemeId: ThemeId = "default-dark";
+/**
+ * The default look. This is the theme the product's own icon is drawn from, and the
+ * one that makes it recognisably a different application from the one it was forked
+ * from: the inherited theme is what the sibling product still ships.
+ */
+export const defaultThemeId: ThemeId = "midnight";
 
 export function isThemeId(value: string | null): value is ThemeId {
   return value !== null && themeIds.some((id) => id === value);

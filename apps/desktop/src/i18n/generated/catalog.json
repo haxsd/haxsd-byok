@@ -33,8 +33,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 315,
-          "column": 55
+          "line": 357,
+          "column": 14
         }
       ]
     },
@@ -79,6 +79,18 @@
         }
       ]
     },
+    "030d4446c3bfda99": {
+      "source": "本机网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 319,
+          "column": 18
+        }
+      ]
+    },
     "03ac57b50f0a8ace": {
       "source": "关闭时不会打开任何 Devin 端口，也不会影响 Cursor。",
       "kind": "text",
@@ -86,7 +98,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 328,
+          "line": 364,
           "column": 57
         }
       ]
@@ -186,18 +198,6 @@
         }
       ]
     },
-    "0643b347c77ab070": {
-      "source": "宿主接入只对这里显示的 extension.js 操作。应用补丁前会校验四个版本锚点并创建 SHA-256 备份；未知版本、部分补丁或备份不一致时会拒绝写入。路径已自动探测，通常无需修改。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 399,
-          "column": 35
-        }
-      ]
-    },
     "06619f339fa0ab46": {
       "source": "正在准备插件运行时",
       "kind": "text",
@@ -217,8 +217,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 367,
-          "column": 37
+          "line": 419,
+          "column": 39
         }
       ]
     },
@@ -274,7 +274,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 401,
+          "line": 469,
           "column": 67
         }
       ]
@@ -301,7 +301,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 285,
+          "line": 296,
           "column": 18
         }
       ]
@@ -363,7 +363,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 220,
+          "line": 230,
           "column": 15
         }
       ]
@@ -375,7 +375,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 388,
+          "line": 457,
           "column": 44
         }
       ]
@@ -477,7 +477,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 332,
+          "line": 368,
           "column": 23
         }
       ]
@@ -704,7 +704,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 299,
+          "line": 338,
           "column": 33
         }
       ]
@@ -769,6 +769,20 @@
         }
       ]
     },
+    "18231f90263c2e8a": {
+      "source": "Devin 的请求正在走本机网关，由 {model} 回答。",
+      "kind": "template",
+      "placeholders": [
+        "model"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 345,
+          "column": 19
+        }
+      ]
+    },
     "19658d9fa9aa8de4": {
       "source": "安装中…",
       "kind": "text",
@@ -776,7 +790,7 @@
       "refs": [
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 99,
+          "line": 101,
           "column": 120
         }
       ]
@@ -866,7 +880,7 @@
       "refs": [
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 97,
+          "line": 99,
           "column": 37
         }
       ]
@@ -895,7 +909,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 388,
+          "line": 457,
           "column": 27
         }
       ]
@@ -1015,7 +1029,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 252,
+          "line": 263,
           "column": 15
         },
         {
@@ -1131,7 +1145,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 389,
+          "line": 458,
           "column": 132
         }
       ]
@@ -1181,7 +1195,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 392,
+          "line": 461,
           "column": 27
         }
       ]
@@ -1205,8 +1219,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 351,
-          "column": 50
+          "line": 403,
+          "column": 52
         }
       ]
     },
@@ -1620,8 +1634,8 @@
         },
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 93,
-          "column": 44
+          "line": 95,
+          "column": 90
         }
       ]
     },
@@ -1698,21 +1712,14 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 394,
+          "column": 41
+        },
+        {
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 246,
           "column": 32
-        }
-      ]
-    },
-    "38f36ed30008bc7c": {
-      "source": "网关",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 303,
-          "column": 22
         }
       ]
     },
@@ -1862,7 +1869,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 402,
+          "line": 470,
           "column": 111
         }
       ]
@@ -2002,8 +2009,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 414,
-          "column": 32
+          "line": 452,
+          "column": 34
         }
       ]
     },
@@ -2104,7 +2111,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 233,
+          "line": 244,
           "column": 62
         },
         {
@@ -2264,7 +2271,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 286,
+          "line": 297,
           "column": 46
         }
       ]
@@ -2288,17 +2295,17 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 256,
+          "line": 267,
           "column": 11
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 263,
+          "line": 274,
           "column": 17
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 264,
+          "line": 275,
           "column": 90
         }
       ]
@@ -2329,8 +2336,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 315,
-          "column": 105
+          "line": 357,
+          "column": 50
         }
       ]
     },
@@ -2343,7 +2350,7 @@
       "refs": [
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 96,
+          "line": 98,
           "column": 18
         }
       ]
@@ -2399,8 +2406,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 372,
-          "column": 281
+          "line": 424,
+          "column": 283
         }
       ]
     },
@@ -2411,7 +2418,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 336,
+          "line": 372,
           "column": 72
         }
       ]
@@ -2471,6 +2478,18 @@
         }
       ]
     },
+    "535083c5e5432079": {
+      "source": "有未保存的改动",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 475,
+          "column": 14
+        }
+      ]
+    },
     "5401344227e49e2f": {
       "source": "TAB 设置",
       "kind": "text",
@@ -2514,7 +2533,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 279,
+          "line": 290,
           "column": 18
         }
       ]
@@ -2552,6 +2571,18 @@
           "file": "features/settings/CommitSettingsCard.tsx",
           "line": 185,
           "column": 26
+        }
+      ]
+    },
+    "555613db0aa7b17a": {
+      "source": "宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 453,
+          "column": 39
         }
       ]
     },
@@ -2610,8 +2641,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 350,
-          "column": 33
+          "line": 402,
+          "column": 35
         }
       ]
     },
@@ -2759,13 +2790,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 366,
-          "column": 37
+          "line": 418,
+          "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 366,
-          "column": 115
+          "line": 418,
+          "column": 117
         }
       ]
     },
@@ -2776,8 +2807,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 361,
-          "column": 117
+          "line": 413,
+          "column": 119
         }
       ]
     },
@@ -2855,13 +2886,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 373,
-          "column": 156
+          "line": 396,
+          "column": 103
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 380,
-          "column": 101
+          "line": 425,
+          "column": 158
         }
       ]
     },
@@ -3082,7 +3113,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 248,
+          "line": 259,
           "column": 11
         }
       ]
@@ -3123,8 +3154,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 372,
-          "column": 269
+          "line": 424,
+          "column": 271
         }
       ]
     },
@@ -3135,7 +3166,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 408,
+          "line": 444,
           "column": 107
         }
       ]
@@ -3171,7 +3202,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 326,
+          "line": 362,
           "column": 24
         }
       ]
@@ -3185,6 +3216,18 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 121,
           "column": 21
+        }
+      ]
+    },
+    "6aa27f14bff16faa": {
+      "source": "读取失败",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/UpdateCard.tsx",
+          "line": 95,
+          "column": 78
         }
       ]
     },
@@ -3234,7 +3277,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 230,
+          "line": 241,
           "column": 53
         }
       ]
@@ -3268,8 +3311,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 379,
-          "column": 56
+          "line": 431,
+          "column": 58
         }
       ]
     },
@@ -3294,7 +3337,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 253,
+          "line": 264,
           "column": 15
         }
       ]
@@ -3371,7 +3414,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 394,
+          "line": 463,
           "column": 27
         }
       ]
@@ -3395,7 +3438,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 291,
+          "line": 302,
           "column": 18
         }
       ]
@@ -3569,8 +3612,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 315,
-          "column": 157
+          "line": 357,
+          "column": 102
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
@@ -3996,7 +4039,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 407,
+          "line": 443,
           "column": 150
         }
       ]
@@ -4133,7 +4176,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 333,
+          "line": 369,
           "column": 78
         }
       ]
@@ -4145,8 +4188,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 360,
-          "column": 24
+          "line": 412,
+          "column": 26
         }
       ]
     },
@@ -4193,7 +4236,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 393,
+          "line": 462,
           "column": 27
         }
       ]
@@ -4217,7 +4260,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 394,
+          "line": 463,
           "column": 49
         }
       ]
@@ -4256,7 +4299,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 398,
+          "line": 467,
           "column": 35
         }
       ]
@@ -4266,6 +4309,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 329,
+          "column": 18
+        },
         {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 295,
@@ -4426,7 +4474,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 273,
+          "line": 284,
           "column": 17
         }
       ]
@@ -4464,8 +4512,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 358,
-          "column": 67
+          "line": 410,
+          "column": 69
         }
       ]
     },
@@ -4476,13 +4524,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 351,
-          "column": 33
+          "line": 403,
+          "column": 35
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 352,
-          "column": 79
+          "line": 404,
+          "column": 81
         }
       ]
     },
@@ -4534,8 +4582,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 370,
-          "column": 58
+          "line": 422,
+          "column": 60
         }
       ]
     },
@@ -4546,8 +4594,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 417,
-          "column": 116
+          "line": 476,
+          "column": 114
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
@@ -4641,7 +4689,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 258,
+          "line": 269,
           "column": 13
         }
       ]
@@ -4795,6 +4843,18 @@
         }
       ]
     },
+    "a8c3698b5b8c485d": {
+      "source": "已停用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 392,
+          "column": 78
+        }
+      ]
+    },
     "a8c91a109ec4a70d": {
       "source": "已指向其他路由器",
       "kind": "text",
@@ -4802,7 +4862,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 260,
+          "line": 271,
           "column": 15
         }
       ]
@@ -4846,8 +4906,8 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 349,
-          "column": 33
+          "line": 401,
+          "column": 35
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
@@ -4885,7 +4945,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 274,
+          "line": 285,
           "column": 15
         }
       ]
@@ -4950,7 +5010,7 @@
       "refs": [
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 99,
+          "line": 101,
           "column": 107
         }
       ]
@@ -5023,6 +5083,18 @@
         }
       ]
     },
+    "afd4b783536b8297": {
+      "source": "收起",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 394,
+          "column": 31
+        }
+      ]
+    },
     "affb73206cfa035d": {
       "source": "到期时间：{time}",
       "kind": "template",
@@ -5066,7 +5138,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 262,
+          "line": 273,
           "column": 17
         }
       ]
@@ -5078,8 +5150,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 313,
-          "column": 83
+          "line": 330,
+          "column": 78
         }
       ]
     },
@@ -5104,7 +5176,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 299,
+          "line": 338,
           "column": 109
         }
       ]
@@ -5425,7 +5497,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 332,
+          "line": 368,
           "column": 50
         }
       ]
@@ -5461,7 +5533,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 231,
+          "line": 242,
           "column": 64
         }
       ]
@@ -5559,7 +5631,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 293,
+          "line": 304,
           "column": 15
         }
       ]
@@ -5575,6 +5647,20 @@
           "file": "shared/ui/Pagination.tsx",
           "line": 22,
           "column": 159
+        }
+      ]
+    },
+    "c30719405cae2c65": {
+      "source": "还差 {count} 步",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 343,
+          "column": 47
         }
       ]
     },
@@ -5602,7 +5688,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 391,
+          "line": 460,
           "column": 27
         }
       ]
@@ -5647,8 +5733,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 411,
-          "column": 11
+          "line": 449,
+          "column": 13
         }
       ]
     },
@@ -5900,7 +5986,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 280,
+          "line": 291,
           "column": 39
         }
       ]
@@ -5936,7 +6022,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 344,
+          "line": 386,
           "column": 33
         }
       ]
@@ -6001,6 +6087,18 @@
           "file": "shared/ui/Modal.tsx",
           "line": 100,
           "column": 153
+        }
+      ]
+    },
+    "d4386388046da7cc": {
+      "source": "已接通",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 343,
+          "column": 36
         }
       ]
     },
@@ -6074,6 +6172,18 @@
         }
       ]
     },
+    "d6b65d80e25bd9c9": {
+      "source": "接入 Devin",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 440,
+          "column": 14
+        }
+      ]
+    },
     "d6e61888b07853ea": {
       "source": "高级",
       "kind": "text",
@@ -6081,7 +6191,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 386,
+          "line": 455,
           "column": 24
         }
       ]
@@ -6183,7 +6293,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 296,
+          "line": 307,
           "column": 17
         }
       ]
@@ -6426,8 +6536,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 313,
-          "column": 101
+          "line": 330,
+          "column": 96
         }
       ]
     },
@@ -6579,7 +6689,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 406,
+          "line": 442,
           "column": 109
         }
       ]
@@ -6668,7 +6778,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 280,
+          "line": 291,
           "column": 88
         }
       ]
@@ -6684,18 +6794,6 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 107,
           "column": 34
-        }
-      ]
-    },
-    "e71ac32b544b0ebf": {
-      "source": "端口",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 306,
-          "column": 55
         }
       ]
     },
@@ -6725,7 +6823,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 295,
+          "line": 306,
           "column": 17
         }
       ]
@@ -6766,17 +6864,17 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 269,
+          "line": 280,
           "column": 18
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 328,
+          "line": 364,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 329,
+          "line": 365,
           "column": 51
         }
       ]
@@ -6943,7 +7041,7 @@
       "refs": [
         {
           "file": "features/settings/UpdateCard.tsx",
-          "line": 97,
+          "line": 99,
           "column": 56
         }
       ]
@@ -6955,12 +7053,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 345,
+          "line": 387,
           "column": 33
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 345,
+          "line": 387,
           "column": 122
         }
       ]
@@ -7071,8 +7169,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 363,
-          "column": 67
+          "line": 415,
+          "column": 69
         }
       ]
     },
@@ -7193,20 +7291,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 286,
+          "line": 297,
           "column": 35
-        }
-      ]
-    },
-    "fa351891c9e97136": {
-      "source": "当前生效模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 312,
-          "column": 22
         }
       ]
     },
@@ -7270,12 +7356,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 250,
+          "line": 261,
           "column": 13
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 406,
+          "line": 442,
           "column": 97
         },
         {
@@ -7471,8 +7557,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 417,
-          "column": 104
+          "line": 476,
+          "column": 102
         },
         {
           "file": "features/settings/CommitSettingsCard.tsx",
@@ -7508,7 +7594,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 272,
+          "line": 283,
           "column": 17
         }
       ]
