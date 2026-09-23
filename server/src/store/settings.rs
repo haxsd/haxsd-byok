@@ -360,6 +360,14 @@ impl Store {
         Ok(settings)
     }
 
+    /// Whether this product should take Cursor over.
+    ///
+    /// Absent means no. Taking over rewrites the user's Cursor configuration and
+    /// force-terminates the running editor, so it has to be something they asked
+    /// for. This used to default to yes, which meant a fresh install that merely
+    /// trusted the CA took Cursor over before the user ever touched the switch —
+    /// and on a machine where another product also drives Cursor, that is not a
+    /// decision this app gets to make on its own.
     pub(crate) async fn cursor_takeover_enabled(&self) -> Result<bool> {
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
@@ -369,7 +377,7 @@ impl Store {
         .await?;
         value
             .map(|value| serde_json::from_str(&value).map_err(Into::into))
-            .unwrap_or(Ok(true))
+            .unwrap_or(Ok(false))
     }
 
     pub(crate) async fn set_cursor_takeover_enabled(&self, enabled: bool) -> Result<()> {
@@ -699,6 +707,24 @@ mod tests {
         assert_eq!(settings.mode, ProxyMode::Default);
         assert!(settings.address.is_empty());
         assert!(!settings.auth_enabled);
+    }
+
+    #[tokio::test]
+    async fn taking_cursor_over_requires_an_explicit_choice() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        // A database that has never recorded a choice must not take Cursor over:
+        // doing so rewrites the user's Cursor configuration and force-terminates
+        // their editor.
+        assert!(!store.cursor_takeover_enabled().await.unwrap());
+
+        store.set_cursor_takeover_enabled(true).await.unwrap();
+        assert!(store.cursor_takeover_enabled().await.unwrap());
+
+        store.set_cursor_takeover_enabled(false).await.unwrap();
+        assert!(!store.cursor_takeover_enabled().await.unwrap());
     }
 
     #[tokio::test]

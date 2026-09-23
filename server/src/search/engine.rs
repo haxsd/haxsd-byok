@@ -263,7 +263,8 @@ fn search_url(template: &str, query: &str) -> String {
 }
 
 fn user_agent() -> &'static str {
-    "Mozilla/5.0 (compatible; CursorBYOK/0.1; +https://github.com)"
+    // Identifies this product, not the sibling Cursor BYOK one it was forked from.
+    "Mozilla/5.0 (compatible; haxsd-byok/0.1; +https://github.com)"
 }
 
 fn json_text(value: &Value) -> String {
