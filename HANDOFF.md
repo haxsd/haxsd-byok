@@ -200,26 +200,32 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 `haxsd byok` 最初在 `haxsd/cursor-byok` 的 `feat/devin-router` 分支上开发，那个安排已经结束：
 
 ```
-归档分支   haxsd/cursor-byok 的 legacy/devin-router @ 52f0a47（只读；含 12 个未推 commit
-           与当时未提交的改动）
-逐文件清单 D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md
-           （与本仓库相差 129 个文件、+12615/−3352；40 个文件只在归档分支；
-            6 个文件本仓库更全）
-归档检出   D:\cursor-byok\byok-dev\cursor-byok-devin-router（停留在 legacy/devin-router）
+归档分支   haxsd/cursor-byok 的 legacy/devin-router @ 52f0a47（只读快照）
+工作分支   haxsd/cursor-byok 的 wip/audit-1.0.6 @ cdd3c7e（归档之后的修复，已移植进本仓库）
+逐文件清单 D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md（归档时的差异清单）
+归档检出   D:\cursor-byok\byok-dev\cursor-byok-devin-router
 ```
 
-本产品的开发与发布只在本仓库的 `main` 上进行。要从归档里补回某一块：
+**归档这一代的全部内容已经并入本仓库的 `main`**（提交 `chore: 把归档那一代整体并入 main`
++ `chore: 版本号升到 1.0.7`）。并入后按 git blob 哈希逐文件比对，本仓库与归档只差 5 个文档
+（本仓库的 `README.md` / `README-EN.md` / `HANDOFF.md` / `BRANCH_ISOLATION.md` /
+`docs/devin-go-live.md` 是两仓库格局下的版本，**不要用归档的覆盖**），另删掉 6 个重做后
+不再使用的旧组件（`DevinPath.*`、`CacheHitRateChart.*`、`DataTable.*`）。
 
-1. 先在清单里挑文件，按最后一列判定：`旧分支只增不减` 是尚未移植的；`仓库 B 更全` 的**不要覆盖**；
-2. 逐文件移植并提交。**不要整目录复制**：归档带着一整代界面重做，整批覆盖会把本仓库里已经
-   改得更靠前的文件弄回去；
-3. 校验用 git blob 哈希，不要比文件内容——行尾差异会伪装成内容不同：
+因此现在的规矩是：
+
+1. 开发与发布都只在本仓库的 `main` 上进行；
+2. 归档**只读**，只用于查历史，不要再从它复制文件进本仓库（内容已经一致）；
+3. 校验移植是否干净，用 git blob 哈希逐文件比对，不要比文件内容——行尾差异会伪装成
+   内容不同：
 
 ```powershell
 $src = "D:\cursor-byok\byok-dev\cursor-byok-devin-router"
 $new = "D:\cursor-byok\byok-dev\haxsd-byok"
 $files = git -C $src ls-files | Where-Object { $_ -notlike ".github/*" }
+$keep = @("README.md","README-EN.md","HANDOFF.md","BRANCH_ISOLATION.md","docs/devin-go-live.md")
 foreach ($f in $files) {
+  if ($keep -contains $f) { continue }
   if ((git -C $src hash-object -- $f) -ne (git -C $new hash-object -- $f)) { "内容不同: $f" }
 }
 ```
