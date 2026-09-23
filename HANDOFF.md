@@ -76,21 +76,25 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: C:\Users\Administrator\AppData\Local\haxsd byok
-版本:     1.0.1（机器上装的仍是这一版；1.0.2 已发布，可应用内升级）
+版本:     1.0.1（机器上装的仍是这一版；最新版 1.0.3，可应用内升级）
 数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
 ```
 
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.2（Latest），2026-09-22
-产物:      haxsd.byok_1.0.2_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.3（Latest），2026-09-23
+产物:      haxsd.byok_1.0.3_x64-setup.exe / .sig / latest.json
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
 **产品仓库必须保持公开**，否则应用内更新会 404：更新器请求时不带凭证，私有仓库的
 release 资源不接受匿名下载（实测私有 404 / 公开 302）。签名链已用
 `.e2e-devin\tools\verify-update-signature.mjs` 验过，公钥与签名密钥标识一致。
+
+**`latest.json` 里的下载地址必须是不限流的形式**（`github.com/.../releases/download/<tag>/<asset>`）。
+tauri-action 默认写 `api.github.com` 的资源地址，那个**只给匿名请求每小时 60 次**；本机走共享代理出口，
+配额被耗光时安装包下载直接 403（清单本身不受影响）。finalize 任务现在会自动改写并检查这一点。
 
 ### 仓库
 
@@ -307,9 +311,15 @@ Start-Process "$env:LOCALAPPDATA\haxsd byok\haxsd-byok-desktop.exe"
      - tag 名字必须等于 haxsd-byok-v<版本号>
      - tag 指向的提交必须**在产品仓库的 origin/main 上**，否则 prepare 任务直接拒绝
      - 开发仓库也有一份同名工作流，但它的 origin/main 是别的东西，**不要在开发仓库打这个 tag**
-4. Release workflow：构建（Windows/MSVC）→ 签名 → 建**草稿** Release → finalize 转正为 latest
+4. Release workflow：构建（Windows/MSVC）→ 签名 → 建**草稿** Release
+   → **改写 latest.json 的下载地址**（见下）→ finalize 转正为 latest
 5. 应用内更新才真正可用（前提：产品仓库公开）
 ```
+
+**finalize 里有一步不能删：把 `latest.json` 的下载地址改写掉。** tauri-action 写的是
+`api.github.com` 资源地址，那个只给匿名请求每小时 60 次配额；配额耗尽时安装包下载 403，
+清单却照样能读——**表现为"能查到有新版本，但下载失败"**。改写脚本在工作流里，
+不匹配任何资源或改写后仍含 `api.github.com` 都会直接让发布失败。
 
 **版本号必须往上抬。** 更新器只认严格更新的版本：已装 1.0.1 时再发一个 1.0.1，用户那边什么都不会发生。
 
@@ -384,13 +394,13 @@ node D:\cursor-byok\byok-dev\.e2e-devin\tools\verify-update-signature.mjs `
 | 优先级 | 事项 | 说明 |
 |---|---|---|
 | ~~高~~ | ~~同步产品仓库~~ | 已完成，两仓库逐文件一致（只差那 4 个文档） |
-| ~~高~~ | ~~发布正式 Release~~ | 已完成：`haxsd-byok-v1.0.2`，签名链已验证，应用内更新可用 |
+| ~~高~~ | ~~发布正式 Release~~ | 已完成：`haxsd-byok-v1.0.3`（Latest），签名链与匿名下载都已实测验证 |
+| ~~低~~ | ~~`latest.json` 下载地址走 `api.github.com`~~ | 已修：finalize 阶段改写成不限流的 `github.com/.../releases/download/...`，并在改写失败时中断发布 |
 | 中 | 图表**形态**重设计 | 已修：空柱等高、日历数据源、三主题色板、仪表盘硬编码绿色、tooltip 走 token。**形态本身（柱状/热力图）未做** |
 | 中 | 日期选择器、命令面板等长尾控件 | 未逐一走查 |
 | 低 | 偶发测试 `database is locked` | `newer_run_request_on_one_bidi_stream_replaces_the_active_run` 出现过一次；源仓库 12 次运行未复现。**无复现证据前不要改池配置** |
 | 低 | 页面切换过渡动效 | 只做了基础动效（按钮/弹窗/折叠） |
 | 低 | 图表的 memo 不依赖主题 | `DailyTokenUsageChart` / `ContributionCalendarChart` 的 `useMemo` / `useLayoutEffect` 依赖里没有主题，主题变了颜色不会重算。**当前不可见**（主题开关只在设置页，切主题时首页已卸载，回来是重新挂载），但如果哪天把主题开关挪到常驻位置就会露出来 |
-| 低 | `latest.json` 里的下载地址走 `api.github.com` | tauri-action 生成的是 API 资源地址，受匿名 60 次/小时的限制。本机走共享代理出口，实测被限流时 403（配额恢复后正常）。要彻底免疫，需要在 finalize 阶段把 url 改写成 `github.com/.../releases/download/<tag>/<asset>` 形式（不限流） |
 | 待定 | 把 `midnight` 设为默认主题 | 用户尚未表态 |
 
 ### 明确挂起（不要擅自推进）
