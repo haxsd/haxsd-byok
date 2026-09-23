@@ -40,7 +40,7 @@ haxsd byok 的模型通道（你在界面里配置的模型与密钥）
 本地构建（需要 Node 22、Rust、Tauri 依赖）：
 
 ```powershell
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router
+cd D:\cursor-byok\byok-dev\haxsd-byok
 npm --prefix apps/desktop ci          # 首次需要
 npm --prefix apps/desktop run tauri:build -- --bundles nsis
 # 产物：apps\desktop\src-tauri\target\release\bundle\nsis\haxsd byok_1.0.1_x64-setup.exe

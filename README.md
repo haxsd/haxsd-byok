@@ -13,9 +13,7 @@
 ## 关于这个仓库
 
 > [!CAUTION]
-> 本仓库的 `main` 与 `feat/devin-router` 是两条相互隔离的产品线，**禁止合并**。`main` 只维护 Cursor BYOK；当前分支只维护 `haxsd byok` 和 Devin 集成。开发、测试、打包或推送前，请先确认当前分支。完整规则见 [`BRANCH_ISOLATION.md`](./BRANCH_ISOLATION.md)。
->
-> 两个产品线在本地是**两个独立克隆**：Devin 线在 `D:\cursor-byok\byok-dev\cursor-byok-devin-router`，Cursor 线在 `D:\cursor-byok\byok-dev\cursor-byok-upstream`。
+> 两条产品线在**两个独立仓库**里：`haxsd byok`（本仓库，`dev.haxsd.byok`）与 Cursor BYOK（[haxsd/cursor-byok](https://github.com/haxsd/cursor-byok)，`dev.cursorbyok.desktop`）。两者各有自己的产品标识、数据目录、更新渠道与签名密钥，**代码不互相移植**。开发、测试、打包或推送前，请先确认仓库与分支（`git remote -v`、`git branch --show-current`）。完整规则见 [`BRANCH_ISOLATION.md`](./BRANCH_ISOLATION.md)。
 
 本仓库是 [leookun/cursor-byok](https://github.com/leookun/cursor-byok) 的 fork，基线为上游 **v1.0.0**（提交 `3725f27`）。上游是 MIT 许可的开源项目，本分支在上游基础上做了以下几处改动，供个人自用：
 
@@ -221,19 +219,19 @@ git push origin haxsd-byok-v1.0.1
 
 发布流程只构建 Windows。需要 macOS / Linux 产物时，在 `.github/workflows/release.yml` 的 `publish` 任务里补回对应的 `matrix` 条目与平台专属步骤即可（可参考上游的 `release.yml`）。
 
-更新说明：当前版本不生成更新清单，也不会连接 Cursor BYOK 的更新地址。以后若启用更新，必须先建立独立的 `haxsd byok` 发布通道。
+更新说明：更新清单由本仓库的发布流程生成（标签 `haxsd-byok-v*`，签名密钥独立于 Cursor BYOK），应用内「软件更新」卡片读取本仓库 releases 里的 `latest.json`，不会连接 Cursor BYOK 的更新地址。
 
 ## 与原版保持同步
 
-本仓库是为了长期跟进上游而建的，改动集中且互不耦合，同步上游的步骤：
+本仓库是为了长期跟进上游而建的，改动集中且互不耦合。本仓库的历史是重新导入的（初始提交与上游没有共同祖先），因此不能直接 `git merge upstream/main`；同步的做法是先看清上游的变更范围，再逐文件套用：
 
 ```bash
-git remote add upstream https://github.com/leookun/cursor-byok.git
-git fetch upstream
-git merge upstream/main
+git fetch https://github.com/leookun/cursor-byok.git main
+git diff --stat <上次同步的上游提交> FETCH_HEAD    # 先看范围：改了哪些文件、增删多少行
+git diff <上次同步的上游提交> FETCH_HEAD -- <文件> | git apply
 ```
 
-若上游同时改动了价格或广告相关文件，按「改动详情」里列出的文件逐一处理冲突即可。
+若上游改动了价格或广告相关文件，按「改动详情」里列出的文件逐一处理即可。
 
 ## 原始项目说明（摘自上游）
 
