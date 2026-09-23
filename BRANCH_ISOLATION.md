@@ -1,42 +1,55 @@
-# Branch isolation
+# Repository isolation
 
-This repository intentionally contains two independent product lines. They are
-not two stages of one release and must not be merged into each other.
+Two independent products live in two separate repositories. They share a common
+ancestor (upstream `leookun/cursor-byok`) but are separate applications with
+separate identities, data directories and release channels. They are not two
+stages of one release and must not be merged into each other.
 
-| Branch | Product | Scope | Default data directory |
-| --- | --- | --- | --- |
-| `main` | Cursor BYOK | Cursor-only product line | `.cursor-byok-v3` |
-| `feat/devin-router` | `haxsd byok` | Devin-compatible product line with its own Cursor model harness | `.haxsd-byok-devin-v3` |
+| Product | Repository | Branch | Scope | Default data directory |
+| --- | --- | --- | --- | --- |
+| `haxsd byok` | `haxsd/haxsd-byok` (this repository) | `main` | Devin-compatible product line with its own Cursor model harness | `.haxsd-byok-devin-v3` |
+| Cursor BYOK | `haxsd/cursor-byok` | `main` | Cursor-only product line | `.cursor-byok-v3` |
 
 ## Non-negotiable rules
 
-1. Do not merge `feat/devin-router` into `main`.
-2. Do not rebase or cherry-pick Devin product code into `main` unless the owner
-   explicitly requests a new, separately reviewed integration.
-3. Do not release the two products from the same tag or updater channel.
-4. Keep the product identifier, executable name, data directory, database, and
-   local-storage keys separate.
-5. Before changing or pushing code, verify the current branch with
-   `git branch --show-current` and confirm that the worktree is the intended
-   product worktree.
+1. Do not port code from one product to the other. A change that affects both is
+   two changes: it is reviewed and landed once per repository.
+2. Keep the product identifier, executable name, data directory, database and
+   local-storage keys separate: `dev.haxsd.byok` here, `dev.cursorbyok.desktop`
+   in the Cursor product.
+3. Do not release both products from the same tag. This repository's release tags
+   are prefixed `haxsd-byok-v*`; the Cursor product uses `v*`.
+4. Never point one product's updater endpoint at the other product's release
+   manifest, and never reuse the other product's signing key.
+5. Before changing or pushing code, confirm the repository, branch and worktree:
+   `git remote -v` and `git branch --show-current`.
+6. Upstream changes are ported by hand, file by file. Both product repositories
+   were re-imported from upstream, so their histories share no ancestor with
+   `leookun/cursor-byok` and `git merge upstream/main` is not an option.
 
-The Devin product currently has automatic updates disabled. A future update
-channel must be created specifically for `haxsd byok`; it must never point to
-the Cursor BYOK `main` release manifest.
+## Release channels
+
+| Product | Updater endpoint | Signing key |
+| --- | --- | --- |
+| `haxsd byok` | `haxsd/haxsd-byok` releases, tags `haxsd-byok-v*` | public key `5B1D4F333875D202`; private key in the `TAURI_SIGNING_PRIVATE_KEY` secret and in `D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.key` |
+| Cursor BYOK | `haxsd/cursor-byok` releases, tags `v*` | public key `67DF32FA5EB7A316`; private key only in that repository's `TAURI_SIGNING_PRIVATE_KEY` secret |
 
 ## Local checkouts
 
-The two product lines live in two separate clones of this repository, not in one
-clone with two worktrees:
-
 | Product | Checkout | Branch | Remote |
 | --- | --- | --- | --- |
-| `haxsd byok` (Devin) | `D:\cursor-byok\byok-dev\cursor-byok-devin-router` | `feat/devin-router` | `haxsd/haxsd-byok` (product home) |
-| Cursor BYOK | `D:\cursor-byok\byok-dev\cursor-byok-upstream` | `main` | `leookun/cursor-byok` |
+| `haxsd byok` | `D:\cursor-byok\byok-dev\haxsd-byok` | `main` | `haxsd/haxsd-byok` |
+| Cursor BYOK | `D:\cursor-byok\byok-dev\cursor-byok-product` | `main` | `haxsd/cursor-byok` |
+| Upstream reference | `D:\cursor-byok\byok-dev\cursor-byok-upstream` | `main` | `leookun/cursor-byok` |
 
-The Cursor checkout tracks the upstream repository itself, so it must not receive
-Devin commits and must not push product changes back to upstream.
+The upstream reference checkout exists to read upstream code and to compute its
+diffs; it must not receive product commits and must not push to upstream.
 
-If a task concerns Devin, work only in the Devin checkout and push only
-`feat/devin-router`. If a task concerns the Cursor product, work only in the
-Cursor checkout and keep the Devin branch untouched.
+## Retired: `feat/devin-router`
+
+`haxsd byok` was first developed as `feat/devin-router` inside
+`haxsd/cursor-byok`. That arrangement ended: the branch was archived as
+`legacy/devin-router` (kept read-only; the per-file port checklist against this
+repository lives in `D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md`)
+and was removed from the remote branch list. All `haxsd byok` work happens in
+this repository's `main`.
