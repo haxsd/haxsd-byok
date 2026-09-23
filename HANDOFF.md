@@ -76,17 +76,27 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: C:\Users\Administrator\AppData\Local\haxsd byok
-版本:     1.0.1（机器上装的仍是这一版；最新版 1.0.4，可应用内升级）
+版本:     1.0.8（机器上装的就是这一版，应用内「检查更新」实测可用）
 数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
 ```
 
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.4（Latest），2026-09-23
-产物:      haxsd.byok_1.0.4_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.8（Latest），2026-09-23
+产物:      haxsd.byok_1.0.8_x64-setup.exe / .sig / latest.json
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
+
+**`updater:default` 必须留在 `apps/desktop/src-tauri/capabilities/default.json` 里。**
+从 1.0.1 到 1.0.7 的每个版本都漏了这一项：更新卡片读得到版本号，点「检查更新」却
+只会报 `Command plugin:updater|check not allowed by ACL`——权限缺失在运行前完全看不
+出来（编译、类型检查、界面渲染都正常）。**凡是新增 Tauri 插件调用，都要同时检查
+capabilities**，否则功能是静默不可用的。
+
+因为 1.0.7（含更早版本）自己查不了更新，**装过这些版本的用户必须手动装一次 1.0.8**；
+从 1.0.8 起应用内更新才真正可用（1.0.6 → 1.0.7 的完整链路已实测：检查 → 下载 →
+验签 → 安装 → 自动重启）。
 
 **产品仓库必须保持公开**，否则应用内更新会 404：更新器请求时不带凭证，私有仓库的
 release 资源不接受匿名下载（实测私有 404 / 公开 302）。签名链已用
@@ -184,6 +194,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **GitHub 推送偶发 `SSL_ERROR_SYSCALL`** | 重试即可 |
 | **git 自己不走系统代理** | 两个产品仓库都**没有**配 `http.proxy`。系统代理在 `127.0.0.1:7897`（Clash/mihomo），`gh` 和 PowerShell 会自动用，**git 不会**：直接推送会报 `Failed to connect to github.com port 443`。推送时显式带上 `-c http.proxy=http://127.0.0.1:7897`，或在仓库里配上 |
 | **复制式移植从不删除文件** | `tar -x` / `Copy-Item` 只会覆盖与新增。从归档分支移植时，旧副本会留在本仓库（曾残留 `LatencyChart.tsx` / `TokenTrendChart.tsx`）。移植后必须用 blob 哈希比对确认，见第七节 |
+| **启用窗口只写在 capabilities 里** | Tauri v2 的前端调用要先过 ACL：漏一项权限，功能**静默不可用**，编译与渲染都正常（`updater:default` 从 1.0.1 漏到 1.0.7，更新卡片一直报 `not allowed by ACL`）。新增插件调用时一并改 `apps/desktop/src-tauri/capabilities/default.json` |
 | **`finalize` 任务没有 checkout** | `gh release edit` 无法推断仓库，报 `not a git repository`，草稿不会转正。已修为显式 `--repo "${GITHUB_REPOSITORY}"`。**改这个工作流时别删掉 `--repo`** |
 | **更新地址必须能匿名读取** | 产品仓库若改回私有，`releases/latest/download/latest.json` 立刻 404，应用内更新全断 |
 | **Cursor 的 `settings.json` 是本机共享资源** | 同机另一个产品（Cursor BYOK）也写它，键名与我们完全相同。**任何"清理"都必须凭归属标记，不能凭内容形状推断**，否则会把对方的配置删掉——已经真实发生过一次，见第十四节 |
