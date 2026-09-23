@@ -31,6 +31,8 @@ export function CursorSettingsPage() {
 
   const caReady = cursorHarness?.ca === "ready";
   const cursorTakenOver = cursorHarness?.settings_applied ?? false;
+  /** Cursor 的代理配置由另一个同类软件写入：我们没去覆盖它，必须把这件事说出来。 */
+  const foreignConfiguration = cursorHarness?.foreign_configuration ?? false;
   const takeoverLabel = cursorTakenOver ? t("关闭接管Cursor") : t("开启接管Cursor");
 
   useEffect(() => {
@@ -52,6 +54,9 @@ export function CursorSettingsPage() {
   };
 
   const content = <div className={styles.page}>
+    {/* 这条说明必须在 CA 门控之外：配置被别人占着的时候，用户看到的第一件事应该是它，
+        而不是「先初始化 CA」。 */}
+    {foreignConfiguration && <div className={styles.foreignWarning}>{t("Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要继续用本应用接管，请先关闭对方的接管，或打开上方的开关。")}</div>}
     <CursorCaGate busy={cursorBusy} waitingForRefresh={waitingForCaRefresh} onInitialize={() => void initializeCa()} onRefresh={() => void refreshCa}>
       <div className={styles.editor}>
         <strong>{t("接管状态")}</strong>
@@ -66,7 +71,7 @@ export function CursorSettingsPage() {
   return <>
     <PageActions position="left">
       <div className={styles.takeoverActions}>
-        <span className={styles.takeoverStatus}>{cursorTakenOver ? t("已接管") : t("未接管")}</span>
+        <span className={styles.takeoverStatus}>{foreignConfiguration ? t("配置冲突") : cursorTakenOver ? t("已接管") : t("未接管")}</span>
         <TooltipTrigger label={takeoverLabel}>
           <Switch
             checked={cursorTakenOver}

@@ -83,6 +83,7 @@ let harnessStatus: CursorHarnessStatus = {
   enabled_models: models.length,
   integration: "enabled",
   settings_applied: true,
+  foreign_configuration: false,
   proxy_url: "http://127.0.0.1:54321",
   ca_install_command: null,
 };
