@@ -36,7 +36,7 @@ identifier: dev.haxsd.byok
 ## 二、目录结构即架构
 
 ```
-D:\cursor-byok\byok-dev\cursor-byok-devin-router\      ← 开发仓库（分支 feat/devin-router）
+D:\cursor-byok\byok-dev\haxsd-byok\                    ← 产品仓库（haxsd/haxsd-byok，分支 main）
 ├─ server\src\
 │  ├─ cursor\          接管 Cursor（改其配置 + 本地 CA）
 │  ├─ devin\           Devin 网关，10 个文件 3700+ 行
@@ -76,15 +76,15 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: C:\Users\Administrator\AppData\Local\haxsd byok
-版本:     1.0.1（机器上装的仍是这一版；最新版 1.0.3，可应用内升级）
+版本:     1.0.1（机器上装的仍是这一版；最新版 1.0.4，可应用内升级）
 数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
 ```
 
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.3（Latest），2026-09-23
-产物:      haxsd.byok_1.0.3_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.4（Latest），2026-09-23
+产物:      haxsd.byok_1.0.4_x64-setup.exe / .sig / latest.json
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
@@ -99,16 +99,16 @@ tauri-action 默认写 `api.github.com` 的资源地址，那个**只给匿名�
 ### 仓库
 
 ```
-开发仓库  https://github.com/haxsd/cursor-byok.git   分支 feat/devin-router（私有）
 产品仓库  https://github.com/haxsd/haxsd-byok.git    分支 main（**公开**，更新通道指向它）
 ```
 
-两个仓库的**内容**已逐文件一致（git blob 哈希比对）：610 个文件，只有 4 个文档不同。
+本产品的开发与发布都只在本仓库的 `main` 上进行；旧开发分支的内容已归档为
+`legacy/devin-router`，逐文件清单见第七节。
 
 ### 用户环境中有两个独立产品，不要搞混
 
 ```
-haxsd byok      ← 本项目（D:\cursor-byok\byok-dev\cursor-byok-devin-router）
+haxsd byok      ← 本项目（D:\cursor-byok\byok-dev\haxsd-byok）
 Cursor BYOK     ← 另一个产品，安装在 D:\cursor-byok\Cursor BYOK，进程 cursor-byok-desktop
 ```
 
@@ -182,8 +182,8 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **i18n 插件强制静态字面量** | `t()` 参数必须是字符串字面量，不能是变量，也不能传 JSX。违反会**构建失败** |
 | **i18n 缺译文会构建失败** | 加新文案后跑 `npm run i18n:scan`，填 `en-US.json` 里的空词条 |
 | **GitHub 推送偶发 `SSL_ERROR_SYSCALL`** | 重试即可 |
-| **git 自己不走系统代理** | 两个仓库都**没有**配 `http.proxy`。系统代理在 `127.0.0.1:7897`（Clash/mihomo），`gh` 和 PowerShell 会自动用，**git 不会**：直接推送会报 `Failed to connect to github.com port 443`。推送时显式带上 `-c http.proxy=http://127.0.0.1:7897`，或在仓库里配上 |
-| **`tar -x` 从不删除文件** | 第七节的同步方式只会覆盖/新增。开发仓库删掉的文件会在产品仓库里留下旧副本（已遇到一次）。同步后必须用 blob 哈希比对确认，见第七节 |
+| **git 自己不走系统代理** | 两个产品仓库都**没有**配 `http.proxy`。系统代理在 `127.0.0.1:7897`（Clash/mihomo），`gh` 和 PowerShell 会自动用，**git 不会**：直接推送会报 `Failed to connect to github.com port 443`。推送时显式带上 `-c http.proxy=http://127.0.0.1:7897`，或在仓库里配上 |
+| **复制式移植从不删除文件** | `tar -x` / `Copy-Item` 只会覆盖与新增。从归档分支移植时，旧副本会留在本仓库（曾残留 `LatencyChart.tsx` / `TokenTrendChart.tsx`）。移植后必须用 blob 哈希比对确认，见第七节 |
 | **`finalize` 任务没有 checkout** | `gh release edit` 无法推断仓库，报 `not a git repository`，草稿不会转正。已修为显式 `--repo "${GITHUB_REPOSITORY}"`。**改这个工作流时别删掉 `--repo`** |
 | **更新地址必须能匿名读取** | 产品仓库若改回私有，`releases/latest/download/latest.json` 立刻 404，应用内更新全断 |
 | **Cursor 的 `settings.json` 是本机共享资源** | 同机另一个产品（Cursor BYOK）也写它，键名与我们完全相同。**任何"清理"都必须凭归属标记，不能凭内容形状推断**，否则会把对方的配置删掉——已经真实发生过一次，见第十四节 |
@@ -194,26 +194,25 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 
 ---
 
-## 七、两个仓库的同步（接手后第一件事）
+## 七、与旧开发分支的关系（归档，只读）
 
-产品仓库落后 6 个提交。同步方式（保持产品仓库自己的 `.github` 和 4 个文档不变）：
+`haxsd byok` 最初在 `haxsd/cursor-byok` 的 `feat/devin-router` 分支上开发，那个安排已经结束：
 
-```powershell
-$src = "D:\cursor-byok\byok-dev\cursor-byok-devin-router"
-$new = "D:\cursor-byok\byok-dev\haxsd-byok"
-$tar = Join-Path $env:TEMP "byok-sync.tar"
-git -C $src archive --format=tar -o $tar HEAD
-tar -x -f $tar -C $new --exclude ".github"
-Remove-Item $tar -Force
-Set-Location $new
-# 恢复产品仓库自己的文档与工作流
-git checkout -- BRANCH_ISOLATION.md README-EN.md README.md docs/devin-go-live.md
-git add -A
-git -c user.name="haxsd" -c user.email="haxsd@users.noreply.github.com" commit -m "..."
-git push origin main
+```
+归档分支   haxsd/cursor-byok 的 legacy/devin-router @ 52f0a47（只读；含 12 个未推 commit
+           与当时未提交的改动）
+逐文件清单 D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md
+           （与本仓库相差 129 个文件、+12615/−3352；40 个文件只在归档分支；
+            6 个文件本仓库更全）
+归档检出   D:\cursor-byok\byok-dev\cursor-byok-devin-router（停留在 legacy/devin-router）
 ```
 
-**校验同步结果**（必须用 git blob 哈希，不能直接比文件——行尾差异会伪装成内容不同）：
+本产品的开发与发布只在本仓库的 `main` 上进行。要从归档里补回某一块：
+
+1. 先在清单里挑文件，按最后一列判定：`旧分支只增不减` 是尚未移植的；`仓库 B 更全` 的**不要覆盖**；
+2. 逐文件移植并提交。**不要整目录复制**：归档带着一整代界面重做，整批覆盖会把本仓库里已经
+   改得更靠前的文件弄回去；
+3. 校验用 git blob 哈希，不要比文件内容——行尾差异会伪装成内容不同：
 
 ```powershell
 $src = "D:\cursor-byok\byok-dev\cursor-byok-devin-router"
@@ -224,13 +223,9 @@ foreach ($f in $files) {
 }
 ```
 
-预期只有 4 个文件不同：`BRANCH_ISOLATION.md`、`README-EN.md`、`README.md`、`docs/devin-go-live.md`（产品仓库地址不同，有意为之）。
-
-⚠️ **`tar -x` 只会覆盖和新增，不会删除。** 开发仓库删掉的文件会在产品仓库里留下旧副本，
-"只差 4 个文档" 就不再成立。曾经因此残留过 `LatencyChart.tsx` / `TokenTrendChart.tsx`。
-所以每次同步后都要跑上面这段比对，**不要只看文件数对不对**：两侧数量可能相同（一边多一个、
-一边少一个），哈希比对才看得出来。另外两侧文件数不同时，用
-`Compare-Object (git ls-tree -r HEAD) ...` 可以直接列出差集。
+⚠️ 复制式移植（`tar -x`、`Copy-Item`）只覆盖和新增、**从不删除**，旧副本会留在本仓库里：
+曾经因此残留过 `LatencyChart.tsx` / `TokenTrendChart.tsx`。两侧文件数相同时也可能一边多一个、
+一边少一个，所以比对结果里"多出来的文件"要按清单逐个确认是否该删，**不要只看数量**。
 
 ---
 
@@ -268,11 +263,11 @@ foreach ($f in $files) {
 
 ```powershell
 # 前端
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router\apps\desktop
+cd D:\cursor-byok\byok-dev\haxsd-byok\apps\desktop
 npm run check          # tsc + vite + i18n 校验，必须绿灯
 
 # 后端
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router
+cd D:\cursor-byok\byok-dev\haxsd-byok
 cargo fmt --all -- --check
 cargo test --workspace --exclude haxsd-byok-desktop   # 本地必须排除桌面 crate（GNU 运行时问题）
 ```
@@ -282,7 +277,7 @@ cargo test --workspace --exclude haxsd-byok-desktop   # 本地必须排除桌面
 ### 构建与安装
 
 ```powershell
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router
+cd D:\cursor-byok\byok-dev\haxsd-byok
 npm --prefix apps/desktop run tauri:build -- --bundles nsis
 # 产物: target\release\bundle\nsis\haxsd byok_1.0.1_x64-setup.exe
 
@@ -309,11 +304,10 @@ Start-Process "$env:LOCALAPPDATA\haxsd byok\haxsd-byok-desktop.exe"
                                          cargo 不一定会自动改写，`cargo check --locked`
                                          能验证你改对了）
      （`npm version 1.0.x --no-git-tag-version` 能正确改前两个文件）
-2. 提交并推送到**产品仓库的 main**（不是开发仓库），再同步一次，见第七节
-3. 在产品仓库上打 tag 并推送：haxsd-byok-v1.0.x
+2. 提交并推送到本仓库的 `main`
+3. 在本仓库打 tag 并推送：haxsd-byok-v1.0.x
      - tag 名字必须等于 haxsd-byok-v<版本号>
-     - tag 指向的提交必须**在产品仓库的 origin/main 上**，否则 prepare 任务直接拒绝
-     - 开发仓库也有一份同名工作流，但它的 origin/main 是别的东西，**不要在开发仓库打这个 tag**
+     - tag 指向的提交必须**在本仓库的 origin/main 上**，否则 prepare 任务直接拒绝
 4. Release workflow：构建（Windows/MSVC）→ 签名 → 建**草稿** Release
    → **改写 latest.json 的下载地址**（见下）→ finalize 转正为 latest
 5. 应用内更新才真正可用（前提：产品仓库公开）
@@ -396,7 +390,7 @@ node D:\cursor-byok\byok-dev\.e2e-devin\tools\verify-update-signature.mjs `
 
 | 优先级 | 事项 | 说明 |
 |---|---|---|
-| ~~高~~ | ~~同步产品仓库~~ | 已完成，两仓库逐文件一致（只差那 4 个文档） |
+| ~~高~~ | ~~同步产品仓库~~ | 已完成：旧开发分支的存量归档为 `legacy/devin-router`，逐文件清单见第七节 |
 | ~~高~~ | ~~发布正式 Release~~ | 已完成：`haxsd-byok-v1.0.3`（Latest），签名链与匿名下载都已实测验证 |
 | ~~低~~ | ~~`latest.json` 下载地址走 `api.github.com`~~ | 已修：finalize 阶段改写成不限流的 `github.com/.../releases/download/...`，并在改写失败时中断发布 |
 | 中 | 图表**形态**重设计 | 已修：空柱等高、日历数据源、三主题色板、仪表盘硬编码绿色、tooltip 走 token。**形态本身（柱状/热力图）未做** |
@@ -451,10 +445,10 @@ Get-Process -Name haxsd-byok-desktop -EA SilentlyContinue
 foreach ($p in 1634,43110,43111,43112) { Get-NetTCPConnection -State Listen -LocalPort $p -EA SilentlyContinue }
 
 # 2. 前端绿灯吗
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router\apps\desktop; npm run check
+cd D:\cursor-byok\byok-dev\haxsd-byok\apps\desktop; npm run check
 
 # 3. 后端绿灯吗
-cd D:\cursor-byok\byok-dev\cursor-byok-devin-router
+cd D:\cursor-byok\byok-dev\haxsd-byok
 cargo fmt --all -- --check
 cargo test --workspace --exclude haxsd-byok-desktop
 

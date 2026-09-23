@@ -13,9 +13,7 @@ A personal fork of [leookun/cursor-byok](https://github.com/leookun/cursor-byok)
 ## About this repository
 
 > [!CAUTION]
-> `main` and `feat/devin-router` are **separate product lines and must never be merged**. `main` is the Cursor BYOK line; this branch is the `haxsd byok` Devin line. Verify the current branch before development, testing, packaging, or pushing. See [`BRANCH_ISOLATION.md`](./BRANCH_ISOLATION.md) for the full rules.
->
-> The two product lines are **two separate local clones**: the Devin line lives in `D:\cursor-byok\byok-dev\cursor-byok-devin-router`, the Cursor line in `D:\cursor-byok\byok-dev\cursor-byok-upstream`.
+> The two product lines live in **two separate repositories**: `haxsd byok` (this repository, `dev.haxsd.byok`) and Cursor BYOK ([haxsd/cursor-byok](https://github.com/haxsd/cursor-byok), `dev.cursorbyok.desktop`). Each has its own product identity, data directory, update channel and signing key, and **code is never ported from one to the other**. Before development, testing, packaging or pushing, confirm the repository and branch (`git remote -v`, `git branch --show-current`). See [`BRANCH_ISOLATION.md`](./BRANCH_ISOLATION.md) for the full rules.
 
 This repository is a fork of [leookun/cursor-byok](https://github.com/leookun/cursor-byok), based on upstream **v1.0.0** (commit `3725f27`). Upstream is an MIT-licensed open-source project. This fork makes the following changes for personal use:
 
@@ -178,17 +176,19 @@ To validate a build without publishing, run the `Release desktop app` workflow m
 
 The workflow builds Windows only. To add macOS / Linux, restore the corresponding `matrix` entries and platform steps in `.github/workflows/release.yml` (upstream's `release.yml` is the reference).
 
-Updates: this build does not generate update manifests and never contacts the Cursor BYOK update channel. If updates are enabled later, create a dedicated `haxsd byok` release channel first.
+Updates: the update manifest is produced by this repository's own release workflow (tags `haxsd-byok-v*`, signing key independent of Cursor BYOK), and the in-app "software update" card reads `latest.json` from this repository's releases. It never contacts the Cursor BYOK update channel.
 
 ## Syncing with upstream
 
+This fork exists to track upstream over the long run, with changes kept small and independent. Its history was re-imported, so the initial commit shares no ancestor with upstream and `git merge upstream/main` does not work. Sync by inspecting what upstream changed and applying it file by file:
+
 ```bash
-git remote add upstream https://github.com/leookun/cursor-byok.git
-git fetch upstream
-git merge upstream/main
+git fetch https://github.com/leookun/cursor-byok.git main
+git diff --stat <last synced upstream commit> FETCH_HEAD    # see the scope first
+git diff <last synced upstream commit> FETCH_HEAD -- <file> | git apply
 ```
 
-Conflicts are limited to the files listed in "What changed".
+Files touched by pricing or ads still need to be resolved by hand, following the list in "What changed".
 
 ## Upstream project
 
