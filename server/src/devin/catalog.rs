@@ -13,6 +13,13 @@ const MODEL_FIELD: u32 = 1;
 const MODEL_NAME_FIELD: u32 = 1;
 const MODEL_IDENTITY_FIELD: u32 = 2;
 const MODEL_AVAILABILITY_FIELD: u32 = 4;
+/// `exa.codeium_common_pb.ClientModelConfig.no:5 supports_images`（bool）。
+///
+/// Devin 客户端据此决定能不能发图：这个字段缺席时它按 false 处理，于是用户一贴图就被
+/// 拦下（"This model does not support images."）。Cursor 那侧的模型目录一直把
+/// `supports_images` 写死为 true（`cursor/services/model_catalog.rs` 的 `available_model`），
+/// 所以这里也报 true：两个客户端对同一份模型库的说法必须一致。
+const MODEL_SUPPORTS_IMAGES_FIELD: u32 = 5;
 const MODEL_DISABLED_REASON_FIELD: u32 = 33;
 const MODEL_DISPLAY_CONTEXT_FIELD: u32 = 18;
 const MODEL_UID_FIELD: u32 = 22;
@@ -102,6 +109,8 @@ fn build_model(
             MODEL_METADATA_FIELD,
             wire::serialize_fields(&[wire::Field::bytes(METADATA_NAME_FIELD, display_name)])?,
         ),
+        // 与 Cursor 侧一致：模型库里的模型按「能看图」报给客户端。
+        wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 1),
     ];
     if context > 0 {
         fields.push(wire::Field::varint(MODEL_DISPLAY_CONTEXT_FIELD, context));
@@ -132,6 +141,7 @@ fn rewrite_model(model: &[u8], settings: &DevinSettings, gateway_url: &str) -> R
     let mut saw_identity = false;
     let mut saw_info = false;
     let mut saw_metadata = false;
+    let mut saw_supports_images = false;
     let mut saw_uid = false;
     for field in fields {
         match (field.number, field.value) {
@@ -170,6 +180,12 @@ fn rewrite_model(model: &[u8], settings: &DevinSettings, gateway_url: &str) -> R
                     rewrite_metadata(&value, display_name)?,
                 ));
             }
+            // 官方目录里这一项可能是 false（或整个缺席）：我们的模型库由用户配置，
+            // 是否真能看图由提供方决定，客户端不该替它拦下图片。
+            (MODEL_SUPPORTS_IMAGES_FIELD, _) => {
+                saw_supports_images = true;
+                output.push(wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 1));
+            }
             (_, value) => output.push(wire::Field {
                 number: field.number,
                 value,
@@ -199,6 +215,9 @@ fn rewrite_model(model: &[u8], settings: &DevinSettings, gateway_url: &str) -> R
             MODEL_METADATA_FIELD,
             wire::serialize_fields(&[wire::Field::bytes(METADATA_NAME_FIELD, display_name)])?,
         ));
+    }
+    if !saw_supports_images {
+        output.push(wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 1));
     }
     wire::serialize_fields(&output)
 }
@@ -327,6 +346,26 @@ mod tests {
     use super::*;
     use crate::devin::{DevinBindingKind, DevinRoute};
 
+    fn varint_field(fields: &[wire::Field], number: u32) -> Option<u64> {
+        fields
+            .iter()
+            .find_map(|field| match (&field.number, &field.value) {
+                (field_number, wire::FieldValue::Varint(value)) if *field_number == number => {
+                    Some(*value)
+                }
+                _ => None,
+            })
+    }
+
+    /// 一整个 payload 里第一条模型记录的字段。
+    fn first_model_fields(payload: &[u8]) -> Vec<wire::Field> {
+        let outer = wire::parse_fields(payload).unwrap();
+        match &outer[0].value {
+            wire::FieldValue::Bytes(value) => wire::parse_fields(value).unwrap(),
+            _ => panic!("model is not a bytes field"),
+        }
+    }
+
     fn settings() -> DevinSettings {
         DevinSettings {
             bindings: vec![
@@ -409,6 +448,53 @@ mod tests {
         assert_eq!(
             string_field(&info, MODEL_INFO_HARNESS_FIELD).as_deref(),
             Some("cursor-byok:model-a")
+        );
+    }
+
+    #[test]
+    fn generated_catalog_advertises_image_support() {
+        // Devin 客户端只在模型带 supports_images 时才允许贴图；缺席即按 false 处理，
+        // 用户就会被 "This model does not support images." 拦下。
+        let payload = model_configs_payload(&settings(), "http://127.0.0.1:43112").unwrap();
+        assert_eq!(
+            varint_field(&first_model_fields(&payload), MODEL_SUPPORTS_IMAGES_FIELD),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn rewrite_advertises_image_support_even_when_the_official_entry_denies_it() {
+        let official = wire::serialize_fields(&[
+            wire::Field::bytes(MODEL_UID_FIELD, "model-a"),
+            wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 0),
+        ])
+        .unwrap();
+        let payload = wire::serialize_fields(&[wire::Field::bytes(MODEL_FIELD, official)]).unwrap();
+        let rewritten =
+            rewrite_model_configs(&payload, &settings(), "http://127.0.0.1:43112").unwrap();
+        let fields = first_model_fields(&rewritten);
+
+        assert_eq!(varint_field(&fields, MODEL_SUPPORTS_IMAGES_FIELD), Some(1));
+        assert_eq!(
+            fields
+                .iter()
+                .filter(|field| field.number == MODEL_SUPPORTS_IMAGES_FIELD)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn rewrite_appends_image_support_when_the_official_entry_omits_it() {
+        let official =
+            wire::serialize_fields(&[wire::Field::bytes(MODEL_UID_FIELD, "model-a")]).unwrap();
+        let payload = wire::serialize_fields(&[wire::Field::bytes(MODEL_FIELD, official)]).unwrap();
+        let rewritten =
+            rewrite_model_configs(&payload, &settings(), "http://127.0.0.1:43112").unwrap();
+
+        assert_eq!(
+            varint_field(&first_model_fields(&rewritten), MODEL_SUPPORTS_IMAGES_FIELD),
+            Some(1)
         );
     }
 
