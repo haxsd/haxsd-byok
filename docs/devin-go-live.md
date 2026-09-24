@@ -33,7 +33,7 @@ haxsd byok 的模型通道（你在界面里配置的模型与密钥）
 | 厂商路由器 | 未运行，43100 无监听 |
 | 桌面应用 | **尚未安装**（无进程、无安装目录） |
 | 数据目录 | 存在但只有空的 `rules\`，无数据库与日志，即产品从未真正运行过 |
-| 安装包 | 已在本地：`D:\cursor-byok\byok-dev\installer\haxsd byok_1.0.1_x64-setup.exe`（见第 1 步） |
+| 安装包 | 本地旧副本已清理（2026-09-24）；需要时按第 1 步重新构建，或从 Release 下载 |
 
 ## 第 1 步：拿到并安装桌面应用
 
@@ -43,7 +43,7 @@ haxsd byok 的模型通道（你在界面里配置的模型与密钥）
 cd D:\cursor-byok\byok-dev\haxsd-byok
 npm --prefix apps/desktop ci          # 首次需要
 npm --prefix apps/desktop run tauri:build -- --bundles nsis
-# 产物：apps\desktop\src-tauri\target\release\bundle\nsis\haxsd byok_1.0.1_x64-setup.exe
+# 产物：target\release\bundle\nsis\haxsd byok_<版本>_x64-setup.exe
 ```
 
 或在 CI 上构建后下载产物（不发布 Release）：
@@ -54,10 +54,10 @@ gh run watch --repo haxsd/haxsd-byok
 gh run download --repo haxsd/haxsd-byok --name manual-build-windows --dir .
 ```
 
-已在本机构建并校验过一份（2026-09-21，run `35578406854`）：
+已在本机构建并校验过一份（2026-09-21，run `35578406854`；本地副本已随 2026-09-24 清理删除）：
 
 ```
-D:\cursor-byok\byok-dev\installer\haxsd byok_1.0.1_x64-setup.exe
+haxsd byok_1.0.1_x64-setup.exe
 20 462 559 字节
 SHA-256 AC4FC03B461A806EA6954206C79315C113032D1B75B3ACC4BA5D1B239A2223C1
 ```

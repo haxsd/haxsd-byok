@@ -39,17 +39,21 @@ stages of one release and must not be merged into each other.
 | Product | Checkout | Branch | Remote |
 | --- | --- | --- | --- |
 | `haxsd byok` | `D:\cursor-byok\byok-dev\haxsd-byok` | `main` | `haxsd/haxsd-byok` |
-| Cursor BYOK | `D:\cursor-byok\byok-dev\cursor-byok-product` | `main` | `haxsd/cursor-byok` |
-| Upstream reference | `D:\cursor-byok\byok-dev\cursor-byok-upstream` | `main` | `leookun/cursor-byok` |
+| Cursor BYOK | `D:\cursor-byok\byok-dev\cursor-byok` | `main` | `haxsd/cursor-byok` |
 
-The upstream reference checkout exists to read upstream code and to compute its
-diffs; it must not receive product commits and must not push to upstream.
+Upstream is not checked out locally (the old reference checkout was removed in
+the 2026-09-24 workspace cleanup). Clone it read-only when its code or diffs are
+needed; that clone must never receive product commits and must never push:
+
+    git clone https://github.com/leookun/cursor-byok D:\cursor-byok\byok-dev\cursor-byok-upstream
 
 ## Retired: `feat/devin-router`
 
 `haxsd byok` was first developed as `feat/devin-router` inside
 `haxsd/cursor-byok`. That arrangement ended: the branch was archived as
-`legacy/devin-router` (kept read-only; the per-file port checklist against this
-repository lives in `D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md`)
-and was removed from the remote branch list. All `haxsd byok` work happens in
+`legacy/devin-router` on `haxsd/cursor-byok` (kept read-only; the per-file port
+checklist against this repository lives in
+`D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md`). The old local
+checkout was removed in the 2026-09-24 workspace cleanup; the remote
+`legacy/devin-router` branch is the archive. All `haxsd byok` work happens in
 this repository's `main`.

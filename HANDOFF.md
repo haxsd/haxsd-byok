@@ -99,8 +99,8 @@ capabilities**，否则功能是静默不可用的。
 验签 → 安装 → 自动重启）。
 
 **产品仓库必须保持公开**，否则应用内更新会 404：更新器请求时不带凭证，私有仓库的
-release 资源不接受匿名下载（实测私有 404 / 公开 302）。签名链已用
-`.e2e-devin\tools\verify-update-signature.mjs` 验过，公钥与签名密钥标识一致。
+release 资源不接受匿名下载（实测私有 404 / 公开 302）。签名链已验证过，公钥与签名
+密钥标识一致。
 
 **`latest.json` 里的下载地址必须是不限流的形式**（`github.com/.../releases/download/<tag>/<asset>`）。
 tauri-action 默认写 `api.github.com` 的资源地址，那个**只给匿名请求每小时 60 次**；本机走共享代理出口，
@@ -114,6 +114,14 @@ tauri-action 默认写 `api.github.com` 的资源地址，那个**只给匿名�
 
 本产品的开发与发布都只在本仓库的 `main` 上进行；旧开发分支的内容已归档为
 `legacy/devin-router`，逐文件清单见第七节。
+
+### 本机工作区（2026-09-24 清理后）
+
+`D:\cursor-byok\byok-dev\` 下只保留：`haxsd-byok\`（本仓库）、`cursor-byok\`（Cursor BYOK
+仓库，原 `cursor-byok-product`，已重命名）、`_logs\`、`.updater-keys\`（签名私钥，勿删）。
+已删除：`cursor-byok-devin-router\`（旧开发仓库检出）、`cursor-byok-upstream\`（上游参考
+检出，需要时按 `BRANCH_ISOLATION.md` 重新 clone）、`.e2e-devin\`（本地验证工具与截图）、
+`.devin-switch\`（厂商路由器逆向材料）、`installer\`（旧安装包）。
 
 ### 用户环境中有两个独立产品，不要搞混
 
@@ -176,8 +184,8 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 色板是**按主题分别声明**的：`_themes.scss` 里的 `chart-palette` mixin，三个主题各一份
 （`--oa-chart-axis` / `--oa-chart-grid` / `--oa-heat-0` 例外，它们引用 `--vscode-*`，会自动跟主题走）。
 只在基础 `:root` 里声明一份的后果是**三个主题共用同一套数据色**——曾经如此，亮色主题拿到的
-是暗色那套（背景 `#f5f5f5`、热力档位 1 却是 `#1d3a63`）。改色板后跑
-`tools/measure-theme-tokens.mjs`，它会直接列出哪些 token 不随主题变化。
+是暗色那套（背景 `#f5f5f5`、热力档位 1 却是 `#1d3a63`）。改色板后要逐主题核对
+`--oa-*` 的计算值，确认没有 token 漏改。
 
 ---
 
@@ -186,7 +194,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | 陷阱 | 真相 |
 |---|---|
 | **GNU 工具链构建的 Tauri 安装包缺 `WebView2Loader.dll`** | 不打包的话干净机器上启动报「找不到 WebView2Loader.dll 系统错误」。已修为 `tauri.conf.json` 的 `bundle.resources` 带上 `webview2/WebView2Loader.dll`。**改打包配置时别删掉它。** |
-| **应用是单实例的** | 已装应用在跑时，第二个副本会被自己踢掉。要验证源码改动必须走 `.e2e-devin/tools/preview-ui.ps1`，它用独立 server 进程服务新构建的前端 |
+| **应用是单实例的** | 已装应用在跑时，第二个副本会被自己踢掉。要验证源码改动，只能另起独立 server 进程服务新构建的前端 |
 | **前端编译进二进制** | 改了前端必须重新 `tauri:build` + 安装才能在应用里看到；光 build 前端不够 |
 | **`cursor_takeover_enabled` 缺席时默认是 `false`** | 数据库里没有这一行**不会**接管：接管会改用户的 Cursor 配置并强制结束编辑器，必须是用户明确选过的（`store/settings.rs` 有测试锁住）。当前库里显式写入 `false`。**改这一行的语义前先想清楚：默认接管会让「只是装了这个软件」变成一次对用户编辑器的操作** |
 | **i18n 插件强制静态字面量** | `t()` 参数必须是字符串字面量，不能是变量，也不能传 JSX。违反会**构建失败** |
@@ -214,7 +222,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 归档分支   haxsd/cursor-byok 的 legacy/devin-router @ 52f0a47（只读快照）
 工作分支   haxsd/cursor-byok 的 wip/audit-1.0.6 @ cdd3c7e（归档之后的修复，已移植进本仓库）
 逐文件清单 D:\cursor-byok\byok-dev\_logs\devin-legacy-inventory.md（归档时的差异清单）
-归档检出   D:\cursor-byok\byok-dev\cursor-byok-devin-router
+归档检出   本地已删除（2026-09-24 清理）；需要查历史时从远端检出 legacy/devin-router
 ```
 
 **归档这一代的全部内容已经并入本仓库的 `main`**（提交 `chore: 把归档那一代整体并入 main`
@@ -231,7 +239,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
    内容不同：
 
 ```powershell
-$src = "D:\cursor-byok\byok-dev\cursor-byok-devin-router"
+$src = "<legacy/devin-router 检出目录；本地已删除，需要时先从远端 clone>"
 $new = "D:\cursor-byok\byok-dev\haxsd-byok"
 $files = git -C $src ls-files | Where-Object { $_ -notlike ".github/*" }
 $keep = @("README.md","README-EN.md","HANDOFF.md","BRANCH_ISOLATION.md","docs/devin-go-live.md")
@@ -249,7 +257,8 @@ foreach ($f in $files) {
 
 ## 八、验证手段（不要靠眼睛）
 
-`.e2e-devin/` 下是本地验证工具，**不是产品代码**，不参与构建：
+`D:\cursor-byok\byok-dev\.e2e-devin\` 曾是一套本地验证工具（**不是产品代码**，不参与构建），
+**已在 2026-09-24 的工作区清理中整体删除**。下表保留工具的用途记录，需要时按它重建：
 
 | 工具 | 用途 |
 |---|---|
@@ -270,10 +279,9 @@ foreach ($f in $files) {
 | `tools/set-takeover-off.py` | 显式关闭 Cursor 接管开关 |
 | `tools/serve-dist.py` | 按 Vite base 提供 dist（普通静态服务器会 404 导致空白页） |
 
-**CDP 工具都会自动给 URL 加 cache-buster。** 这不是可选项：preview server 会继续把浏览器
+**CDP 量测要给 URL 加 cache-buster。** 这不是可选项：preview server 会继续把浏览器
 已持有的旧 bundle 发给你，`Network.setCacheDisabled` 也拦不住，于是**重新构建后的前端会被量成
-"没有任何变化"**——这个假阴性已经骗过一次（误判"主题色板没生效"）。工具里已经有 `cacheBust()`，
-自己写新脚本时要照做。
+"没有任何变化"**——这个假阴性已经骗过一次（误判"主题色板没生效"）。自己写脚本时要照做。
 
 **血泪教训：我从截图误判布局两次、误判请求归因一次。缩略图不能用来判断布局，必须用测量脚本。** 例如「状态项被挤成单列」的观感被 CDP 实测推翻——实际是 5 列 × 235px。
 
@@ -342,7 +350,7 @@ Start-Process "$env:LOCALAPPDATA\haxsd byok\haxsd-byok-desktop.exe"
 
 ```
 D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.key   ← 私钥，在仓库外
-D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.pub
+D:\cursor-byok\byok-dev\.updater-keys\haxsd-byok.key.pub
 ```
 
 > ⚠️ **不要读取或外传私钥内容。丢了它，后续所有签名更新都不可能。**
@@ -361,9 +369,8 @@ gh release view haxsd-byok-v1.0.x --repo haxsd/haxsd-byok --json isDraft,assets
 curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json"
 
 # 3. 签名与应用里编译进去的公钥对得上吗（不需要私钥）
-node D:\cursor-byok\byok-dev\.e2e-devin\tools\verify-update-signature.mjs `
-  D:\cursor-byok\byok-dev\haxsd-byok\apps\desktop\src-tauri\tauri.conf.json `
-  <下载的安装包> <下载的 .sig>
+#    用 tauri.conf.json 里的 pubkey 校验安装包与 .sig
+#    （原先的 verify-update-signature.mjs 已随本地工具集删除，需要时重建）
 ```
 
 第 3 条尤其值得每次跑：公钥和签名密钥一旦不一致，**每个客户端都会拒绝每一次更新，而发布页上看不出任何异常**。
@@ -452,7 +459,7 @@ node D:\cursor-byok\byok-dev\.e2e-devin\tools\verify-update-signature.mjs `
 ## 十三、接手后的建议顺序
 
 1. 跑一遍验证（第八节），确认基线是绿的
-2. 跑 `tools/preview-ui.ps1` 看一眼当前界面，建立视觉基线
+2. 起一个独立 server 进程预览当前界面，建立视觉基线
 3. 按第十一节的优先级推进
 
 ### 快速自检清单
@@ -471,7 +478,7 @@ cargo fmt --all -- --check
 cargo test --workspace --exclude haxsd-byok-desktop
 
 # 4. 用户的模型和 Devin 绑定还在吗
-python D:\cursor-byok\byok-dev\.e2e-devin\tools\inspect-db.py "$env:USERPROFILE\.haxsd-byok-devin-v3\haxsd-byok.db"
+#    用 sqlite 工具读 %USERPROFILE%\.haxsd-byok-devin-v3\haxsd-byok.db（原 inspect-db.py 已删除）
 
 # 5. Cursor BYOK 没被影响吗
 Get-Process -Name cursor-byok-desktop -EA SilentlyContinue
