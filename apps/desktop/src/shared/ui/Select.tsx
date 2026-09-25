@@ -61,9 +61,14 @@ export type ComboboxHandle = {
   openAll: () => void;
 };
 
+/** 与 `SelectOption` 同形：列表显示 `label`，选中后写入 `value`。 */
+export type ComboboxOption = { value: string; label?: string };
+
+const labelOf = (option: ComboboxOption) => option.label ?? option.value;
+
 type ComboboxProps = {
   value: string;
-  options?: string[];
+  options?: ComboboxOption[];
   placeholder?: string;
   disabled?: boolean;
   append?: ReactNode;
@@ -79,13 +84,20 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
   const menuId = useId();
   const [open, setOpen] = useState(false);
   const [filtering, setFiltering] = useState(true);
+  // 用户正在输入时显示原文，否则显示选中项的标签：模型映射存的是标识
+  // （`swe-1-6-slow`），而人认的是名字（`SWE-1.6 Slow`），两者必须都能看到。
+  const [typing, setTyping] = useState(false);
   const [active, setActive] = useState(-1);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 280 });
+  const selected = options.find((option) => option.value === value);
+  const display = typing ? value : (selected ? labelOf(selected) : value);
   const filtered = useMemo(() => {
     if (!filtering) return options;
-    const query = value.trim().toLocaleLowerCase();
-    return options.filter((option) => !query || option.toLocaleLowerCase().includes(query));
-  }, [filtering, options, value]);
+    const query = display.trim().toLocaleLowerCase();
+    return options.filter((option) => !query
+      || labelOf(option).toLocaleLowerCase().includes(query)
+      || option.value.toLocaleLowerCase().includes(query));
+  }, [filtering, options, display]);
 
   useImperativeHandle(ref, () => ({
     openAll: () => {
@@ -121,19 +133,21 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     if (disabled || options.length === 0) return;
     setFiltering(true);
     setOpen(true);
-    const query = value.trim().toLocaleLowerCase();
-    const matchingOptions = options.filter((option) => !query || option.toLocaleLowerCase().includes(query));
-    const selected = matchingOptions.indexOf(value);
-    setActive(selected >= 0 ? selected : 0);
+    const query = display.trim().toLocaleLowerCase();
+    const matchingOptions = options.filter((option) => !query
+      || labelOf(option).toLocaleLowerCase().includes(query)
+      || option.value.toLocaleLowerCase().includes(query));
+    const selectedIndex = matchingOptions.findIndex((option) => option.value === value);
+    setActive(selectedIndex >= 0 ? selectedIndex : 0);
   };
-  const choose = (option: string) => { onChange(option); setOpen(false); input.current?.focus(); };
+  const choose = (option: ComboboxOption) => { setTyping(false); onChange(option.value); setOpen(false); input.current?.focus(); };
   const move = (step: number) => {
     if (!open) { openMenu(); return; }
     if (!filtered.length) return;
     setActive((index) => (index < 0 ? 0 : (index + step + filtered.length) % filtered.length));
   };
   return <div className={styles.comboRow}><div ref={root} className={styles.combo}>
-    <input ref={input} value={value} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
+    <input ref={input} value={display} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { setTyping(false); closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setTyping(true); setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       if (event.key === "Enter" && open && filtered[active]) { event.preventDefault(); choose(filtered[active]); }
@@ -141,8 +155,8 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     }} />
     <button type="button" className={styles.comboToggle} disabled={disabled} aria-label={t("打开模型列表")} aria-expanded={open} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { openMenu(); input.current?.focus(); } }}><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
-      <VirtualList items={filtered} itemKey={(option) => option} estimatedItemHeight={30} onReady={(api) => { listApi.current = api; if (active >= 0) api.scrollToIndex(active); }} style={{ height: Math.min(filtered.length * 30, Math.max(30, position.maxHeight - 8)) }}>
-        {(option, index) => <button type="button" role="option" aria-selected={option === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{option}</button>}
+      <VirtualList items={filtered} itemKey={(option) => option.value} estimatedItemHeight={30} onReady={(api) => { listApi.current = api; if (active >= 0) api.scrollToIndex(active); }} style={{ height: Math.min(filtered.length * 30, Math.max(30, position.maxHeight - 8)) }}>
+        {(option, index) => <button type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{labelOf(option)}</button>}
       </VirtualList>
     </div>, document.body)}
   </div>{append}</div>;

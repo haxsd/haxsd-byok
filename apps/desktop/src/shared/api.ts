@@ -180,6 +180,18 @@ export interface DevinHostPatchReceipt {
   ports: DevinHostPorts;
 }
 
+/** 选择器里的一个模型：显示用名字，映射用 uid（两者不是同一个字符串）。 */
+export interface DevinModelChoice {
+  name: string;
+  uid: string;
+}
+
+/** Devin 客户端自己会请求的模型标识；`byok` 是给第三方模型用的那一类。 */
+export interface DevinModelUids {
+  path: string;
+  choices: DevinModelChoice[];
+}
+
 export interface StatisticsStorage {
   bytes: number;
   call_count: number;
@@ -610,6 +622,8 @@ export const api = {
   setDevinSettings: (settings: DevinSettings) => request<DevinSettings>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }),
   /** Without a path the server finds the installation itself. */
   devinHostStatus: (path?: string) => request<DevinHostPatchStatus>(path ? `/harness/devin/host/status?path=${encodeURIComponent(path)}` : "/harness/devin/host/status"),
+  /** The identifiers Devin itself asks for, read from the installed client. */
+  devinModelUids: (path?: string) => request<DevinModelUids>(path ? `/harness/devin/model-uids?path=${encodeURIComponent(path)}` : "/harness/devin/model-uids"),
   applyDevinHostPatch: (path?: string) => request<DevinHostPatchReceipt>("/harness/devin/host/apply", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
   restoreDevinHostPatch: (receipt: DevinHostPatchReceipt) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify({ receipt }) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),

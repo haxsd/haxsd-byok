@@ -90,7 +90,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, onChange, 
   const presetModelOptions = modelPresets
     .filter((preset) => trimTrailingSlash(presetEndpoint(preset, draft.model.type).baseUrl) === trimTrailingSlash(draft.model.base_url.trim()))
     .flatMap((preset) => preset.models.map((item) => item.model_id));
-  const combinedOptions = [...new Set([...modelOptions, ...presetModelOptions])];
+  const combinedOptions = [...new Set([...modelOptions, ...presetModelOptions])].map((value) => ({ value }));
   const discoverModels = async () => {
     if (await onDiscover()) modelCombobox.current?.openAll();
   };

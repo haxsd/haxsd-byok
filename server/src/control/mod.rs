@@ -237,6 +237,10 @@ pub fn api_router(service: ControlService) -> Router {
             get(devin::host_status),
         )
         .route(
+            "/__byok-api__/api/harness/devin/model-uids",
+            get(devin::model_uids),
+        )
+        .route(
             "/__byok-api__/api/harness/devin/host/apply",
             post(devin::host_apply),
         )

@@ -7,14 +7,14 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     devin::{
         gateway::DevinListening,
         host_detect,
         host_patch::{self, DevinPorts, PatchReceipt, PatchStatus},
-        host_status as host_status_module, DevinSettings,
+        host_status as host_status_module, model_uids as model_uid_table, DevinSettings,
     },
     Error, Result,
 };
@@ -77,6 +77,24 @@ fn resolve_host_path(input: Option<&str>) -> Result<PathBuf> {
 pub async fn host_status(Query(query): Query<HostPathQuery>) -> Result<Json<PatchStatus>> {
     let path = resolve_host_path(query.path.as_deref())?;
     Ok(Json(host_status_module::status(&path)?))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelUidsResponse {
+    pub path: PathBuf,
+    /// 选择器里的模型（名字 + 客户端随后请求的标识），界面直接拿它做选项。
+    pub choices: Vec<model_uid_table::ModelChoice>,
+}
+
+/// The identifiers Devin itself will ask for. Without this the page can only
+/// invite the user to invent one, and an invented UID is never requested.
+pub async fn model_uids(Query(query): Query<HostPathQuery>) -> Result<Json<ModelUidsResponse>> {
+    let path = resolve_host_path(query.path.as_deref())?;
+    let byok = model_uid_table::read(&path)?;
+    Ok(Json(ModelUidsResponse {
+        path,
+        choices: model_uid_table::choices(&byok),
+    }))
 }
 
 pub async fn host_apply(

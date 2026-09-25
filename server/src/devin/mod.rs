@@ -266,6 +266,7 @@ pub mod gateway;
 pub mod host_detect;
 pub mod host_patch;
 pub mod host_status;
+pub mod model_uids;
 pub mod request;
 pub mod response;
 pub mod wire;
