@@ -67,7 +67,9 @@ impl Detected {
                     .map(|path| path.display().to_string())
                     .collect::<Vec<_>>()
                     .join("; ");
-                format!("未找到 Devin 安装，已尝试：{tried}")
+                // 与其它服务端错误一样用英文：这些字符串会直接进界面提示，而界面
+                // 语言是可切换的，服务端不该替用户选一种。
+                format!("Devin installation not found; searched: {tried}")
             }
         }
     }

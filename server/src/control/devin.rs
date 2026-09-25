@@ -84,7 +84,9 @@ pub async fn host_apply(
 ) -> Result<Json<PatchReceipt>> {
     let settings = service.devin_settings().await?;
     if !settings.enabled {
-        return Err(Error::Config("启用 Devin 网关后才能应用宿主补丁".into()));
+        return Err(Error::Config(
+            "enabling the Devin gateway is required before applying a host patch".into(),
+        ));
     }
     let path = resolve_host_path(input.path.as_deref())?;
     let ports = DevinPorts {
@@ -103,7 +105,9 @@ pub async fn host_restore(Json(input): Json<HostRestoreInput>) -> Result<Json<se
 fn explicit_path(value: &str) -> Result<PathBuf> {
     let path = PathBuf::from(value.trim());
     if path.as_os_str().is_empty() || !path.is_absolute() {
-        return Err(Error::Config("Devin 宿主文件必须是明确的绝对路径".into()));
+        return Err(Error::Config(
+            "Devin host file path must be absolute".into(),
+        ));
     }
     Ok(path)
 }
