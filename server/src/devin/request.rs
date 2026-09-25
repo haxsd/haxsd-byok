@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    devin::{wire::FieldValue, DevinModelBinding},
+    devin::{wire::FieldValue, DevinModelBinding, DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX},
     model::{
         ContentPart, ModelConfig, ModelRequest, ModelSpec, ProjectedContent, ProjectedMessage,
         PromptSpec, ProviderReplayState, Role, ToolCallContent, ToolDefinition, ToolResultContent,
@@ -123,14 +123,14 @@ pub fn to_invocation(
     }
 
     let call_id = if request.execution_id.is_empty() {
-        format!("devin-call:{}", Uuid::new_v4())
+        format!("{DEVIN_CALL_ID_PREFIX}{}", Uuid::new_v4())
     } else {
-        format!("devin:{}", request.execution_id)
+        format!("{DEVIN_EXECUTION_ID_PREFIX}{}", request.execution_id)
     };
     let conversation_id = if request.cascade_id.is_empty() {
         call_id.clone()
     } else {
-        format!("devin:{}", request.cascade_id)
+        format!("{DEVIN_EXECUTION_ID_PREFIX}{}", request.cascade_id)
     };
     let mut model_spec = ModelSpec::new(model.model_hash.clone());
     model_spec.display_name = (!binding.display_name.is_empty())
@@ -147,7 +147,7 @@ pub fn to_invocation(
         run_id: if request.execution_id.is_empty() {
             "devin:anonymous".into()
         } else {
-            format!("devin:{}", request.execution_id)
+            format!("{DEVIN_EXECUTION_ID_PREFIX}{}", request.execution_id)
         },
         conversation_id,
         provider_call_index: 0,
@@ -496,6 +496,32 @@ mod tests {
         let first = to_invocation(anonymous_request.clone(), &binding, &model).unwrap();
         let second = to_invocation(anonymous_request, &binding, &model).unwrap();
         assert_ne!(first.call_id, second.call_id);
+    }
+
+    /// Call records are recognised as Devin by their prefix. Producing and counting
+    /// them once used two separate literals that drifted apart, which left the Devin
+    /// page reporting that no Devin call had ever been recorded.
+    #[test]
+    fn stamps_generated_ids_with_the_devin_prefixes() {
+        let request = parse_chat_request(&fixture()).unwrap();
+        let binding = DevinModelBinding {
+            model_uid: "MODEL_CLAUDE_4_SONNET_BYOK".into(),
+            model_hash: "0123abcd".into(),
+            enabled: true,
+            ..DevinModelBinding::new("", "")
+        };
+        let model = model_config("0123abcd");
+
+        let named = to_invocation(request, &binding, &model).unwrap();
+        assert_eq!(named.call_id, format!("{DEVIN_EXECUTION_ID_PREFIX}exec-1"));
+
+        let anonymous = parse_chat_request(
+            &serialize_fields(&[Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK")]).unwrap(),
+        )
+        .unwrap();
+        let anonymous = to_invocation(anonymous, &binding, &model).unwrap();
+        assert!(anonymous.call_id.starts_with(DEVIN_CALL_ID_PREFIX));
+        assert!(anonymous.conversation_id.starts_with(DEVIN_CALL_ID_PREFIX));
     }
 
     #[test]

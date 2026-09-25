@@ -253,6 +253,13 @@ fn default_upstream_api_url() -> String {
     DEFAULT_DEVIN_UPSTREAM_API_URL.to_owned()
 }
 
+/// Both prefixes Devin calls carry in the observation store. Producing and
+/// recognising them must go through these constants: the two sides once drifted
+/// apart (produced `devin-call:`, matched `devin:`), which left the Devin page
+/// reporting that no conversation had ever reached the gateway.
+pub const DEVIN_CALL_ID_PREFIX: &str = "devin-call:";
+pub const DEVIN_EXECUTION_ID_PREFIX: &str = "devin:";
+
 pub mod assignment;
 pub mod catalog;
 pub mod gateway;
