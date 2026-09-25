@@ -2,6 +2,7 @@
 use sqlx::Row;
 
 use crate::{
+    devin::{DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX},
     model::{LlmCallRequest, LlmCallResponseChunk, LlmCallSummary, NewLlmCall, Usage},
     Result,
 };
@@ -311,6 +312,21 @@ impl Store {
         rows.into_iter().map(summary_from_row).collect()
     }
 
+    /// Every call the Devin gateway produced, which is how the Devin page knows
+    /// whether a real conversation has travelled through the gateway yet. Counting
+    /// the whole table keeps that answer stable once other traffic outgrows the
+    /// newest page of calls.
+    pub async fn devin_call_count(&self) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM llm_calls WHERE call_id LIKE ? OR call_id LIKE ?",
+        )
+        .bind(format!("{DEVIN_CALL_ID_PREFIX}%"))
+        .bind(format!("{DEVIN_EXECUTION_ID_PREFIX}%"))
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(usize::try_from(count).unwrap_or(usize::MAX))
+    }
+
     pub async fn llm_call(&self, call_id: &str) -> Result<Option<LlmCallSummary>> {
         sqlx::query("SELECT * FROM llm_calls WHERE call_id = ?")
             .bind(call_id)
@@ -414,6 +430,54 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
 mod tests {
     use super::*;
     use crate::model::ProviderType;
+
+    fn new_call(call_id: &str) -> NewLlmCall {
+        NewLlmCall {
+            call_id: call_id.into(),
+            run_id: format!("run-{call_id}"),
+            conversation_id: "conversation".into(),
+            provider_call_index: 0,
+            model_hash: "requested-model".into(),
+            provider_type: ProviderType::Plugin,
+            provider_url: "plugin://test".into(),
+            request_type: ProviderType::Plugin,
+            request_url: "plugin://test".into(),
+            model_id: "requested-model".into(),
+            display_name: "Requested Model".into(),
+            reasoning_effort: None,
+            fast: false,
+            message_count: 1,
+            tool_count: 0,
+            detailed: false,
+        }
+    }
+
+    /// Devin 页靠这个计数判断"是否已经跑过一次对话"，因此它既要认出两种前缀，
+    /// 也不能只看最新一页调用——否则其它流量一多，界面会退回"还没有调用记录"。
+    #[tokio::test]
+    async fn devin_call_count_covers_both_prefixes_beyond_the_newest_page() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        for call_id in [
+            format!("{DEVIN_CALL_ID_PREFIX}0f8f4d1e"),
+            format!("{DEVIN_EXECUTION_ID_PREFIX}exec-1"),
+            "cursor-run:1".into(),
+        ] {
+            store.start_llm_call(&new_call(&call_id)).await.unwrap();
+        }
+        for index in 0..250 {
+            let call_id = format!("cursor-call:{index}");
+            store.start_llm_call(&new_call(&call_id)).await.unwrap();
+        }
+
+        assert_eq!(store.devin_call_count().await.unwrap(), 2);
+    }
 
     /// 插件模型不在 model_configs 中,调用记录必须照常落库并可按其稳定 ID 筛选。
     #[tokio::test]

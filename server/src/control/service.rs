@@ -543,13 +543,7 @@ impl ControlService {
     /// conversation has travelled through the gateway yet.
     pub async fn devin_status(&self, listening: bool) -> Result<DevinStatus> {
         let settings = self.store.devin_settings().await?;
-        let calls = self
-            .store
-            .llm_calls(200)
-            .await?
-            .into_iter()
-            .filter(|call| call.call_id.starts_with("devin:"))
-            .count();
+        let calls = self.store.devin_call_count().await?;
         Ok(DevinStatus {
             enabled: settings.enabled,
             listening,
