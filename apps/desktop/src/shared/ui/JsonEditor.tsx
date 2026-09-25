@@ -14,9 +14,15 @@ function loadMonaco() {
       getWorker: (_moduleId, label) => label === "json" ? new JsonWorker() : new EditorWorker(),
     };
     monacoPromise = Promise.all([
+      // 样式跟编辑器一起懒加载。它以前 import 在 index.tsx 顶层，于是每次启动都要
+      // 先下载 460 KB CSS 和图标字体，而编辑器只在调用详情与模型配置里用得到。
+      //
+      // 这里必须写相对路径：monaco 的 exports 映射把 `./*` 指向 esm 目录，用包名
+      // 引 min/ 下的文件会被解析到不存在的路径上。
+      import("../../../node_modules/monaco-editor/min/vs/editor/editor.main.css"),
       import("monaco-editor/editor/editor.api"),
       import("monaco-editor/language/json/monaco.contribution"),
-    ]).then(([monaco]) => monaco);
+    ]).then(([, monaco]) => monaco);
   }
   return monacoPromise;
 }

@@ -2,14 +2,6 @@
 @use "./themes";
 
 @font-face {
-  font-family: "PingFang-Medium";
-  src: url("../shared/assets/fonts/PingFang-Medium.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
   font-family: "HFKos";
   src: url("../shared/assets/fonts/HFKos-R.ttf") format("truetype");
   font-weight: 400;
@@ -21,8 +13,11 @@
   --window-header-height: 30px;
   --oa-ui-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --oa-code-font: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
-  --oa-metrics-font: "PingFang-Medium", var(--oa-ui-font);
-  --oa-number-font: "HFKos", "PingFang-Medium", var(--oa-ui-font);
+  /* HFKos 只有 99 个字形（ASCII），「¥」「·」这类符号不在其中，浏览器会顺着列表
+     往后找。这里第二项写的是系统字体名而不是内嵌家族：macOS 上就是它原本的苹方，
+     Windows 上自然落到 UI 字体。之前放的是一份 10.9 MB 的 PingFang-Medium.ttf
+     内嵌字体，只要界面上出现一个「¥」，整个文件就会被下载。 */
+  --oa-number-font: "HFKos", "PingFang SC", var(--oa-ui-font);
   font-family: var(--oa-ui-font);
   font-size: type.$font-size-base;
   /* A real default line height: most components never set one, so text used to
