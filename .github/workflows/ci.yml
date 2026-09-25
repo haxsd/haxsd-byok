@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - feat/devin-router
   # Manual runs let the guarded MSVC experiment below be triggered without an
   # empty commit.
   workflow_dispatch:

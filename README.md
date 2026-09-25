@@ -182,7 +182,9 @@ make build-desktop
 > `haxsd-byok-desktop` 的单元测试二进制在**本机**加载失败（`0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND`），
 > 因此本机 `cargo test --workspace --all-targets` 会在最后一个目标上报错。已确认这是本机
 > Windows GNU / MCF 运行时的问题，而不是代码问题：同一份代码在 CI 的 MSVC runner 上正常运行
-> （`1 passed`）。CI 的 `Desktop Rust (windows-latest)` 里那一步就是它的门禁，默认开启；
+> （`1 passed`）。CI 的 `Desktop Rust (windows-latest)` 里那一步就是这个门禁；它由仓库变量
+> `RUN_DESKTOP_UNIT_TESTS` 开关，**当前仓库里没有设置这个变量，所以那一步默认不跑**：
+> 需要覆盖桌面壳代码时，在仓库 Settings → Variables 里加上它并设为 `true`。
 > 本机绕行方式与完整排查过程见 [docs/troubleshooting.md](./docs/troubleshooting.md)。
 
 > [!NOTE]
@@ -196,7 +198,7 @@ make build-desktop
 
 ## 发布安装包
 
-此分支的 GitHub Actions 只服务于 `haxsd byok`，**必须从 `feat/devin-router` 打专用标签**：
+此分支的 GitHub Actions 只服务于 `haxsd byok`，**发布由本仓库的版本标签触发**（`haxsd-byok-v*`）：
 
 ```bash
 # 1. 三处版本号改成同一个值
@@ -204,9 +206,9 @@ make build-desktop
 #    apps/desktop/src-tauri/Cargo.toml
 #    apps/desktop/src-tauri/tauri.conf.json
 
-# 2. 提交推送后打 Devin 产品专用标签
-git tag haxsd-byok-v1.0.1
-git push origin haxsd-byok-v1.0.1
+# 2. 提交推送到 main 后，打本产品专用标签
+git tag haxsd-byok-v1.0.10
+git push origin haxsd-byok-v1.0.10
 ```
 
 构建完成后会出现在 Releases 页面，包含：
