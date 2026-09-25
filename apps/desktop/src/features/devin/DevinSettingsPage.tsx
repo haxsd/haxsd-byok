@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DevinBindingKind, type DevinHostPatchReceipt, type DevinHostPatchStatus, type DevinModelBinding, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
+import { api, type DevinBindingKind, type DevinHostPatchReceipt, type DevinHostPatchStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
-import { Select } from "../../shared/ui/Select";
+import { Combobox, Select } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
@@ -71,17 +71,18 @@ function nextRouteId(routes: DevinRoute[]): string {
 }
 
 /**
- * 新增映射时给一个还没被占用的 UID。
+ * 新映射的默认 UID：优先挑真实列表里还没被占用的那一个。
  *
- * 服务端会拒绝重复的 UID，所以按「条数 + 1」命名在删掉中间一条之后重新添加时会
- * 撞名：改完后保存只会得到一句「duplicate Devin model UID」，用户还得自己猜是
- * 哪一条重复了。
+ * 默认值必须取自 Devin 自己认识的标识，自己编一个名字（曾经是 `cursor-byok-N`）
+ * 的结果是模型选择器里根本没有它，用户怎么配都不会生效；而重复的 UID 又会被服务端
+ * 拒绝，所以要在未占用的里面挑。
  */
-function nextModelUid(bindings: DevinModelBinding[]): string {
+function nextModelUid(bindings: DevinModelBinding[], choices: DevinModelChoice[]): string {
+  const fallback = "swe-1-6-slow";
+  if (!choices.length) return fallback;
   const used = new Set(bindings.map((binding) => binding.model_uid.trim()));
-  let index = bindings.length + 1;
-  while (used.has(`cursor-byok-${index}`)) index += 1;
-  return `cursor-byok-${index}`;
+  const free = choices.find((choice) => !used.has(choice.uid));
+  return (free ?? choices[0]).uid;
 }
 
 export function DevinSettingsPage() {
@@ -93,6 +94,8 @@ export function DevinSettingsPage() {
   // made in the open one looked applied while nothing had been written.
   const [saved, setSaved] = useState<DevinSettings>(emptySettings);
   const [models, setModels] = useState<Model[]>([]);
+  // Devin 选择器里的模型（名字 + 标识），映射的 UID 必须从这里来。
+  const [modelChoices, setModelChoices] = useState<DevinModelChoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hostPath, setHostPath] = useState(readHostPath);
@@ -112,6 +115,23 @@ export function DevinSettingsPage() {
       setModels(nextModels);
     }).catch((cause) => message.error(cause)).finally(() => setLoading(false));
   }, [message]);
+
+  // 模型 UID 只能从 Devin 自己认识的标识里选：手打的标识永远不会被请求。列表读不到
+  // 只影响"能不能选"，映射本身仍然可以手填，所以这里失败不弹错。
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    void api.devinModelUids(hostPath.trim() || undefined)
+      .then((table) => {
+        if (!cancelled) setModelChoices(table.choices);
+      })
+      .catch(() => {
+        if (!cancelled) setModelChoices([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
 
   // 状态面板要回答"现在通没通"。端口是否在听只能由服务端回答：网关端口属于另一个源，
   // 浏览器直接探测会被 CORS 拒绝，从而把健康的网关误报成"端口未监听"。
@@ -179,7 +199,7 @@ export function DevinSettingsPage() {
   const addBinding = () => {
     const model = models[0];
     update("bindings", [...settings.bindings, {
-      model_uid: nextModelUid(settings.bindings),
+      model_uid: nextModelUid(settings.bindings, modelChoices),
       model_hash: model?.model_hash ?? "",
       display_name: model?.display_name ?? "",
       context_window_tokens: model?.context_window_tokens ?? null,
@@ -263,6 +283,8 @@ export function DevinSettingsPage() {
   const gatewaySummary = !settings.enabled ? t("未启用") : gatewayReady ? t("运行中") : gatewayPortsUp === null ? t("检查中…") : t("待重启");
 
   const modelOptions = models.map((model) => ({ value: model.model_hash, label: `${model.display_name} · ${model.model_hash.slice(0, 8)}` }));
+  // 选择器显示 Devin 里的模型名，写回的仍是客户端随后会请求的标识。
+  const uidOptions = modelChoices.map((choice) => ({ value: choice.uid, label: choice.name }));
   const kindOptions = [
     { value: "standard" as DevinBindingKind, label: t("标准") },
     { value: "context_compression" as DevinBindingKind, label: t("上下文压缩") },
@@ -394,7 +416,10 @@ export function DevinSettingsPage() {
           const activeRouteId = activeRouteIdForDisplay(binding);
           const hasRoutes = binding.routes.length > 0;
           const isCompression = binding.kind === "context_compression";
-          const rowKey = `${binding.model_uid}-${index}`;
+          // 行的 key 不能随输入变化：原来用的是 `model_uid-index`，于是每敲一个字符 key
+          // 就变一次，React 把整行卸载重建，输入框随即失焦——UID 只能"敲一个字点一次"。
+          // 下标在编辑期间是稳定的，只有增删行时才会移动。
+          const rowKey = String(index);
           const expanded = expandedBindings[rowKey] ?? false;
           // A mapping is a two-value decision: which UID Devin asks for, and which
           // model answers. Display name, context size, kind and fallback routes are
@@ -402,7 +427,7 @@ export function DevinSettingsPage() {
           // the two that matter impossible to find.
           return <div className={styles.binding} key={rowKey}>
             <div className={styles.bindingRow}>
-              <FormField label={t("Devin 模型 UID")}><TextInput value={binding.model_uid} onChange={(event) => updateBinding(index, { model_uid: event.target.value })} /></FormField>
+              <FormField label={t("Devin 模型")} hint={t("从 Devin 的模型列表里选；也可以直接填写标识。")}><Combobox value={binding.model_uid} options={uidOptions} onChange={(model_uid) => updateBinding(index, { model_uid })} /></FormField>
               <FormField label={t("haxsd byok 模型")}><Select value={binding.model_hash} options={modelOptions} ariaLabel={t("haxsd byok 模型")} onChange={(model_hash) => {
                 const model = models.find((item) => item.model_hash === model_hash);
                 updateBinding(index, { model_hash, display_name: model?.display_name ?? binding.display_name, context_window_tokens: model?.context_window_tokens ?? null });
