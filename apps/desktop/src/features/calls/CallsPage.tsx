@@ -20,7 +20,7 @@ type StatusFilter = "all" | "completed" | "failed" | "other";
 type RouteFilter = "all" | "byok" | "official";
 
 export function CallsPage() {
-  const { calls, offline } = useAppStore();
+  const { calls, offline, overview } = useAppStore();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [route, setRoute] = useState<RouteFilter>("all");
@@ -72,6 +72,12 @@ export function CallsPage() {
 
   const summary = useMemo(() => summarize(filtered), [filtered]);
   const filteredOut = filtered.length !== calls.length;
+  // 服务端只返回最新一批记录，所以这里的数字和统计都只覆盖已加载的那一批。
+  // 全量条数取概览里的计数（它是对整张表的 COUNT），两者不一致时说清差异，
+  // 否则「成功率」「平均耗时」会被读成全部历史的结论。
+  const loaded = calls.length;
+  const totalCalls = Math.max(overview.metrics.llm_calls, loaded);
+  const truncated = totalCalls > loaded;
 
   const content = <div className={styles.page}>
     <Card className={styles.summary}>
@@ -82,6 +88,9 @@ export function CallsPage() {
         <Fact label={t("平均 TTFB")} value={formatDuration(summary.averageTtfb)} />
         <Fact label="Token" value={formatCompactInteger(summary.tokens)} />
       </div>
+      {truncated && <small className={styles.summaryNote}>
+        {t("以上只统计已加载的最新 {loaded} 条，共 {total} 条；更早的记录不在这里。", { loaded, total: totalCalls })}
+      </small>}
     </Card>
     <div className={styles.toolbar}>
       <SearchInput
@@ -120,7 +129,11 @@ export function CallsPage() {
       /></div>}
       <span className={toolbar.spacer} />
       <span className={toolbar.count}>
-        {filteredOut ? t("筛出 {count} / {total} 条", { count: filtered.length, total: calls.length }) : t("共 {count} 条", { count: calls.length })}
+        {filteredOut
+          ? t("筛出 {count} / {total} 条", { count: filtered.length, total: loaded })
+          : truncated
+            ? t("已加载 {count} 条", { count: loaded })
+            : t("共 {count} 条", { count: loaded })}
       </span>
     </div>
     <div className={styles.tableRegion}>
@@ -132,7 +145,9 @@ export function CallsPage() {
 
   return <PageContent
     fixed
-    title={<PageTitle title={t("调用")} meta={t("最近 {count} 条实时记录，每 2 秒刷新", { count: calls.length })} />}
+    title={<PageTitle title={t("调用")} meta={truncated
+      ? t("显示最新 {loaded} 条（共 {total} 条），每 2 秒刷新", { loaded, total: totalCalls })
+      : t("最近 {count} 条实时记录，每 2 秒刷新", { count: loaded })} />}
     contentClassName={styles.pageContent}
     sections={[{ key: "calls", estimatedHeight: 720, content }]}
   />;

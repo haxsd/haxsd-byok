@@ -20,6 +20,13 @@
   padding: var(--oa-space-3) var(--oa-card-padding);
 }
 
+/* 统计条只覆盖已加载的那一批记录时，说明写在数字下面，而不是让读者自己推断。 */
+.summaryNote {
+  display: block;
+  margin-top: var(--oa-space-2);
+  color: var(--vscode-descriptionForeground);
+}
+
 .toolbar {
   flex: 0 0 auto;
   display: flex;
