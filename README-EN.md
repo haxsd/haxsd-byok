@@ -149,11 +149,11 @@ Current state, re-run on rustc 1.98.1 (2026-09-21):
 - the Devin gateway was verified end to end item by item, as tabulated in [docs/devin-integration.md](./docs/devin-integration.md).
 
 > [!WARNING]
-> The `haxsd-byok-desktop` unit-test binary fails to load on this machine (`0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND`), so `cargo test --workspace --all-targets` reports an error on its last target. A stale build, a missing DLL and a malformed import table were all ruled out, and a full `cargo clean` rebuild reproduces it; see [docs/troubleshooting.md](./docs/troubleshooting.md). Cover desktop changes with `cargo check -p haxsd-byok-desktop` plus `npm run check`.
+> The `haxsd-byok-desktop` unit-test binary fails to load on this machine (`0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND`), so `cargo test --workspace --all-targets` reports an error on its last target. A stale build, a missing DLL and a malformed import table were all ruled out, and a full `cargo clean` rebuild reproduces it; see [docs/troubleshooting.md](./docs/troubleshooting.md). That step in CI (`Desktop Rust (windows-latest)`) is exactly this gate; it is toggled by the repository variable `RUN_DESKTOP_UNIT_TESTS`, which **is not set in this repository — the step currently does not run**. Set it to `true` under Settings → Variables when you want the desktop shell covered. Otherwise cover desktop changes with `cargo check -p haxsd-byok-desktop` plus `npm run check`.
 
 ## Publishing installers
 
-This branch's GitHub Actions workflow is only for `haxsd byok`: **create the dedicated tag from `feat/devin-router`**.
+This repository's GitHub Actions workflow is only for `haxsd byok`: **releases are triggered by this product's own version tag** (`haxsd-byok-v*`).
 
 ```bash
 # 1. set the same version in all three files
@@ -161,9 +161,9 @@ This branch's GitHub Actions workflow is only for `haxsd byok`: **create the ded
 #    apps/desktop/src-tauri/Cargo.toml
 #    apps/desktop/src-tauri/tauri.conf.json
 
-# 2. commit, push, then create the Devin product tag
-git tag haxsd-byok-v1.0.1
-git push origin haxsd-byok-v1.0.1
+# 2. commit, push to main, then create this product's tag
+git tag haxsd-byok-v1.0.10
+git push origin haxsd-byok-v1.0.10
 ```
 
 The release then appears on the Releases page with:
