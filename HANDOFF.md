@@ -305,14 +305,25 @@ cargo test --workspace --exclude haxsd-byok-desktop   # 本地必须排除桌面
 ```powershell
 cd D:\cursor-byok\byok-dev\haxsd-byok
 npm --prefix apps/desktop run tauri:build -- --bundles nsis
-# 产物: target\release\bundle\nsis\haxsd byok_1.0.1_x64-setup.exe
+# 产物: target\release\bundle\nsis\haxsd byok_<版本>_x64-setup.exe
 
 Get-Process -Name haxsd-byok-desktop | Stop-Process -Force   # 必须先停
-Start-Process "target\release\bundle\nsis\haxsd byok_1.0.1_x64-setup.exe" -ArgumentList "/S" -Wait
-Start-Process "$env:LOCALAPPDATA\haxsd byok\haxsd-byok-desktop.exe"
+Start-Process "target\release\bundle\nsis\haxsd byok_<版本>_x64-setup.exe" -ArgumentList "/S" -Wait
+Start-Process "D:\cursor-byok\haxsd-byok\haxsd-byok-desktop.exe"
 ```
 
 **本地构建会报签名失败**（`A public key has been found, but no private key`）——这是预期的，签名私钥只在 CI 里。安装包仍然产出可用，只是没有 `.sig`。
+
+### 安装位置（2026-09-25 起固定为 D 盘）
+
+本机的安装位置是 **`D:\cursor-byok\haxsd-byok`**（与隔壁 Cursor BYOK 的 `D:\cursor-byok\Cursor BYOK` 同一层），注册表 `HKCU\...\Uninstall\haxsd byok` 的 `InstallLocation` 指向它。要点：
+
+- 静默安装到指定目录：`Start-Process <setup.exe> -ArgumentList "/S", "/D=D:\cursor-byok\haxsd-byok" -Wait`
+  —— Tauri 的 NSIS **接受 `/D=`**（测试过），`/D` 必须是最后一个参数且不带引号。
+- **更新与重装会自动留在原位置**：安装包先读卸载注册表里的安装位置，有记录就复用 `$INSTDIR`。
+  实测：应用装在 D 盘时直接跑 `setup.exe /S`（不带 `/D`，这正是应用内更新器的调用方式），文件仍在
+  D 盘、没有在 `%LOCALAPPDATA%` 生成第二份。所以「更新装回原位置」是安装器自身的行为，不需要额外交代。
+- 想在别的目录重装：先卸载（会清掉注册表记录），再用 `/S /D=<新目录>` 装一次。
 
 ---
 
