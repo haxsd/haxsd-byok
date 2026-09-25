@@ -30,6 +30,25 @@ const legacyRouteId = "primary";
 /** 宿主文件路径必须记住：状态面板、检查、打补丁全靠它，刷新即丢会让人以为功能坏了。 */
 const hostPathStorageKey = "haxsd-byok.devin.host-path";
 
+/** 读取上次记住的宿主路径；只在初始化时调用。 */
+function readHostPath(): string {
+  try {
+    return localStorage.getItem(hostPathStorageKey) ?? "";
+  } catch {
+    // Storage may be unavailable; the field simply stays empty.
+    return "";
+  }
+}
+
+/** 记住宿主路径；持久化失败不影响当前会话。 */
+function writeHostPath(path: string) {
+  try {
+    if (path.trim()) localStorage.setItem(hostPathStorageKey, path);
+  } catch {
+    // Persisting the path is best effort.
+  }
+}
+
 function routesForDisplay(binding: DevinModelBinding): DevinRoute[] {
   if (binding.routes.length) return binding.routes;
   return [{ route_id: legacyRouteId, model_hash: binding.model_hash, label: binding.display_name, enabled: true }];
@@ -76,7 +95,7 @@ export function DevinSettingsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [hostPath, setHostPath] = useState("");
+  const [hostPath, setHostPath] = useState(readHostPath);
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
   const [hostReceipt, setHostReceipt] = useState<DevinHostPatchReceipt | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
@@ -85,15 +104,6 @@ export function DevinSettingsPage() {
   const [expandedBindings, setExpandedBindings] = useState<Record<string, boolean>>({});
   const [gatewayPortsUp, setGatewayPortsUp] = useState<boolean | null>(null);
   const [devinCalls, setDevinCalls] = useState<number | null>(null);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(hostPathStorageKey);
-      if (stored) setHostPath(stored);
-    } catch {
-      // Storage may be unavailable; the field simply stays empty.
-    }
-  }, []);
 
   useEffect(() => {
     void Promise.all([api.devinSettings(), api.models()]).then(([nextSettings, nextModels]) => {
@@ -125,20 +135,21 @@ export function DevinSettingsPage() {
   }, [loading, settings.enabled]);
 
   // 宿主路径不再要求用户填写：服务端自己找到安装位置，再回填到界面。
+  //
+  // 这里刻意只跑一次，用的是"打开页面时记住的那条路径"：把 hostPath 列进依赖会让
+  // 用户每敲一个字符就打一次探测请求。路径本身由 useState 的初始值给出，所以闭包里
+  // 拿到的就是该用的值，而不是某个中间状态。
   useEffect(() => {
     if (loading) return;
     let cancelled = false;
-    void api.devinHostStatus(hostPath.trim() || undefined)
+    const remembered = hostPath.trim();
+    void api.devinHostStatus(remembered || undefined)
       .then((status) => {
         if (cancelled) return;
         setHostStatus(status);
-        if (!hostPath.trim()) {
+        if (!remembered) {
           setHostPath(status.path);
-          try {
-            localStorage.setItem(hostPathStorageKey, status.path);
-          } catch {
-            // Persisting the path is best effort.
-          }
+          writeHostPath(status.path);
         }
       })
       .catch((cause) => {
@@ -153,11 +164,7 @@ export function DevinSettingsPage() {
   const rememberHostPath = (value: string) => {
     setHostPath(value);
     setHostStatus(null);
-    try {
-      if (value.trim()) localStorage.setItem(hostPathStorageKey, value);
-    } catch {
-      // Persisting the path is best effort.
-    }
+    writeHostPath(value);
   };
 
   const update = <K extends keyof DevinSettings>(key: K, value: DevinSettings[K]) => {
