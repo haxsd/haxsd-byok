@@ -498,7 +498,7 @@ export function DevinSettingsPage() {
       </div>
       <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
       <div className={styles.fields}>
-        <FormField label={t("Devin / Windsurf extension.js 路径")} hint={t("留空即自动探测；仅在自动结果不正确时才需要填写。")}>
+        <FormField label={t("Devin / Windsurf extension.js 路径")} hint={t("留空即自动探测；也可以填安装目录，或 extension.js 的完整路径。")}>
           <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
