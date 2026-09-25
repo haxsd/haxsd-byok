@@ -4,10 +4,13 @@
 //! requires an explicit path. Detection lives here so the UI works out of the box,
 //! while an explicit path always wins.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    path::{Path, PathBuf},
+};
 
 /// Relative location of the Devin/Windsurf host extension inside an install.
-const HOST_RELATIVE: &str = r"resources\app\extensions\windsurf\dist\extension.js";
+pub(crate) const HOST_RELATIVE: &str = r"resources\app\extensions\windsurf\dist\extension.js";
 
 /// An explicit file override wins over every guessed location.
 const PATH_ENV: &str = "HAXSD_BYOK_DEVIN_PATH";
@@ -15,6 +18,30 @@ const PATH_ENV: &str = "HAXSD_BYOK_DEVIN_PATH";
 /// The install root can also be given directly, in which case only the relative
 /// part is appended.
 const ROOT_ENV: &str = "HAXSD_BYOK_DEVIN_ROOT";
+
+/// Bounded search for an installed client. The install directory itself cannot be
+/// enumerated — the same client was found under `F:\app\windsurf-app\Windsurf` —
+/// while the executable name is fixed, so the scan looks for the executable
+/// instead of guessing directory names. Depth and a directory budget keep it
+/// cheap, and the shallowest directories are visited first.
+const SCAN_MAX_DEPTH: usize = 4;
+const SCAN_DIRECTORY_BUDGET: usize = 3_000;
+
+/// Never hold a client install, so descending only spends the budget. Per-user
+/// installs live under `users`/`programdata`, but the environment-derived
+/// candidates already cover those without a scan.
+const SCAN_SKIP: [&str; 10] = [
+    "windows",
+    "$recycle.bin",
+    "system volume information",
+    "recovery",
+    "perflogs",
+    "users",
+    "programdata",
+    "node_modules",
+    ".git",
+    ".svn",
+];
 
 /// Where a found path came from, so the UI can tell a user choice from a guess.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,22 +88,106 @@ impl Detected {
     pub fn explanation(&self) -> String {
         match self {
             Self::Found { .. } => String::new(),
-            Self::NotFound { searched } => {
-                let tried = searched
-                    .iter()
-                    .map(|path| path.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                // 与其它服务端错误一样用英文：这些字符串会直接进界面提示，而界面
-                // 语言是可切换的，服务端不该替用户选一种。
-                format!("Devin installation not found; searched: {tried}")
-            }
+            // 与其它服务端错误一样用英文：这些字符串会直接进界面提示，而界面
+            // 语言是可切换的，服务端不该替用户选一种。
+            //
+            // 只报搜索规模，不铺候选路径：几十条猜过的路径挤在提示框里，用户
+            // 拿不到任何下一步动作。真正的出路是"填宿主文件路径"，所以直接说它。
+            Self::NotFound { searched } => format!(
+                "Devin installation not found; {} locations were searched. \
+                 Fill in the host file path below: it is the file inside the installation at \
+                 <install directory>\\{HOST_RELATIVE}",
+                searched.len()
+            ),
         }
     }
 }
 
 pub fn detect() -> Detected {
-    detect_from_candidates(candidates())
+    // The fixed candidates are free and almost always hit; the bounded scan is a
+    // second pass so that paying for it stays the exception.
+    match detect_from_candidates(candidates()) {
+        found @ Detected::Found { .. } => found,
+        Detected::NotFound { mut searched } => {
+            let scanned = detect_from_candidates(
+                scanned_installs()
+                    .into_iter()
+                    .map(|install| (install.join(HOST_RELATIVE), DetectionSource::Guessed))
+                    .collect(),
+            );
+            match scanned {
+                found @ Detected::Found { .. } => found,
+                Detected::NotFound {
+                    searched: scanned_searched,
+                } => {
+                    searched.extend(scanned_searched);
+                    Detected::NotFound { searched }
+                }
+            }
+        }
+    }
+}
+
+/// Installation directories found by scanning the fixed drives for the client
+/// executables.
+fn scanned_installs() -> Vec<PathBuf> {
+    let roots: Vec<PathBuf> = ['C', 'D', 'E', 'F', 'G']
+        .into_iter()
+        .map(|letter| PathBuf::from(format!("{letter}:\\")))
+        .collect();
+    scan_for_installs(&roots)
+}
+
+/// Split out so a test can scan a temporary tree instead of real drives.
+fn scan_for_installs(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut installs: Vec<PathBuf> = Vec::new();
+    let mut pending: VecDeque<(PathBuf, usize)> =
+        roots.iter().cloned().map(|root| (root, 0)).collect();
+    let mut visited = 0_usize;
+    while let Some((directory, depth)) = pending.pop_front() {
+        if visited >= SCAN_DIRECTORY_BUDGET {
+            break;
+        }
+        visited += 1;
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            let file_name = entry.file_name();
+            let Some(name) = file_name.to_str() else {
+                continue;
+            };
+            if kind.is_file() {
+                let is_client = APP_EXECUTABLES
+                    .iter()
+                    .any(|executable| executable.eq_ignore_ascii_case(name));
+                if is_client && !installs.contains(&directory) {
+                    installs.push(directory.clone());
+                }
+                continue;
+            }
+            if !kind.is_dir() || depth >= SCAN_MAX_DEPTH {
+                continue;
+            }
+            if SCAN_SKIP.iter().any(|skip| skip.eq_ignore_ascii_case(name)) {
+                continue;
+            }
+            // Product-named directories are descended first: an early hit keeps the
+            // budget for the remaining drives.
+            let named_after_product = name.to_ascii_lowercase();
+            let named_after_product =
+                named_after_product.contains("devin") || named_after_product.contains("windsurf");
+            if named_after_product {
+                pending.push_front((entry.path(), depth + 1));
+            } else {
+                pending.push_back((entry.path(), depth + 1));
+            }
+        }
+    }
+    installs
 }
 
 /// Split out so the search order can be tested without touching the real machine.
@@ -215,15 +326,63 @@ mod tests {
         assert_eq!(detected.path(), Some(existing_file().as_path()));
     }
 
+    /// 真实布局里有这种安装：客户端被放进用户自建的容器目录，名字与产品无关
+    /// （`F:\app\windsurf-app\Windsurf`），固定候选永远猜不到，只有按可执行文件
+    /// 名扫描才发现得了。
     #[test]
-    fn a_missing_installation_explains_everywhere_it_looked() {
-        let detected = detect_from_candidates(vec![(
-            PathBuf::from(r"C:\nowhere\extension.js"),
-            DetectionSource::Guessed,
-        )]);
+    fn the_scan_finds_an_install_inside_a_user_named_container() {
+        let directory = tempfile::tempdir().unwrap();
+        let install = directory
+            .path()
+            .join("app")
+            .join("windsurf-app")
+            .join("Windsurf");
+        std::fs::create_dir_all(&install).unwrap();
+        std::fs::write(install.join("Windsurf.exe"), b"").unwrap();
+
+        let other = directory.path().join("app").join("cursor-app");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("Cursor.exe"), b"").unwrap();
+
+        assert_eq!(
+            scan_for_installs(&[directory.path().to_path_buf()]),
+            vec![install]
+        );
+    }
+
+    /// 预算只买来这么多目录：跳过系统目录、并且不越过深度上限，扫描才敢在真实
+    /// 盘符上跑。
+    #[test]
+    fn the_scan_stays_inside_its_depth_and_skip_rules() {
+        let directory = tempfile::tempdir().unwrap();
+        let skipped = directory.path().join("Windows");
+        std::fs::create_dir_all(&skipped).unwrap();
+        std::fs::write(skipped.join("Windsurf.exe"), b"").unwrap();
+
+        let too_deep = directory.path().join("a/b/c/d/e");
+        std::fs::create_dir_all(&too_deep).unwrap();
+        std::fs::write(too_deep.join("Devin.exe"), b"").unwrap();
+
+        assert!(scan_for_installs(&[directory.path().to_path_buf()]).is_empty());
+    }
+
+    #[test]
+    fn a_missing_installation_explains_what_to_do_instead_of_every_candidate() {
+        let detected = detect_from_candidates(vec![
+            (
+                PathBuf::from(r"C:\nowhere\extension.js"),
+                DetectionSource::Guessed,
+            ),
+            (
+                PathBuf::from(r"D:\nowhere\extension.js"),
+                DetectionSource::Guessed,
+            ),
+        ]);
         assert!(detected.path().is_none());
         let message = detected.explanation();
-        assert!(message.contains("C:\\nowhere\\extension.js"), "{message}");
+        assert!(message.contains("2 locations"), "{message}");
+        assert!(message.contains(HOST_RELATIVE), "{message}");
+        assert!(!message.contains(r"C:\nowhere"), "{message}");
     }
 
     /// The drive-letter layout only exists on Windows, so the assertion is

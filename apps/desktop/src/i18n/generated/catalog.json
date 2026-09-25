@@ -470,18 +470,6 @@
         }
       ]
     },
-    "0820fda944c74d12": {
-      "source": "留空即自动探测；仅在自动结果不正确时才需要填写。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 501,
-          "column": 72
-        }
-      ]
-    },
     "08c7d97f993eb9ec": {
       "source": "把 Devin 指到本机网关",
       "kind": "text",
@@ -983,6 +971,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 349,
           "column": 39
+        }
+      ]
+    },
+    "137e5b26e1ffc342": {
+      "source": "留空即自动探测；也可以填安装目录，或 extension.js 的完整路径。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 501,
+          "column": 72
         }
       ]
     },

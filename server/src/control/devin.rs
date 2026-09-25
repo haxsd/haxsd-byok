@@ -12,6 +12,7 @@ use serde::Deserialize;
 use crate::{
     devin::{
         gateway::DevinListening,
+        host_detect,
         host_patch::{self, DevinPorts, PatchReceipt, PatchStatus},
         host_status as host_status_module, DevinSettings,
     },
@@ -66,7 +67,7 @@ fn resolve_host_path(input: Option<&str>) -> Result<PathBuf> {
     if let Some(value) = input.map(str::trim).filter(|value| !value.is_empty()) {
         return explicit_path(value);
     }
-    let detected = crate::devin::host_detect::detect();
+    let detected = host_detect::detect();
     match detected.path() {
         Some(path) => Ok(path.to_path_buf()),
         None => Err(Error::Config(detected.explanation())),
@@ -102,6 +103,10 @@ pub async fn host_restore(Json(input): Json<HostRestoreInput>) -> Result<Json<se
     Ok(Json(serde_json::json!({"restored": true})))
 }
 
+/// A pasted path may be the host file itself or any directory of the installation.
+/// Users paste the directory they see in the file manager, and the relative part
+/// below it is fixed, so refusing directories only produces avoidable failures —
+/// reading a directory is what surfaced as `os error 5`.
 fn explicit_path(value: &str) -> Result<PathBuf> {
     let path = PathBuf::from(value.trim());
     if path.as_os_str().is_empty() || !path.is_absolute() {
@@ -109,5 +114,58 @@ fn explicit_path(value: &str) -> Result<PathBuf> {
             "Devin host file path must be absolute".into(),
         ));
     }
-    Ok(path)
+    if path.is_file() {
+        return Ok(path);
+    }
+    let inside = path.join(host_detect::HOST_RELATIVE);
+    if inside.is_file() {
+        return Ok(inside);
+    }
+    Err(Error::Config(format!(
+        "{} is not a Devin host file; expected the file, or a directory containing {}",
+        path.display(),
+        host_detect::HOST_RELATIVE
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 安装目录是用户看得见、也最可能粘贴的东西；补上固定的相对路径比要求他
+    /// 记住 `<install>\resources\app\...\extension.js` 更合理，文件路径本身也必须
+    /// 继续可用。
+    #[test]
+    fn a_pasted_install_directory_resolves_to_the_host_file_inside_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let install = directory.path().join("Windsurf");
+        let host = install.join(host_detect::HOST_RELATIVE);
+        std::fs::create_dir_all(host.parent().unwrap()).unwrap();
+        std::fs::write(&host, b"// host").unwrap();
+
+        assert_eq!(
+            explicit_path(install.to_str().unwrap()).unwrap(),
+            host,
+            "a directory must resolve to the host file below it"
+        );
+        assert_eq!(
+            explicit_path(host.to_str().unwrap()).unwrap(),
+            host,
+            "the host file itself must stay accepted"
+        );
+    }
+
+    #[test]
+    fn a_directory_without_a_host_file_says_what_is_missing() {
+        let directory = tempfile::tempdir().unwrap();
+        let error = explicit_path(directory.path().to_str().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("extension.js"), "{error}");
+    }
+
+    #[test]
+    fn a_relative_path_is_refused() {
+        assert!(explicit_path("Windsurf").is_err());
+    }
 }
