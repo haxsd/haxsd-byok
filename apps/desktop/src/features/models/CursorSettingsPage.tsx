@@ -18,6 +18,10 @@ import { copyIcon, keyIcon, shieldIcon, terminalIcon } from "../../shared/ui/ico
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 
+/** 触发终端后的等待节奏：最长 30 秒，够一次 UAC 授权或一次密码输入。 */
+const CA_READY_POLL_INTERVAL_MS = 2_000;
+const CA_READY_POLL_ATTEMPTS = 15;
+
 /**
  * Cursor's own surface: taking over the local proxy and trusting the CA that makes
  * HTTPS interception possible.
@@ -44,10 +48,37 @@ export function CursorSettingsPage() {
   /** Cursor 的代理配置由另一个同类软件写入：我们没去覆盖它，必须把这件事说出来。 */
   const foreignConfiguration = cursorHarness?.foreign_configuration ?? false;
   const takeoverLabel = cursorTakenOver ? t("关闭接管Cursor") : t("开启接管Cursor");
+  // 安装证书要经过系统授权，那一步发生在我们自己的进程之外。以前界面停在
+  // "打开终端"之后就不再管了，用户装完还得自己想着回来点一下刷新。
+  const windows = cursorHarness?.platform === "windows";
 
   useEffect(() => {
     if (caCommand) void api.copyCursorText(caCommand);
   }, [caCommand]);
+
+  /**
+   * 打开终端之后自动等结果：每 2 秒问一次状态，装好即停，最多等 30 秒。
+   * 超时不是失败——授权可能还在等待，所以保留手动刷新。
+   */
+  useEffect(() => {
+    if (!waitingForCaRefresh) return;
+    let attempts = 0;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      void appStore.refresh().then(() => {
+        if (cancelled) return;
+        if (appStore.getSnapshot().cursorHarness?.ca === "ready" || attempts >= CA_READY_POLL_ATTEMPTS) {
+          window.clearInterval(timer);
+          setWaitingForCaRefresh(false);
+        }
+      });
+    }, CA_READY_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [waitingForCaRefresh]);
 
   const initializeCa = async () => {
     const status = await appStore.initializeCursorCa();
@@ -234,7 +265,9 @@ export function CursorSettingsPage() {
       <p>{t("关闭后将移除 Cursor 本地代理配置。如果你需要登陆官方账号，通常不需要关闭操作，推荐直接登陆你的账号即可(byok模型与官方账号的模型已支持无缝衔接)，是否继续关闭并清理代理？")}</p>
     </ConfirmDialog>
     <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
-      <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{t("安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码。")}</span><pre className={styles.command}>{caCommand}</pre></div>
+      <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{windows
+        ? t("安装命令已自动复制。点击“打开终端”，命令会自动执行并弹出 UAC 授权窗口，选“是”即可；装好后本页会自动刷新。")
+        : t("安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")}</span><pre className={styles.command}>{caCommand}</pre></div>
     </ConfirmDialog>
   </>;
 }
