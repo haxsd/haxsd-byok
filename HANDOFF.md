@@ -200,7 +200,7 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 | **i18n 插件强制静态字面量** | `t()` 参数必须是字符串字面量，不能是变量，也不能传 JSX。违反会**构建失败** |
 | **i18n 缺译文会构建失败** | 加新文案后跑 `npm run i18n:scan`，填 `en-US.json` 里的空词条 |
 | **GitHub 推送偶发 `SSL_ERROR_SYSCALL`** | 重试即可 |
-| **git 自己不走系统代理** | 两个产品仓库都**没有**配 `http.proxy`。系统代理在 `127.0.0.1:7897`（Clash/mihomo），`gh` 和 PowerShell 会自动用，**git 不会**：直接推送会报 `Failed to connect to github.com port 443`。推送时显式带上 `-c http.proxy=http://127.0.0.1:7897`，或在仓库里配上 |
+| **`github.com` 直连不通 ≠ GitHub 不通：先查系统代理，再动手** | 这台机器上 `github.com:443` 经常直连超时（`git push`、`curl`、应用内更新全都会卡住或失败），而 `api.github.com` 与 `objects.githubusercontent.com` 直连是通的——`gh` 看起来「能用」只是因为它们走的是后两个域名。**系统代理（Clash/mihomo，`127.0.0.1:7897`）开关会变**：`ProxyEnable` 现在可能是 1 也可能是 0，下结论前**每次都要重新读一次**。`curl` / `git` / `node` **都不读系统代理**，只有显式指定才走。<br>先看代理：`Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' \| Select-Object ProxyEnable,ProxyServer`<br>下载：`curl.exe -sL -x http://127.0.0.1:7897 -o out.exe <url>`<br>推送：`git -c http.proxy=http://127.0.0.1:7897 push origin main`<br>⚠️ 2026-09-24 就是漏了这一步：代理开着、我却直连，把「下不动安装包」误判成网络故障，白等了一晚上。**再遇到大文件下载失败，先按上面这条命令确认代理，再决定是不是真不通。** |
 | **复制式移植从不删除文件** | `tar -x` / `Copy-Item` 只会覆盖与新增。从归档分支移植时，旧副本会留在本仓库（曾残留 `LatencyChart.tsx` / `TokenTrendChart.tsx`）。移植后必须用 blob 哈希比对确认，见第七节 |
 | **启用窗口只写在 capabilities 里** | Tauri v2 的前端调用要先过 ACL：漏一项权限，功能**静默不可用**，编译与渲染都正常（`updater:default` 从 1.0.1 漏到 1.0.7，更新卡片一直报 `not allowed by ACL`）。新增插件调用时一并改 `apps/desktop/src-tauri/capabilities/default.json` |
 | **`finalize` 任务没有 checkout** | `gh release edit` 无法推断仓库，报 `not a git repository`，草稿不会转正。已修为显式 `--repo "${GITHUB_REPOSITORY}"`。**改这个工作流时别删掉 `--repo`** |
