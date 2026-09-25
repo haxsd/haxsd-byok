@@ -26,6 +26,20 @@ export default defineConfig(async ({ command }) => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      output: {
+        // 图表库占了入口包的四分之三，和应用代码捆在一起时它每次都要跟着重新解析。
+        // 这里只把它们分开，不改变加载顺序：两个 chunk 并行下载。
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("echarts") || id.includes("zrender")) return "charts";
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) return "react";
+          return undefined;
+        },
+      },
+    },
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port: 1420,

@@ -134,7 +134,9 @@ export function DailyTokenUsageChart({
         confine: true,
         backgroundColor: "var(--vscode-editorHoverWidget-background)",
         borderColor: "var(--vscode-editorHoverWidget-border)",
-        textStyle: { color: "var(--vscode-foreground)", fontFamily: "PingFang-Medium" },
+        // 提示框是 HTML，可以像下面的 extraCssText 一样直接用主题变量：写死字体
+        // 家族名会把内嵌字体拖进首屏，而这里本来就应该跟随界面字体。
+        textStyle: { color: "var(--vscode-foreground)", fontFamily: "var(--oa-ui-font)" },
         // The tooltip is HTML, so unlike the bars it can read the theme tokens
         // directly instead of carrying its own radius and shadow.
         extraCssText: "border-radius: var(--oa-radius-md); box-shadow: var(--oa-tooltip-shadow); font-size: var(--daily-token-tooltip-font-size); line-height: 1.5;",
