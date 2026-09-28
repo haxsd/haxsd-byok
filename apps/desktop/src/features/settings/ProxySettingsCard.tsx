@@ -1,4 +1,4 @@
-import type { ProxySettings, ProxySettingsInput } from "../../shared/api";
+import type { OutboundStatus, ProxySettings, ProxySettingsInput } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { Checkbox } from "../../shared/ui/Checkbox";
 import { TextInput } from "../../shared/ui/FormControls";
@@ -8,6 +8,7 @@ import styles from "./ProxySettingsCard.module.scss";
 
 export function ProxySettingsCard({
   settings,
+  outbound,
   draft,
   editing,
   saving,
@@ -17,6 +18,7 @@ export function ProxySettingsCard({
   onSave,
 }: {
   settings: ProxySettings | null;
+  outbound: OutboundStatus | null;
   draft: ProxySettingsInput;
   editing: boolean;
   saving: boolean;
@@ -26,6 +28,9 @@ export function ProxySettingsCard({
   onSave: () => void;
 }) {
   const custom = draft.mode === "custom";
+  // 配置说"跟随系统代理"，而实际正在直连：两者不一致时必须说出来，否则用户只会看到
+  // 代理开着却查不出网络为什么绕着走（Clash 更新那几分钟就是这样）。
+  const bypassed = (outbound?.system_proxy_bypassed ?? false) && (editing ? draft.mode : settings?.mode) === "default";
   // 三种模式的名字与说明放在一起：只写「默认」看不出它会跟着系统代理走，而「自定义」
   // 与「直连」只差一个字，说明文字是用户判断"要不要填地址"的依据。
   const modeLabel = (mode: ProxySettingsInput["mode"]) => {
@@ -96,6 +101,11 @@ export function ProxySettingsCard({
           </>}
         </div>}
       </>}
+      {bypassed && <div className={styles.row}>
+        <div className={styles.description}>
+          <small>{t("系统代理暂时连不上，出网正在直连；稍后会自动再试系统代理。")}</small>
+        </div>
+      </div>}
     </div>
   </TitledCard>;
 }

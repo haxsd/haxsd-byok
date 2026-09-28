@@ -221,6 +221,7 @@ export function installDemoApi() {
       proxySettings = { ...proxySettings, ...next, has_password: Boolean(next.has_password) };
       return json(proxySettings);
     }
+    if (path === "/settings/outbound") return json({ system_proxy_bypassed: false });
     if (path === "/settings/tab" && method === "GET") return json(tabSettings);
     if (path === "/settings/tab") {
       tabSettings = body as TabSettings;

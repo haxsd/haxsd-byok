@@ -30,6 +30,8 @@ use crate::{
     Error, Result,
 };
 
+use super::settings::OutboundStatus;
+
 #[derive(Clone)]
 pub struct ControlService {
     store: Store,
@@ -670,6 +672,13 @@ impl ControlService {
 
     pub async fn proxy_settings(&self) -> Result<ProxySettings> {
         self.store.proxy_settings().await
+    }
+
+    /// 出网此刻实际走哪条路。设置页用它说明"正在绕过系统代理"这类与配置不一致的状态。
+    pub async fn outbound_status(&self) -> Result<OutboundStatus> {
+        Ok(OutboundStatus {
+            system_proxy_bypassed: crate::network::system_proxy_bypassed(),
+        })
     }
 
     pub async fn set_proxy_settings(&self, settings: ProxySettingsInput) -> Result<ProxySettings> {

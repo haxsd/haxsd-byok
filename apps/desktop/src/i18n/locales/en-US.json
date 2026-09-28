@@ -412,6 +412,7 @@
   "7f994a83ada99ed8": "Save and test connectivity",
   "802a407c774302aa": "Refresh status",
   "802b0faf0ceb513e": "{label}: {percent}% left",
+  "8043bffa0cf6bec2": "The system proxy is unreachable right now, so requests go direct; it will be retried automatically.",
   "80a57e03f0717f91": "Not configured",
   "80dabc31021af695": "While takeover is on, the client points at local ports, so those requests fail whenever this app is not running. If you will not use it for a while, switch takeover off (that removes the configuration) and switch it back on later.",
   "811a3b22a5a7f2d5": "Unable to connect to the local management service",

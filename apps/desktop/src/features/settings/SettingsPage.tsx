@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type ProxySettings, type ProxySettingsInput, type StatisticsStorage, type StatisticsStorageScope, type TabSettings } from "../../shared/api";
+import { api, type OutboundStatus, type ProxySettings, type ProxySettingsInput, type StatisticsStorage, type StatisticsStorageScope, type TabSettings } from "../../shared/api";
 import { PageContent } from "../../shell/layout/PageContent";
 import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
@@ -49,6 +49,7 @@ export function SettingsPage() {
   const [clearScope, setClearScope] = useState<StatisticsStorageScope>("details");
   const [clearing, setClearing] = useState(false);
   const [outboundProxy, setOutboundProxy] = useState<ProxySettings | null>(null);
+  const [outboundStatus, setOutboundStatus] = useState<OutboundStatus | null>(null);
   const [proxyDraft, setProxyDraft] = useState<ProxySettingsInput>({ mode: "default", address: "", auth_enabled: false, username: "", password: "" });
   const [editingProxy, setEditingProxy] = useState(false);
   const [savingProxy, setSavingProxy] = useState(false);
@@ -60,9 +61,10 @@ export function SettingsPage() {
   const cardRefs = useRef(new Map<SettingsCardId, HTMLElement>());
 
   useEffect(() => {
-    void Promise.all([api.statisticsStorage(), api.proxySettings(), api.tabSettings()]).then(([nextStorage, nextProxy, nextTab]) => {
+    void Promise.all([api.statisticsStorage(), api.proxySettings(), api.outboundStatus(), api.tabSettings()]).then(([nextStorage, nextProxy, nextOutbound, nextTab]) => {
       setStorage(nextStorage);
       setOutboundProxy(nextProxy);
+      setOutboundStatus(nextOutbound);
       setProxyDraft({ mode: nextProxy.mode, address: nextProxy.address, auth_enabled: nextProxy.auth_enabled, username: nextProxy.username, password: "" });
       setTabSettings(nextTab);
       setTabDraft(nextTab);
@@ -370,7 +372,7 @@ export function SettingsPage() {
             </TitledCard>
           </div>
           <div data-card="proxy" ref={registerCard("proxy")}>
-            <ProxySettingsCard settings={outboundProxy} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
+            <ProxySettingsCard settings={outboundProxy} outbound={outboundStatus} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
           </div>
           <div data-card="tab" ref={registerCard("tab")}>
             <TabSettingsCard settings={tabSettings} draft={tabDraft} editing={editingTab} saving={savingTab} onDraftChange={setTabDraft} onEdit={editTab} onCancel={cancelTabEdit} onSave={() => void saveTab()} />
