@@ -20,6 +20,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    network::NetworkClients,
     provider::{ModelEvent, Provider},
     store::Store,
     Error, Result,
@@ -57,6 +58,7 @@ impl DevinListening {
 pub struct DevinGateway {
     store: Store,
     provider: Arc<dyn Provider>,
+    clients: NetworkClients,
     listening: DevinListening,
 }
 
@@ -65,16 +67,18 @@ struct GatewayState {
     store: Store,
     provider: Arc<dyn Provider>,
     assignments: Arc<AssignmentSessions>,
-    /// Reused for upstream forwarding; a connection pool matters because sign-in
-    /// and account calls arrive in bursts.
-    upstream: reqwest::Client,
+    /// Provides the client for upstream forwarding. Resolved per request rather
+    /// than captured once, so a proxy change reaches this hop too; the client
+    /// itself is pooled and cached, so this is a cheap read.
+    clients: NetworkClients,
 }
 
 impl DevinGateway {
-    pub fn new(store: Store, provider: Arc<dyn Provider>) -> Self {
+    pub fn new(store: Store, provider: Arc<dyn Provider>, clients: NetworkClients) -> Self {
         Self {
             store,
             provider,
+            clients,
             listening: DevinListening::default(),
         }
     }
@@ -94,23 +98,19 @@ impl DevinGateway {
 
         // The response body is forwarded exactly as it arrives, so the client of
         // this hop has to decode nothing on our behalf and no automatic
-        // decompression may rewrite it.
-        let upstream = reqwest::Client::builder()
-            .use_native_tls()
-            .no_gzip()
-            .no_brotli()
-            .no_deflate()
-            .no_zstd()
-            .build()
-            .map_err(|error| {
-                Error::Config(format!("Devin upstream client could not be built: {error}"))
-            })?;
+        // decompression may rewrite it — `devin_client` builds it that way. It is
+        // resolved once here only so that a broken proxy configuration fails at
+        // startup rather than on the first sign-in; requests resolve it again, so
+        // a later proxy change is picked up.
+        self.clients.devin_client().await.map_err(|error| {
+            Error::Config(format!("Devin upstream client could not be built: {error}"))
+        })?;
 
         let state = GatewayState {
             store: self.store,
             provider: self.provider,
             assignments: Arc::new(AssignmentSessions::new()),
-            upstream,
+            clients: self.clients,
         };
         let router = Self::router(&state);
 
@@ -394,7 +394,16 @@ async fn forward_upstream(
         .unwrap_or("/");
     let target = format!("{base}{path}");
 
-    let mut outgoing = state.upstream.request(
+    let upstream = match state.clients.devin_client().await {
+        Ok(client) => client,
+        Err(error) => {
+            return protocol_error(
+                StatusCode::BAD_GATEWAY,
+                format!("Devin upstream client could not be built: {error}"),
+            )
+        }
+    };
+    let mut outgoing = upstream.request(
         reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
             .unwrap_or(reqwest::Method::POST),
         &target,
@@ -632,11 +641,24 @@ mod tests {
             .unwrap();
 
         let provider: Arc<dyn Provider> = Arc::new(IdleProvider);
+        // The upstream here is a loopback test server, so the client must not be
+        // routed through any proxy the machine happens to have configured.
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store.clone());
         let state = GatewayState {
             store,
             provider,
             assignments: Arc::new(AssignmentSessions::new()),
-            upstream: reqwest::Client::builder().no_proxy().build().unwrap(),
+            clients,
         };
 
         let response = DevinGateway::router(&state)

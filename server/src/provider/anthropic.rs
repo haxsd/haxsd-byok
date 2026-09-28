@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use crate::{
     config::ProviderConfig,
     model::{ContentPart, ModelInvocation, ProjectedContent, ProjectedMessage, Role, Usage},
+    network::OutboundClient,
     Error, Result,
 };
 
@@ -21,15 +22,15 @@ use super::{
 const DEFAULT_MAX_OUTPUT_TOKENS: u64 = 65_000;
 
 pub struct AnthropicProvider {
-    client: reqwest::Client,
+    outbound: OutboundClient,
     config: ProviderConfig,
     recorder: Option<CallRecorder>,
 }
 
 impl AnthropicProvider {
-    pub fn new(client: reqwest::Client, config: ProviderConfig) -> Self {
+    pub fn new(outbound: OutboundClient, config: ProviderConfig) -> Self {
         Self {
-            client,
+            outbound,
             config,
             recorder: None,
         }
@@ -47,7 +48,7 @@ impl Provider for AnthropicProvider {
         invocation: ModelInvocation,
         cancellation: tokio_util::sync::CancellationToken,
     ) -> ProviderStream {
-        let client = self.client.clone();
+        let outbound = self.outbound.clone();
         let config = self.config.clone();
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
@@ -92,7 +93,8 @@ impl Provider for AnthropicProvider {
             }
             let attempt = send_once(
                 "Anthropic",
-                || client.post(&config.request_url)
+                &outbound,
+                |client| client.post(&config.request_url)
                     .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
                     .headers(config.custom_headers.clone())
                     .json(&body),

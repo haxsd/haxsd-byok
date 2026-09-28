@@ -200,7 +200,7 @@ export interface StatisticsStorage {
 
 export type StatisticsStorageScope = "details" | "all";
 
-export type ProxyMode = "default" | "custom";
+export type ProxyMode = "default" | "custom" | "direct";
 
 export interface ProxySettings {
   mode: ProxyMode;

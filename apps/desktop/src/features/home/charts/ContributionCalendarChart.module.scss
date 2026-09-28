@@ -28,6 +28,10 @@
     position: absolute;
     right: 0;
     line-height: 1;
+    /* The label is positioned by the row's centre line, so half its own height has
+       to come back off. Doing it here keeps the inline style independent of the
+       label's font size. */
+    transform: translateY(-50%);
   }
 }
 

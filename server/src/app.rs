@@ -27,6 +27,7 @@ pub struct App {
     registry: TransportRegistry,
     harness: CursorHarness,
     store: Store,
+    clients: crate::network::NetworkClients,
     devin_gateway: DevinGateway,
 }
 
@@ -54,7 +55,7 @@ impl App {
             config.provider_request_timeout,
             config.provider_stream_idle_timeout,
         ));
-        let devin_gateway = DevinGateway::new(store.clone(), provider.clone());
+        let devin_gateway = DevinGateway::new(store.clone(), provider.clone(), clients.clone());
         let registry = TransportRegistry::with_plugins(
             store.clone(),
             provider.clone(),
@@ -71,7 +72,7 @@ impl App {
             clients.clone(),
         )?;
         let harness = control.cursor_harness().clone();
-        let mut router = api::router(registry.clone(), clients)?;
+        let mut router = api::router(registry.clone(), clients.clone())?;
         // The status endpoint needs both the control service and the gateway's
         // own listening flag, so it is merged here rather than inside either one.
         router = router.merge(control::devin_status_router(
@@ -92,6 +93,7 @@ impl App {
             registry,
             harness,
             store,
+            clients,
             devin_gateway,
             config,
         })
@@ -144,6 +146,7 @@ impl App {
         tracing::info!(%address, "cursor server listening");
         let registry = self.registry;
         let harness = self.harness;
+        let clients = self.clients;
         let devin_gateway = self.devin_gateway;
         let graceful = shutdown.clone();
         let server = axum::serve(listener, self.router)
@@ -161,6 +164,13 @@ impl App {
                 tracing::error!(%error, "Devin gateway stopped; Cursor listener remains active");
             }
         });
+
+        // 默认模式下出网客户端在构建时就钉住了当时的系统代理；这个任务负责在用户
+        // 中途开关代理、换端口或改例外时丢掉缓存，让下一次请求按新配置重建。
+        let proxy_watch = tokio::spawn(crate::network::watch_system_proxy(
+            clients,
+            shutdown.clone(),
+        ));
 
         let maintenance = async {
             let mut interval = tokio::time::interval(Duration::from_secs(60 * 60));
@@ -199,6 +209,8 @@ impl App {
         };
         gateway_task.abort();
         let _ = gateway_task.await;
+        proxy_watch.abort();
+        let _ = proxy_watch.await;
         result
     }
 }

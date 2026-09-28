@@ -18,6 +18,10 @@ const MIN_CELL_SIZE = 9;
 const MAX_CELL_SIZE = 17;
 const WEEKDAY_COLUMN = 30;
 const ROUNDED = 2;
+/** Height of the strip above the grid that carries the month labels. The weekday
+ *  labels live in a sibling column, so they have to add this offset themselves:
+ *  without it every label sat one row too high and named the day above it. */
+const MONTH_STRIP_HEIGHT = 16;
 
 type Cell = ContributionDay & {
   column: number;
@@ -120,15 +124,15 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
   return <div className={styles.root}>
     <div ref={frameRef} className={styles.frame}>
       <div className={styles.weekdays} aria-hidden="true" style={{ height }}>
-        {[1, 3, 5].map((row) => <span key={row} style={{ top: row * (cellSize + CELL_GAP) - 5 }}>
+        {[1, 3, 5].map((row) => <span key={row} style={{ top: MONTH_STRIP_HEIGHT + row * (cellSize + CELL_GAP) + cellSize / 2 }}>
           {weekdayFormatter.format(new Date(Date.UTC(2024, 0, 1 + row)))}
         </span>)}
       </div>
       <svg
         className={styles.grid}
         width={width}
-        height={height + 16}
-        viewBox={`0 0 ${width} ${height + 16}`}
+        height={height + MONTH_STRIP_HEIGHT}
+        viewBox={`0 0 ${width} ${height + MONTH_STRIP_HEIGHT}`}
         /* role="img" 会把所有后代从无障碍树里摘掉（img 的子节点被视为装饰），
            而每一格是可以 Tab 到、可以按回车选中的按钮——那样键盘用户会停在
            365 个没有任何名字的元素上。可交互时用 group，让每一格自己说话。 */
@@ -141,7 +145,7 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
           x={tick.column * (cellSize + CELL_GAP)}
           y={9}
         >{tick.text}</text>)}
-        <g transform="translate(0 16)">
+        <g transform={`translate(0 ${MONTH_STRIP_HEIGHT})`}>
           {layout.cells.map((cell) => <rect
             key={cell.date}
             className={styles.cell}

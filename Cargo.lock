@@ -1221,6 +1221,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "windows-registry",
  "windows-sys 0.61.2",
  "x509-parser",
  "zip",

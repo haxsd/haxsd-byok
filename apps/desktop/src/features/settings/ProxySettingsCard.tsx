@@ -26,7 +26,18 @@ export function ProxySettingsCard({
   onSave: () => void;
 }) {
   const custom = draft.mode === "custom";
-  const modeLabel = (mode: ProxySettingsInput["mode"]) => mode === "default" ? t("默认") : t("自定义");
+  // 三种模式的名字与说明放在一起：只写「默认」看不出它会跟着系统代理走，而「自定义」
+  // 与「直连」只差一个字，说明文字是用户判断"要不要填地址"的依据。
+  const modeLabel = (mode: ProxySettingsInput["mode"]) => {
+    if (mode === "custom") return t("自定义");
+    if (mode === "direct") return t("直连");
+    return t("默认（跟随系统代理）");
+  };
+  const modeHint = (mode: ProxySettingsInput["mode"]) => {
+    if (mode === "custom") return t("始终走下面填写的地址，系统代理怎么变都不影响。");
+    if (mode === "direct") return t("不使用任何代理，直接连接网络。");
+    return t("跟随 Windows 的系统代理设置；在那里开关代理后会自动切换，不用重启。");
+  };
   const action = editing ? (
     <div className={styles.actionGroup}>
       <Button size="small" disabled={saving} onClick={onCancel}>{t("取消")}</Button>
@@ -42,8 +53,11 @@ export function ProxySettingsCard({
     <div className={styles.content}>
       {editing ? <>
         <div className={styles.row}>
-          <strong>{t("代理方式")}</strong>
-          <div className={styles.control}><Select ariaLabel={t("代理方式")} value={draft.mode} options={[{ value: "default", label: t("默认") }, { value: "custom", label: t("自定义") }]} onChange={(mode) => onDraftChange({ ...draft, mode: mode as ProxySettingsInput["mode"] })} /></div>
+          <div className={styles.description}>
+            <strong>{t("代理方式")}</strong>
+            <small>{modeHint(draft.mode)}</small>
+          </div>
+          <div className={styles.control}><Select ariaLabel={t("代理方式")} value={draft.mode} options={[{ value: "default", label: t("默认（跟随系统代理）") }, { value: "custom", label: t("自定义") }, { value: "direct", label: t("直连") }]} onChange={(mode) => onDraftChange({ ...draft, mode: mode as ProxySettingsInput["mode"] })} /></div>
         </div>
         {custom && <div className={styles.customFields}>
           <div className={styles.row}>
@@ -66,7 +80,13 @@ export function ProxySettingsCard({
           </div>}
         </div>}
       </> : <>
-        <div className={styles.row}><strong>{t("代理方式")}</strong><span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span></div>
+        <div className={styles.row}>
+          <div className={styles.description}>
+            <strong>{t("代理方式")}</strong>
+            {settings && <small>{modeHint(settings.mode)}</small>}
+          </div>
+          <span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span>
+        </div>
         {settings?.mode === "custom" && <div className={styles.customFields}>
           <div className={styles.row}><strong>{t("代理地址")}</strong><span className={styles.value}>{settings.address}</span></div>
           <div className={styles.row}><strong>{t("认证")}</strong><span className={styles.value}>{settings.auth_enabled ? t("已启用") : t("未启用")}</span></div>
