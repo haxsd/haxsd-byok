@@ -83,10 +83,18 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.8（Latest），2026-09-23
-产物:      haxsd.byok_1.0.8_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.17（Latest），2026-09-28
+产物:      haxsd.byok_1.0.17_x64-setup.exe / .sig / latest.json
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
+
+1.0.17 发布后按第九节验过三件事：`isDraft=false`（finalize 已转正）、`latest.json`
+匿名可读（200，且下载地址已改写成 `releases/download/...`，不含 `api.github.com`）、
+安装包签名与 `tauri.conf.json` 里的公钥对得上（keyId `02d27538334f1d5b`，Ed25519 +
+Blake2b-512 预哈希）。重建的验签脚本在
+`D:\cursor-byok\byok-dev\_logs\verify-update-signature.mjs`（用 `node <脚本> <安装包>
+<.sig 或 latest.json> <tauri.conf.json>`）。注意 `minisign_verify` 只验 keyId + 预哈希 +
+Ed25519 三件事，不验 minisign 的全局签名，脚本按同一口径验。
 
 **`updater:default` 必须留在 `apps/desktop/src-tauri/capabilities/default.json` 里。**
 从 1.0.1 到 1.0.7 的每个版本都漏了这一项：更新卡片读得到版本号，点「检查更新」却
