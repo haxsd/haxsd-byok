@@ -29,10 +29,14 @@ pub struct App {
     store: Store,
     clients: crate::network::NetworkClients,
     devin_gateway: DevinGateway,
+    /// 这份数据目录的进程互斥锁，随 `App` 活到进程结束。
+    _instance: crate::instance::InstanceLock,
 }
 
 impl App {
     pub async fn new(mut config: Config) -> Result<Self> {
+        // 先占坑再碰端口与数据库：第二个实例必须在改动任何共享状态之前被挡住。
+        let instance = crate::instance::InstanceLock::acquire().await?;
         let store = Store::connect(&config.database_url).await?;
         if config.use_persisted_ports {
             config
@@ -96,6 +100,7 @@ impl App {
             clients,
             devin_gateway,
             config,
+            _instance: instance,
         })
     }
 

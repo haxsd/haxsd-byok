@@ -1,5 +1,5 @@
 //! Configures the local application proxy.
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use hudsucker::{
     certificate_authority::RcgenAuthority,
@@ -7,7 +7,7 @@ use hudsucker::{
     rustls::crypto::aws_lc_rs,
     Body, HttpContext, HttpHandler, Proxy, RequestOrResponse,
 };
-use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
+use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle, time::Instant};
 
 use parking_lot::RwLock;
 
@@ -78,7 +78,17 @@ impl ProxyRuntime {
             if let Err(error) = proxy.start().await {
                 let error = error.to_string();
                 tracing::error!(%error, "Cursor proxy stopped unexpectedly");
-                // 代理自己死了：Cursor 之后所有请求都会失败，抓一份现场。
+                // 代理自己死了：Cursor 之后每个请求都会失败，而它的 settings.json 还
+                // 指着这个端口。先把自己写的代理配置撤掉，让 Cursor 回到直连（还能用），
+                // 再把现场抓下来。
+                if std::env::var_os("HAXSD_BYOK_DATA_DIR").is_none() {
+                    if let Err(error) = super::settings::clear_proxy_settings() {
+                        tracing::warn!(
+                            error = %crate::diagnostics::error_chain(&error),
+                            "failed to clear Cursor proxy configuration after the proxy stopped"
+                        );
+                    }
+                }
                 crate::diagnostics::capture(
                     "cursor_proxy_stopped",
                     serde_json::json!({ "address": address.to_string(), "error": error }),
@@ -104,16 +114,48 @@ impl ProxyRuntime {
     }
 }
 
+/// 配置端口被占用时的重试窗口。
+///
+/// 占用者多半就是"上一次的我们"：进程正在退出、监听端口还没释放。立刻退到随机
+/// 端口会把 Cursor 指向一个马上要消失的地址（HANDOFF 记过 17:24–17:26 那批报错），
+/// 所以先在这个窗口里重试；实在拿不到才退到随机端口。
+const PORT_RETRY_WINDOW: Duration = Duration::from_secs(5);
+const PORT_RETRY_INTERVAL: Duration = Duration::from_millis(250);
+
 async fn bind_proxy_listener(requested_port: u16) -> Result<TcpListener> {
+    bind_proxy_listener_with(requested_port, PORT_RETRY_WINDOW).await
+}
+
+async fn bind_proxy_listener_with(requested_port: u16, window: Duration) -> Result<TcpListener> {
     let requested = SocketAddr::from(([127, 0, 0, 1], requested_port));
-    match TcpListener::bind(requested).await {
-        Ok(listener) => Ok(listener),
-        Err(error) if requested_port != 0 => {
-            tracing::warn!(%requested, %error, "configured proxy port unavailable; selecting a random port");
-            Ok(TcpListener::bind("127.0.0.1:0").await?)
-        }
-        Err(error) => Err(error.into()),
+    if requested_port == 0 {
+        return Ok(TcpListener::bind(requested).await?);
     }
+    let deadline = Instant::now() + window;
+    let mut last_error = None;
+    loop {
+        match TcpListener::bind(requested).await {
+            Ok(listener) => {
+                if last_error.is_some() {
+                    tracing::info!(%requested, "configured proxy port became available again");
+                }
+                return Ok(listener);
+            }
+            Err(error) => last_error = Some(error),
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(PORT_RETRY_INTERVAL).await;
+    }
+    let error = last_error.expect("the configured port was attempted at least once");
+    tracing::warn!(
+        %requested,
+        %error,
+        window_ms = window.as_millis() as u64,
+        "configured proxy port is still taken after retrying; selecting a random port"
+    );
+    Ok(TcpListener::bind("127.0.0.1:0").await?)
 }
 
 #[derive(Clone)]
@@ -234,5 +276,35 @@ mod tests {
         ] {
             assert!(is_local_path(path), "{path} must not reach Cursor upstream");
         }
+    }
+
+    /// 端口被"上一次的我们"占着时，进程退出会释放监听；重试窗口内应当拿回来，
+    /// 而不是立刻退到随机端口、把 Cursor 指向一个马上消失的地址。
+    #[tokio::test]
+    async fn a_port_released_during_the_retry_window_is_taken_over() {
+        let window = Duration::from_millis(600);
+        let occupant = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = occupant.local_addr().unwrap().port();
+        let release = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            drop(occupant);
+        });
+
+        let listener = bind_proxy_listener_with(port, window).await.unwrap();
+
+        assert_eq!(listener.local_addr().unwrap().port(), port);
+        release.await.unwrap();
+    }
+
+    /// 拿不到配置端口时必须仍能起来（退到随机端口），而不是把整个应用钉死在启动失败。
+    #[tokio::test]
+    async fn a_port_held_for_the_whole_window_falls_back_to_a_random_port() {
+        let window = Duration::from_millis(50);
+        let occupant = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = occupant.local_addr().unwrap().port();
+
+        let listener = bind_proxy_listener_with(port, window).await.unwrap();
+
+        assert_ne!(listener.local_addr().unwrap().port(), port);
     }
 }

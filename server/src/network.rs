@@ -19,6 +19,26 @@ const LOCAL_NO_PROXY: &str = "localhost,127.0.0.0/8,::1";
 /// 贵得多——一次读只有几个微秒。
 const SYSTEM_PROXY_POLL_INTERVAL: Duration = Duration::from_secs(5);
 
+/// "系统代理连不上"之后绕开它直连的时长。
+///
+/// 到期就放回系统代理试一次：代理回来了就正常用，仍然不通就再兜一轮。用时间而不是
+/// 主动探测：要判"系统代理到底是哪个地址"得复刻 reqwest 的整套判定（环境变量、注册表、
+/// 例外表），判错一次就白发一批请求；而到期重试的代价只是每轮一次失败请求。
+const SYSTEM_PROXY_BYPASS: Duration = Duration::from_secs(5 * 60);
+
+/// 系统代理是否刚刚被判定为不可用，以及这个判定何时过期。
+///
+/// 它是机器的事实而不是某个客户端的事实，所以放进程级：所有出网客户端（含一次性构建
+/// 的）都据此决定这次是走系统代理还是直连。
+static SYSTEM_PROXY_BYPASS_UNTIL: parking_lot::Mutex<Option<std::time::Instant>> =
+    parking_lot::Mutex::new(None);
+
+fn bypassing_system_proxy() -> bool {
+    SYSTEM_PROXY_BYPASS_UNTIL
+        .lock()
+        .is_some_and(|until| std::time::Instant::now() < until)
+}
+
 #[derive(Clone)]
 pub struct NetworkClients {
     store: Store,
@@ -35,26 +55,29 @@ struct ClientCache {
     route: Option<RouteSnapshot>,
 }
 
-/// 构建出网客户端时选定的路由：模式、自定义地址、以及默认模式下的系统代理指纹。
+/// 构建出网客户端时选定的路由：模式、自定义地址、系统代理指纹与兜底状态。
 ///
-/// 三者合起来回答"当时请求会发到哪里"。任何一项与当前配置不同，缓存里的客户端
-/// 就不再代表现在的选择：默认模式下关掉系统代理、自定义模式下设置被别的路径改掉，
-/// 都会命中这个判据。
+/// 四者合起来回答"当时请求会发到哪里"。任何一项与当前配置不同，缓存里的客户端
+/// 就不再代表现在的选择：默认模式下关掉系统代理、自定义模式下设置被别的路径改掉、
+/// 或者系统代理刚被判定连不上而改为直连，都会命中这个判据。
 #[derive(Clone, PartialEq, Eq)]
 struct RouteSnapshot {
     mode: ProxyMode,
     address: String,
     /// 只有默认模式会读系统代理，其余模式留空。
     system_fingerprint: Option<String>,
+    /// 默认模式下系统代理不可用，出网临时绕开它直连。
+    bypass_system_proxy: bool,
 }
 
 impl RouteSnapshot {
     fn of(settings: &ProxySettingsSecret) -> Self {
+        let uses_system_proxy = settings.mode == ProxyMode::Default;
         Self {
             mode: settings.mode,
             address: settings.address.clone(),
-            system_fingerprint: (settings.mode == ProxyMode::Default)
-                .then(system_proxy_fingerprint),
+            system_fingerprint: uses_system_proxy.then(system_proxy_fingerprint),
+            bypass_system_proxy: uses_system_proxy && bypassing_system_proxy(),
         }
     }
 }
@@ -186,6 +209,73 @@ impl NetworkClients {
             }
         }
     }
+
+    /// 默认模式下系统代理那一跳连不上：往后一段时间里绕开它直连。
+    ///
+    /// 返回 `true` 表示这次调用真的改变了路由（缓存已失效），调用方可以按新配置重建
+    /// 客户端并重试一次。Clash 这类工具更新时会先停掉核心，端口还在、系统代理还开着，
+    /// 但没人监听——没有这条兜底，用户的每一次对话都会以 502 结束。
+    pub async fn bypass_system_proxy(&self) -> bool {
+        // 只有"跟随系统代理"这一种模式会栽在系统代理上；直连或自定义模式下连接失败
+        // 跟系统代理无关，别把判定记到它头上（用户之后切回默认模式会被无辜绕过）。
+        match self.store.proxy_settings_secret().await {
+            Ok(settings) if settings.mode == ProxyMode::Default => {}
+            Ok(_) => return false,
+            Err(error) => {
+                tracing::warn!(
+                    error = %crate::diagnostics::error_chain(&error),
+                    "cannot read proxy settings; not bypassing the system proxy"
+                );
+                return false;
+            }
+        }
+        {
+            // 作用域内只碰内存：parking_lot 的守卫不是 `Send`，跨 await 会传染到所有
+            // 调用方（provider 的流必须是 `Send`）。
+            let mut until = SYSTEM_PROXY_BYPASS_UNTIL.lock();
+            if until.is_some_and(|deadline| std::time::Instant::now() < deadline) {
+                return false;
+            }
+            *until = Some(std::time::Instant::now() + SYSTEM_PROXY_BYPASS);
+        }
+        self.invalidate().await;
+        tracing::warn!(
+            seconds = SYSTEM_PROXY_BYPASS.as_secs(),
+            "system proxy is unreachable; sending requests directly until it recovers"
+        );
+        true
+    }
+
+    /// 兜底窗口到期：放回系统代理再试一次。
+    ///
+    /// 失败就再兜一轮，成功就一直用系统代理。用时间而不是探测，理由见 `SYSTEM_PROXY_BYPASS`。
+    pub async fn expire_system_proxy_bypass(&self) -> bool {
+        {
+            let mut until = SYSTEM_PROXY_BYPASS_UNTIL.lock();
+            match *until {
+                Some(deadline) if std::time::Instant::now() >= deadline => {
+                    *until = None;
+                }
+                _ => return false,
+            }
+        }
+        self.invalidate().await;
+        tracing::info!("system proxy bypass expired; trying the configured proxy again");
+        true
+    }
+
+    /// 系统代理配置刚变过：撤掉兜底判定，按新配置先试一次系统代理。
+    ///
+    /// 与 `expire_system_proxy_bypass` 分开：这条不看窗口，因为判断的依据（那个代理
+    /// 地址）本身已经换了。
+    pub async fn clear_system_proxy_bypass(&self) -> bool {
+        if SYSTEM_PROXY_BYPASS_UNTIL.lock().take().is_none() {
+            return false;
+        }
+        self.invalidate().await;
+        tracing::info!("system proxy configuration changed; trying it again");
+        true
+    }
 }
 
 /// 一次出网请求用的客户端，外加"失败后按当前配置重建"的能力。
@@ -222,14 +312,22 @@ impl OutboundClient {
         &self.client
     }
 
-    /// 出网失败后的兜底：只有"连接类失败 + 缓存已经过期"才会重建并返回新客户端，
-    /// 供调用方重试一次。返回 `None` 表示失败照旧上报。
+    /// 出网失败后的兜底：按当前配置重建客户端返回新客户端，供调用方重试一次。
+    ///
+    /// 两条路：配置真的变了（用户中途关了代理）就按新配置重建；配置没变却是连接类
+    /// 失败，那就是系统代理那一跳断了，改为直连再重建。返回 `None` 表示失败照旧上报。
     pub async fn rebuild_after(&self, error: &reqwest::Error) -> Option<reqwest::Client> {
         let (clients, timeout) = self.recovery.as_ref()?;
         if !error.is_connect() && !error.is_timeout() {
             return None;
         }
-        clients.rebuild_provider_client(*timeout).await
+        if let Some(client) = clients.rebuild_provider_client(*timeout).await {
+            return Some(client);
+        }
+        if error.is_connect() && clients.bypass_system_proxy().await {
+            return clients.rebuild_provider_client(*timeout).await;
+        }
+        None
     }
 }
 
@@ -312,11 +410,15 @@ async fn watch_system_proxy_with<F>(
             _ = ticker.tick() => {}
             () = &mut cancelled => return,
         }
+        // 直连兜底只维持一个窗口，到点就放回系统代理试一次。
+        clients.expire_system_proxy_bypass().await;
         let current = fingerprint();
         if current == previous {
             continue;
         }
         previous = current;
+        // 系统代理地址刚换过：上一次"连不上"的判定不再代表现在，先撤掉再重建。
+        clients.clear_system_proxy_bypass().await;
         // 只有"跟随系统代理"的缓存会用到系统配置；自定义与直连模式下缓存的客户端与
         // 系统代理无关，重建只会白白丢掉连接池（那两种模式的变化由保存设置失效缓存）。
         match clients.store.proxy_settings_secret().await {
@@ -367,6 +469,8 @@ fn settings_builder(settings: &ProxySettingsSecret) -> Result<reqwest::ClientBui
     // only offer legacy TLS 1.2 cipher suites unsupported by rustls.
     let builder = reqwest::Client::builder().use_native_tls();
     Ok(match outbound_proxy(settings)? {
+        // 系统代理刚被判定连不上：这一次直接出网，别把请求打进没人监听的端口。
+        OutboundProxy::System if bypassing_system_proxy() => builder.no_proxy(),
         OutboundProxy::System => builder,
         OutboundProxy::Custom(proxy) => builder.proxy(*proxy),
         OutboundProxy::Direct => builder.no_proxy(),
@@ -381,6 +485,7 @@ pub async fn blocking_client_builder(store: &Store) -> Result<reqwest::blocking:
     let settings = store.proxy_settings_secret().await?;
     let builder = reqwest::blocking::Client::builder().use_native_tls();
     Ok(match outbound_proxy(&settings)? {
+        OutboundProxy::System if bypassing_system_proxy() => builder.no_proxy(),
         OutboundProxy::System => builder,
         OutboundProxy::Custom(proxy) => builder.proxy(*proxy),
         OutboundProxy::Direct => builder.no_proxy(),
@@ -480,6 +585,41 @@ mod tests {
             username: String::new(),
             password: None,
         }
+    }
+
+    /// 系统代理那一跳断了（Clash 更新时先停核心就是这种）：出网临时改为直连，
+    /// 窗口到期后再放回系统代理试一次。
+    #[tokio::test]
+    async fn an_unreachable_system_proxy_bypasses_itself_until_the_window_expires() {
+        let store = test_store().await;
+        store
+            .set_proxy_settings(system_proxy_store_mode(ProxyMode::Default))
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store);
+        clients.default_client().await.unwrap();
+
+        assert!(
+            clients.bypass_system_proxy().await,
+            "the first judgement switches the route"
+        );
+        assert_eq!(
+            cached_clients(&clients).await,
+            0,
+            "proxied clients are dropped"
+        );
+        assert!(
+            !clients.bypass_system_proxy().await,
+            "a second failure inside the window keeps the route"
+        );
+
+        // 窗口没到：不放回系统代理。
+        assert!(!clients.expire_system_proxy_bypass().await);
+        // 把窗口推到过去，等价于"五分钟到了"。
+        *SYSTEM_PROXY_BYPASS_UNTIL.lock() =
+            Some(std::time::Instant::now() - Duration::from_secs(1));
+        assert!(clients.expire_system_proxy_bypass().await);
+        assert!(!bypassing_system_proxy());
     }
 
     #[tokio::test]
