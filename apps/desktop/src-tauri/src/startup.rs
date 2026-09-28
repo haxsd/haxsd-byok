@@ -13,6 +13,14 @@ const LOG_FILE_PREFIX: &str = "haxsd-byok";
 const LOG_FILE_SUFFIX: &str = "log";
 const RETAINED_LOG_FILES: usize = 15;
 
+/// 默认过滤：自家两条线都是 `info`，第三方只放 `warn` 以上。
+///
+/// 第三方必须显式列出来：`EnvFilter` 一旦给出具体目标，没提到的目标就是关闭的。
+/// 之前 `hudsucker`（本地代理的 MITM 实现）整条线被丢掉，而"连不上代理/CONNECT
+/// 失败/TLS 握手失败"恰恰只由它记录——报错时日志里什么都没有，就是这么来的。
+/// 需要更细的现场时用 `RUST_LOG=hudsucker=debug,cursor_server=debug` 启动。
+const DEFAULT_LOG_FILTER: &str = "haxsd_byok_desktop=info,cursor_server=info,hudsucker=warn,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn";
+
 type BoxError = Box<dyn Error + Send + Sync>;
 
 pub(crate) struct StartupDiagnostics {
@@ -33,7 +41,7 @@ impl StartupDiagnostics {
             .build(&log_directory)?;
         let (file_writer, writer_guard) = tracing_appender::non_blocking(file_appender);
         let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "haxsd_byok_desktop=info,cursor_server=info".into());
+            .unwrap_or_else(|_| DEFAULT_LOG_FILTER.into());
 
         tracing_subscriber::registry()
             .with(filter)
@@ -44,6 +52,9 @@ impl StartupDiagnostics {
                     .with_writer(file_writer),
             )
             .try_init()?;
+
+        cursor_server::diagnostics::set_app_version(env!("CARGO_PKG_VERSION"));
+        install_panic_hook();
 
         Ok(Self {
             log_directory,
@@ -56,7 +67,7 @@ impl StartupDiagnostics {
     }
 
     pub(crate) fn report_fatal(&self, error: &(dyn Error + 'static)) {
-        let details = error_chain(error);
+        let details = cursor_server::diagnostics::error_chain_multiline(error);
         tracing::error!(
             error = %details,
             log_directory = %self.log_directory.display(),
@@ -66,8 +77,28 @@ impl StartupDiagnostics {
     }
 }
 
+/// panic 也要进日志并抓一份现场：默认 hook 只写 stderr，而打包后的应用没有控制台。
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic payload".to_owned());
+        let location = info
+            .location()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "unknown location".to_owned());
+        tracing::error!(%payload, %location, "panic");
+        cursor_server::diagnostics::capture_panic(&payload, &location);
+        previous(info);
+    }));
+}
+
 pub(crate) fn report_logging_failure(error: &(dyn Error + 'static)) {
-    let details = error_chain(error);
+    let details = cursor_server::diagnostics::error_chain_multiline(error);
     eprintln!("haxsd byok failed to initialize logging: {details}");
     show_fatal_dialog(&details, None);
 }
@@ -91,49 +122,4 @@ fn show_fatal_dialog(details: &str, log_directory: Option<&std::path::Path>) {
         .set_description(description)
         .set_buttons(MessageButtons::Ok)
         .show();
-}
-
-fn error_chain(error: &(dyn Error + 'static)) -> String {
-    let mut details = error.to_string();
-    let mut source = error.source();
-    while let Some(cause) = source {
-        details.push_str("\nCaused by: ");
-        details.push_str(&cause.to_string());
-        source = cause.source();
-    }
-    details
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fmt;
-
-    #[derive(Debug)]
-    struct OuterError(std::io::Error);
-
-    impl fmt::Display for OuterError {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            formatter.write_str("database initialization failed")
-        }
-    }
-
-    impl Error for OuterError {
-        fn source(&self) -> Option<&(dyn Error + 'static)> {
-            Some(&self.0)
-        }
-    }
-
-    #[test]
-    fn fatal_report_includes_the_complete_error_chain() {
-        let error = OuterError(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "database file is read-only",
-        ));
-
-        assert_eq!(
-            error_chain(&error),
-            "database initialization failed\nCaused by: database file is read-only"
-        );
-    }
 }

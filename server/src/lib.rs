@@ -5,6 +5,7 @@ pub mod config;
 pub mod control;
 pub mod cursor;
 pub mod devin;
+pub mod diagnostics;
 pub mod error;
 pub mod local_app;
 pub mod model;

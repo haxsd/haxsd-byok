@@ -78,7 +78,19 @@ pub fn write_proxy_settings(proxy_url: &str) -> Result<()> {
 }
 
 fn write_proxy_settings_at(path: &Path, proxy_url: &str) -> Result<()> {
-    let mut settings = read_from(path)?;
+    let settings = read_from(path)?;
+    // 标记也要在：兄弟产品写的是同样的五个键，只比较那几个值会把它的配置
+    // 误当成"我们已经写好了"，于是永远不会认领归我们。
+    let already_written = settings.get(MANAGED_MARKER_KEY)
+        == Some(&Value::String(proxy_url.into()))
+        && is_our_configuration(&settings, proxy_url)
+        && !settings.contains_key(NO_PROXY_KEY);
+    if already_written {
+        // 读状态每几秒就走一次这条路：内容没变就不写文件，免得白改 mtime
+        // 让 Cursor 反复重载配置。
+        return Ok(());
+    }
+    let mut settings = settings;
     settings.remove(NO_PROXY_KEY);
     settings.insert(KEYS[0].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
@@ -86,11 +98,36 @@ fn write_proxy_settings_at(path: &Path, proxy_url: &str) -> Result<()> {
     settings.insert(KEYS[3].into(), Value::Bool(true));
     settings.insert(KEYS[4].into(), Value::Bool(true));
     settings.insert(MANAGED_MARKER_KEY.into(), Value::String(proxy_url.into()));
-    write_to(path, &settings)
+    write_to(path, &settings)?;
+    tracing::info!(
+        path = %path.display(),
+        proxy_url,
+        "wrote Cursor proxy configuration"
+    );
+    Ok(())
 }
 
 pub fn clear_proxy_settings() -> Result<()> {
     clear_proxy_settings_at(&path()?)
+}
+
+/// 复制一份 Cursor 设置里与代理有关的键，给诊断快照用。
+///
+/// 报错时最先要回答的就是"那份 settings.json 当时是谁写的、写的什么"。
+pub fn proxy_settings_snapshot() -> Result<Value> {
+    let path = path()?;
+    let settings = read_from(&path)?;
+    let mut entries = serde_json::Map::new();
+    for key in KEYS.into_iter().chain([MANAGED_MARKER_KEY, NO_PROXY_KEY]) {
+        if let Some(value) = settings.get(key) {
+            entries.insert(key.to_owned(), value.clone());
+        }
+    }
+    Ok(serde_json::json!({
+        "path": path.display().to_string(),
+        "entries": entries,
+        "is_foreign": is_foreign_configuration(&settings),
+    }))
 }
 
 /// Removes the entries this product wrote, marker included.
@@ -109,6 +146,11 @@ fn clear_proxy_settings_at(path: &Path) -> Result<()> {
     settings.remove(MANAGED_MARKER_KEY);
     if settings.len() != before {
         write_to(path, &settings)?;
+        tracing::info!(
+            path = %path.display(),
+            removed = before - settings.len(),
+            "cleared Cursor proxy configuration"
+        );
     }
     Ok(())
 }

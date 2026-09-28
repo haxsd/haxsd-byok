@@ -51,6 +51,7 @@ fn local_body_stream(
         while let Some(chunk) = receiver.recv().await {
             let terminal = is_end_stream_frame(&chunk);
             trace.chunk(&chunk);
+            guard.frame_sent();
             if terminal {
                 guard.complete();
                 trace.finish(end_stream_error(&chunk));
@@ -98,6 +99,8 @@ fn end_stream_error(frame: &Bytes) -> Option<String> {
 struct LocalRunGuard {
     handle: TransportHandle,
     completed: bool,
+    started: std::time::Instant,
+    frames: usize,
 }
 
 impl LocalRunGuard {
@@ -105,7 +108,13 @@ impl LocalRunGuard {
         Self {
             handle,
             completed: false,
+            started: std::time::Instant::now(),
+            frames: 0,
         }
+    }
+
+    fn frame_sent(&mut self) {
+        self.frames += 1;
     }
 
     fn complete(&mut self) {
@@ -115,12 +124,36 @@ impl LocalRunGuard {
 
 impl Drop for LocalRunGuard {
     fn drop(&mut self) {
-        if !self.completed {
-            let handle = self.handle.clone();
-            tokio::spawn(async move {
-                handle.disconnect().await;
-            });
+        if self.completed {
+            return;
         }
+        // 走到这里就是 Cursor 侧的 Run 流没了：客户端断开、写回失败、或进程被结束。
+        // 用户看到的"报错"几乎总是这一刻，而这一刻的现场只在这里拿得到，所以既落日志
+        // 也抓一份诊断文件（诊断文件里有 Cursor 的代理配置、系统代理与日志尾部）。
+        let elapsed_ms = self.started.elapsed().as_millis() as u64;
+        let request_id = self.handle.request_id().to_owned();
+        let conversation_id = self.handle.conversation_id().map(str::to_owned);
+        let frames = self.frames;
+        tracing::warn!(
+            %request_id,
+            conversation_id = conversation_id.as_deref().unwrap_or("none"),
+            elapsed_ms,
+            frames,
+            "Cursor Run stream dropped before completion; aborting the run"
+        );
+        crate::diagnostics::capture(
+            "run_stream_dropped",
+            serde_json::json!({
+                "request_id": request_id,
+                "conversation_id": conversation_id,
+                "elapsed_ms": elapsed_ms,
+                "frames_sent": frames,
+            }),
+        );
+        let handle = self.handle.clone();
+        tokio::spawn(async move {
+            handle.disconnect().await;
+        });
     }
 }
 

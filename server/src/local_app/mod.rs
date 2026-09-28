@@ -18,6 +18,9 @@ use crate::{
 
 use self::{ca::CaManager, proxy::ProxyRuntime};
 
+/// 诊断快照要读 Cursor 里与代理有关的那几个键；`settings` 模块本身不对外。
+pub use settings::proxy_settings_snapshot;
+
 pub(crate) fn proxy_host_allowed(host: &str) -> bool {
     proxy::is_cursor_host(host)
 }

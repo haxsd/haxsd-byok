@@ -285,6 +285,30 @@ foreach ($f in $files) {
 
 **血泪教训：我从截图误判布局两次、误判请求归因一次。缩略图不能用来判断布局，必须用测量脚本。** 例如「状态项被挤成单列」的观感被 CDP 实测推翻——实际是 5 列 × 235px。
 
+### 报错现场：`logs/diagnostics-*.log`
+
+用户遇到断流时已经无法再和助手对话，进程内状态也没了，所以应用**自己抓现场**：
+`<数据目录>\logs\diagnostics-<UTC 时间戳>.log`，一份文件里就是一次故障的全部输入。
+
+| 抓取点 | 说明 |
+|---|---|
+| Cursor 的 Run 流中途断开 | 就是"用户看到报错"的那一刻：记请求/会话 ID、已发帧数、存活时长 |
+| 模型调用彻底失败 | 重试策略放弃时：记尝试次数、分类、错误链、检查点 |
+| 本地代理自己退出 | 之后 Cursor 的每个请求都会失败 |
+| panic | 默认 hook 只写 stderr，打包后没有控制台 |
+
+文件内容 = 抓取原因与时刻 + 环境（版本、数据目录、**Cursor `settings.json` 里那五个代理键与归属判定**、系统代理指纹、进程 ID）+ 事实（上面的字段）+ **最近一份应用日志的尾部 256 KB**。30 秒内只写一份，最多留 10 份，超出按时间从旧到新删。
+
+排查顺序：先看 `reason` 与 `facts`，再看 `environment.cursor_settings`（那一刻究竟是谁在管 Cursor 的代理），最后在日志尾部找同一时刻的第三方行。
+
+**第三方日志默认是关的——这是个陷阱。** `EnvFilter` 一旦给出具体目标，没提到的目标全部静默；`hudsucker`（本地代理的 MITM 实现）只在它自己的 `error!`/`warn!` 里记录 "CONNECT 失败 / TLS 握手失败 / accept 失败"，整条线曾被丢掉，于是"用户报了错、日志里什么都没有"。现在默认过滤是：
+
+```
+haxsd_byok_desktop=info,cursor_server=info,hudsucker=warn,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn
+```
+
+要更细的现场，用 `RUST_LOG=hudsucker=debug,cursor_server=debug` 启动。
+
 ### 标准验证流程
 
 ```powershell
@@ -420,6 +444,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/rele
 8. 图表颜色硬编码、与主题脱节；日历图还在用 GitHub 绿
 9. `HomePage` 两个 effect 依赖了未使用的 `overview`
 10. **一次长会话把库撑到 5.3 GB**：每次 checkpoint 都重写整条 turn 的 blob 并重新引用它的全部 step，被取代的旧版本又按 3 天窗口留着，边数因此随会话长度**平方**增长（实测 1459 万条边、blob 图占 4.8 GB）。改为：只有会话根与追踪能长期钉住 blob，其余按最后读写时间只活 1 小时（`store/retention.rs` 的 `UNROOTED_BLOB_MS`，缺失时由 `BlobSynchronizer::get` 向 Cursor 客户端取回）。同一份库上回收：引用 1459 万 → 6 万条，估算体积 5.4 GB → 约 220 MB
+11. **报错当场什么都留不下**：错误链被 `to_string()` 截断在最外层（`http error: error sending request for url (...)` 之后再无信息）、`hudsucker`/`hyper` 的失败日志被 `EnvFilter` 静默、代理起停与"谁写了 Cursor 的 proxy 配置"完全不记、断流时进程内状态没人保存。现在：错误链一路进日志与 UI（`run/event.rs`、`error.rs`）、第三方 `warn` 以上入文件、代理绑端口/退随机端口/停止/写配置都有记录（`local_app/`）、断流/模型彻底失败/代理退出/panic 各写一份 `logs/diagnostics-*.log`
 
 ---
 

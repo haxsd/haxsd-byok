@@ -436,6 +436,28 @@ impl RunEngine {
                             }
                         }
                         if !should_retry(&cycle_failure, retries) {
+                            let message = failure_message(&cycle_failure.failure);
+                            tracing::error!(
+                                provider_call_index,
+                                retries,
+                                max_retries = super::model_retry::MAX_MODEL_RETRIES,
+                                checkpoint_id = checkpoint.0,
+                                %message,
+                                "model call failed for good; ending the run"
+                            );
+                            // 上游彻底失败是用户最容易看到的那类报错，抓一份现场：
+                            // 里面有系统代理指纹、Cursor 的代理配置与当时的日志尾部。
+                            crate::diagnostics::capture(
+                                "model_call_failed",
+                                serde_json::json!({
+                                    "provider_call_index": provider_call_index,
+                                    "attempts": retries + 1,
+                                    "retryable": cycle_failure.retryable,
+                                    "category": cycle_failure.failure.category(),
+                                    "checkpoint_id": checkpoint.0,
+                                    "message": message,
+                                }),
+                            );
                             return (RunOutcome::Failed(cycle_failure.failure), usage);
                         }
                         retries += 1;
