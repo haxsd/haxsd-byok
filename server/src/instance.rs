@@ -16,6 +16,8 @@ use std::{
 use crate::{config, Error, Result};
 
 const LOCK_FILE_NAME: &str = "app.lock";
+/// 记录持锁进程；收尾助手用它区分"我的实例死了"和"新实例已经接管"。
+const OWNER_FILE_NAME: &str = "app.lock.owner.json";
 
 /// 拿不到锁时的重试窗口。
 ///
@@ -37,7 +39,8 @@ impl InstanceLock {
         Self::acquire_in_with(&config::managed_data_dir()?, ACQUIRE_RETRY_WINDOW).await
     }
 
-    async fn acquire_in_with(directory: &Path, window: Duration) -> Result<Self> {
+    /// 试一次，不等待：`Ok(None)` 表示另一个实例正持有它。
+    pub(crate) fn try_acquire_in(directory: &Path) -> Result<Option<Self>> {
         let path = directory.join(LOCK_FILE_NAME);
         let file = OpenOptions::new()
             .create(true)
@@ -45,17 +48,23 @@ impl InstanceLock {
             .write(true)
             .truncate(false)
             .open(&path)?;
+        match file.try_lock() {
+            Ok(()) => Ok(Some(Self { _file: file, path })),
+            Err(TryLockError::WouldBlock) => Ok(None),
+            Err(TryLockError::Error(error)) => Err(error.into()),
+        }
+    }
+
+    async fn acquire_in_with(directory: &Path, window: Duration) -> Result<Self> {
         let deadline = tokio::time::Instant::now() + window;
         loop {
-            match file.try_lock() {
-                Ok(()) => return Ok(Self { _file: file, path }),
-                Err(TryLockError::WouldBlock) => {}
-                Err(TryLockError::Error(error)) => return Err(error.into()),
+            if let Some(lock) = Self::try_acquire_in(directory)? {
+                return Ok(lock);
             }
             if tokio::time::Instant::now() >= deadline {
                 return Err(Error::Config(format!(
                     "another haxsd byok instance is already running with this data directory ({})",
-                    path.display()
+                    directory.join(LOCK_FILE_NAME).display()
                 )));
             }
             tokio::time::sleep(ACQUIRE_RETRY_INTERVAL).await;
@@ -65,6 +74,30 @@ impl InstanceLock {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// 记下持锁的进程，给收尾助手判断"我守的那个实例还在不在、有没有换成别人"。
+    pub fn record_owner(&self) -> Result<()> {
+        let owner = serde_json::json!({
+            "pid": std::process::id(),
+            "started_at_ms": crate::store::now_ms(),
+        });
+        std::fs::write(self.owner_path(), serde_json::to_vec_pretty(&owner)?)?;
+        Ok(())
+    }
+
+    fn owner_path(&self) -> PathBuf {
+        self.path.with_file_name(OWNER_FILE_NAME)
+    }
+}
+
+/// 读出当前记录的数据目录持有者。文件可能在两次启动之间短暂缺失或损坏。
+pub(crate) fn read_owner(directory: &Path) -> Option<u32> {
+    let raw = std::fs::read(directory.join(OWNER_FILE_NAME)).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&raw).ok()?;
+    value
+        .get("pid")
+        .and_then(serde_json::Value::as_u64)
+        .map(|pid| pid as u32)
 }
 
 #[cfg(test)]

@@ -37,6 +37,8 @@ impl App {
     pub async fn new(mut config: Config) -> Result<Self> {
         // 先占坑再碰端口与数据库：第二个实例必须在改动任何共享状态之前被挡住。
         let instance = crate::instance::InstanceLock::acquire().await?;
+        // 记下持有者：收尾助手靠它区分"我守的实例死了"与"新实例已经接管"。
+        instance.record_owner()?;
         let store = Store::connect(&config.database_url).await?;
         if config.use_persisted_ports {
             config
