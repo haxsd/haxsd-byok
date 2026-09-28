@@ -419,6 +419,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/rele
 7. **GNU 构建的安装包缺 `WebView2Loader.dll`** → 干净机器上启动失败
 8. 图表颜色硬编码、与主题脱节；日历图还在用 GitHub 绿
 9. `HomePage` 两个 effect 依赖了未使用的 `overview`
+10. **一次长会话把库撑到 5.3 GB**：每次 checkpoint 都重写整条 turn 的 blob 并重新引用它的全部 step，被取代的旧版本又按 3 天窗口留着，边数因此随会话长度**平方**增长（实测 1459 万条边、blob 图占 4.8 GB）。改为：只有会话根与追踪能长期钉住 blob，其余按最后读写时间只活 1 小时（`store/retention.rs` 的 `UNROOTED_BLOB_MS`，缺失时由 `BlobSynchronizer::get` 向 Cursor 客户端取回）。同一份库上回收：引用 1459 万 → 6 万条，估算体积 5.4 GB → 约 220 MB
 
 ---
 

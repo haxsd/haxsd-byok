@@ -4,6 +4,17 @@ use crate::Result;
 
 pub(crate) const RETENTION_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 
+/// 既没有会话根、也没有追踪引用它的 blob 能活多久。
+///
+/// 每次 checkpoint 都会把当前 turn 连同它含有的全部 step 重新写一份 blob：新版
+/// 本一落库，上一版就只剩"刚被写过"这一个身份。这类 blob 只留到窗口结束，避免
+/// 一次长会话里成千上万个被取代的版本长期占着边表。
+///
+/// 窗口之后删除不会丢会话：客户端才是会话状态的持久副本，本地缺失时
+/// `BlobSynchronizer::get` 会按 BlobID 向 Cursor 客户端要；窗口本身负责兜住
+/// 写完之后、发布之前崩溃的那种中间态。
+const UNROOTED_BLOB_MS: i64 = 60 * 60 * 1000;
+
 impl Store {
     pub(crate) async fn retain_conversation_blobs(
         &self,
@@ -67,8 +78,10 @@ impl Store {
         sqlx::query("CREATE TEMP TABLE retained_blobs(blob_id BLOB PRIMARY KEY)")
             .execute(&mut *tx)
             .await?;
+        // 只有会话根与追踪能长期钉住 blob；其余按"最近写过或读过"存活，见
+        // `UNROOTED_BLOB_MS`。
         sqlx::query("INSERT OR IGNORE INTO retained_blobs SELECT blob_id FROM blobs WHERE last_used_at_ms >= ? UNION SELECT blob_id FROM cursor_run_trace_artifacts UNION SELECT blob_id FROM conversation_blob_roots")
-            .bind(cutoff).execute(&mut *tx).await?;
+            .bind(now - UNROOTED_BLOB_MS).execute(&mut *tx).await?;
         // Tool images in retained conversations may predate the retention window.
         let images: Vec<String> = sqlx::query_scalar("SELECT DISTINCT json_extract(payload_json, '$.content.image.blob_id') FROM messages WHERE json_extract(payload_json, '$.content.image.blob_id') IS NOT NULL")
             .fetch_all(&mut *tx).await?;
@@ -82,10 +95,16 @@ impl Store {
         // UNION, not UNION ALL: shared descendants and cycles are visited once.
         sqlx::query("WITH RECURSIVE reachable(blob_id) AS (SELECT blob_id FROM retained_blobs UNION SELECT e.child_blob_id FROM blob_edges e JOIN reachable r ON e.parent_blob_id = r.blob_id) INSERT OR IGNORE INTO retained_blobs SELECT blob_id FROM reachable")
             .execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM blob_edges WHERE parent_blob_id NOT IN (SELECT blob_id FROM retained_blobs) OR child_blob_id NOT IN (SELECT blob_id FROM retained_blobs)").execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM blobs WHERE blob_id NOT IN (SELECT blob_id FROM retained_blobs)")
-            .execute(&mut *tx)
+        let retained: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM retained_blobs")
+            .fetch_one(&mut *tx)
             .await?;
+        let references = sqlx::query("DELETE FROM blob_edges WHERE parent_blob_id NOT IN (SELECT blob_id FROM retained_blobs) OR child_blob_id NOT IN (SELECT blob_id FROM retained_blobs)").execute(&mut *tx).await?.rows_affected();
+        let orphans = sqlx::query(
+            "DELETE FROM blobs WHERE blob_id NOT IN (SELECT blob_id FROM retained_blobs)",
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
         sqlx::query("DROP TABLE retained_blobs")
             .execute(&mut *tx)
             .await?;
@@ -98,9 +117,17 @@ impl Store {
         let size: i64 = sqlx::query_scalar("PRAGMA page_size")
             .fetch_one(&self.pool)
             .await?;
-        if free * size >= 64 * 1024 * 1024 {
+        let vacuumed = free * size >= 64 * 1024 * 1024;
+        if vacuumed {
             sqlx::query("VACUUM").execute(&self.pool).await?;
         }
+        tracing::info!(
+            retained_blobs = retained,
+            deleted_blobs = orphans,
+            deleted_references = references,
+            vacuumed,
+            "storage retention pass completed"
+        );
         Ok(())
     }
 }
@@ -151,6 +178,73 @@ mod tests {
                 .unwrap();
             assert_eq!(ids, vec!["recent"]);
         }
+    }
+
+    /// 一次 checkpoint 会给当前 turn 落一份新版本，并把上一版变成无人引用的中间态。
+    /// 这类版本只活在窗口内；窗口过后连同它的边一起回收，留下的引用数只与当前
+    /// 会话状态的大小有关，不再随会话长度平方增长。
+    #[tokio::test]
+    async fn superseded_checkpoint_versions_are_collected_after_the_unrooted_window() {
+        let (_dir, store) = fixture().await;
+        let conv = crate::model::ConversationId("superseded".into());
+        store.ensure_conversation(&conv).await.unwrap();
+        let step = store.put_blob(b"step", &[]).await.unwrap();
+        let edge = BlobEdge {
+            child: step.clone(),
+            field_name: "agent_conversation_turn.steps[0]".into(),
+        };
+        let previous = store
+            .put_blob(b"turn version 1", std::slice::from_ref(&edge))
+            .await
+            .unwrap();
+        store
+            .retain_conversation_blobs("superseded", std::slice::from_ref(&previous))
+            .await
+            .unwrap();
+        let current = store
+            .put_blob(b"turn version 2", std::slice::from_ref(&edge))
+            .await
+            .unwrap();
+        store
+            .retain_conversation_blobs("superseded", std::slice::from_ref(&current))
+            .await
+            .unwrap();
+
+        // 两个版本都刚写过：窗口内都留着，客户端还没吃下最后一次 checkpoint 时能兜住。
+        store
+            .prune_inactive_storage(crate::store::now_ms())
+            .await
+            .unwrap();
+        assert!(store.get_blob(&previous).await.unwrap().is_some());
+
+        // 窗口过后，被取代的版本离开，当前版本与它引用的 step 都还在。
+        sqlx::query("UPDATE blobs SET last_used_at_ms = 1")
+            .execute(store.pool())
+            .await
+            .unwrap();
+        sqlx::query("UPDATE blobs SET last_used_at_ms = ? WHERE blob_id = ?")
+            .bind(crate::store::now_ms())
+            .bind(current.as_bytes().as_slice())
+            .execute(store.pool())
+            .await
+            .unwrap();
+        store
+            .prune_inactive_storage(crate::store::now_ms())
+            .await
+            .unwrap();
+        assert!(store.get_blob(&previous).await.unwrap().is_none());
+        assert!(store.get_blob(&current).await.unwrap().is_some());
+        assert!(store.get_blob(&step).await.unwrap().is_some());
+        let references: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blob_edges")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(references, 1);
+        let violations = sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(store.pool())
+            .await
+            .unwrap();
+        assert!(violations.is_empty());
     }
 
     #[tokio::test]
