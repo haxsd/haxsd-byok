@@ -418,9 +418,11 @@ pub fn meta_mcp_routes(context: &pb::RequestContext) -> HashMap<(String, String)
 }
 
 fn is_skill_rule(rule: &pb::CursorRule) -> bool {
-    Path::new(&rule.full_path)
-        .file_name()
-        .and_then(|name| name.to_str())
+    // 技能路径可能来自 Windows 或 POSIX 客户端,按两种分隔符取文件名,
+    // 免得同一个请求在不同平台上被判定成规则或技能。
+    rule.full_path
+        .rsplit(['/', '\\'])
+        .next()
         .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
 }
 
