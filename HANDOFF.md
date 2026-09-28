@@ -445,6 +445,7 @@ curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/rele
 9. `HomePage` 两个 effect 依赖了未使用的 `overview`
 10. **一次长会话把库撑到 5.3 GB**：每次 checkpoint 都重写整条 turn 的 blob 并重新引用它的全部 step，被取代的旧版本又按 3 天窗口留着，边数因此随会话长度**平方**增长（实测 1459 万条边、blob 图占 4.8 GB）。改为：只有会话根与追踪能长期钉住 blob，其余按最后读写时间只活 1 小时（`store/retention.rs` 的 `UNROOTED_BLOB_MS`，缺失时由 `BlobSynchronizer::get` 向 Cursor 客户端取回）。同一份库上回收：引用 1459 万 → 6 万条，估算体积 5.4 GB → 约 220 MB
 11. **报错当场什么都留不下**：错误链被 `to_string()` 截断在最外层（`http error: error sending request for url (...)` 之后再无信息）、`hudsucker`/`hyper` 的失败日志被 `EnvFilter` 静默、代理起停与"谁写了 Cursor 的 proxy 配置"完全不记、断流时进程内状态没人保存。现在：错误链一路进日志与 UI（`run/event.rs`、`error.rs`）、第三方 `warn` 以上入文件、代理绑端口/退随机端口/停止/写配置都有记录（`local_app/`）、断流/模型彻底失败/代理退出/panic 各写一份 `logs/diagnostics-*.log`
+12. **本地代理一断，Cursor 就成片报"连不上代理"**（17:24–17:26 那批 15524/9061）。四个成因一起修：① 配置端口被占就立刻退随机端口——占用者常是正在退出的"上一个自己"，现在先重试 5 秒（`local_app/proxy.rs`）；② 没有单实例互斥——两个实例各起一个代理，现在按数据目录加文件锁（`instance.rs`，拿不到锁先重试 5 秒以兜住自动更新的新旧进程交替，锁随进程被杀立刻释放）；③ 代理自己退出/被杀时不清 `http.proxy`——现在代理任务异常结束时立刻撤掉我们写的配置（进程被杀仍无法自救，靠启动时的 `cleanup_stale_settings` 兜底）；④ 系统代理（Clash）断掉时出网全失败——默认模式下连接类失败一次就改为直连，5 分钟后自动放回系统代理再试（`network.rs` 的 `SYSTEM_PROXY_BYPASS`），避免 Clash 更新那几分钟把整轮对话判死
 
 ---
 

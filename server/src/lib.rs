@@ -7,6 +7,7 @@ pub mod cursor;
 pub mod devin;
 pub mod diagnostics;
 pub mod error;
+pub mod instance;
 pub mod local_app;
 pub mod model;
 pub mod network;
