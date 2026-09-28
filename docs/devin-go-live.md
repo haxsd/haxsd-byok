@@ -1,148 +1,48 @@
-# haxsd byok 上线操作手册
+# Devin 上手与恢复
 
-这份手册是整个项目的最后一环：把已经验证过的零件，按顺序装成"Devin 真的在用你的模型"。
-它只写已经验证过的步骤；每一步都给出可核对的凭据。
+当前产品操作流程如下；协议范围、测试和证据见 [Devin integration](./devin-integration.md)。
 
-## 最终产物是什么
+## 1. 准备应用与模型
 
-一个能跑的 `haxsd byok` 桌面应用（内嵌服务端，数据目录在**用户主目录**下：
-`%USERPROFILE%\.haxsd-byok-devin-v3`，本机即 `C:\Users\Administrator\.haxsd-byok-devin-v3`），
-加上一台已经切到它的 Devin 安装。
+从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 安装，在「模型」页添加并测试一个模型。地址、Key、模型 ID 和协议需匹配服务商；测试是真实请求。
 
-数据流：
+## 2. 配置映射与网关
 
-```text
-Devin 客户端
-   │  Connect 帧（本机回环）
-   ▼
-haxsd byok 的 Devin 网关（默认关闭，只在设置里显式启用后才监听）
-   │  按 Devin 模型 UID 查绑定 → 取该绑定生效路由的模型哈希
-   ▼
-haxsd byok 的模型通道（你在界面里配置的模型与密钥）
-   ▼
-你自己的模型服务
-```
+打开「Devin」页：
 
-## 现状（本机，2026-09-21 核对）
+1. 启用网关。
+2. 添加映射：选择或填写 **客户端实际请求的模型 UID**，再选择模型库中的模型。随意编造 UID 不会让客户端自动选用它。
+3. 配置候选路由时选择生效的一条，失败不会自动换路由；上下文压缩绑定只使用单个模型。
+4. 保存并重启 **haxsd byok**，确认网关监听状态。
 
-| 环节 | 状态 |
+仅监听 `127.0.0.1`：
+
+| 默认端口 | 用途 |
 | --- | --- |
-| 网关功能 | 已验证：设置持久化、目录、AssignModel、流式往返、工具调用、隔离性 |
-| 宿主补丁引擎 | 已验证：在真实 Devin 文件的副本上跑通 打补丁 → 校验 → 还原 |
-| Devin 安装 | 已被厂商路由器打过补丁，端点为 `127.0.0.1:43100/43101/43102` |
-| 厂商路由器 | 未运行，43100 无监听 |
-| 桌面应用 | **尚未安装**（无进程、无安装目录） |
-| 数据目录 | 存在但只有空的 `rules\`，无数据库与日志，即产品从未真正运行过 |
-| 安装包 | 本地旧副本已清理（2026-09-24）；需要时按第 1 步重新构建，或从 Release 下载 |
+| `43110` | 模型目录与分配 |
+| `43111` | 推理流 |
+| `43112` | Devin 本机 API |
 
-## 第 1 步：拿到并安装桌面应用
+令牌可选。设置后客户端请求需带 `x-devin-router-token` 或 `Authorization: Bearer <令牌>`；填写前确认客户端能够发送该值。
 
-本地构建（需要 Node 22、Rust、Tauri 依赖）：
+## 3. 检查并应用宿主补丁
 
-```powershell
-cd D:\cursor-byok\byok-dev\haxsd-byok
-npm --prefix apps/desktop ci          # 首次需要
-npm --prefix apps/desktop run tauri:build -- --bundles nsis
-# 产物：target\release\bundle\nsis\haxsd byok_<版本>_x64-setup.exe
-```
+在宿主接入区域检查检测结果，必要时提供真实 Devin/Windsurf 安装中 `extension.js` 的绝对路径。先保存工作并退出对应客户端，再点击「应用补丁」。
 
-或在 CI 上构建后下载产物（不发布 Release）：
+引擎先验证已知锚点，保存备份与校验记录，再改写端点。未知版本、被其他路由器修改过的文件、不完整补丁会被拒绝。此时不要强行替换整个文件，应通过原工具恢复后再检查。
 
-```powershell
-gh workflow run release.yml --repo haxsd/haxsd-byok --ref main
-gh run watch --repo haxsd/haxsd-byok
-gh run download --repo haxsd/haxsd-byok --name manual-build-windows --dir .
-```
+应用补丁后重新打开 Devin。端口变化需保存、重启 haxsd byok、重新应用补丁，再重启 Devin。客户端升级可能替换宿主文件，升级后重新检查。
 
-已在本机构建并校验过一份（2026-09-21，run `35578406854`；本地副本已随 2026-09-24 清理删除）：
+## 4. 验证请求
 
-```
-haxsd byok_1.0.1_x64-setup.exe
-20 462 559 字节
-SHA-256 AC4FC03B461A806EA6954206C79315C113032D1B75B3ACC4BA5D1B239A2223C1
-```
+在 Devin 发起对话，回到「调用」页确认模型、结果与用量。端口监听只证明网关启动，补丁状态只证明文件配置完成，仍需真实请求验证。
 
-未签名，属于预期：本项目没有代码签名证书，安装时 Windows 会提示来源未知。
+无记录时依次检查：客户端是否重启、UID 是否有启用映射、选中模型是否存在、端口与补丁是否一致、令牌是否匹配。
 
-> [!IMPORTANT]
-> 产物路径有过一次真实缺陷：Tauri 把安装包输出到**工作区级** `target/release/bundle/nsis/`，
-> 而工作流原本去 `apps/desktop/src-tauri/target/...` 找，配合 `if-no-files-found: warn`，
-> 于是"构建成功但没有产物"。现已修正路径并把缺失产物改为显式失败。
+## 5. 停用与恢复
 
-装完后确认数据目录出现（在用户主目录下，不是 `%APPDATA%`）：
-`%USERPROFILE%\.haxsd-byok-devin-v3`
+退出 Devin，使用「恢复原文件」还原本产品补丁，再关闭网关、保存并重启 haxsd byok，最后打开 Devin。
 
-## 第 2 步：配置网关并绑定模型
+恢复会校验当前文件和备份。客户端升级或其他工具改过文件后可能拒绝恢复，此时用客户端自身的修复或重装流程，不要用旧备份覆盖新版本。
 
-打开应用 → 侧边栏 **Devin**（路径 `/harness/devin`，页面标题「Devin 接入」）：
-
-1. 先在「模型」页确认至少有一个可用的模型（网关只转发，不提供模型）。
-2. 打开 **启用 Devin 网关**。
-3. **添加映射**：Devin 模型 UID 自己起名（例如 `MODEL_CLAUDE_4_SONNET_BYOK`），
-   并选中要用的那个模型。
-4. 保存。界面会提示「Devin 设置已保存，重启软件后监听端口生效」——
-   **端口只在启动时读取，必须重启应用**。
-5. 令牌可选：留空表示不校验；填了则 Devin 请求需带
-   `x-devin-router-token` 或 `Authorization: Bearer <令牌>`。
-
-默认端口：API/目录 `43110`、推理 `43111`、本机 API `43112`（都只绑 `127.0.0.1`）。
-
-## 第 3 步：把 Devin 切到这个网关
-
-**为什么要交换文件**：Devin 的端点写在它自己的 `extension.js` 里。厂商路由器已经把它改成
-`43100/43101/43102`，而本项目的补丁只接受"干净的已知版本"，直接打会被 fail-closed 拒绝：
-
-```
-Devin host file is already patched (ports 43100 / 43101 / 43102);
-restore the clean version first, for example the router's own backup next to the file,
-and then apply this patch
-```
-
-所以顺序是"先回到干净版本，再打我们的补丁"。厂商把干净版本留在了原文件旁边：
-
-```
-D:\devin\Devin\resources\app\extensions\windsurf\dist\
-  extension.js                               ← 现用（厂商已打补丁）
-  extension.js.devin-model-router.backup     ← 干净版本（9 739 343 字节）
-```
-
-**先在副本上练一遍**（强烈建议，避免误伤安装）：
-
-```powershell
-$dist = "D:\devin\Devin\resources\app\extensions\windsurf\dist"
-$work = "$env:TEMP\devin-switch"
-New-Item -ItemType Directory -Force -Path $work | Out-Null
-Copy-Item "$dist\extension.js.devin-model-router.backup" "$work\extension.clean.js"
-```
-
-在 Devin 页面底部的宿主补丁区：
-1. 路径填 `$work\extension.clean.js`，点状态检查 → 应显示 `clean`、可兼容；
-2. 点「应用补丁」→ 端口应显示 `43110 / 43111 / 43112`；
-3. 点「恢复原文件」→ 文件应回到与厂商备份**逐字节相同**。
-
-副本上这三步都符合预期后，再对真实文件执行同样的三步，然后**重启 Devin**。
-
-## 第 4 步：验证真的通了
-
-在 Devin 里发起一次对话，然后看 haxsd byok 的「调用记录」页。成功的标志：
-
-- 出现一条 `call_id` 形如 `devin:<executionId>` 的记录；
-- `provider_type` 是你配的协议（如 `openai-chat`），`status` 为 `completed`；
-- 有 token 计数。
-
-命令行等价核对（把端口换成你服务端的服务端口）：
-
-```powershell
-Invoke-RestMethod "http://127.0.0.1:<服务端口>/__byok-api__/api/llm-calls" |
-  Where-Object call_id -like "devin:*" | Select-Object call_id,status,finish_reason
-```
-
-## 回退
-
-| 想退回到 | 操作 |
-| --- | --- |
-| 厂商路由器 | 在 Devin 页面点「恢复原文件」（用打补丁时生成的 receipt），重启 Devin，再启动厂商路由器 |
-| 完全不接 Devin | 在 Devin 页面关闭「启用 Devin 网关」并重启应用；Devin 侧保持原样 |
-
-补丁每次都会在目标文件旁写一份带 SHA-256 的备份（`*.devin-router.backup`）；
-文件被外部改过或备份对不上时，恢复会拒绝执行。
+本接入不代替客户端官方账号或商业授权，也不会自动注入任意模型名称。停用 Devin 无需修改 Cursor 的独立接管设置。
