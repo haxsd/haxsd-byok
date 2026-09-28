@@ -6,7 +6,9 @@
 > 本地修复：每分钟空闲时最多清理 512 个过期 blob、索引定位其边、迁移 0011
 > 补追踪 blob 索引、相同代理端口不重复写库；后台不再 VACUUM，释放页面供后续写入复用。
 > 后端 261 项测试通过，修复版本为 1.0.18。原程序与一致性数据库备份位于
-> `D:\cursor-byok\byok-dev\_logs\repair-backup-20260928`；用户已授权发布并替换本机版本。
+> `D:\cursor-byok\byok-dev\_logs\repair-backup-20260928`。1.0.18 已正式发布并覆盖安装到本机。
+> 验收：更新清单匿名 200、安装包和清单签名均通过；界面的 10 个接口全部正常，
+> Cursor 状态约 23 ms 返回，CA ready、接管 enabled；1 个模型的配置、证书及 9741 次统计均未改变。
 
 > 写给接手的 agent。读完这份文档你就能独立推进，不需要重新摸索。
 > 所有路径为绝对路径，所有结论都有出处（代码 / 命令输出 / 实测）。
@@ -35,7 +37,7 @@ Windows 桌面应用（Tauri 2 + Rust 后端 + React 前端），交付物是 **
 ```
 产品名:   haxsd byok
 identifier: dev.haxsd.byok
-版本:     1.0.1
+版本:     1.0.18
 更新地址: https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
@@ -83,16 +85,16 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 ### 已装到用户机器上并验证
 
 ```
-安装位置: C:\Users\Administrator\AppData\Local\haxsd byok
-版本:     1.0.8（机器上装的就是这一版，应用内「检查更新」实测可用）
+安装位置: D:\cursor-byok\haxsd-byok
+版本:     1.0.18（2026-09-28 已安装并启动验证，模型、CA、接管与调用统计正常）
 数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
 ```
 
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.17（Latest），2026-09-28
-产物:      haxsd.byok_1.0.17_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.18（Latest），2026-09-28
+产物:      haxsd.byok_1.0.18_x64-setup.exe / .sig / latest.json
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
