@@ -14,6 +14,7 @@ pub(crate) const RETENTION_MS: i64 = 3 * 24 * 60 * 60 * 1000;
 /// `BlobSynchronizer::get` 会按 BlobID 向 Cursor 客户端要；窗口本身负责兜住
 /// 写完之后、发布之前崩溃的那种中间态。
 const UNROOTED_BLOB_MS: i64 = 60 * 60 * 1000;
+const MAX_PRUNED_BLOBS_PER_PASS: i64 = 512;
 
 impl Store {
     pub(crate) async fn retain_conversation_blobs(
@@ -98,34 +99,34 @@ impl Store {
         let retained: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM retained_blobs")
             .fetch_one(&mut *tx)
             .await?;
-        let references = sqlx::query("DELETE FROM blob_edges WHERE parent_blob_id NOT IN (SELECT blob_id FROM retained_blobs) OR child_blob_id NOT IN (SELECT blob_id FROM retained_blobs)").execute(&mut *tx).await?.rows_affected();
-        let orphans = sqlx::query(
-            "DELETE FROM blobs WHERE blob_id NOT IN (SELECT blob_id FROM retained_blobs)",
-        )
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        // Bound the write transaction. Deleting millions of edges at once prevents
+        // proxy startup and model calls from saving anything until collection ends.
+        sqlx::query("CREATE TEMP TABLE expired_blobs(blob_id BLOB PRIMARY KEY)")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("INSERT INTO expired_blobs SELECT blob_id FROM blobs WHERE blob_id NOT IN (SELECT blob_id FROM retained_blobs) LIMIT ?")
+            .bind(MAX_PRUNED_BLOBS_PER_PASS).execute(&mut *tx).await?;
+        // Both endpoints have indexes, so this visits the selected batch's edges
+        // instead of scanning the entire edge table on every pass.
+        let references = sqlx::query("DELETE FROM blob_edges WHERE parent_blob_id IN (SELECT blob_id FROM expired_blobs) OR child_blob_id IN (SELECT blob_id FROM expired_blobs)").execute(&mut *tx).await?.rows_affected();
+        let orphans =
+            sqlx::query("DELETE FROM blobs WHERE blob_id IN (SELECT blob_id FROM expired_blobs)")
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+        sqlx::query("DROP TABLE expired_blobs")
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DROP TABLE retained_blobs")
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
-        // Deletion alone only creates reusable pages. Reclaim substantial free space
-        // while the caller still holds transport admission and the write lock.
-        let free: i64 = sqlx::query_scalar("PRAGMA freelist_count")
-            .fetch_one(&self.pool)
-            .await?;
-        let size: i64 = sqlx::query_scalar("PRAGMA page_size")
-            .fetch_one(&self.pool)
-            .await?;
-        let vacuumed = free * size >= 64 * 1024 * 1024;
-        if vacuumed {
-            sqlx::query("VACUUM").execute(&self.pool).await?;
-        }
+        // Freed pages are reused by later writes. Automatic VACUUM would rewrite
+        // the whole database while holding the same lock that blocked startup.
         tracing::info!(
             retained_blobs = retained,
             deleted_blobs = orphans,
             deleted_references = references,
-            vacuumed,
             "storage retention pass completed"
         );
         Ok(())
@@ -146,6 +147,71 @@ mod tests {
         .await
         .unwrap();
         (dir, store)
+    }
+
+    #[tokio::test]
+    async fn cleanup_limits_each_write_transaction_and_can_resume() {
+        let (_dir, store) = fixture().await;
+        let mut tx = store.pool().begin().await.unwrap();
+        for n in 0..600_u32 {
+            let id = n.to_le_bytes().repeat(8);
+            sqlx::query("INSERT INTO blobs(blob_id, data, created_at_ms, last_used_at_ms) VALUES (?, X'01', 1, 1)")
+                .bind(&id).execute(&mut *tx).await.unwrap();
+            if n > 0 {
+                sqlx::query("INSERT INTO blob_edges(parent_blob_id, child_blob_id, field_name) VALUES (?, ?, 'next')")
+                    .bind((n - 1).to_le_bytes().repeat(8)).bind(&id).execute(&mut *tx).await.unwrap();
+            }
+        }
+        tx.commit().await.unwrap();
+        store
+            .prune_inactive_storage(crate::store::now_ms())
+            .await
+            .unwrap();
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            remaining, 88,
+            "only 512 expired blobs may be removed per pass"
+        );
+        assert!(sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .is_empty());
+        store.set_proxy_port(9061).await.unwrap();
+        store
+            .prune_inactive_storage(crate::store::now_ms())
+            .await
+            .unwrap();
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blobs")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(remaining, 0);
+        assert!(sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn blob_deletion_does_not_scan_every_trace_reference() {
+        use sqlx::Row;
+        let (_dir, store) = fixture().await;
+        let plan = sqlx::query("EXPLAIN QUERY PLAN DELETE FROM blobs WHERE blob_id = ?")
+            .bind([0_u8; 32].as_slice())
+            .fetch_all(store.pool())
+            .await
+            .unwrap();
+        assert!(
+            !plan.iter().any(|row| row
+                .get::<String, _>("detail")
+                .contains("SCAN cursor_run_trace_artifacts")),
+            "blob deletion must use an index for trace foreign-key checks"
+        );
     }
 
     #[tokio::test]
@@ -323,18 +389,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collection_reclaims_large_free_database_pages() {
+    async fn collection_reuses_free_pages_without_rewriting_the_database() {
         let (_dir, store) = fixture().await;
         sqlx::query("INSERT INTO blobs(blob_id,data,created_at_ms,last_used_at_ms) VALUES (randomblob(32),zeroblob(70000000),1,1)").execute(store.pool()).await.unwrap();
         store
             .prune_inactive_storage(crate::store::now_ms())
             .await
             .unwrap();
-        let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+        let free: i64 = sqlx::query_scalar("PRAGMA freelist_count")
             .fetch_one(store.pool())
             .await
             .unwrap();
-        assert!(pages * 4096 < 2 * 1024 * 1024);
+        assert!(free * 4096 > 64 * 1024 * 1024);
+        let pages_before: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO blobs(blob_id,data,created_at_ms,last_used_at_ms) VALUES (randomblob(32),zeroblob(70000000),1,1)").execute(store.pool()).await.unwrap();
+        let pages_after: i64 = sqlx::query_scalar("PRAGMA page_count")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert!(
+            pages_after <= pages_before + 2,
+            "subsequent writes must reuse freed pages"
+        );
     }
 
     #[tokio::test]
