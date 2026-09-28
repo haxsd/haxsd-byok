@@ -19,6 +19,18 @@
   gap: 20px;
 }
 
+.description {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+    line-height: 1.45;
+  }
+}
+
 .control {
   width: min(320px, 50%);
 }

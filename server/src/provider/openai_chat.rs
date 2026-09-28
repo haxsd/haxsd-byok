@@ -13,6 +13,7 @@ use crate::{
         ContentPart, ModelInvocation, ModelLatency, ProjectedContent, ProjectedMessage, Role,
         ToolCallContent, Usage,
     },
+    network::OutboundClient,
     Error, Result,
 };
 
@@ -34,15 +35,15 @@ struct ChatToolState {
 }
 
 pub struct OpenAiChatProvider {
-    client: reqwest::Client,
+    outbound: OutboundClient,
     config: ProviderConfig,
     recorder: Option<CallRecorder>,
 }
 
 impl OpenAiChatProvider {
-    pub fn new(client: reqwest::Client, config: ProviderConfig) -> Self {
+    pub fn new(outbound: OutboundClient, config: ProviderConfig) -> Self {
         Self {
-            client,
+            outbound,
             config,
             recorder: None,
         }
@@ -60,7 +61,7 @@ impl Provider for OpenAiChatProvider {
         invocation: ModelInvocation,
         cancellation: tokio_util::sync::CancellationToken,
     ) -> ProviderStream {
-        let client = self.client.clone();
+        let outbound = self.outbound.clone();
         let config = self.config.clone();
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
@@ -94,7 +95,8 @@ impl Provider for OpenAiChatProvider {
             }
             let attempt = send_once(
                 "OpenAI Chat",
-                || client.post(&config.request_url)
+                &outbound,
+                |client| client.post(&config.request_url)
                     .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
                 &cancellation,
                 recorder.as_ref(),

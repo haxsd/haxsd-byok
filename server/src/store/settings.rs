@@ -160,12 +160,18 @@ impl Default for TokenPricingSettings {
     }
 }
 
+/// 出网时怎么走代理。三者互斥，且只有 `Custom` 会读下面的地址。
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProxyMode {
+    /// 跟随系统代理：reqwest 在构建客户端的那一刻读一次环境变量与系统配置
+    /// （Windows 上是注册表 `Internet Settings`）。
     #[default]
     Default,
+    /// 使用下面填写的代理地址。
     Custom,
+    /// 不使用任何代理，直接出网。
+    Direct,
 }
 
 impl ProxyMode {
@@ -697,6 +703,29 @@ mod tests {
             ProxyMode::Default
         );
         assert!(serde_json::from_str::<ProxyMode>("\"system\"").is_err());
+    }
+
+    /// 直连是一个独立模式：既不读系统代理，也不读填写的地址。
+    #[test]
+    fn direct_proxy_mode_round_trips_and_is_not_custom() {
+        assert_eq!(
+            serde_json::to_string(&ProxyMode::Direct).unwrap(),
+            "\"direct\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ProxyMode>("\"direct\"").unwrap(),
+            ProxyMode::Direct
+        );
+        assert!(!ProxyMode::Direct.is_custom());
+    }
+
+    /// 老版本只认 `default` 与 `custom`；库里出现 `direct` 时它读不出来，于是
+    /// 退回默认值。这条锁住"读不出来也不许报错"：出网客户端全部由这个值构建。
+    #[test]
+    fn a_row_written_by_a_newer_build_reads_as_the_default() {
+        let settings = read_proxy_settings(r#"{"mode":"direct","address":""}"#);
+
+        assert_eq!(settings.mode, ProxyMode::Default);
     }
 
     #[test]

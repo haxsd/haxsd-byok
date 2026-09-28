@@ -272,7 +272,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 37,
+          "line": 48,
           "column": 8
         },
         {
@@ -798,6 +798,18 @@
         }
       ]
     },
+    "0f7e151d9c359f68": {
+      "source": "跟随 Windows 的系统代理设置；在那里开关代理后会自动切换，不用重启。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 39,
+          "column": 12
+        }
+      ]
+    },
     "0f8288db53ac666f": {
       "source": "还没有接管",
       "kind": "text",
@@ -1097,6 +1109,23 @@
         }
       ]
     },
+    "17aa70be109768a1": {
+      "source": "默认（跟随系统代理）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 34,
+          "column": 12
+        },
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 60,
+          "column": 129
+        }
+      ]
+    },
     "1813d362a82fd437": {
       "source": "最大化窗口",
       "kind": "text",
@@ -1142,7 +1171,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 177,
+          "line": 181,
           "column": 14
         }
       ]
@@ -1224,12 +1253,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 59,
+          "line": 73,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 74,
+          "line": 94,
           "column": 50
         }
       ]
@@ -1962,7 +1991,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 32,
+          "line": 43,
           "column": 66
         },
         {
@@ -2101,7 +2130,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 75,
+          "line": 95,
           "column": 134
         }
       ]
@@ -2716,7 +2745,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 116,
+          "line": 120,
           "column": 61
         }
       ]
@@ -2867,12 +2896,12 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 106,
+          "line": 110,
           "column": 84
         },
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 115,
+          "line": 119,
           "column": 14
         }
       ]
@@ -3180,7 +3209,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 55,
+          "line": 69,
           "column": 59
         }
       ]
@@ -3416,7 +3445,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 41,
+          "line": 52,
           "column": 29
         },
         {
@@ -3474,8 +3503,8 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 69,
-          "column": 135
+          "line": 88,
+          "column": 81
         },
         {
           "file": "features/settings/TabSettingsCard.tsx",
@@ -3869,13 +3898,13 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 29,
-          "column": 90
+          "line": 32,
+          "column": 35
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 46,
-          "column": 166
+          "line": 60,
+          "column": 174
         },
         {
           "file": "features/settings/TabSettingsCard.tsx",
@@ -4751,7 +4780,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 175,
+          "line": 179,
           "column": 14
         }
       ]
@@ -4842,7 +4871,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 652,
+          "line": 650,
           "column": 43
         }
       ]
@@ -5245,18 +5274,18 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 45,
-          "column": 20
+          "line": 57,
+          "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 46,
+          "line": 60,
           "column": 62
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 69,
-          "column": 46
+          "line": 85,
+          "column": 22
         }
       ]
     },
@@ -5618,7 +5647,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 647,
+          "line": 645,
           "column": 43
         }
       ]
@@ -5874,7 +5903,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 569,
+          "line": 567,
           "column": 11
         },
         {
@@ -6053,23 +6082,6 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 55,
           "column": 14
-        }
-      ]
-    },
-    "844b8cc8dff7c1d8": {
-      "source": "默认",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 29,
-          "column": 80
-        },
-        {
-          "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 46,
-          "column": 129
         }
       ]
     },
@@ -6385,7 +6397,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 64,
+          "line": 78,
           "column": 169
         }
       ]
@@ -6558,7 +6570,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 178,
+          "line": 182,
           "column": 60
         }
       ]
@@ -6630,6 +6642,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 115,
           "column": 32
+        }
+      ]
+    },
+    "97fe6fa1ce20a507": {
+      "source": "始终走下面填写的地址，系统代理怎么变都不影响。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 37,
+          "column": 35
         }
       ]
     },
@@ -7182,7 +7206,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 33,
+          "line": 44,
           "column": 103
         },
         {
@@ -7333,12 +7357,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 63,
+          "line": 77,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 75,
+          "line": 95,
           "column": 50
         }
       ]
@@ -7849,6 +7873,16 @@
           "column": 63
         },
         {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 33,
+          "column": 35
+        },
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 60,
+          "column": 212
+        },
+        {
           "file": "features/settings/TabSettingsCard.tsx",
           "line": 31,
           "column": 35
@@ -8230,12 +8264,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 50,
+          "line": 64,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 71,
+          "line": 91,
           "column": 48
         }
       ]
@@ -8418,6 +8452,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 210,
           "column": 85
+        }
+      ]
+    },
+    "bdd782862efb6429": {
+      "source": "不使用任何代理，直接连接网络。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 38,
+          "column": 35
         }
       ]
     },
@@ -9290,12 +9336,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 54,
+          "line": 68,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 72,
+          "line": 92,
           "column": 48
         }
       ]
@@ -10025,7 +10071,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 72,
+          "line": 92,
           "column": 121
         }
       ]
@@ -10049,7 +10095,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 75,
+          "line": 95,
           "column": 123
         }
       ]
@@ -10918,7 +10964,7 @@
       "refs": [
         {
           "file": "features/home/charts/ContributionCalendarChart.tsx",
-          "line": 136,
+          "line": 140,
           "column": 21
         }
       ]
@@ -11072,7 +11118,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 72,
+          "line": 92,
           "column": 132
         },
         {
@@ -11484,7 +11530,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 33,
+          "line": 44,
           "column": 91
         },
         {

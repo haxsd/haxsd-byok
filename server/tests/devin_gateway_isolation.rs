@@ -14,6 +14,7 @@ use std::{net::TcpListener as StdTcpListener, sync::Arc, time::Duration};
 
 use cursor_server::{
     devin::{gateway::DevinGateway, DevinModelBinding, DevinSettings},
+    network::NetworkClients,
     provider::Provider,
 };
 use tokio::{
@@ -130,7 +131,7 @@ async fn a_disabled_gateway_binds_no_port_and_leaves_cursor_serving() {
     store.set_devin_settings(configured).await.unwrap();
 
     let (cursor_port, _cursor_task) = cursor_listener_stub().await;
-    let gateway = DevinGateway::new(store.clone(), provider);
+    let gateway = DevinGateway::new(store.clone(), provider, NetworkClients::new(store.clone()));
     let shutdown = CancellationToken::new();
     shutdown.cancel();
     gateway.serve(shutdown).await.unwrap();
@@ -157,7 +158,7 @@ async fn stopping_the_gateway_keeps_the_cursor_listener_serving() {
     let (cursor_port, _cursor_task) = cursor_listener_stub().await;
 
     let shutdown = CancellationToken::new();
-    let gateway = DevinGateway::new(store.clone(), provider);
+    let gateway = DevinGateway::new(store.clone(), provider, NetworkClients::new(store.clone()));
     let gateway_task = tokio::spawn(gateway.serve(shutdown.clone()));
 
     let (status, body) = await_health(api_port).await;

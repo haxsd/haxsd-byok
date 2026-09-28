@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     config::{ProviderConfig, ProviderKind},
     model::{ModelInvocation, ModelLatency, NewLlmCall, ProviderType},
+    network::OutboundClient,
     plugin::{PluginRegistry, ADAPTER_ID_PREFIX},
     store::Store,
     Error, Result,
@@ -106,8 +107,8 @@ impl Provider for ProviderRouter {
                         request_timeout,
                         allowed_body_fields: None,
                     };
-                    let client = clients.provider_client(request_timeout).await?;
-                    let provider = build_observed(&config, recorder.clone(), client)?;
+                    let outbound = OutboundClient::provider(clients.clone(), request_timeout).await?;
+                    let provider = build_observed(&config, recorder.clone(), outbound)?;
                     (recorder, guard, provider.stream(routed, cancellation.clone()))
                 };
 
@@ -337,31 +338,35 @@ pub fn build(config: &ProviderConfig) -> Result<Arc<dyn Provider>> {
 fn build_observed(
     config: &ProviderConfig,
     recorder: CallRecorder,
-    client: reqwest::Client,
+    outbound: OutboundClient,
 ) -> Result<Arc<dyn Provider>> {
-    build_inner(config, Some(recorder), Some(client))
+    build_inner(config, Some(recorder), Some(outbound))
 }
 
 fn build_inner(
     config: &ProviderConfig,
     recorder: Option<CallRecorder>,
-    client: Option<reqwest::Client>,
+    outbound: Option<OutboundClient>,
 ) -> Result<Arc<dyn Provider>> {
-    let client = match client {
-        Some(client) => client,
-        None => reqwest::Client::builder()
-            .timeout(config.request_timeout)
-            .build()?,
+    // 没有出网环境（直接调用 `build` 的测试与插件路径）时用固定客户端，
+    // 它不参与"代理设置变了就重建"的兜底。
+    let outbound = match outbound {
+        Some(outbound) => outbound,
+        None => OutboundClient::fixed(
+            reqwest::Client::builder()
+                .timeout(config.request_timeout)
+                .build()?,
+        ),
     };
     let provider: Arc<dyn Provider> = match config.kind {
         ProviderKind::OpenAiChat => {
-            Arc::new(OpenAiChatProvider::new(client, config.clone()).with_recorder(recorder))
+            Arc::new(OpenAiChatProvider::new(outbound, config.clone()).with_recorder(recorder))
         }
         ProviderKind::OpenAiResponses => {
-            Arc::new(OpenAiResponsesProvider::new(client, config.clone()).with_recorder(recorder))
+            Arc::new(OpenAiResponsesProvider::new(outbound, config.clone()).with_recorder(recorder))
         }
         ProviderKind::Anthropic => {
-            Arc::new(AnthropicProvider::new(client, config.clone()).with_recorder(recorder))
+            Arc::new(AnthropicProvider::new(outbound, config.clone()).with_recorder(recorder))
         }
     };
     Ok(Arc::new(NormalizedProvider::new(provider)))
