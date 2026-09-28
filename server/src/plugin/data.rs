@@ -193,6 +193,8 @@ fn transient(error: &std::io::Error) -> bool {
 
 fn validate_component(value: &str, label: &str) -> Result<()> {
     if value.is_empty()
+        // Windows 会归一化尾部句点,不能让这些名称指向其他目录。
+        || value.ends_with('.')
         || value.len() > 128
         || !value
             .bytes()
@@ -232,6 +234,48 @@ fn set_file_permissions(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_aliases_are_not_plugin_path_components() {
+        for value in [".", "..", "...", "com."] {
+            assert!(
+                validate_component(value, "plugin id").is_err(),
+                "目录别名必须在文件操作前被拒绝: {value}"
+            );
+        }
+        assert!(validate_component("com.example", "plugin id").is_ok());
+        assert!(validate_component("plugin_state-1", "plugin data key").is_ok());
+    }
+
+    #[tokio::test]
+    async fn directory_aliases_cannot_read_write_or_clear_plugin_data() {
+        let root = tempfile::tempdir().unwrap();
+        let data_root = root.path().join("data");
+        let store = PluginDataStore::new(data_root.clone()).unwrap();
+        let sentinel = root.path().join("outside.json");
+        std::fs::write(&sentinel, br#"{"outside":true}"#).unwrap();
+        store
+            .update("com.example", "state", &serde_json::json!({"ok":true}))
+            .await
+            .unwrap();
+        for value in [".", "..", "...", "com."] {
+            // 先确认校验拒绝,失败时不执行可能删除临时父目录的旧实现。
+            assert!(validate_component(value, "plugin id").is_err());
+            assert!(store.read(value, "outside").await.is_err());
+            assert!(store
+                .update(value, "outside", &serde_json::json!({}))
+                .await
+                .is_err());
+            assert!(store.clear(value).await.is_err());
+        }
+        assert_eq!(std::fs::read(&sentinel).unwrap(), br#"{"outside":true}"#);
+        assert!(data_root.exists());
+        assert_eq!(
+            store.read("com.example", "state").await.unwrap()["ok"],
+            true
+        );
+    }
+
     #[tokio::test]
     async fn writes_reads_and_removes_json() {
         let root = tempfile::tempdir().unwrap();
