@@ -31,6 +31,8 @@ use crate::tray;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 const AUTOSTART_ARG: &str = "--autostart";
+/// 收尾助手的启动参数：见 `cursor_server::local_app::cleanup_after_exit`。
+const EXIT_CLEANUP_ARG: &str = "--cleanup-after-exit";
 
 struct DesktopRuntime {
     shutdown: CancellationToken,
@@ -188,6 +190,9 @@ pub(crate) fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn run() -> ExitCode {
+    if std::env::args().any(|argument| argument == EXIT_CLEANUP_ARG) {
+        return run_exit_cleanup();
+    }
     let diagnostics = match StartupDiagnostics::initialize() {
         Ok(diagnostics) => diagnostics,
         Err(error) => {
@@ -284,6 +289,9 @@ pub fn run() -> ExitCode {
                 exiting: AtomicBool::new(false),
                 server_addr: address,
             });
+            // 强杀/崩溃时没人走 disable()，留下的代理配置会让 Cursor 一直报"连不上代理"。
+            // 助手进程专门负责那一刻的收尾。
+            spawn_exit_cleanup_helper();
             if desktop_settings.silent_start && started_by_autostart {
                 tracing::info!("silent autostart enabled; starting without the main window");
             } else {
@@ -342,4 +350,66 @@ pub fn run() -> ExitCode {
     });
 
     ExitCode::SUCCESS
+}
+
+/// 收尾助手进程的入口：应用已经被强杀，替它撤掉留在 Cursor 里的代理配置。
+///
+/// 没有窗口、没有托盘，跑完就退。日志照旧写文件：这条路径出问题时不能完全无声。
+fn run_exit_cleanup() -> ExitCode {
+    let Ok(_diagnostics) = StartupDiagnostics::initialize() else {
+        // 连日志都起不来时不要弹窗：这是个后台助手，没人看着它。
+        return ExitCode::FAILURE;
+    };
+    match tauri::async_runtime::block_on(cursor_server::local_app::cleanup_after_exit(
+        std::process::id(),
+    )) {
+        Ok(true) => {
+            tracing::info!("exit cleanup removed the leftover Cursor proxy configuration");
+            ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            tracing::info!("exit cleanup had nothing to do");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %cursor_server::diagnostics::error_chain(&error),
+                "exit cleanup failed"
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// 起一个独立进程，在自己被强杀后收拾 Cursor 的代理配置。
+///
+/// 正常退出走 `CursorHarness::disable()`；`taskkill /F`、崩溃、断电都没有那个机会，
+/// 留下的配置会让 Cursor 一直对着一个没人监听的端口报"连不上代理"。助手是同一个可执行
+/// 文件加 `--cleanup-after-exit`：Windows 上用 `DETACHED_PROCESS`，不跟着宿主一起被
+/// 结束，也不弹控制台窗口。
+fn spawn_exit_cleanup_helper() {
+    let Ok(executable) = std::env::current_exe() else {
+        tracing::warn!("cannot resolve the executable path; the exit cleanup helper is skipped");
+        return;
+    };
+    let mut command = Command::new(executable);
+    command
+        .arg(EXIT_CLEANUP_ARG)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    match command.spawn() {
+        Ok(child) => tracing::info!(pid = child.id(), "exit cleanup helper started"),
+        Err(error) => tracing::warn!(
+            error = %cursor_server::diagnostics::error_chain(&error),
+            "failed to start the exit cleanup helper"
+        ),
+    }
 }

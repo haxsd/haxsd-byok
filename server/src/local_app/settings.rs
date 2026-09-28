@@ -107,7 +107,7 @@ fn write_proxy_settings_at(path: &Path, proxy_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn clear_proxy_settings() -> Result<()> {
+pub fn clear_proxy_settings() -> Result<bool> {
     clear_proxy_settings_at(&path()?)
 }
 
@@ -134,25 +134,26 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
 ///
 /// Guarded by the marker for the same reason the startup cleanup is: if another
 /// product has since claimed these keys, they are no longer ours to delete.
-fn clear_proxy_settings_at(path: &Path) -> Result<()> {
+fn clear_proxy_settings_at(path: &Path) -> Result<bool> {
     let mut settings = read_from(path)?;
     if !mentions_us(&settings) {
-        return Ok(());
+        return Ok(false);
     }
     let before = settings.len();
     for key in KEYS {
         settings.remove(key);
     }
     settings.remove(MANAGED_MARKER_KEY);
-    if settings.len() != before {
-        write_to(path, &settings)?;
-        tracing::info!(
-            path = %path.display(),
-            removed = before - settings.len(),
-            "cleared Cursor proxy configuration"
-        );
+    if settings.len() == before {
+        return Ok(false);
     }
-    Ok(())
+    write_to(path, &settings)?;
+    tracing::info!(
+        path = %path.display(),
+        removed = before - settings.len(),
+        "cleared Cursor proxy configuration"
+    );
+    Ok(true)
 }
 
 pub fn settings_match(proxy_url: &str) -> Result<bool> {
@@ -202,7 +203,7 @@ fn mentions_us(settings: &BTreeMap<String, Value>) -> bool {
 /// touched. That is the whole point: the sibling product's configuration is
 /// indistinguishable by content.
 pub fn clear_stale_managed_settings() -> Result<()> {
-    clear_proxy_settings()
+    clear_proxy_settings().map(|_| ())
 }
 
 #[cfg(test)]
