@@ -15,6 +15,13 @@ use crate::store::{
 
 use super::{ControlService, ObservabilitySettings};
 
+/// 出网的**运行时**状态：设置里存的是"该怎么走"，这里回答"此刻实际怎么走"。
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct OutboundStatus {
+    /// 系统代理刚被判定连不上，出网临时绕开它直连；兜底窗口到期后自动放回。
+    pub system_proxy_bypassed: bool,
+}
+
 pub async fn get(State(service): State<ControlService>) -> Result<Json<ObservabilitySettings>> {
     Ok(Json(service.observability().await?))
 }
@@ -68,6 +75,11 @@ pub async fn update_proxy(
     Json(settings): Json<ProxySettingsInput>,
 ) -> Result<Json<ProxySettings>> {
     Ok(Json(service.set_proxy_settings(settings).await?))
+}
+
+/// 出网的**运行时**状态：设置里存的是"该怎么走"，这里回答"此刻实际怎么走"。
+pub async fn get_outbound(State(service): State<ControlService>) -> Result<Json<OutboundStatus>> {
+    Ok(Json(service.outbound_status().await?))
 }
 
 pub async fn get_tab(State(service): State<ControlService>) -> Result<Json<TabSettings>> {

@@ -39,6 +39,11 @@ fn bypassing_system_proxy() -> bool {
         .is_some_and(|until| std::time::Instant::now() < until)
 }
 
+/// 出网此刻是否在绕开系统代理直连。设置页拿它说明与配置不一致的运行时状态。
+pub fn system_proxy_bypassed() -> bool {
+    bypassing_system_proxy()
+}
+
 #[derive(Clone)]
 pub struct NetworkClients {
     store: Store,

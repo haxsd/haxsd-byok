@@ -31,7 +31,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 255,
+          "line": 257,
           "column": 48
         }
       ]
@@ -272,12 +272,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 48,
+          "line": 53,
           "column": 8
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 325,
+          "line": 327,
           "column": 90
         },
         {
@@ -489,7 +489,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 429,
+          "line": 431,
           "column": 106
         }
       ]
@@ -701,7 +701,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 184,
+          "line": 186,
           "column": 38
         }
       ]
@@ -737,12 +737,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 107,
+          "line": 109,
           "column": 33
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 401,
+          "line": 403,
           "column": 32
         }
       ]
@@ -805,7 +805,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 39,
+          "line": 44,
           "column": 12
         }
       ]
@@ -1116,12 +1116,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 34,
+          "line": 39,
           "column": 12
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 60,
+          "line": 65,
           "column": 129
         }
       ]
@@ -1253,12 +1253,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 73,
+          "line": 78,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 94,
+          "line": 99,
           "column": 50
         }
       ]
@@ -1362,7 +1362,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 411,
+          "line": 413,
           "column": 23
         }
       ]
@@ -1412,17 +1412,17 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 154,
+          "line": 156,
           "column": 42
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 331,
+          "line": 333,
           "column": 28
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 358,
+          "line": 360,
           "column": 64
         }
       ]
@@ -1596,7 +1596,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 284,
+          "line": 286,
           "column": 49
         }
       ]
@@ -1620,7 +1620,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 209,
+          "line": 211,
           "column": 15
         }
       ]
@@ -1668,7 +1668,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 465,
+          "line": 467,
           "column": 22
         }
       ]
@@ -1905,7 +1905,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 102,
+          "line": 104,
           "column": 14
         }
       ]
@@ -1991,17 +1991,17 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 43,
+          "line": 48,
           "column": 66
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 321,
+          "line": 323,
           "column": 89
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 457,
+          "line": 459,
           "column": 20
         },
         {
@@ -2118,7 +2118,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 233,
+          "line": 235,
           "column": 15
         }
       ]
@@ -2130,7 +2130,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 95,
+          "line": 100,
           "column": 134
         }
       ]
@@ -2384,7 +2384,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 436,
+          "line": 438,
           "column": 33
         },
         {
@@ -2581,7 +2581,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 467,
+          "line": 469,
           "column": 40
         }
       ]
@@ -2757,7 +2757,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 418,
+          "line": 420,
           "column": 20
         }
       ]
@@ -2786,7 +2786,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 436,
+          "line": 438,
           "column": 45
         }
       ]
@@ -2925,12 +2925,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 276,
+          "line": 278,
           "column": 28
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 282,
+          "line": 284,
           "column": 32
         }
       ]
@@ -2968,7 +2968,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 449,
+          "line": 451,
           "column": 47
         }
       ]
@@ -3050,7 +3050,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 248,
+          "line": 250,
           "column": 66
         }
       ]
@@ -3074,7 +3074,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 81,
+          "line": 83,
           "column": 14
         }
       ]
@@ -3086,7 +3086,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 305,
+          "line": 307,
           "column": 124
         },
         {
@@ -3209,7 +3209,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 69,
+          "line": 74,
           "column": 59
         }
       ]
@@ -3445,12 +3445,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 52,
+          "line": 57,
           "column": 29
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 96,
+          "line": 98,
           "column": 31
         }
       ]
@@ -3503,7 +3503,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 88,
+          "line": 93,
           "column": 81
         },
         {
@@ -3898,12 +3898,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 32,
+          "line": 37,
           "column": 35
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 60,
+          "line": 65,
           "column": 174
         },
         {
@@ -3925,7 +3925,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 318,
+          "line": 320,
           "column": 28
         }
       ]
@@ -4110,7 +4110,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 97,
+          "line": 99,
           "column": 29
         },
         {
@@ -4139,12 +4139,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 95,
+          "line": 97,
           "column": 31
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 317,
+          "line": 319,
           "column": 22
         }
       ]
@@ -4192,7 +4192,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 112,
+          "line": 114,
           "column": 14
         }
       ]
@@ -4310,12 +4310,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 116,
+          "line": 118,
           "column": 32
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 429,
+          "line": 431,
           "column": 84
         }
       ]
@@ -4373,7 +4373,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 433,
+          "line": 435,
           "column": 27
         }
       ]
@@ -4440,7 +4440,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 295,
+          "line": 297,
           "column": 54
         }
       ]
@@ -4690,7 +4690,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 103,
+          "line": 105,
           "column": 13
         }
       ]
@@ -4871,7 +4871,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 650,
+          "line": 656,
           "column": 43
         }
       ]
@@ -4897,7 +4897,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 84,
+          "line": 86,
           "column": 32
         },
         {
@@ -5057,7 +5057,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 184,
+          "line": 186,
           "column": 55
         }
       ]
@@ -5146,7 +5146,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 401,
+          "line": 403,
           "column": 56
         }
       ]
@@ -5274,17 +5274,17 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 57,
+          "line": 62,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 60,
+          "line": 65,
           "column": 62
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 85,
+          "line": 90,
           "column": 22
         }
       ]
@@ -5411,7 +5411,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 383,
+          "line": 385,
           "column": 56
         }
       ]
@@ -5512,7 +5512,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 388,
+          "line": 390,
           "column": 22
         }
       ]
@@ -5594,12 +5594,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 86,
+          "line": 88,
           "column": 31
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 295,
+          "line": 297,
           "column": 32
         }
       ]
@@ -5647,7 +5647,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 645,
+          "line": 651,
           "column": 43
         }
       ]
@@ -5722,7 +5722,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 458,
+          "line": 460,
           "column": 21
         }
       ]
@@ -5775,7 +5775,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 227,
+          "line": 229,
           "column": 83
         }
       ]
@@ -5867,6 +5867,18 @@
         }
       ]
     },
+    "8043bffa0cf6bec2": {
+      "source": "系统代理暂时连不上，出网正在直连；稍后会自动再试系统代理。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 106,
+          "column": 19
+        }
+      ]
+    },
     "80a57e03f0717f91": {
       "source": "未配置",
       "kind": "text",
@@ -5903,7 +5915,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 567,
+          "line": 573,
           "column": 11
         },
         {
@@ -6249,7 +6261,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 273,
+          "line": 275,
           "column": 54
         }
       ]
@@ -6261,7 +6273,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 432,
+          "line": 434,
           "column": 28
         }
       ]
@@ -6397,7 +6409,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 78,
+          "line": 83,
           "column": 169
         }
       ]
@@ -6421,7 +6433,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 251,
+          "line": 253,
           "column": 7
         }
       ]
@@ -6628,7 +6640,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 92,
+          "line": 94,
           "column": 14
         }
       ]
@@ -6640,7 +6652,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 115,
+          "line": 117,
           "column": 32
         }
       ]
@@ -6652,7 +6664,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 37,
+          "line": 42,
           "column": 35
         }
       ]
@@ -6762,7 +6774,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 93,
+          "line": 95,
           "column": 13
         }
       ]
@@ -6962,12 +6974,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 85,
+          "line": 87,
           "column": 34
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 273,
+          "line": 275,
           "column": 32
         }
       ]
@@ -7015,7 +7027,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 147,
+          "line": 149,
           "column": 34
         }
       ]
@@ -7123,7 +7135,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 87,
+          "line": 89,
           "column": 29
         }
       ]
@@ -7206,12 +7218,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 44,
+          "line": 49,
           "column": 103
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 322,
+          "line": 324,
           "column": 141
         },
         {
@@ -7357,12 +7369,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 77,
+          "line": 82,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 95,
+          "line": 100,
           "column": 50
         }
       ]
@@ -7874,12 +7886,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 33,
+          "line": 38,
           "column": 35
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 60,
+          "line": 65,
           "column": 212
         },
         {
@@ -8034,7 +8046,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 305,
+          "line": 307,
           "column": 76
         },
         {
@@ -8142,7 +8154,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 248,
+          "line": 250,
           "column": 45
         }
       ]
@@ -8192,7 +8204,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 404,
+          "line": 406,
           "column": 28
         }
       ]
@@ -8264,12 +8276,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 64,
+          "line": 69,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 91,
+          "line": 96,
           "column": 48
         }
       ]
@@ -8281,7 +8293,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 113,
+          "line": 115,
           "column": 13
         }
       ]
@@ -8419,7 +8431,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 305,
+          "line": 307,
           "column": 112
         },
         {
@@ -8462,7 +8474,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 38,
+          "line": 43,
           "column": 35
         }
       ]
@@ -9043,7 +9055,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 82,
+          "line": 84,
           "column": 13
         }
       ]
@@ -9178,12 +9190,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 386,
+          "line": 388,
           "column": 28
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 392,
+          "line": 394,
           "column": 26
         },
         {
@@ -9200,7 +9212,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 345,
+          "line": 347,
           "column": 27
         }
       ]
@@ -9274,7 +9286,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 250,
+          "line": 252,
           "column": 7
         }
       ]
@@ -9336,12 +9348,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 68,
+          "line": 73,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 92,
+          "line": 97,
           "column": 48
         }
       ]
@@ -10025,7 +10037,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 449,
+          "line": 451,
           "column": 32
         },
         {
@@ -10071,7 +10083,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 92,
+          "line": 97,
           "column": 121
         }
       ]
@@ -10095,7 +10107,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 95,
+          "line": 100,
           "column": 123
         }
       ]
@@ -10397,7 +10409,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 160,
+          "line": 162,
           "column": 17
         }
       ]
@@ -10616,12 +10628,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 105,
+          "line": 107,
           "column": 39
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 383,
+          "line": 385,
           "column": 32
         }
       ]
@@ -10799,7 +10811,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 364,
+          "line": 366,
           "column": 22
         }
       ]
@@ -10901,7 +10913,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 406,
+          "line": 408,
           "column": 23
         }
       ]
@@ -11060,7 +11072,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 277,
+          "line": 279,
           "column": 27
         }
       ]
@@ -11118,7 +11130,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 92,
+          "line": 97,
           "column": 132
         },
         {
@@ -11173,7 +11185,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 332,
+          "line": 334,
           "column": 27
         }
       ]
@@ -11430,7 +11442,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 106,
+          "line": 108,
           "column": 33
         }
       ]
@@ -11503,7 +11515,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 468,
+          "line": 470,
           "column": 36
         }
       ]
@@ -11530,12 +11542,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 44,
+          "line": 49,
           "column": 91
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 322,
+          "line": 324,
           "column": 129
         },
         {
@@ -11564,17 +11576,17 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 155,
+          "line": 157,
           "column": 46
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 344,
+          "line": 346,
           "column": 28
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 359,
+          "line": 361,
           "column": 64
         }
       ]

@@ -218,6 +218,12 @@ export interface ProxySettingsInput {
   password?: string;
 }
 
+/** 出网的运行时状态：设置存的是"该怎么走"，这里回答"此刻实际怎么走"。 */
+export interface OutboundStatus {
+  /** 系统代理刚被判定连不上，出网临时绕开它直连；兜底窗口到期后自动放回。 */
+  system_proxy_bypassed: boolean;
+}
+
 export type TabMode = "public" | "direct" | "custom";
 
 export interface TabSettings {
@@ -668,6 +674,7 @@ export const api = {
   clearStatisticsStorage: (scope: StatisticsStorageScope) => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE", body: JSON.stringify({ scope }) }),
   proxySettings: () => request<ProxySettings>("/settings/proxy"),
   setProxySettings: (settings: ProxySettingsInput) => request<ProxySettings>("/settings/proxy", { method: "PUT", body: JSON.stringify(settings) }),
+  outboundStatus: () => request<OutboundStatus>("/settings/outbound"),
   tabSettings: () => request<TabSettings>("/settings/tab"),
   setTabSettings: (settings: TabSettings) => request<TabSettings>("/settings/tab", { method: "PUT", body: JSON.stringify(settings) }),
   desktopSettings: () => request<DesktopSettings>("/settings/desktop"),
