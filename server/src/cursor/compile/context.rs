@@ -253,7 +253,7 @@ pub fn compile_context(context: &pb::RequestContext, today: &str) -> String {
     if !rules.is_empty() {
         sections.push(format!("<rules>\n{}\n</rules>", rules.join("\n")));
     }
-    let skills = context
+    let mut skills = context
         .agent_skills
         .iter()
         .filter(|skill| !skill.disable_model_invocation)
@@ -265,10 +265,27 @@ pub fn compile_context(context: &pb::RequestContext, today: &str) -> String {
             )
         })
         .collect::<Vec<_>>();
+    // Cursor 目前把技能塞在 `rules`(fullPath 指向 SKILL.md)里,而不是
+    // `agent_skills`。它们在上面的规则段被剔除,这里补回技能清单,
+    // 否则模型既看不到技能也无法按需读取 SKILL.md。
+    let listed = context
+        .agent_skills
+        .iter()
+        .map(|skill| skill.full_path.trim())
+        .collect::<HashSet<_>>();
+    skills.extend(
+        context
+            .rules
+            .iter()
+            .chain(context.non_file_rules.iter())
+            .filter(|rule| !listed.contains(rule.full_path.trim()))
+            .filter_map(compile_skill_rule),
+    );
     if !skills.is_empty() {
         sections.push(format!(
-            "<agent_skills>\n<available_skills>\n{}\n</available_skills>\n</agent_skills>",
-            skills.join("\n")
+            "<agent_skills>\n<available_skills>\n{}\n</available_skills>\n{}\n</agent_skills>",
+            skills.join("\n"),
+            SKILL_USAGE
         ));
     }
     let subagents = context
@@ -405,6 +422,69 @@ fn is_skill_rule(rule: &pb::CursorRule) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+}
+
+/// 说明技能清单的用法:清单只给路径和描述,正文由模型按需 Read。
+const SKILL_USAGE: &str = "A skill is a folder with a SKILL.md file. The text above is its description. Before starting work that matches a skill, read that skill's SKILL.md with the Read tool and follow it.";
+
+/// 把以 `rules` 形式送来的技能(`fullPath` 指向 SKILL.md)转成技能清单条目。
+fn compile_skill_rule(rule: &pb::CursorRule) -> Option<String> {
+    let full_path = rule.full_path.trim();
+    if full_path.is_empty() || !is_skill_rule(rule) {
+        return None;
+    }
+    if frontmatter_value(&rule.frontmatter, "disable-model-invocation")
+        .or_else(|| frontmatter_value(&rule.frontmatter, "disable_model_invocation"))
+        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    {
+        return None;
+    }
+    let description = frontmatter_value(&rule.frontmatter, "description")
+        .or_else(|| frontmatter_value(&rule.content, "description"))
+        .unwrap_or_default();
+    Some(format!(
+        "<agent_skill fullPath=\"{}\">{}</agent_skill>",
+        xml(full_path),
+        xml(&description)
+    ))
+}
+
+/// 读取 YAML front matter 里的单行或折叠/字面量标量。
+fn frontmatter_value(text: &str, key: &str) -> Option<String> {
+    let lines = frontmatter_lines(text)?;
+    let (index, raw) = lines.iter().enumerate().find_map(|(index, line)| {
+        line.strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix(':'))
+            .map(|rest| (index, rest.trim()))
+    })?;
+    let inline = raw.trim_matches(['"', '\'']);
+    if !inline.is_empty() && !inline.starts_with(['>', '|']) {
+        return Some(inline.to_owned());
+    }
+    let block = lines[index + 1..]
+        .iter()
+        .take_while(|line| line.trim().is_empty() || line.starts_with([' ', '\t']))
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!block.is_empty()).then_some(block)
+}
+
+fn frontmatter_lines(text: &str) -> Option<Vec<&str>> {
+    let mut lines = text.lines().skip_while(|line| line.trim().is_empty());
+    if lines.next()?.trim_end() != "---" {
+        return None;
+    }
+    let mut block = Vec::new();
+    for line in lines {
+        let trimmed = line.trim_end();
+        if trimmed == "---" || trimmed == "..." {
+            return Some(block);
+        }
+        block.push(trimmed);
+    }
+    Some(block)
 }
 
 pub fn selected_context(user: &pb::UserMessage) -> Option<String> {
@@ -625,5 +705,108 @@ mod tests {
         let mut context = pb::RequestContext::default();
         merge_local_rules(&mut context, &directory.path().join("nested/rules"));
         assert!(context.non_file_rules.is_empty());
+    }
+
+    fn skill_rule(path: &str, frontmatter: &str, content: &str) -> pb::CursorRule {
+        pb::CursorRule {
+            full_path: path.into(),
+            frontmatter: frontmatter.into(),
+            content: content.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn skill_rules_sent_as_rules_are_listed_as_skills() {
+        let context = pb::RequestContext {
+            rules: vec![skill_rule(
+                r"C:\Users\me\.cursor\skills\brainstorming\SKILL.md",
+                "---\nname: brainstorming\ndescription: \"Use before any creative work\"\n---",
+                "---\nname: brainstorming\ndescription: \"Use before any creative work\"\n---\n\n# Brainstorming\n",
+            )],
+            ..Default::default()
+        };
+
+        let text = compile_context(&context, "2026-09-28");
+        assert!(
+            text.contains(
+                "<agent_skill fullPath=\"C:\\Users\\me\\.cursor\\skills\\brainstorming\\SKILL.md\">Use before any creative work</agent_skill>"
+            ),
+            "skill rule should be listed as a skill: {text}"
+        );
+        assert!(
+            !text.contains("<user_rule>"),
+            "skill content should not be injected as a rule: {text}"
+        );
+    }
+
+    #[test]
+    fn skills_sent_through_agent_skills_are_not_listed_twice() {
+        let path = r"C:\Users\me\.cursor\skills\brand\SKILL.md";
+        let context = pb::RequestContext {
+            agent_skills: vec![pb::AgentSkill {
+                full_path: path.into(),
+                content: "brand body".into(),
+                description: "Brand voice".into(),
+                ..Default::default()
+            }],
+            rules: vec![skill_rule(
+                path,
+                "---\ndescription: Brand voice\n---",
+                "brand body",
+            )],
+            ..Default::default()
+        };
+
+        let text = compile_context(&context, "2026-09-28");
+        assert_eq!(text.matches("<agent_skill ").count(), 1, "{text}");
+        assert!(
+            text.contains(r#"fullPath="C:\Users\me\.cursor\skills\brand\SKILL.md">Brand voice<"#),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn skill_without_frontmatter_is_still_listed_with_its_description_from_content() {
+        let rule = skill_rule(
+            "/home/me/.cursor/skills/env-doctor/SKILL.md",
+            "",
+            "---\nname: env-doctor\ndescription: >\n  Diagnose local project\n  environment issues\n---\n\n# Env doctor\n",
+        );
+        assert_eq!(
+            compile_skill_rule(&rule).as_deref(),
+            Some(
+                "<agent_skill fullPath=\"/home/me/.cursor/skills/env-doctor/SKILL.md\">Diagnose local project environment issues</agent_skill>"
+            )
+        );
+    }
+
+    #[test]
+    fn skill_disabled_for_model_invocation_is_skipped() {
+        let rule = skill_rule(
+            "/home/me/.cursor/skills/hidden/SKILL.md",
+            "---\ndescription: Hidden\ndisable-model-invocation: true\n---",
+            "hidden",
+        );
+        assert_eq!(compile_skill_rule(&rule), None);
+    }
+
+    #[test]
+    fn rule_that_is_not_a_skill_is_kept_as_a_rule() {
+        let context = pb::RequestContext {
+            rules: vec![pb::CursorRule {
+                full_path: "/repo/AGENTS.md".into(),
+                content: "project rule".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let text = compile_context(&context, "2026-09-28");
+        assert!(
+            text.contains("<user_rule>\nproject rule\n</user_rule>"),
+            "{text}"
+        );
+        assert!(!text.contains("<agent_skill "), "{text}");
     }
 }
