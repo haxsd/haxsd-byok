@@ -58,7 +58,13 @@ impl IntoResponse for Error {
             | Self::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         // 所有回给 UI 的错误统一落日志,否则失败原因只出现在前端提示里。
-        tracing::warn!(%status, error = %self, "request failed");
+        // 用错误链而不是 Display：`http error: ...` 这种只有最外层，真正的原因
+        // （连不上、TLS 失败、代理拒绝）都在 source() 里。
+        tracing::warn!(
+            %status,
+            error = %crate::diagnostics::error_chain(&self),
+            "request failed"
+        );
         let code = match status {
             StatusCode::BAD_REQUEST => "invalid_argument",
             StatusCode::NOT_FOUND => "not_found",

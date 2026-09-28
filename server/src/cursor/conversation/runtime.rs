@@ -147,6 +147,27 @@ impl ConversationRuntime {
                 match command {
                     TransportCommand::Disconnect => {
                         handle.mark_disconnected();
+                        let running_tools = match current.as_ref() {
+                            Some(generation) => {
+                                generation.tool_runtime.running_exec_ids().await.len()
+                            }
+                            None => 0,
+                        };
+                        tracing::info!(
+                            request_id = handle.request_id(),
+                            conversation_id = handle.conversation_id().unwrap_or("none"),
+                            run_id = current
+                                .as_ref()
+                                .and_then(|generation| generation
+                                    .run
+                                    .lock()
+                                    .as_ref()
+                                    .map(|run| run.run_id().to_string()))
+                                .as_deref()
+                                .unwrap_or("none"),
+                            running_tools,
+                            "Cursor transport disconnected; cancelling the in-flight run"
+                        );
                         if let Some(generation) = current.as_ref() {
                             generation.superseded.cancel();
                             if let Some(run) = generation.run.lock().clone() {

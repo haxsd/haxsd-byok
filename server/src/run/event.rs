@@ -33,19 +33,21 @@ impl From<crate::Error> for RunFailure {
             Error::Provider(message) => Self::Provider(message),
             Error::Store(message) => Self::Store(message),
             Error::Cancelled => Self::Client("run was cancelled".into()),
-            Error::Http(error) => Self::Provider(error.to_string()),
-            Error::Database(error) => Self::Store(error.to_string()),
-            Error::Migration(error) => Self::Store(error.to_string()),
+            // 这里的字符串会一路进日志、进 UI、进重试提示，所以带上整条错误链：
+            // 只留 `error sending request for url (...)` 是过去排查不出原因的根源。
+            Error::Http(error) => Self::Provider(crate::diagnostics::error_chain(&error)),
+            Error::Database(error) => Self::Store(crate::diagnostics::error_chain(&error)),
+            Error::Migration(error) => Self::Store(crate::diagnostics::error_chain(&error)),
             Error::MigrationTimeout {
                 stage,
                 timeout_seconds,
             } => Self::Store(format!(
                 "database migration stage '{stage}' timed out after {timeout_seconds} seconds"
             )),
-            Error::Io(error) => Self::Store(error.to_string()),
-            Error::Decode(error) => Self::Protocol(error.to_string()),
-            Error::Encode(error) => Self::Protocol(error.to_string()),
-            Error::Json(error) => Self::Protocol(error.to_string()),
+            Error::Io(error) => Self::Store(crate::diagnostics::error_chain(&error)),
+            Error::Decode(error) => Self::Protocol(crate::diagnostics::error_chain(&error)),
+            Error::Encode(error) => Self::Protocol(crate::diagnostics::error_chain(&error)),
+            Error::Json(error) => Self::Protocol(crate::diagnostics::error_chain(&error)),
             Error::RunNotFound(run_id) => Self::Store(format!("run not found: {run_id}")),
         }
     }

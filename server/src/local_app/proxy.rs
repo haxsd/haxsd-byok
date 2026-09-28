@@ -68,15 +68,28 @@ impl ProxyRuntime {
         self.stop = Some(stop);
         self.url = Some(format!("http://{address}"));
         self.port = Some(address.port());
+        tracing::info!(
+            requested_port,
+            address = %address,
+            fallback = address.port() != requested_port,
+            "Cursor proxy listening"
+        );
         self.task = Some(tokio::spawn(async move {
             if let Err(error) = proxy.start().await {
+                let error = error.to_string();
                 tracing::error!(%error, "Cursor proxy stopped unexpectedly");
+                // 代理自己死了：Cursor 之后所有请求都会失败，抓一份现场。
+                crate::diagnostics::capture(
+                    "cursor_proxy_stopped",
+                    serde_json::json!({ "address": address.to_string(), "error": error }),
+                );
             }
         }));
         Ok((self.url.clone().unwrap(), address.port()))
     }
 
     pub async fn stop(&mut self) {
+        let port = self.port;
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
@@ -85,6 +98,9 @@ impl ProxyRuntime {
         }
         self.url = None;
         self.port = None;
+        if port.is_some() {
+            tracing::info!(?port, "Cursor proxy stopped");
+        }
     }
 }
 

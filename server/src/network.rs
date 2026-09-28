@@ -239,7 +239,8 @@ impl OutboundClient {
 ///
 /// 指纹覆盖所有会改变 reqwest 判定的输入：环境变量（所有平台）与 Windows 注册表
 /// 的 `Internet Settings`。它只用来比较是否变化，格式本身没有含义。
-fn system_proxy_fingerprint() -> String {
+/// 诊断快照也会带上它：出现"出网突然不通"时，先看这一步有没有变。
+pub(crate) fn system_proxy_fingerprint() -> String {
     let mut parts = Vec::new();
     for name in [
         "HTTP_PROXY",
