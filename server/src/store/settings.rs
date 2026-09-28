@@ -539,6 +539,10 @@ impl Store {
 
     pub async fn set_proxy_port(&self, port: u16) -> Result<()> {
         let mut settings = self.port_settings().await?;
+        // Starting on the saved port must not wait behind background collection.
+        if settings.proxy_port == port {
+            return Ok(());
+        }
         settings.proxy_port = port;
         self.set_port_settings(settings).await
     }
@@ -639,6 +643,28 @@ mod tests {
         PROXY_SETTINGS_KEY,
     };
     use crate::devin::{DevinModelBinding, DevinSettings};
+
+    #[tokio::test]
+    async fn unchanged_proxy_port_does_not_wait_for_storage_maintenance() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        store.set_proxy_port(9061).await.unwrap();
+        let maintenance = store.writes.lock().await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            store.set_proxy_port(9061),
+        )
+        .await;
+        drop(maintenance);
+        assert!(
+            result.is_ok(),
+            "an unchanged port must not acquire the write lock"
+        );
+        result.unwrap().unwrap();
+        store.set_proxy_port(9062).await.unwrap();
+        assert_eq!(store.port_settings().await.unwrap().proxy_port, 9062);
+    }
 
     /// The `outbound_proxy` row exactly as builds before the `system` -> `default`
     /// rename wrote it.
