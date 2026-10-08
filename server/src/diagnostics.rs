@@ -35,6 +35,11 @@ pub fn set_app_version(version: &str) {
     let _ = APP_VERSION.set(version.to_owned());
 }
 
+/// 桌面壳的版本号；诊断快照与 `/api/app-info` 都读它。外壳还没写进来时是 `None`。
+pub fn app_version() -> Option<&'static str> {
+    APP_VERSION.get().map(String::as_str)
+}
+
 /// 单行错误链：`最外层: 原因: 根因`。
 ///
 /// 日志与恢复出来的失败信息都走它。`reqwest` / `sqlx` 的失败原因只在 `source()`
@@ -130,7 +135,7 @@ fn environment() -> serde_json::Value {
         .map(|directory| directory.display().to_string())
         .unwrap_or_else(|error| format!("unavailable: {error}"));
     serde_json::json!({
-        "app_version": APP_VERSION.get().map(String::as_str).unwrap_or("unknown"),
+        "app_version": app_version().unwrap_or("unknown"),
         "server_version": env!("CARGO_PKG_VERSION"),
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,

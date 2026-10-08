@@ -134,6 +134,7 @@ export function installDemoApi() {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const body = await readBody(input, init);
 
+    if (path === "/app-info") return json({ version: "1.0.19", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok-devin-v3" });
     if (path === "/models" && method === "GET") return json(models);
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);

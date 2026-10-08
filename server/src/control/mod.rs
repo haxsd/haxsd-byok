@@ -1,4 +1,5 @@
 //! Exposes the local control API.
+mod app_info;
 mod calls;
 mod devin;
 mod harness;
@@ -116,6 +117,7 @@ fn proxy_error(error: impl std::fmt::Display) -> Response<Body> {
 
 pub fn api_router(service: ControlService) -> Router {
     Router::new()
+        .route("/__byok-api__/api/app-info", get(app_info::get))
         .route(
             "/__byok-api__/api/models",
             get(models::list).post(models::create),
@@ -299,12 +301,50 @@ fn local_origin(origin: &HeaderValue) -> bool {
         Some(Host::Domain(host)) => {
             host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case("tauri.localhost")
         }
-        Some(Host::Ipv4(address)) => {
-            address.is_loopback() || address.is_private() || address.is_link_local()
-        }
-        Some(Host::Ipv6(address)) => {
-            address.is_loopback() || address.is_unique_local() || address.is_unicast_link_local()
-        }
+        // 前端固定由 `http://127.0.0.1:<端口>` 提供，所以只有回环地址是本机的页面。
+        // 私网与链路本地地址不是：这个 API 没有鉴权，放行它们等于让同局域网里托管的
+        // 页面也能调用本机的管理接口。
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn origin(value: &'static str) -> HeaderValue {
+        HeaderValue::from_static(value)
+    }
+
+    #[test]
+    fn loopback_origins_are_allowed() {
+        for allowed in [
+            // 前端固定从这里提供服务。
+            "http://127.0.0.1:1634",
+            "http://[::1]:1634",
+            "http://localhost:1634",
+            // Tauri 的 webview 自有来源。
+            "tauri://localhost",
+            "http://tauri.localhost",
+        ] {
+            assert!(local_origin(&origin(allowed)), "{allowed} 应当放行");
+        }
+    }
+
+    #[test]
+    fn private_network_origins_are_rejected() {
+        // 这个 API 没有鉴权，同局域网里以私网地址托管的页面不是本机的页面。
+        for rejected in [
+            "http://192.168.1.20:1634",
+            "http://10.0.0.5:1634",
+            "http://172.16.0.9:1634",
+            "http://169.254.10.2:1634",
+            "http://[fd00::1]:1634",
+            "http://[fe80::1]:1634",
+        ] {
+            assert!(!local_origin(&origin(rejected)), "{rejected} 应当拒绝");
+        }
     }
 }

@@ -114,6 +114,13 @@ export interface PortSettings {
   service_port: number;
 }
 
+/** 运行副本的自证信息：版本、可执行文件路径、数据目录。 */
+export interface AppInfo {
+  version: string;
+  executable_path: string;
+  data_dir: string;
+}
+
 export type DevinBindingKind = "standard" | "context_compression";
 
 export interface DevinRoute {
@@ -601,6 +608,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  appInfo: () => request<AppInfo>("/app-info"),
   models: () => request<Model[]>("/models"),
   createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
   reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
