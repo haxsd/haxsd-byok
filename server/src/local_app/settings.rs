@@ -30,6 +30,14 @@ const KEYS: [&str; 5] = [
 /// left exactly as it is.
 const MANAGED_MARKER_KEY: &str = "haxsd-byok.managedProxy";
 
+/// 接管期间由我们替用户保管的 `http.noProxy` 原值。
+///
+/// 这个键在接管期间必须让位：它里面的条目会让 Cursor 绕过本机代理直连厂商，接管就失效了
+/// （我们一直删它就是为了这个）。但它记的是用户自己的例外（内网地址等），删掉不还就是丢
+/// 用户的设置。所以照 `MANAGED_MARKER_KEY` 的办法办：认领配置时把原值挪进这个带标记的键
+/// 保管，撤回时原样还回去；用户本来没有这个键时不写它，免得在用户文件里留垃圾键。
+const MANAGED_NO_PROXY_KEY: &str = "haxsd-byok.managedNoProxy";
+
 fn path() -> Result<PathBuf> {
     let home = dirs::home_dir()
         .ok_or_else(|| Error::Config("cannot resolve user home directory".into()))?;
@@ -81,17 +89,21 @@ fn write_proxy_settings_at(path: &Path, proxy_url: &str) -> Result<()> {
     let settings = read_from(path)?;
     // 标记也要在：兄弟产品写的是同样的五个键，只比较那几个值会把它的配置
     // 误当成"我们已经写好了"，于是永远不会认领归我们。
+    //
+    // `http.noProxy` 不参与这个判断：文件里带着我们的标记时又出现这个键，只能说明接管
+    // 之后有人（用户自己，或 Cursor 把内存里那一份写回来）写了它——那是用户的设置，不是
+    // "这次写入还没生效"的证据。以前那句 `!settings.contains_key(NO_PROXY_KEY)` 会让每次
+    // 写入都把它再删一遍。
     let already_written = settings.get(MANAGED_MARKER_KEY)
         == Some(&Value::String(proxy_url.into()))
-        && is_our_configuration(&settings, proxy_url)
-        && !settings.contains_key(NO_PROXY_KEY);
+        && is_our_configuration(&settings, proxy_url);
     if already_written {
         // 读状态每几秒就走一次这条路：内容没变就不写文件，免得白改 mtime
         // 让 Cursor 反复重载配置。
         return Ok(());
     }
     let mut settings = settings;
-    settings.remove(NO_PROXY_KEY);
+    take_no_proxy(&mut settings);
     settings.insert(KEYS[0].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[2].into(), Value::String("on".into()));
@@ -118,7 +130,7 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
     let path = path()?;
     let settings = read_from(&path)?;
     let mut entries = serde_json::Map::new();
-    for key in KEYS.into_iter().chain([MANAGED_MARKER_KEY, NO_PROXY_KEY]) {
+    for key in KEYS.into_iter().chain([MANAGED_MARKER_KEY, MANAGED_NO_PROXY_KEY, NO_PROXY_KEY]) {
         if let Some(value) = settings.get(key) {
             entries.insert(key.to_owned(), value.clone());
         }
@@ -136,21 +148,26 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
 /// product has since claimed these keys, they are no longer ours to delete.
 fn clear_proxy_settings_at(path: &Path) -> Result<bool> {
     let mut settings = read_from(path)?;
-    if !mentions_us(&settings) {
+    // 保管键也要能单独认出来：兄弟产品清理自己的残留时会删掉那五个键与标记键，但认得
+    // 我们的保管键（它不认识，所以原样留着），此时用户的原值只存在保管键里，必须还回去。
+    if !mentions_us(&settings) && !settings.contains_key(MANAGED_NO_PROXY_KEY) {
         return Ok(false);
     }
-    let before = settings.len();
+    let before = settings.clone();
     for key in KEYS {
         settings.remove(key);
     }
     settings.remove(MANAGED_MARKER_KEY);
-    if settings.len() == before {
+    give_back_no_proxy(&mut settings);
+    // 按内容而不是长度判断"有没有改动"：撤回时可能正好是一还一删（保管键换成
+    // `http.noProxy`），长度不变但文件确实变了。
+    if settings == before {
         return Ok(false);
     }
     write_to(path, &settings)?;
     tracing::info!(
         path = %path.display(),
-        removed = before - settings.len(),
+        removed = before.len() - settings.len(),
         "cleared Cursor proxy configuration"
     );
     Ok(true)
@@ -195,6 +212,33 @@ fn is_our_configuration(settings: &BTreeMap<String, Value>, proxy_url: &str) -> 
 /// Whether this file carries the marker proving this product wrote it.
 fn mentions_us(settings: &BTreeMap<String, Value>) -> bool {
     settings.contains_key(MANAGED_MARKER_KEY)
+}
+
+/// 认领一份 Cursor 设置时，把用户原来的 `http.noProxy` 挪进保管键里。
+///
+/// **只在还没有我们标记的文件上收。** 带着标记就说明这份配置已经在接管中，此时文件里
+/// 还有 `http.noProxy`，一定是接管之后被写进来的（用户自己设的，或 Cursor 把内存里那一
+/// 份写回来）——那是用户的设置，归用户：不能删第二次，撤回时也不拿我们保管的旧值覆盖它。
+fn take_no_proxy(settings: &mut BTreeMap<String, Value>) {
+    if mentions_us(settings) {
+        return;
+    }
+    if let Some(value) = settings.remove(NO_PROXY_KEY) {
+        settings.insert(MANAGED_NO_PROXY_KEY.into(), value);
+    }
+}
+
+/// 撤回配置时把保管的 `http.noProxy` 原样还回去。
+///
+/// 文件里已经有这个键时不还：那是接管之后写的值，归用户，我们只把自己的保管记录丢掉。
+fn give_back_no_proxy(settings: &mut BTreeMap<String, Value>) {
+    let held = settings.remove(MANAGED_NO_PROXY_KEY);
+    if settings.contains_key(NO_PROXY_KEY) {
+        return;
+    }
+    if let Some(value) = held {
+        settings.insert(NO_PROXY_KEY.into(), value);
+    }
 }
 
 /// Drops the proxy entries a previous run of this product left behind.
@@ -354,5 +398,74 @@ mod tests {
         fs::write(&path, r#"{"editor.fontSize": 14}"#).unwrap();
 
         assert!(!is_foreign_configuration(&read_from(&path).unwrap()));
+    }
+
+    /// 用户自己的 `http.noProxy`（内网地址不走代理）：接管期间让位，但不能丢。
+    #[test]
+    fn the_users_no_proxy_is_held_while_we_manage_and_given_back() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(
+            &path,
+            r#"{"http.noProxy": "internal.example.com", "editor.fontSize": 14}"#,
+        )
+        .unwrap();
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+
+        // 接管期间它不在文件里：留着会让 Cursor 绕过本机代理直连厂商。
+        let settings = read(&path);
+        assert!(settings.get(NO_PROXY_KEY).is_none());
+        assert_eq!(settings[MANAGED_NO_PROXY_KEY], json!("internal.example.com"));
+
+        clear_proxy_settings_at(&path).unwrap();
+
+        // 撤回之后原样还回去，连旁边不相干的键一起。
+        let settings = read(&path);
+        assert_eq!(settings["http.noProxy"], json!("internal.example.com"));
+        assert_eq!(
+            settings,
+            json!({"http.noProxy": "internal.example.com", "editor.fontSize": 14})
+        );
+    }
+
+    /// 接管之后用户（或 Cursor 的写回）又写了 `http.noProxy`：那是他的设置，不再删，
+    /// 撤回时也不拿我们保管的旧值覆盖它。
+    #[test]
+    fn a_no_proxy_written_after_us_is_left_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(&path, r#"{"http.noProxy": "internal.example.com"}"#).unwrap();
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+
+        let mut settings = read_from(&path).unwrap();
+        settings.insert(NO_PROXY_KEY.into(), json!("later.example.com"));
+        write_to(&path, &settings).unwrap();
+
+        // 读状态每几秒调一次写入：不能再把它删掉。
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+        assert_eq!(read(&path)["http.noProxy"], json!("later.example.com"));
+
+        // 撤回时也不能用保管的 "internal.example.com" 覆盖它，保管记录随撤回一起清掉。
+        clear_proxy_settings_at(&path).unwrap();
+        let settings = read(&path);
+        assert_eq!(settings["http.noProxy"], json!("later.example.com"));
+        assert!(settings.get(MANAGED_NO_PROXY_KEY).is_none());
+    }
+
+    /// 用户本来没有 `http.noProxy`：不能凭空造出保管键。
+    #[test]
+    fn without_a_no_proxy_no_bookkeeping_key_is_written() {
+        let directory = tempfile::tempdir().unwrap();
+        for original in [r#"{"editor.fontSize": 14}"#, "{}"] {
+            let path = settings_path(&directory);
+            fs::write(&path, original).unwrap();
+
+            write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+            assert!(read(&path).get(MANAGED_NO_PROXY_KEY).is_none());
+
+            clear_proxy_settings_at(&path).unwrap();
+            assert_eq!(read(&path), serde_json::from_str::<Value>(original).unwrap());
+        }
     }
 }
