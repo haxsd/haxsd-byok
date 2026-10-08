@@ -46,7 +46,7 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Updates use this repository's manifest, installer and independent Tauri signing key.
 - Tauri update signatures are distinct from Windows Authenticode signing. Windows may still display a source prompt.
 
-**1.0.18** fixes startup blocked by cleanup of large historical data sets, which could leave CA loading and prevent model/statistics refresh. [Release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.18)
+**1.0.19** removes the cumulative call count from the top-bar status pill. Call counts are range-based and live on the dashboard's "LLM calls" tile and the Calls page. [Release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.19)
 
 ## Boundaries and data
 

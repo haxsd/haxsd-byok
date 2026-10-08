@@ -46,7 +46,7 @@ Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
 - 更新来自本仓库，使用本产品独立的 Tauri 更新签名。
 - 更新签名用于校验更新包，不等同于 Windows Authenticode 代码签名；Windows 仍可能显示来源提示。
 
-**1.0.18 修复**：大量历史数据清理阻塞启动，造成证书一直「读取中」、模型与统计无法刷新的问题。[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.18)
+**1.0.19 调整**：顶栏状态条不再显示累计调用次数；调用次数按时间范围读，位置在首页的「LLM 调用」卡片与「调用」页。[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.19)
 
 ## 使用边界与数据
 
