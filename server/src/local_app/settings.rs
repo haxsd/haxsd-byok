@@ -130,7 +130,10 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
     let path = path()?;
     let settings = read_from(&path)?;
     let mut entries = serde_json::Map::new();
-    for key in KEYS.into_iter().chain([MANAGED_MARKER_KEY, MANAGED_NO_PROXY_KEY, NO_PROXY_KEY]) {
+    for key in KEYS
+        .into_iter()
+        .chain([MANAGED_MARKER_KEY, MANAGED_NO_PROXY_KEY, NO_PROXY_KEY])
+    {
         if let Some(value) = settings.get(key) {
             entries.insert(key.to_owned(), value.clone());
         }
@@ -416,7 +419,10 @@ mod tests {
         // 接管期间它不在文件里：留着会让 Cursor 绕过本机代理直连厂商。
         let settings = read(&path);
         assert!(settings.get(NO_PROXY_KEY).is_none());
-        assert_eq!(settings[MANAGED_NO_PROXY_KEY], json!("internal.example.com"));
+        assert_eq!(
+            settings[MANAGED_NO_PROXY_KEY],
+            json!("internal.example.com")
+        );
 
         clear_proxy_settings_at(&path).unwrap();
 
@@ -465,7 +471,10 @@ mod tests {
             assert!(read(&path).get(MANAGED_NO_PROXY_KEY).is_none());
 
             clear_proxy_settings_at(&path).unwrap();
-            assert_eq!(read(&path), serde_json::from_str::<Value>(original).unwrap());
+            assert_eq!(
+                read(&path),
+                serde_json::from_str::<Value>(original).unwrap()
+            );
         }
     }
 }
