@@ -57,7 +57,7 @@ Windows 桌面应用（Tauri 2 + Rust 后端 + React 前端），交付物是 **
 ```
 产品名:   haxsd byok
 identifier: dev.haxsd.byok
-版本:     1.0.19
+版本:     1.0.20
 更新地址: https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 

@@ -46,7 +46,7 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Updates use this repository's manifest, installer and independent Tauri signing key.
 - Tauri update signatures are distinct from Windows Authenticode signing. Windows may still display a source prompt.
 
-**1.0.19** removes the cumulative call count from the top-bar status pill. Call counts are range-based and live on the dashboard's "LLM calls" tile and the Calls page. [Release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.19)
+**1.0.20** makes update failures legible: the updater now separates "blocked by a system policy (Smart App Control / code integrity)", "no write permission" and "network/proxy" causes and names the next step, and the app re-checks the version after a restart instead of reporting success blindly. The update card shows the running executable and data directory, so a second copy on the machine can be told apart. It also adds a developer mode (off by default) and a diagnostics card (open the log directory, copy a diagnostic summary), checks for updates silently at startup with a discreet top-bar marker, and refreshes the management APIs independently so one failing endpoint no longer freezes the whole page. Server fixes: stale "running" rows left by a previous process, helper liveness judging a reused PID, `http.noProxy` being deleted without being given back, and the management API no longer returning plaintext API keys. [Release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.20)
 
 ## Boundaries and data
 
