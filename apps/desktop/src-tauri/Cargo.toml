@@ -1,6 +1,6 @@
 [package]
 name = "haxsd-byok-desktop"
-version = "1.0.18"
+version = "1.0.19"
 edition = "2021"
 publish = false
 
