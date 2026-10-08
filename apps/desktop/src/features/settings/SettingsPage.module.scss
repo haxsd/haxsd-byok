@@ -176,6 +176,14 @@
   }
 }
 
+/* 诊断卡片的动作行：打开日志目录 / 复制摘要，都是中性按钮，不是主操作。 */
+.diagnosticsActions {
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
+  padding: var(--oa-card-padding);
+}
+
 /* 主题选择器画成三张小色卡：文字名称看不出「午夜靛蓝」和「默认暗色」的差别。 */
 .themeOptions {
   display: flex;

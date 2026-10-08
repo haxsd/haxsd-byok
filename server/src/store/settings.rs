@@ -201,6 +201,12 @@ pub struct DesktopSettings {
     pub silent_start: bool,
     #[serde(default = "default_true")]
     pub show_dock_icon: bool,
+    /// 开发者模式：界面显示内部标识与协议字段，日志按 debug 级别记录。
+    ///
+    /// 默认关。它只决定"显示多少信息"，不隐藏功能；日志过滤在启动早期由
+    /// 数据目录里的 `dev-mode.json` 镜像决定（`config::write_dev_mode_mirror`）。
+    #[serde(default)]
+    pub developer_mode: bool,
 }
 
 impl Default for DesktopSettings {
@@ -208,6 +214,7 @@ impl Default for DesktopSettings {
         Self {
             silent_start: false,
             show_dock_icon: true,
+            developer_mode: false,
         }
     }
 }
@@ -570,6 +577,11 @@ impl Store {
         .bind(now_ms())
         .execute(&self.pool)
         .await?;
+        // 日志过滤在下一次启动的数据库之前初始化，只能靠数据目录里的镜像读这个开关。
+        // 镜像写不进去时设置仍然生效（界面按数据库读），所以只记一条警告。
+        if let Err(error) = crate::config::write_dev_mode_mirror(settings.developer_mode) {
+            tracing::warn!(%error, "failed to mirror the developer mode setting");
+        }
         Ok(())
     }
 

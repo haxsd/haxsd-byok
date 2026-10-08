@@ -110,7 +110,12 @@ impl Store {
             .model(current_hash)
             .await?
             .ok_or_else(|| Error::RunNotFound(format!("model {current_hash}")))?;
-        let input = normalize_model_input(input)?;
+        // 接口不再回传明文 key，编辑表单留空即为"不修改"：沿用已保存的凭据。
+        let mut input: ModelConfigInput = input.clone();
+        if input.api_key.trim().is_empty() {
+            input.api_key = current.api_key.clone();
+        }
+        let input = normalize_model_input(&input)?;
         let next_hash = model_hash(&input)?;
         let now = now_ms();
         let _write = self.writes.lock().await;
@@ -167,6 +172,20 @@ impl Store {
             .model(&next_hash)
             .await?
             .expect("updated model must exist"))
+    }
+
+    /// 复制一份模型配置，连凭据一起。凭据不再回传前端，"连 key 一起复制"只能由服务端做。
+    pub async fn duplicate_model(&self, hash: &str, display_name: &str) -> Result<ModelConfig> {
+        let source = self
+            .model(hash)
+            .await?
+            .ok_or_else(|| Error::RunNotFound(format!("model {hash}")))?;
+        let sort_order: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM model_configs")
+                .fetch_one(&self.pool)
+                .await?;
+        self.create_model(&source.duplicate_input(display_name.to_string(), sort_order))
+            .await
     }
 
     pub async fn delete_model(&self, hash: &str) -> Result<()> {
@@ -397,5 +416,68 @@ mod tests {
             .unwrap();
         assert_eq!(cleared.model_hash, created.model_hash);
         assert_eq!(cleared.group_name, None);
+    }
+
+    /// 编辑表单不回填明文 key：留空必须沿用已保存的凭据，而不是清空或报错。
+    #[tokio::test]
+    async fn an_empty_api_key_on_update_keeps_the_stored_credential() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let created = store.create_model(&model_input(None)).await.unwrap();
+
+        let updated = store
+            .update_model(
+                &created.model_hash,
+                &ModelConfigInput {
+                    api_key: "   ".into(),
+                    context_window_tokens: Some(123_456),
+                    ..model_input(None)
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.api_key, "test-key");
+        assert_eq!(updated.context_window_tokens, Some(123_456));
+        // 凭据没变，其余字段也没动到身份：模型哈希保持原样。
+        assert_eq!(updated.model_hash, created.model_hash);
+        let stored: String =
+            sqlx::query_scalar("SELECT api_key FROM model_configs WHERE model_hash = ?")
+                .bind(&updated.model_hash)
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(stored, "test-key");
+    }
+
+    /// 复制模型要连凭据一起复制。凭据不回传前端，所以这是服务端的动作。
+    #[tokio::test]
+    async fn duplicating_a_model_copies_the_credential_under_a_new_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let created = store.create_model(&model_input(None)).await.unwrap();
+
+        let copy = store
+            .duplicate_model(&created.model_hash, "Test Model 副本")
+            .await
+            .unwrap();
+
+        assert_ne!(copy.model_hash, created.model_hash);
+        assert_eq!(copy.display_name, "Test Model 副本");
+        assert_eq!(copy.api_key, "test-key");
+        assert_eq!(copy.base_url, created.base_url);
+        assert_eq!(copy.model_id, created.model_id);
+        assert_eq!(copy.sort_order, created.sort_order + 1);
+        assert_eq!(store.models().await.unwrap().len(), 2);
     }
 }

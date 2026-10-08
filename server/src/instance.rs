@@ -75,14 +75,18 @@ impl InstanceLock {
         &self.path
     }
 
-    /// 记下持锁的进程，给收尾助手判断"我守的那个实例还在不在、有没有换成别人"。
-    pub fn record_owner(&self) -> Result<()> {
+    /// 记下持锁的进程与时刻，给收尾助手判断"我守的那个实例还在不在、有没有换成别人"。
+    ///
+    /// 返回写下的启动时刻：启动清算（`Store::reconcile_interrupted_runs`）用它区分
+    /// "上一个进程留下的行"与"本进程自己的行"。
+    pub fn record_owner(&self) -> Result<i64> {
+        let started_at_ms = crate::store::now_ms();
         let owner = serde_json::json!({
             "pid": std::process::id(),
-            "started_at_ms": crate::store::now_ms(),
+            "started_at_ms": started_at_ms,
         });
         std::fs::write(self.owner_path(), serde_json::to_vec_pretty(&owner)?)?;
-        Ok(())
+        Ok(started_at_ms)
     }
 
     fn owner_path(&self) -> PathBuf {
@@ -90,14 +94,41 @@ impl InstanceLock {
     }
 }
 
+/// `app.lock.owner.json` 里记录的持锁进程。
+///
+/// `pid` 会被复用：旧进程结束后，新实例可能恰好拿到同一个编号。两个字段合起来才能确定
+/// "就是那个进程"。1.0.19 及更早写下的记录只有 `pid`。
+#[derive(Clone, Debug)]
+pub(crate) struct Owner {
+    pub(crate) pid: u32,
+    pub(crate) started_at_ms: Option<i64>,
+}
+
+impl Owner {
+    /// 当前记录是否仍然是 `other` 那个进程。
+    ///
+    /// 任一侧缺少启动时刻（旧记录）时退回只比 `pid`：宁可多等一轮，也不把还在运行的
+    /// 实例判死。
+    pub(crate) fn is_same_process(&self, other: &Owner) -> bool {
+        self.pid == other.pid
+            && match (self.started_at_ms, other.started_at_ms) {
+                (Some(current), Some(recorded)) => current == recorded,
+                _ => true,
+            }
+    }
+}
+
 /// 读出当前记录的数据目录持有者。文件可能在两次启动之间短暂缺失或损坏。
-pub(crate) fn read_owner(directory: &Path) -> Option<u32> {
+pub(crate) fn read_owner(directory: &Path) -> Option<Owner> {
     let raw = std::fs::read(directory.join(OWNER_FILE_NAME)).ok()?;
     let value: serde_json::Value = serde_json::from_slice(&raw).ok()?;
-    value
-        .get("pid")
-        .and_then(serde_json::Value::as_u64)
-        .map(|pid| pid as u32)
+    let pid = value.get("pid").and_then(serde_json::Value::as_u64)?;
+    Some(Owner {
+        pid: pid as u32,
+        started_at_ms: value
+            .get("started_at_ms")
+            .and_then(serde_json::Value::as_i64),
+    })
 }
 
 #[cfg(test)]
@@ -141,5 +172,44 @@ mod tests {
             .await
             .expect("the successor takes the lock over");
         release.await.unwrap();
+    }
+
+    /// PID 复用：编号相同、启动时刻不同，说明记录里的进程已经死了。
+    #[test]
+    fn a_reused_pid_with_a_different_start_time_is_not_the_same_process() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join(OWNER_FILE_NAME),
+            br#"{"pid": 4242, "started_at_ms": 1000}"#,
+        )
+        .unwrap();
+        let recorded = read_owner(directory.path()).expect("the record parses");
+        assert!(recorded.is_same_process(&Owner {
+            pid: 4242,
+            started_at_ms: Some(1000)
+        }));
+        assert!(
+            !recorded.is_same_process(&Owner {
+                pid: 4242,
+                started_at_ms: Some(2000)
+            }),
+            "同一个 PID 配更晚的启动时刻是另一个进程"
+        );
+    }
+
+    /// 旧记录只有 `pid`：只能退回编号比较，不能因为缺字段就把还在跑的实例判死。
+    #[test]
+    fn a_record_without_a_start_time_falls_back_to_the_pid() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join(OWNER_FILE_NAME), br#"{"pid": 4242}"#).unwrap();
+        let recorded = read_owner(directory.path()).expect("the record parses");
+        assert!(recorded.is_same_process(&Owner {
+            pid: 4242,
+            started_at_ms: Some(2000)
+        }));
+        assert!(!recorded.is_same_process(&Owner {
+            pid: 7,
+            started_at_ms: Some(2000)
+        }));
     }
 }

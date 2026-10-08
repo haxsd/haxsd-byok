@@ -80,7 +80,7 @@ function InfoTooltip({ content }: { content: string }) {
  * 每个数字都配一条趋势线：图上的分桶数据本来就有，只是以前只有总和被取走，
  * 于是「这个月比上个月多吗」这种问题在界面上无迹可寻。
  */
-export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, refreshVersion = 0 }: {
+export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, pricingFailed = false, refreshVersion = 0 }: {
   data: HomeMetricsData;
   /** 当前范围的逐分桶统计，用于趋势线。 */
   stats: BucketStat[];
@@ -88,9 +88,11 @@ export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, ref
   callCounts: number[];
   /** 按小时聚合的用量分桶；分时计价就绪时为数组，否则为 null。 */
   pricingSeries?: OverviewTokenUsageBucket[] | null;
+  /** 按小时的用量读取失败：费用只能按当前时段单价估算，必须说明而不是静默回退。 */
+  pricingFailed?: boolean;
   refreshVersion?: number;
 }) {
-  const { pricing } = useAppStore();
+  const { pricing, developerMode } = useAppStore();
   // 币种跟随界面语言：简体中文用人民币，英文用美元。
   const { locale } = useI18n();
   const currency = currencyOf(locale);
@@ -120,14 +122,17 @@ export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, ref
   const totalCost = costs.input + costs.output + costs.cacheRead + costs.cacheWrite;
   const cacheCost = costs.cacheRead + costs.cacheWrite;
 
-  const cacheTooltip = [
-    t("当前：{rate}", { rate: formatRate(defaultCacheHitRate) }),
-    t("公式：缓存读取 /（缓存读取 + 非缓存输入）"),
-    t("默认 {defaultRate} / 计入创建 {reuseRate}", {
-      defaultRate: formatRate(defaultCacheHitRate),
-      reuseRate: formatRate(cacheReuseRate),
-    }),
-  ].join("\n");
+  const cacheTooltip = developerMode
+    ? [
+      t("当前：{rate}", { rate: formatRate(defaultCacheHitRate) }),
+      t("公式：缓存读取 /（缓存读取 + 非缓存输入）"),
+      t("默认 {defaultRate} / 计入创建 {reuseRate}", {
+        defaultRate: formatRate(defaultCacheHitRate),
+        reuseRate: formatRate(cacheReuseRate),
+      }),
+    ].join("\n")
+    // 关闭开发者模式时只留一句人话：口径与公式是排查用的，不是日常数字。
+    : t("当前：{rate}", { rate: formatRate(defaultCacheHitRate) });
   const callsTooltip = [
     t("按历史 LLM 调用记录汇总，进行中的调用不计入。"),
     "",
@@ -152,12 +157,14 @@ export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, ref
     ? [
       hourlyCosts
         ? t("按高峰 / 低谷时段逐小时计价。")
-        : t("正在读取按小时的用量，暂时按当前时段估价。"),
+        : pricingFailed
+          ? t("按小时的用量读取失败，费用暂时按当前时段单价估算，不是所选范围的高峰 / 低谷计价。")
+          : t("正在读取按小时的用量，暂时按当前时段估价。"),
       t("规则：UTC 周一至周五 01:00-04:00、06:00-10:00 为高峰期，其余时段（含周末）为低谷期，低谷价 = 高峰价 5 折。"),
       t("下方单价为所选范围内的加权平均价。"),
     ]
     : [t("按配置的 Token 价格估算。")];
-  const costTooltip = [
+  const costTooltip = developerMode ? [
     ...pricingNote,
     t("缓存统计策略：默认口径（{rate}）", { rate: formatRate(defaultCacheHitRate) }),
     "",
@@ -187,7 +194,9 @@ export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, ref
     }),
     "",
     t("合计：{cost}", { cost: formatMoney(totalCost, currency) }),
-  ].join("\n");
+  ].join("\n")
+    // 关闭开发者模式时只给口径一句话和总数：五条算式是给排查与核对用的。
+    : [pricingNote[0], t("合计：{cost}", { cost: formatMoney(totalCost, currency) })].join("\n");
 
   const trend = (values: number[]) => values.length < 2 ? undefined : values;
   const tokenTrend = trend(stats.map((stat) => stat.totalTokens));
@@ -236,7 +245,9 @@ export function HomeMetrics({ data, stats, callCounts, pricingSeries = null, ref
       label={t("价值估算")}
       info={<InfoTooltip content={costTooltip} />}
       value={formatCost(totalCost, currency)}
-      hint={t("缓存读写 {cost}", { cost: formatCost(cacheCost, currency) })}
+      hint={pricingFailed
+        ? t("按小时的用量读取失败，费用为估价")
+        : t("缓存读写 {cost}", { cost: formatCost(cacheCost, currency) })}
       visual={costTrend && <Sparkline values={costTrend} tone="warn" ariaLabel={t("费用趋势")} />}
     />
   </section>;

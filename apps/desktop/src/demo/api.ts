@@ -139,6 +139,8 @@ export function installDemoApi() {
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
     if (path === "/models/discover") return json({ models: models.map((model) => model.model_id) });
+    // 复制模型由服务端连凭据一起做；mock 里返回一份模型即可，与 update 的处理一致。
+    if (/^\/models\/[^/]+\/duplicate$/.test(path)) return json(models[0]);
     if (path === "/models/import-v0049" && method === "GET") {
       return json({ source: "demo", total: 0, new_models: 0, existing_models: 0, models: [] });
     }
@@ -261,7 +263,7 @@ function createModel({ hash, order, name, type, url, modelId, endpoint = "/v1/re
     type,
     base_url: url,
     use_full_url: false,
-    api_key: "demo-key",
+    api_key_configured: true,
     tooltip_data: `${name} Mock 通道`,
     model_id: modelId,
     reasoning_effort: type === "openai" ? "high" : null,

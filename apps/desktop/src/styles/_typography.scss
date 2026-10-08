@@ -13,6 +13,8 @@ $font-size-xl: 18px;
 $font-size-2xl: 24px;
 $font-size-xxl: 20px;
 $font-size-3xl: 30px;
+/* 超大数字：首页/教程里的"一个数说明一切"位置，别用在普通标题上。 */
+$font-size-4xl: 44px;
 
 // Line heights pair with the sizes above: tight for figures, normal for prose.
 $line-height-tight: 1.2;

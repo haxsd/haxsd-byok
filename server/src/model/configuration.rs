@@ -132,6 +132,10 @@ pub struct ModelConfig {
     pub model_type: ModelType,
     pub base_url: String,
     pub use_full_url: bool,
+    /// 凭据只留在服务端：任何序列化（含管理接口）都不会带出明文，接口用
+    /// `api_key_configured` 说明是否已配置。需要凭据本身的动作——连通性测试、
+    /// 获取模型列表、复制模型——都由服务端读回这一列完成。
+    #[serde(skip_serializing)]
     pub api_key: String,
     pub tooltip_data: String,
     pub model_id: String,
@@ -153,6 +157,37 @@ pub struct ModelConfig {
 }
 
 impl ModelConfig {
+    /// 以这份配置为模板生成一份可写入的输入：只换显示名与排序，凭据原样沿用。
+    ///
+    /// "复制模型"必须连凭据一起复制，而凭据不再回传前端，所以这个动作在服务端完成
+    /// （见 `Store::duplicate_model`）。
+    pub fn duplicate_input(&self, display_name: String, sort_order: i64) -> ModelConfigInput {
+        ModelConfigInput {
+            sort_order,
+            display_name,
+            group_name: self.group_name.clone(),
+            model_type: self.model_type,
+            base_url: self.base_url.clone(),
+            use_full_url: self.use_full_url,
+            api_key: self.api_key.clone(),
+            tooltip_data: self.tooltip_data.clone(),
+            model_id: self.model_id.clone(),
+            reasoning_effort: self.reasoning_effort.clone(),
+            openai_endpoint: self.openai_endpoint.clone(),
+            openai_extra_params_enabled: self.openai_extra_params_enabled,
+            openai_extra_params: self.openai_extra_params.clone(),
+            custom_headers_enabled: self.custom_headers_enabled,
+            custom_headers: self.custom_headers.clone(),
+            anthropic_extra_params_enabled: self.anthropic_extra_params_enabled,
+            anthropic_extra_params: self.anthropic_extra_params.clone(),
+            context_window_tokens: self.context_window_tokens,
+            max_completion_tokens: self.max_completion_tokens,
+            anthropic_max_tokens: self.anthropic_max_tokens,
+            anthropic_thinking_effort: self.anthropic_thinking_effort.clone(),
+            thinking_budget_tokens: self.thinking_budget_tokens,
+        }
+    }
+
     pub fn provider_type(&self) -> ProviderType {
         match self.model_type {
             ModelType::Anthropic => ProviderType::Anthropic,
