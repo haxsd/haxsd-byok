@@ -26,7 +26,7 @@ const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor"
 const tutorialReadStorageKey = "haxsd-byok:tutorial-read";
 
 export function AppLayout() {
-  const { busy, cursorHarness, devinStatus, overview, models, offline } = useAppStore();
+  const { busy, cursorHarness, devinStatus, models, offline } = useAppStore();
   const location = useLocation();
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
@@ -107,8 +107,10 @@ export function AppLayout() {
           </NavLink>)}
       </nav>
       {/* The state of the machine, on every page. It replaced a per-page hunt: the
-          gateway's health, how much has been called and how many models exist were
-          each only visible on one page, so "is it working" had no single answer. */}
+          gateway's health and how many models exist were each only visible on one
+          page, so "is it working" had no single answer.
+          调用次数不属于这里：它是一个要按范围读的统计结果（首页的「LLM 调用」卡片
+          与「调用」页），常驻状态条里的那个累计值既与页面范围口径不一致，也读不出趋势。 */}
       <div className={styles.systemStatus} aria-label={t("运行状态")}>
         <TooltipTrigger label={t("本机网关")}>
           <StatusPill
@@ -117,10 +119,6 @@ export function AppLayout() {
           >{offline
             ? t("服务未连接")
             : devinStatus?.listening ? t("运行中") : devinStatus?.enabled ? t("待重启") : t("已关闭")}</StatusPill>
-        </TooltipTrigger>
-        <span className={styles.statusDivider} aria-hidden="true" />
-        <TooltipTrigger label={t("调用记录中已统计的调用次数")}>
-          <span className={styles.statusFact}><strong>{overview.metrics.llm_calls}</strong>{t("次调用")}</span>
         </TooltipTrigger>
         <span className={styles.statusDivider} aria-hidden="true" />
         <TooltipTrigger label={t("模型库里可用的模型")}>

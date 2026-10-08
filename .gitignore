@@ -20,6 +20,8 @@ cursor-server.tar
 /apps/desktop/src-tauri/gen/
 graphify-out/
 /.tauri/
+# 本机构建配置（GNU 链接参数、并发数），不进仓库也不随 CI 变化
+/.cargo/
 /server/*.db
 /server/*.db-shm
 /server/*.db-wal

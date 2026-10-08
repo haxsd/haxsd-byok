@@ -185,12 +185,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 113,
+          "line": 115,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 116,
+          "line": 118,
           "column": 20
         }
       ]
@@ -1509,7 +1509,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 119,
+          "line": 121,
           "column": 40
         }
       ]
@@ -1893,7 +1893,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 118,
+          "line": 120,
           "column": 15
         }
       ]
@@ -3665,7 +3665,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 119,
+          "line": 121,
           "column": 74
         }
       ]
@@ -5028,7 +5028,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 119,
+          "line": 121,
           "column": 85
         }
       ]
@@ -5710,7 +5710,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 127,
+          "line": 125,
           "column": 80
         }
       ]
@@ -7826,12 +7826,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 146,
+          "line": 144,
           "column": 60
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 146,
+          "line": 144,
           "column": 121
         }
       ]
@@ -9510,12 +9510,12 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 131,
+          "line": 129,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 135,
+          "line": 133,
           "column": 25
         }
       ]
@@ -9634,18 +9634,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 237,
           "column": 18
-        }
-      ]
-    },
-    "d8762c5105febe68": {
-      "source": "次调用",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 123,
-          "column": 93
         }
       ]
     },
@@ -10344,7 +10332,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 112,
+          "line": 114,
           "column": 56
         }
       ]
@@ -11113,7 +11101,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 126,
+          "line": 124,
           "column": 32
         }
       ]
@@ -11367,18 +11355,6 @@
           "file": "shared/ui/Select.tsx",
           "line": 156,
           "column": 90
-        }
-      ]
-    },
-    "fd20763631269456": {
-      "source": "调用记录中已统计的调用次数",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shell/AppLayout.tsx",
-          "line": 122,
-          "column": 32
         }
       ]
     },
