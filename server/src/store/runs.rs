@@ -264,7 +264,10 @@ impl Store {
     /// "进行中"。实例锁保证同一份数据目录同时只有一个进程在写，所以只处理**严格早于**
     /// `process_started_at_ms`（本进程取得实例锁的时刻）的行；本进程启动后创建的 running
     /// 行——包括正在跑的长会话——永远不会被误伤。返回被清算的行数。
-    pub(crate) async fn reconcile_interrupted_runs(&self, process_started_at_ms: i64) -> Result<u64> {
+    pub(crate) async fn reconcile_interrupted_runs(
+        &self,
+        process_started_at_ms: i64,
+    ) -> Result<u64> {
         let _write = self.writes.lock().await;
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let now = now_ms();
@@ -421,12 +424,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(interrupted, 3);
-        let run: (
-            String,
-            Option<String>,
-            Option<String>,
-            Option<i64>,
-        ) = sqlx::query_as(
+        let run: (String, Option<String>, Option<String>, Option<i64>) = sqlx::query_as(
             "SELECT status, failure_category, failure_summary, updated_at_ms
              FROM runs WHERE run_id = 'crashed-run'",
         )

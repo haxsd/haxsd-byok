@@ -88,7 +88,9 @@ pub async fn reorder(
     State(service): State<ControlService>,
     Json(input): Json<ModelOrder>,
 ) -> Result<Json<Vec<ModelView>>> {
-    Ok(Json(views(service.reorder_models(&input.model_hashes).await?)))
+    Ok(Json(views(
+        service.reorder_models(&input.model_hashes).await?,
+    )))
 }
 
 pub async fn remove(
