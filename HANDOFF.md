@@ -1,5 +1,25 @@
 # haxsd byok — 项目交接说明
 
+> 2026-10-08 **1.0.19 已发布（Latest）**：顶栏状态条不再显示累计调用次数——那个数字要按
+> 时间范围读，位置在首页「LLM 调用」卡片与「调用」页。改动同时更新了 i18n 词条（`次调用`
+> 与它的提示语随扫描一起消失）。验收：Release 非草稿且为 Latest、`latest.json` 匿名 200
+> 且下载地址已改写成 `releases/download/...`（不含 `api.github.com`）、安装包签名与
+> `tauri.conf.json` 里的公钥一致（keyId `02d27538334f1d5b`）。产物副本在
+> `D:\cursor-byok\byok-dev\_logs\release-1.0.19\`；前端 `npm run check` 与 main 上 CI 的
+> 五个任务全绿。
+>
+> ⚠️ **本机没能覆盖安装 1.0.19。** 本机 Smart App Control 处于 On
+> （`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState = 1`），
+> 实测不只拦下这个未签名的安装包，连「把已装的 exe 复制一份、改一个字节再运行」也被拦
+> （CodeIntegrity 事件 3077/3033/3118，策略 ID `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`）。
+> 也就是说：在没有 Authenticode 签名之前，**这台机器既装不了新安装包，也用不了应用内更新**；
+> 应用停在 1.0.18（它本机已获信任，仍能运行）。详见第六节的陷阱条目。
+>
+> 环境变化（同一天实测）：本机**已没有 Rust 工具链**（C:/D: 全盘搜不到 `cargo.exe`），
+> 本地 `cargo fmt/clippy/test`、`tauri:build` 全部不可用，二进制只能由 CI 产出；前端校验要
+> 用 `D:\dev\toolchain\node22`（PATH 上的 `D:\nodejs` 是 16，跑不动 Vite 8）。经用户同意已删除
+> `target\`（22.25 GB 构建缓存，产出它的 GNU 工具链已不在本机）。
+
 > 2026-09-28 本机启动卡住已定位：自动存储清理在一个写事务中删除 1456 万条
 > `blob_edges`（实测 541 秒），随后删除 blob 时因缺少追踪外键索引反复扫描
 > 46 万条 artifact；Cursor 代理启动保存相同端口等待该写锁，前端整批刷新因此不完成。
@@ -37,7 +57,7 @@ Windows 桌面应用（Tauri 2 + Rust 后端 + React 前端），交付物是 **
 ```
 产品名:   haxsd byok
 identifier: dev.haxsd.byok
-版本:     1.0.18
+版本:     1.0.19
 更新地址: https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
@@ -86,15 +106,18 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: D:\cursor-byok\haxsd-byok
-版本:     1.0.18（2026-09-28 已安装并启动验证，模型、CA、接管与调用统计正常）
-数据目录: C:\Users\Administrator\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里
+版本:     1.0.18（2026-09-28 已安装并启动验证，模型、CA、接管与调用统计正常；2026-10-08 仍停
+          在这个版本——1.0.19 的安装包被本机 Smart App Control 拦下，见开头那段与第六节）
+数据目录: C:\Users\32488\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里（本机用户是 32488；
+          HANDOFF 早先写的 C:\Users\Administrator 是换 profile 之前的记录）
 ```
 
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.18（Latest），2026-09-28
-产物:      haxsd.byok_1.0.18_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.19（Latest），2026-10-08   ← 顶栏去掉调用次数
+产物:      haxsd.byok_1.0.19_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.18，2026-09-28（启动清理阻塞的修复）
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
@@ -155,7 +178,12 @@ Cursor BYOK     ← 另一个产品，安装在 D:\cursor-byok\Cursor BYOK，进
 ## 四、工具链与硬性约定
 
 ```
-Rust:    stable-x86_64-pc-windows-gnu（MSVC 未安装）
+Rust:    stable-x86_64-pc-windows-gnu（MSVC 未安装）——**2026-10-08 起本机已没有 Rust**：
+         C:/D: 全盘无 `cargo.exe`、无 `~\.cargo`，所以 `cargo fmt/clippy/test` 与
+         `tauri:build` 在本机都跑不了；二进制一律由 CI 产出。重新装工具链时注意本项目要的是
+         GNU 目标（WinLibs MCF/UCRT），仓库外的 `.cargo\config.toml` 里有链接参数与并发数。
+前端:    `D:\dev\toolchain\node22`（node 22.23.2 / npm 10.9.8）。PATH 上的 `D:\nodejs` 是
+         node 16，Vite 8 跑不动，跑 `npm run check` 前先把它放到 PATH 最前面。
 Shell:   Windows PowerShell 5.1
 ```
 
@@ -211,6 +239,8 @@ canvas 图表**无法继承 CSS**，所以色板定义在主题里、由 `featur
 
 | 陷阱 | 真相 |
 |---|---|
+| **关窗口 ≠ 退出应用** | 产品有系统托盘（`tray.rs`：图标 `icons/32x32.png`，提示「haxsd byok」，菜单「打开 haxsd byok」/「退出」；Windows 上左键单击图标即打开窗口）。关掉最后一个窗口时 Tauri 抛 `ExitRequested { code: None }`，`desktop.rs` 的 `prevent_exit()` 把它挡下，进程和本地网关继续在托盘里跑——Cursor 的接管依赖网关在线，所以这是有意为之。**真正退出**只有托盘菜单「退出」（`code=Some` 的优雅停机：取消任务、等内嵌服务退出，最多 11 秒）或强杀（靠 `--cleanup-after-exit` 助手收尾）。装新版本前也必须真正退出，只关窗口不算 |
+| **Smart App Control 会拦下未签名的安装包与主程序（2026-10-08 实测）** | 本机 SAC 处于 On（`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState = 1`）。它只放行已有信任的二进制：应用内「下载并安装」把 1.0.19 下到 `%TEMP%\haxsd byok-1.0.19-updater-*\haxsd byok-1.0.19-installer.exe` 后执行被拦（CodeIntegrity 3077/3033 + SAC 3118，策略 `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`），页面看不出原因，应用重启后仍是旧版本；手动跑 `_logs\release-*\*.exe` 同样被拦，连「把已装 exe 复制一份改一个字节」也拦。**根因是缺 Authenticode 签名**（Tauri 更新签名只管更新器验签，Windows 不认）。要么关掉 SAC（不可逆，需管理员+重启），要么给发布产物加 Authenticode 签名。SAC 是从「评估模式」自动转成 On 的，所以以前能装、现在不能 —— 遇到「更新失败」先跑 `Get-MpComputerStatus \| Select SmartAppControlState` 和 CodeIntegrity 日志，别去查更新器代码 |
 | **GNU 工具链构建的 Tauri 安装包缺 `WebView2Loader.dll`** | 不打包的话干净机器上启动报「找不到 WebView2Loader.dll 系统错误」。已修为 `tauri.conf.json` 的 `bundle.resources` 带上 `webview2/WebView2Loader.dll`。**改打包配置时别删掉它。** |
 | **应用是单实例的** | 已装应用在跑时，第二个副本会被自己踢掉。要验证源码改动，只能另起独立 server 进程服务新构建的前端 |
 | **前端编译进二进制** | 改了前端必须重新 `tauri:build` + 安装才能在应用里看到；光 build 前端不够 |
@@ -470,13 +500,15 @@ curl.exe -s -o NUL -w "%{http_code}`n" "https://github.com/haxsd/haxsd-byok/rele
 
 ## 十一、待办与已知问题
 
-2026-09-28 全面检查见 [`docs/quality-review-2026-09-28.md`](docs/quality-review-2026-09-28.md)。插件数据目录别名与 Windows 尾部句点已在源码修复并补回归，尚未发布新安装包，本机仍为 1.0.18。优先待修：管理读取的超时/局部刷新与乱序保护、异常退出助手 PID、崩溃遗留运行收尾、首页范围查询失败反馈。管理授权、凭据导出和宿主恢复记录归属需整体设计。当前产品介绍与上手说明已移至新用户/开发指南。
+2026-09-28 全面检查见 [`docs/quality-review-2026-09-28.md`](docs/quality-review-2026-09-28.md)。插件数据目录别名与 Windows 尾部句点已在源码修复并补回归，随 1.0.19 一起发布（本机安装仍停在 1.0.18：被 Smart App Control 拦下，见开头那段与第六节）。优先待修：管理读取的超时/局部刷新与乱序保护、异常退出助手 PID、崩溃遗留运行收尾、首页范围查询失败反馈。管理授权、凭据导出和宿主恢复记录归属需整体设计。当前产品介绍与上手说明已移至新用户/开发指南。
 
 | 优先级 | 事项 | 说明 |
 |---|---|---|
 | ~~高~~ | ~~同步产品仓库~~ | 已完成：旧开发分支的存量归档为 `legacy/devin-router`，逐文件清单见第七节 |
 | ~~高~~ | ~~发布正式 Release~~ | 已完成：`haxsd-byok-v1.0.3`（Latest），签名链与匿名下载都已实测验证 |
 | ~~低~~ | ~~`latest.json` 下载地址走 `api.github.com`~~ | 已修：finalize 阶段改写成不限流的 `github.com/.../releases/download/...`，并在改写失败时中断发布 |
+| **高** | **给发布产物加 Authenticode 签名** | 2026-10-08 实测：SAC 处于 On 的机器上，未签名的安装包和主程序都会被拦（细节见第六节）。**这不是可选项，是对外发布的门槛**——没有它，任何开了 SAC 的 Windows 11 用户既装不上也更新不了。选型：Azure Trusted Signing（按量付费，CI 友好）或 OV/EV 代码签名证书；接入点：`tauri.conf.json` 的 `bundle.windows.signCommand`/证书指纹，或 tauri-action 的签名输入。做完要在开着 SAC 的机器上实测一次安装 + 应用内更新 |
+| 中 | 更新失败要说清楚 | `UpdateCard` 现在把系统错误原样显示，失败后应用还会重启回旧版本，用户看不出「系统策略拦下了安装包」。拆成 `download()` + `install()` 分别捕获，把 `An Application Control policy has blocked this file` 这类系统错误翻译成中文提示，并说明下一步（关 SAC 或用带签名的安装包） |
 | 中 | 图表**形态**重设计 | 已修：空柱等高、日历数据源、三主题色板、仪表盘硬编码绿色、tooltip 走 token。**形态本身（柱状/热力图）未做** |
 | 中 | 日期选择器、命令面板等长尾控件 | 未逐一走查 |
 | 低 | 偶发测试 `database is locked` | `newer_run_request_on_one_bidi_stream_replaces_the_active_run` 出现过一次；源仓库 12 次运行未复现。**无复现证据前不要改池配置** |
