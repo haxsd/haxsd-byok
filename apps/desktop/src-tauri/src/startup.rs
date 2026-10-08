@@ -18,8 +18,17 @@ const RETAINED_LOG_FILES: usize = 15;
 /// 第三方必须显式列出来：`EnvFilter` 一旦给出具体目标，没提到的目标就是关闭的。
 /// 之前 `hudsucker`（本地代理的 MITM 实现）整条线被丢掉，而"连不上代理/CONNECT
 /// 失败/TLS 握手失败"恰恰只由它记录——报错时日志里什么都没有，就是这么来的。
-/// 需要更细的现场时用 `RUST_LOG=hudsucker=debug,cursor_server=debug` 启动。
-const DEFAULT_LOG_FILTER: &str = "haxsd_byok_desktop=info,cursor_server=info,hudsucker=warn,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn";
+/// `tauri_plugin_updater` 也必须在列表里：更新失败（尤其被系统策略拦下）过去在文件
+/// 日志里一行都不留，用户报"更新失败"时无从查起。
+/// 需要更细的现场时用 `RUST_LOG=hudsucker=debug,cursor_server=debug` 启动，
+/// 或在设置里打开「开发者模式」。
+const DEFAULT_LOG_FILTER: &str = "haxsd_byok_desktop=info,cursor_server=info,tauri_plugin_updater=info,hudsucker=warn,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn";
+
+/// 开发者模式下的过滤：自家两条线与本地代理都放开到 `debug`。
+///
+/// 开关存在数据目录的 `dev-mode.json` 镜像里（数据库还没打开，只能读文件），
+/// 由设置页写、`store::set_desktop_settings` 落盘，改完重启生效。
+const DEVELOPER_LOG_FILTER: &str = "haxsd_byok_desktop=debug,cursor_server=debug,hudsucker=debug,tauri_plugin_updater=info,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn";
 
 type BoxError = Box<dyn Error + Send + Sync>;
 
@@ -40,8 +49,15 @@ impl StartupDiagnostics {
             .max_log_files(RETAINED_LOG_FILES)
             .build(&log_directory)?;
         let (file_writer, writer_guard) = tracing_appender::non_blocking(file_appender);
+        // 开发者模式只能从数据目录的镜像读（数据库还没打开）；缺失或损坏按关闭处理。
+        let developer_mode = cursor_server::config::dev_mode_enabled();
+        let default_filter = if developer_mode {
+            DEVELOPER_LOG_FILTER
+        } else {
+            DEFAULT_LOG_FILTER
+        };
         let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| DEFAULT_LOG_FILTER.into());
+            .unwrap_or_else(|_| default_filter.into());
 
         tracing_subscriber::registry()
             .with(filter)
@@ -52,6 +68,8 @@ impl StartupDiagnostics {
                     .with_writer(file_writer),
             )
             .try_init()?;
+
+        tracing::info!(developer_mode, default_filter, "log filtering configured");
 
         cursor_server::diagnostics::set_app_version(env!("CARGO_PKG_VERSION"));
         install_panic_hook();

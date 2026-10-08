@@ -80,6 +80,9 @@ pub struct ModelDiscoveryInput {
     pub model_type: ModelType,
     pub base_url: String,
     pub api_key: String,
+    /// 编辑已有模型时表单不回填明文 key：留空并带上模型哈希，服务端沿用已存的凭据。
+    #[serde(default)]
+    pub model_hash: Option<String>,
     #[serde(default)]
     pub custom_headers_enabled: bool,
     #[serde(default = "empty_json_object")]
@@ -307,6 +310,15 @@ impl ControlService {
         self.store.create_models(models).await
     }
 
+    /// 复制一份模型配置：凭据留在服务端，由 `Store` 从源模型读回。
+    pub async fn duplicate_model(
+        &self,
+        model_hash: &str,
+        display_name: &str,
+    ) -> Result<ModelConfig> {
+        self.store.duplicate_model(model_hash, display_name).await
+    }
+
     pub async fn reorder_models(&self, model_hashes: &[String]) -> Result<Vec<ModelConfig>> {
         self.store.reorder_models(model_hashes).await
     }
@@ -490,6 +502,20 @@ impl ControlService {
     pub async fn discover_models(&self, input: &ModelDiscoveryInput) -> Result<DiscoveredModels> {
         let client = self.clients.default_client().await?;
         let base_url = crate::model::normalize_request_url(&input.base_url)?;
+        // 编辑已有模型时表单不回填明文 key：留空即沿用服务端保存的那一份。
+        let api_key = match input.api_key.trim() {
+            "" => match input.model_hash.as_deref() {
+                Some(hash) => {
+                    self.store
+                        .model(hash)
+                        .await?
+                        .ok_or_else(|| Error::RunNotFound(format!("model {hash}")))?
+                        .api_key
+                }
+                None => String::new(),
+            },
+            key => key.to_string(),
+        };
         discover_models_from_endpoint(
             &client,
             match input.model_type {
@@ -497,7 +523,7 @@ impl ControlService {
                 ModelType::Anthropic => ProviderType::Anthropic,
             },
             &base_url,
-            &input.api_key,
+            &api_key,
             if input.custom_headers_enabled {
                 &input.custom_headers
             } else {

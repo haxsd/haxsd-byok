@@ -8,6 +8,7 @@ use crate::{Error, Result};
 
 const DATA_DIR_NAME: &str = ".haxsd-byok-devin-v3";
 const DATABASE_FILE_NAME: &str = "haxsd-byok.db";
+const DEV_MODE_FILE_NAME: &str = "dev-mode.json";
 const DATA_DIR_ENV_NAME: &str = "HAXSD_BYOK_DATA_DIR";
 const DATABASE_URL_ENV_NAME: &str = "HAXSD_BYOK_DATABASE_URL";
 const V0049_DATA_DIR_NAME: &str = ".cursor-local-assistant-v2";
@@ -37,6 +38,48 @@ fn isolated_data_dir(directory: PathBuf) -> Result<PathBuf> {
         )));
     }
     Ok(directory)
+}
+
+/// 开发者模式镜像文件的路径。
+pub fn dev_mode_file_path() -> Result<PathBuf> {
+    Ok(managed_data_dir()?.join(DEV_MODE_FILE_NAME))
+}
+
+/// 读开发者模式镜像；文件缺失或损坏都按关闭处理（默认关）。
+///
+/// 日志过滤在数据库之前初始化，那时没有 store 可读；主窗口的 origin 又带随机端口，
+/// localStorage 里的记录换端口就丢。于是"是否开发者模式"必须在数据目录里留一份文件，
+/// 供启动早期读取。数据库里的设置是唯一事实来源，这里是它的镜像。
+pub fn dev_mode_enabled() -> bool {
+    let Ok(path) = dev_mode_file_path() else {
+        return false;
+    };
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
+    serde_json::from_str::<DevModeMirror>(&raw)
+        .map(|mirror| mirror.developer_mode)
+        .unwrap_or(false)
+}
+
+/// 把开发者模式写进镜像文件；内容没变时不重写。
+pub fn write_dev_mode_mirror(enabled: bool) -> Result<()> {
+    let json = serde_json::to_string(&DevModeMirror {
+        developer_mode: enabled,
+    })?;
+    let path = dev_mode_file_path()?;
+    if let Ok(current) = fs::read_to_string(&path) {
+        if current == json {
+            return Ok(());
+        }
+    }
+    fs::write(path, json)?;
+    Ok(())
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct DevModeMirror {
+    developer_mode: bool,
 }
 
 pub fn v0049_config_path() -> Result<PathBuf> {

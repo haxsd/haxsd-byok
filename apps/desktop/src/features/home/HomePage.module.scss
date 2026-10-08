@@ -23,6 +23,31 @@
   padding: var(--oa-card-padding);
 }
 
+/* 范围查询失败：只说"没有区间数据"和怎么重试，不给任何会与全量数据混淆的数字。 */
+.errorBlock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-5);
+  padding: var(--oa-card-padding);
+
+  > div {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  strong {
+    color: var(--oa-bad);
+  }
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+    overflow-wrap: anywhere;
+  }
+}
+
 .rangeBadge {
   flex: 0 0 auto;
   padding: 3px 9px;

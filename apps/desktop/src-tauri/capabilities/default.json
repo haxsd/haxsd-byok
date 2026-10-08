@@ -17,6 +17,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:app:allow-set-dock-visibility",
+    "allow-open-log-directory",
     "allow-open-terminal-with-command",
     "clipboard-manager:allow-write-text",
     "autostart:default",

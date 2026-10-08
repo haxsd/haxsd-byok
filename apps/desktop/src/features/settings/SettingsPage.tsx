@@ -4,6 +4,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { LegacyModelImport } from "../models/LegacyModelImport";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CommitSettingsCard } from "./CommitSettingsCard";
+import { DiagnosticsCard } from "./DiagnosticsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { ProxySettingsCard } from "./ProxySettingsCard";
 import { TabSettingsCard } from "./TabSettingsCard";
@@ -15,6 +16,7 @@ import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { SectionHeading } from "../../shared/ui/SectionHeading";
 import { Select } from "../../shared/ui/Select";
+import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { setLocalePreference, useI18n, type LocalePreference } from "../../i18n/store";
 import { useMessage } from "../../shared/ui/message";
@@ -27,7 +29,8 @@ type SettingsCardId =
   | "update" | "language" | "theme" | "app"
   | "ports" | "proxy" | "tab"
   | "observability" | "pricing" | "storage"
-  | "commit" | "import";
+  | "commit" | "import"
+  | "diagnostics";
 
 type SettingsGroup = {
   id: string;
@@ -37,7 +40,7 @@ type SettingsGroup = {
 };
 
 export function SettingsPage() {
-  const { detailed, ports, theme } = useAppStore();
+  const { detailed, developerMode, ports, theme } = useAppStore();
   const { preference, locale } = useI18n();
   const message = useMessage();
   const [proxyPort, setProxyPort] = useState(String(ports.proxy_port));
@@ -94,7 +97,9 @@ export function SettingsPage() {
       label: t("网络"),
       hint: t("端口与出网方式"),
       items: [
-        { id: "ports", label: t("端口设置") },
+        // 端口是部署细节：按 B1 的三档清单收进开发者模式，关闭时只收入口，
+        // 打开开关就能改（不是删功能）。
+        ...(developerMode ? [{ id: "ports" as const, label: t("端口设置") }] : []),
         { id: "proxy", label: t("代理设置") },
         { id: "tab", label: t("TAB 设置") },
       ],
@@ -118,7 +123,15 @@ export function SettingsPage() {
         { id: "import", label: t("导入") },
       ],
     },
-  ], [locale]);
+    {
+      id: "diagnostics",
+      label: t("诊断"),
+      hint: t("运行信息与日志"),
+      items: [
+        { id: "diagnostics", label: t("诊断") },
+      ],
+    },
+  ], [locale, developerMode]);
   const cards = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
   // 卡片在页面里的位置决定导航高亮：观察的是卡片本身，不是滚动距离，
@@ -239,6 +252,11 @@ export function SettingsPage() {
       setSavingTab(false);
     }
   };
+  const toggleDeveloperMode = async (enabled: boolean) => {
+    if (await appStore.updateDeveloperMode(enabled)) {
+      message(enabled ? t("已开启开发者模式；日志改动重启后生效") : t("已关闭开发者模式"));
+    }
+  };
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     const units = ["KB", "MB", "GB", "TB"];
@@ -314,7 +332,8 @@ export function SettingsPage() {
 
         <SectionHeading eyebrow={groups[1].label} title={groups[1].hint} id="settings-network" />
         <div className={styles.cards}>
-          <div data-card="ports" ref={registerCard("ports")}>
+          {/* 端口设置收进开发者模式：关闭时卡片与导航项一起隐藏，打开开关即恢复。 */}
+          {developerMode && <div data-card="ports" ref={registerCard("ports")}>
             <TitledCard
               title={t("端口设置")}
               description={t("本机服务监听的端口；修改后需要重启")}
@@ -370,7 +389,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </TitledCard>
-          </div>
+          </div>}
           <div data-card="proxy" ref={registerCard("proxy")}>
             <ProxySettingsCard settings={outboundProxy} outbound={outboundStatus} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
           </div>
@@ -382,18 +401,31 @@ export function SettingsPage() {
         <SectionHeading eyebrow={groups[2].label} title={groups[2].hint} id="settings-usage" />
         <div className={styles.cards}>
           <div data-card="observability" ref={registerCard("observability")}>
-            <TitledCard title={t("调用观测")} description={t("决定调用记录保留到什么程度")}>
+            <TitledCard title={t("调用观测")} description={t("记录多少内容、显示多少内部信息")}>
               <div className={styles.settingRow}>
                 <div>
                   <strong>{t("详细模式")}</strong>
                   <small>
-                    {t("额外保存完整请求和流响应；默认只保存时间、状态与用量。")}
+                    {t("额外保存完整请求和流响应；默认只保存时间、状态与用量。管的是“记录原文”。")}
                   </small>
                 </div>
                 <Checkbox
                   label={t("详细模式")}
                   checked={detailed}
                   onChange={(checked) => void appStore.updateDetailed(checked)}
+                />
+              </div>
+              <div className={styles.settingRow}>
+                <div>
+                  <strong>{t("开发者模式")}</strong>
+                  <small>
+                    {t("显示内部标识、协议字段和端口等开发者信息，并让日志更详细。管的是“显示开发者信息”，不改变保存的内容；日志改动重启后生效。")}
+                  </small>
+                </div>
+                <Switch
+                  checked={developerMode}
+                  label={t("开发者模式")}
+                  onChange={(checked) => void toggleDeveloperMode(checked)}
                 />
               </div>
             </TitledCard>
@@ -440,6 +472,11 @@ export function SettingsPage() {
               </div>
             </TitledCard>}</LegacyModelImport>
           </div>
+        </div>
+
+        <SectionHeading eyebrow={groups[4].label} title={groups[4].hint} id="settings-diagnostics" />
+        <div className={styles.cards}>
+          <div data-card="diagnostics" ref={registerCard("diagnostics")}><DiagnosticsCard /></div>
         </div>
       </ScrollableContent>
     </div>

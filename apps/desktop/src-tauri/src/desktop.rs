@@ -41,6 +41,23 @@ struct DesktopRuntime {
     server_addr: std::net::SocketAddr,
 }
 
+/// 打开日志目录（`<数据目录>\logs`）。
+///
+/// 只认这一个路径，不接受调用方传入任何字符串——前端拿到的能力就是"打开日志目录"，
+/// 不是通用的文件系统访问。前端优先用 `tauri-plugin-opener`；它的路径权限没有开
+/// （capabilities 里没有 `opener:allow-open-path`），所以这里给一个窄命令。
+#[tauri::command]
+fn open_log_directory(app: AppHandle) -> std::result::Result<(), String> {
+    let directory = cursor_server::config::managed_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("logs");
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    // `open_path` 收的是 `impl Into<String>`（插件 2.5.4），路径要先变成字符串。
+    app.opener()
+        .open_path(directory.display().to_string(), None::<&str>)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn open_terminal_with_command(command: String) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
@@ -228,7 +245,10 @@ pub fn run() -> ExitCode {
     let started_by_autostart = std::env::args_os().any(|arg| arg == AUTOSTART_ARG);
 
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_terminal_with_command,])
+        .invoke_handler(tauri::generate_handler![
+            open_terminal_with_command,
+            open_log_directory,
+        ])
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|arg| arg == AUTOSTART_ARG) {
                 let _ = open_main_window(app);
@@ -267,8 +287,25 @@ pub fn run() -> ExitCode {
             let address = listener.local_addr()?;
             tauri::async_runtime::block_on(server.harness().cleanup_stale_settings())?;
             let desktop_settings =
-                tauri::async_runtime::block_on(server.store().desktop_settings())
-                    .unwrap_or_default();
+                match tauri::async_runtime::block_on(server.store().desktop_settings()) {
+                    Ok(settings) => {
+                        // 开发者模式的镜像给**下一次**启动的日志过滤读（设置页保存时也会写），
+                        // 这里兜住"升级后第一次启动、设置行已有但镜像还不存在"的情况。
+                        if let Err(error) =
+                            cursor_server::config::write_dev_mode_mirror(settings.developer_mode)
+                        {
+                            tracing::warn!(%error, "failed to sync the developer mode mirror");
+                        }
+                        settings
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            %error,
+                            "desktop settings unavailable at startup; using defaults"
+                        );
+                        cursor_server::store::DesktopSettings::default()
+                    }
+                };
             #[cfg(target_os = "macos")]
             app.handle()
                 .set_dock_visibility(desktop_settings.show_dock_icon)?;
@@ -313,8 +350,15 @@ pub fn run() -> ExitCode {
         // code 为 None 表示所有窗口已被关闭(轻量模式),阻止退出,
         // 转发服务继续在托盘后台运行;code 为 Some 时是显式退出请求。
         RunEvent::ExitRequested { code, api, .. } => match code {
-            None => api.prevent_exit(),
-            Some(_) => {
+            None => {
+                // 关窗不是退出：进程与本地网关留在托盘里（Cursor 的接管依赖网关在线）。
+                tracing::info!("all windows closed; exit prevented, the gateway stays in the tray");
+                api.prevent_exit();
+            }
+            Some(code) => {
+                // 真正退出只来自托盘菜单「退出」或应用自己调 exit；记下是哪一种，
+                // 用户报"自己退了/没退"时要能从日志回答。
+                tracing::info!(code, "explicit exit requested; shutting down the gateway");
                 let runtime = app.state::<DesktopRuntime>();
                 if !runtime.exiting.swap(true, Ordering::AcqRel) {
                     api.prevent_exit();
@@ -354,15 +398,15 @@ pub fn run() -> ExitCode {
 
 /// 收尾助手进程的入口：应用已经被强杀，替它撤掉留在 Cursor 里的代理配置。
 ///
-/// 没有窗口、没有托盘，跑完就退。日志照旧写文件：这条路径出问题时不能完全无声。
+/// "我守的实例"从 `app.lock.owner.json` 读取（`pid` + 启动时刻），不靠自己的 PID 猜：
+/// 助手是独立进程，编号与主应用本来就不同。没有窗口、没有托盘，跑完就退。日志照旧写
+/// 文件：这条路径出问题时不能完全无声。
 fn run_exit_cleanup() -> ExitCode {
     let Ok(_diagnostics) = StartupDiagnostics::initialize() else {
         // 连日志都起不来时不要弹窗：这是个后台助手，没人看着它。
         return ExitCode::FAILURE;
     };
-    match tauri::async_runtime::block_on(cursor_server::local_app::cleanup_after_exit(
-        std::process::id(),
-    )) {
+    match tauri::async_runtime::block_on(cursor_server::local_app::cleanup_after_exit()) {
         Ok(true) => {
             tracing::info!("exit cleanup removed the leftover Cursor proxy configuration");
             ExitCode::SUCCESS

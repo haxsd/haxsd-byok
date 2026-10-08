@@ -107,10 +107,13 @@ export function ModelLibraryPage() {
     setDiscovering(true);
     try {
       const custom_headers = parseHeaders(draft.customHeadersText);
+      const api_key = draft.model.api_key.trim();
       const result = await api.discoverModels({
         type: draft.model.type,
         base_url: draft.model.base_url.trim(),
-        api_key: draft.model.api_key.trim(),
+        api_key,
+        // 编辑已有模型时表单不回填明文 key：留空即让服务端用已保存的那一份。
+        model_hash: api_key ? undefined : editing?.model_hash,
         custom_headers_enabled: draft.model.custom_headers_enabled,
         custom_headers,
       });
@@ -125,7 +128,7 @@ export function ModelLibraryPage() {
   };
   const persist = async (): Promise<Model | null> => {
     if (!draft) return null;
-    const input = draftInput(draft);
+    const input = draftInput(draft, editing !== null);
     if (editing) return appStore.updateCursorModel(editing.model_hash, input);
     return (await appStore.createModels([input]))?.[0] ?? null;
   };
@@ -226,17 +229,13 @@ export function ModelLibraryPage() {
       displayName = `${baseName} ${suffix}`;
       suffix += 1;
     }
-    const created = await appStore.createModels([{
-      ...modelInput(model),
-      sort_order: models.length + 1,
-      display_name: displayName,
-    }]);
-    if (created) message(t("模型已复制"));
+    if (await appStore.duplicateModel(model.model_hash, displayName)) message(t("模型已复制"));
   };
   const openGroupSettings = (group: CursorModelGroup) => {
     setGroupNameDraft(group.models.find((model) => model.group_name?.trim())?.group_name?.trim() ?? "");
     setGroupBaseUrlDraft(sharedValue(group.models.map((model) => model.base_url)) ?? "");
-    setGroupApiKeyDraft(sharedValue(group.models.map((model) => model.api_key)) ?? "");
+    // 凭据不回传前端：这一栏永远从空白开始，留空即保持各模型现有配置。
+    setGroupApiKeyDraft("");
     setSettingsGroup(group);
   };
   const saveGroupSettings = async () => {
@@ -253,9 +252,8 @@ export function ModelLibraryPage() {
           ...(base_url ? { base_url } : {}),
           ...(api_key ? { api_key } : {}),
         };
-        if (input.group_name === (model.group_name ?? null)
-          && input.base_url === model.base_url
-          && input.api_key === model.api_key) continue;
+        // 三处都没改就不提交；凭据留空表示不修改，不能拿它和明文比。
+        if (input.group_name === (model.group_name ?? null) && input.base_url === model.base_url && !api_key) continue;
         await api.updateModel(model.model_hash, input);
       }
       await appStore.refresh();
@@ -373,7 +371,7 @@ export function ModelLibraryPage() {
       sections={[{ key: "model-library", estimatedHeight: Math.max(360, estimatedListViewport), content }]}
     />
     <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting(editing, testingModelHashes) || (editing && modelTestResults.get(editing.model_hash))) ? <CursorModelTestResult state={editing ? modelTestResults.get(editing.model_hash) : undefined} testing={editorTesting(editing, testingModelHashes)} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting(editing, testingModelHashes)) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editing && editorTesting(editing, testingModelHashes) ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editing && editorTesting(editing, testingModelHashes) ? t("取消测试") : t("保存并测试")}</button>}>
-      {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} onChange={setDraft} onDiscover={discover} />}
+      {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} hasStoredKey={editing !== null} onChange={setDraft} onDiscover={discover} />}
     </Modal>
     <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
       {settingsGroup && <div className={styles.editor}>
@@ -404,8 +402,9 @@ function editorTesting(editing: Model | null, testing: Set<string>) {
 }
 
 function modelInput(model: Model): ModelInput {
-  const { model_hash: _hash, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
-  return input;
+  const { model_hash: _hash, api_key_configured: _configured, created_at_ms: _created, updated_at_ms: _updated, ...input } = model;
+  // 明文 key 不在这里：编辑时留空表示沿用已保存的凭据。
+  return { ...input, api_key: "" };
 }
 
 /** 组内所有模型取值一致时返回该值，否则返回 null（表单留空表示保持不变）。 */
@@ -415,7 +414,8 @@ function sharedValue(values: string[]): string | null {
   return rest.every((value) => value === first) ? first : null;
 }
 
-function draftInput(draft: CursorModelDraft): ModelInput {
+/** `keepStoredKey` 为真表示在编辑已有模型：凭据栏留空即"不修改"，服务端沿用已保存的 key。 */
+function draftInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput {
   const model = {
     ...draft.model,
     display_name: draft.model.display_name.trim(),
@@ -427,7 +427,7 @@ function draftInput(draft: CursorModelDraft): ModelInput {
     custom_headers: parseHeaders(draft.customHeadersText),
     anthropic_extra_params: parseObject(draft.anthropicExtraParamsText, t("Anthropic 额外参数")),
   };
-  if (!model.display_name || !model.base_url || !model.api_key || !model.tooltip_data || !model.model_id) throw new Error(t("服务器地址或完整请求 URL、API Key、模型名称、显示名称和备注不能为空"));
+  if (!model.display_name || !model.base_url || (!keepStoredKey && !model.api_key) || !model.tooltip_data || !model.model_id) throw new Error(t("服务器地址或完整请求 URL、API Key、模型名称、显示名称和备注不能为空"));
   for (const [label, value] of [[t("上下文窗口 Token"), model.context_window_tokens], [t("最大输出 Token"), model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens], [t("思考预算 Token"), model.thinking_budget_tokens]] as const) {
     if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) throw new Error(t("{label} 必须是大于 0 的整数", { label }));
   }

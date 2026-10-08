@@ -10,7 +10,8 @@ export interface Model {
   type: ModelType;
   base_url: string;
   use_full_url: boolean;
-  api_key: string;
+  /** 凭据只留在服务端：这里只说明"已配置"，明文永远不回传。 */
+  api_key_configured: boolean;
   tooltip_data: string;
   model_id: string;
   reasoning_effort: string | null;
@@ -37,6 +38,7 @@ export interface ModelInput {
   type: ModelType;
   base_url: string;
   use_full_url: boolean;
+  /** 新建时必填；编辑时留空表示沿用已保存的凭据。 */
   api_key: string;
   tooltip_data: string;
   model_id: string;
@@ -58,7 +60,9 @@ export interface ModelInput {
 export interface ModelDiscoveryInput {
   type: ModelType;
   base_url: string;
+  /** 留空并带上 model_hash 时，服务端用已保存的凭据发起发现请求。 */
   api_key: string;
+  model_hash?: string;
   custom_headers_enabled: boolean;
   custom_headers: Record<string, string>;
 }
@@ -241,6 +245,8 @@ export interface TabSettings {
 export interface DesktopSettings {
   silent_start: boolean;
   show_dock_icon: boolean;
+  /** 开发者模式：显示内部标识与协议字段，并让日志记录更详细。默认关。 */
+  developer_mode: boolean;
 }
 
 export interface CommitSettings {
@@ -611,6 +617,7 @@ export const api = {
   appInfo: () => request<AppInfo>("/app-info"),
   models: () => request<Model[]>("/models"),
   createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
+  duplicateModel: (hash: string, displayName: string) => request<Model>(`/models/${encodeURIComponent(hash)}/duplicate`, { method: "POST", body: JSON.stringify({ display_name: displayName }) }),
   reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
   discoverModels: (input: ModelDiscoveryInput) => request<{ models: string[] }>("/models/discover", { method: "POST", body: JSON.stringify(input) }),
   previewV0049Models: () => request<LegacyModelImportPreview>("/models/import-v0049"),
@@ -664,6 +671,17 @@ export const api = {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中复制到系统剪贴板"));
     const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
     await writeText(text);
+  },
+  /**
+   * 打开日志目录（`<数据目录>\logs`）。
+   *
+   * 走一个只认这一个路径的窄命令：`tauri-plugin-opener` 的路径权限没有开，
+   * 而它的通用 `openPath` 会把"打开文件系统任意路径"的能力交给 webview。
+   */
+  openLogDirectory: async () => {
+    if (!packagedDesktop) throw new Error(t("请在桌面应用中打开日志目录"));
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("open_log_directory");
   },
   setCursorEnabled: (enabled: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
   calls: () => request<LlmCall[]>("/llm-calls?limit=200"),

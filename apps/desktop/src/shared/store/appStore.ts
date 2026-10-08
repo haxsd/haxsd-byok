@@ -63,6 +63,8 @@ export type AppSnapshot = {
   calls: LlmCall[];
   overview: Overview;
   detailed: boolean;
+  /** 开发者模式：界面显示内部标识与协议字段。默认关，存在 server 的 desktop 设置里。 */
+  developerMode: boolean;
   ports: PortSettings;
   pricing: TokenPricingSettings;
   busy: boolean;
@@ -102,6 +104,7 @@ let snapshot: AppSnapshot = {
     token_usage_series: [],
   },
   detailed: false,
+  developerMode: false,
   ports: { proxy_port: 0, service_port: 0 },
   pricing: DEFAULT_TOKEN_PRICING,
   busy: false,
@@ -133,6 +136,12 @@ async function perform(task: () => Promise<void>) {
   }
 }
 
+/**
+ * 刷新代际。挂载时的刷新、手动点刷新、改完设置后的刷新会重叠，没有这个守卫时
+ * 先发起的请求晚返回就会把新数据覆盖回旧值（"刚改完又显示旧的"）。
+ */
+let refreshGeneration = 0;
+
 export const appStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);
@@ -140,28 +149,58 @@ export const appStore = {
   },
   getSnapshot: () => snapshot,
 
+  /**
+   * 十一个接口分别落库：一个次要接口（比如插件运行时）失败时，其余数据照常更新，
+   * 只有失败项保留旧值。以前整批走 `Promise.all`，任一接口抛错就把已经拿到的数据
+   * 全部丢掉，界面上表现为"数据停在刚才"。
+   */
   async refresh() {
+    const generation = ++refreshGeneration;
     update({ busy: true, error: null });
-    try {
-      const [models, calls, overview, settings, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins] = await Promise.all([
-        api.models(),
-        api.calls(),
-        api.overview(),
-        api.observability(),
-        api.ports(),
-        api.pricingSettings(),
-        api.cursorHarness(),
-        api.devinStatus(),
-        api.pluginRuntime(),
-        api.plugins(),
-      ]);
-      update({ models, calls, overview, detailed: settings.detailed, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins, offline: false });
-    } catch (cause) {
-      if (cause instanceof ServiceUnreachableError) update({ offline: true });
-      else update({ error: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      update({ busy: false });
+    const results = await Promise.allSettled([
+      api.models(),
+      api.calls(),
+      api.overview(),
+      api.observability(),
+      api.ports(),
+      api.pricingSettings(),
+      api.cursorHarness(),
+      api.devinStatus(),
+      api.pluginRuntime(),
+      api.plugins(),
+      api.desktopSettings(),
+    ]);
+    // 已经有更新的一批在跑：这一批整批丢弃，连 busy 也交给新的一批收尾。
+    if (generation !== refreshGeneration) return;
+    const labels = [
+      t("模型库"), t("调用记录"), t("概览统计"), t("调用观测"), t("端口设置"),
+      t("Token 定价"), t("Cursor 接管状态"), t("Devin 网关状态"), t("插件运行时"),
+      t("插件列表"), t("应用设置"),
+    ];
+    const [models, calls, overview, observability, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins, desktop] = results;
+    const patch: Partial<AppSnapshot> = {};
+    if (models.status === "fulfilled") patch.models = models.value;
+    if (calls.status === "fulfilled") patch.calls = calls.value;
+    if (overview.status === "fulfilled") patch.overview = overview.value;
+    if (observability.status === "fulfilled") patch.detailed = observability.value.detailed;
+    if (ports.status === "fulfilled") patch.ports = ports.value;
+    if (pricing.status === "fulfilled") patch.pricing = pricing.value;
+    if (cursorHarness.status === "fulfilled") patch.cursorHarness = cursorHarness.value;
+    if (devinStatus.status === "fulfilled") patch.devinStatus = devinStatus.value;
+    if (pluginRuntime.status === "fulfilled") patch.pluginRuntime = pluginRuntime.value;
+    if (plugins.status === "fulfilled") patch.plugins = plugins.value;
+    if (desktop.status === "fulfilled") patch.developerMode = desktop.value.developer_mode;
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    const unreachable = failures.some((failure) => failure.reason instanceof ServiceUnreachableError);
+    // offline 的语义不变：只要有接口报"连不上"就是离线；只要有接口答了话，就不算离线。
+    if (unreachable) patch.offline = true;
+    else if (failures.length < results.length) patch.offline = false;
+    const failedLabels = results.flatMap((result, index) => result.status === "rejected" && !(result.reason instanceof ServiceUnreachableError) ? [labels[index]] : []);
+    if (failedLabels.length > 0) {
+      patch.error = t("部分数据刷新失败：{items}。其余数据已更新，失败项保留上一次的值。", { items: failedLabels.join("、") });
     }
+    update(patch);
+    update({ busy: false });
   },
 
   async deleteModel(modelHash: string) {
@@ -248,6 +287,18 @@ export const appStore = {
       return null;
     } finally { update({ cursorBusy: false }); }
   },
+  /** 复制模型连同它的凭据：凭据不回传前端，所以由服务端从源模型读回。 */
+  async duplicateModel(hash: string, displayName: string) {
+    update({ cursorBusy: true, error: null });
+    try {
+      const created = await api.duplicateModel(hash, displayName);
+      await appStore.refresh();
+      return created;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return null;
+    } finally { update({ cursorBusy: false }); }
+  },
   async importV0049Models() {
     update({ cursorBusy: true, error: null });
     try {
@@ -315,6 +366,19 @@ export const appStore = {
   },
   async updateDetailed(detailed: boolean) {
     await perform(async () => update(await api.setObservability(detailed)));
+  },
+  // 开发者模式：desktop 设置是一整份，先读回再合并，避免覆盖静默启动等字段。
+  async updateDeveloperMode(enabled: boolean) {
+    update({ error: null });
+    try {
+      const settings = await api.desktopSettings();
+      const saved = await api.setDesktopSettings({ ...settings, developer_mode: enabled });
+      update({ developerMode: saved.developer_mode });
+      return true;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return false;
+    }
   },
   async updatePorts(ports: PortSettings) {
     try {

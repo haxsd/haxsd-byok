@@ -37,9 +37,13 @@ impl App {
     pub async fn new(mut config: Config) -> Result<Self> {
         // 先占坑再碰端口与数据库：第二个实例必须在改动任何共享状态之前被挡住。
         let instance = crate::instance::InstanceLock::acquire().await?;
-        // 记下持有者：收尾助手靠它区分"我守的实例死了"与"新实例已经接管"。
-        instance.record_owner()?;
+        // 记下持有者：收尾助手靠它区分"我守的实例死了"与"新实例已经接管"；下面那笔
+        // 启动清算也用它区分"上一个进程留下的 running 行"与"本进程自己的行"。
+        let started_at_ms = instance.record_owner()?;
         let store = Store::connect(&config.database_url).await?;
+        // 崩溃与强杀留下的 running 行在这里收尾：它们会让存储回收停摆，也会让调用
+        // 列表永远显示"进行中"。只清算严格早于本进程启动的行。
+        store.reconcile_interrupted_runs(started_at_ms).await?;
         if config.use_persisted_ports {
             config
                 .listen_addr

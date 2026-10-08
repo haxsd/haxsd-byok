@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { IconifyIcon } from "@iconify/react/offline";
 import KeepAliveRouteOutlet from "keepalive-for-react-router";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import cursorIconUrl from "../shared/assets/icons/cursor.svg";
 import { PageLayout } from "./layout/PageLayout";
 import controls from "../shared/ui/Controls.module.scss";
@@ -11,6 +11,7 @@ import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
 import { navCallsIcon, navDevinIcon, navModelsIcon, navOverviewIcon, navPluginsIcon, navSettingsIcon, navTutorialIcon } from "../shared/ui/navIcons";
 import { refreshIcon, searchIcon } from "../shared/ui/icons";
 import { appStore, useAppStore } from "../shared/store/appStore";
+import { useAvailableUpdate } from "../features/settings/startupUpdateCheck";
 import styles from "./AppLayout.module.scss";
 import { CommandPalette } from "./CommandPalette";
 import { OfflineBanner } from "./OfflineBanner";
@@ -27,7 +28,9 @@ const tutorialReadStorageKey = "haxsd-byok:tutorial-read";
 
 export function AppLayout() {
   const { busy, cursorHarness, devinStatus, models, offline } = useAppStore();
+  const availableUpdate = useAvailableUpdate();
   const location = useLocation();
+  const navigate = useNavigate();
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
   const [tutorialRead, setTutorialRead] = useState(() => {
@@ -124,6 +127,18 @@ export function AppLayout() {
         <TooltipTrigger label={t("模型库里可用的模型")}>
           <span className={styles.statusFact}><strong>{models.length}</strong>{t("个模型")}</span>
         </TooltipTrigger>
+        {/* 启动时静默检查发现的更新：只留一个小标记，点进设置页的更新卡片。
+            不是弹窗、也没有自动下载——是否安装由用户在更新卡片上决定。 */}
+        {availableUpdate && <>
+          <span className={styles.statusDivider} aria-hidden="true" />
+          <TooltipTrigger label={t("有新版本 {version} 可以安装", { version: availableUpdate.version })}>
+            <button
+              type="button"
+              className={styles.updateMarker}
+              onClick={() => void navigate("/settings")}
+            >{t("有新版本")}</button>
+          </TooltipTrigger>
+        </>}
         <span className={styles.statusDivider} aria-hidden="true" />
         {/* A keyboard shortcut nobody can see is a shortcut nobody uses. */}
         <TooltipTrigger label={t("搜索或执行命令")}>

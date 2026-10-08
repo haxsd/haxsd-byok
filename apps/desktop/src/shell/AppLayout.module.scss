@@ -172,6 +172,40 @@
   background: var(--oa-border);
 }
 
+/* 启动检查发现的新版本：一个小圆点加一句话，不是按钮组里的主操作。 */
+.updateMarker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--oa-warn);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-medium;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--oa-transition-fast);
+
+  &::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 50%;
+  }
+
+  &:hover {
+    color: var(--vscode-foreground);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
 /* 快捷键要么看得见，要么没人用。 */
 .commandButton {
   display: inline-flex;

@@ -18,6 +18,7 @@ import { formatTimeInput, parseTimeInput } from "../../shared/utils/parseTimeInp
 import { modelProviderName } from "../../shared/utils/modelProvider";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { PageTitle } from "../../shared/ui/PageTitle";
+import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { claudeIcon, flatColorOrganizationIcon, openAiIcon, flatColorAreaChartIcon } from "../../shared/ui/icons";
@@ -76,20 +77,30 @@ export function HomePage() {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [appliedModels, setAppliedModels] = useState<string[]>([]);
   const [rangeOverview, setRangeOverview] = useState<Overview | null>(null);
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [rangeBusy, setRangeBusy] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [pricingSeries, setPricingSeries] = useState<OverviewTokenUsageBucket[] | null>(null);
+  const [pricingFailed, setPricingFailed] = useState(false);
   const selectedRange = preset === "custom" ? customRange : presetRange(preset);
 
   useEffect(() => {
     if (!selectedRange) return;
     let active = true;
     setRangeBusy(true);
+    // 失败时清掉区间数据并留下错误：`overview` 是全量数据，拿它兜底会把"近30天"
+    // 的徽标挂到全量数字上——宁可什么都不显示，也不能显示错口径的数字。
     void api.overview({
       ...selectedRange,
       modelHashes: appliedModels,
     }).then((next) => {
-      if (active) setRangeOverview(next);
+      if (!active) return;
+      setRangeOverview(next);
+      setRangeError(null);
+    }).catch((cause) => {
+      if (!active) return;
+      setRangeOverview(null);
+      setRangeError(cause instanceof Error ? cause.message : String(cause));
     }).finally(() => {
       if (active) setRangeBusy(false);
     });
@@ -103,12 +114,23 @@ export function HomePage() {
   useEffect(() => {
     if (pricing.mode !== "peak_off_peak" || !selectedRange) {
       setPricingSeries(null);
+      setPricingFailed(false);
       return;
     }
     let active = true;
     void fetchHourlyUsage(selectedRange, appliedModels)
-      .then((series) => { if (active) setPricingSeries(series); })
-      .catch(() => { if (active) setPricingSeries(null); });
+      .then((series) => {
+        if (!active) return;
+        setPricingSeries(series);
+        setPricingFailed(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        // 失败必须说出来：没有它费用会静默按"当前时段单价"估算，
+        // 用户会以为看到的是所选范围的高峰/低谷计价。
+        setPricingSeries(null);
+        setPricingFailed(true);
+      });
     return () => { active = false; };
     // 同理：overview 不是这次请求的输入。
   }, [preset, customRange, refreshVersion, appliedModels, pricing.mode]);
@@ -221,7 +243,29 @@ export function HomePage() {
         peakTokens: formatCompactInteger(busiest?.totalTokens ?? 0),
       });
 
-  const sections: VirtualPageSection[] = [
+  // 范围查询失败时，区间口径的数字一个都不渲染（指标、Token 图表、模型用量）：
+  // 以前失败会静默回退到全量数据，徽标写着"近30天"、数字却是全量，用户以为看的是区间。
+  const rangeSections: VirtualPageSection[] = rangeError ? [
+    {
+      key: "range-error",
+      estimatedHeight: 170,
+      content: <TitledCard
+        title={t("时间范围数据")}
+        description={t("所选范围的统计没有取到；这里不显示全量数据，避免与区间口径混淆。")}
+        badge={<span className={styles.rangeBadge}>{rangeLabel}</span>}
+      >
+        <div className={styles.errorBlock}>
+          <div>
+            <strong>{t("这个范围的数据加载失败")}</strong>
+            <small>{rangeError}</small>
+          </div>
+          <Button size="small" disabled={rangeBusy} onClick={() => setRefreshVersion((version) => version + 1)}>
+            {rangeBusy ? t("重试中…") : t("重试")}
+          </Button>
+        </div>
+      </TitledCard>,
+    },
+  ] : [
     {
       key: "metrics",
       estimatedHeight: 132,
@@ -230,6 +274,7 @@ export function HomePage() {
         stats={stats}
         callCounts={callCounts}
         pricingSeries={pricingSeries}
+        pricingFailed={pricingFailed}
         refreshVersion={refreshVersion}
       />,
     },
@@ -256,6 +301,9 @@ export function HomePage() {
           </div>}
       </TitledCard>,
     },
+  ];
+  const sections: VirtualPageSection[] = [
+    ...rangeSections,
     {
       key: "calendar",
       estimatedHeight: 168,
@@ -289,7 +337,9 @@ export function HomePage() {
           title={t("模型用量")}
           description={t("这段时间里，每个模型承担了多少。")}
         >
-          <ModelUsageList rows={modelRows} />
+          {rangeError
+            ? <div className={styles.emptyBlock}><small>{t("范围数据加载失败，暂时无法按模型统计。")}</small></div>
+            : <ModelUsageList rows={modelRows} />}
         </TitledCard>
       </div>,
     },
