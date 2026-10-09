@@ -46,7 +46,7 @@ Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
 - 更新来自本仓库，使用本产品独立的 Tauri 更新签名。
 - 更新签名用于校验更新包，不等同于 Windows Authenticode 代码签名；Windows 仍可能显示来源提示。
 
-**1.0.20 修复**：更新失败不再只给一句英文系统错误——会分清「被系统策略拦下（Smart App Control／代码完整性）」「权限不足」「网络/代理」并给出下一步，安装后重启会自动核对是否真的装上了；界面显示当前可执行文件与数据目录，用来分辨本机是否存在第二份安装。同时新增开发者模式（默认关）与诊断卡片（打开日志目录、复制诊断摘要），更新检查在启动时静默进行并在顶栏提示，接口刷新改为分项（单个接口失败不再让整页停在旧数据）。服务端修掉：退出后遗留的「进行中」记录、助手进程判定的 PID 复用、`http.noProxy` 被删除不归还，以及管理接口不再明文回传 API Key。[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.20)
+**1.0.21 修复**：Cursor 子代理起不来、或一直停在「Planning next moves」（主对话正常）——我们两处准入比客户端更严：父头部不再要求成对出现，Windows 子代理启动消息缺少 `message_id` 时改为按内容派生稳定身份（重试幂等）。1.0.20 的更新可见性、开发者模式与服务端修复见它的[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.20)。[1.0.21 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21)
 
 ## 使用边界与数据
 

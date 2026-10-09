@@ -1,5 +1,28 @@
 # haxsd byok — 项目交接说明
 
+> 2026-10-09 **1.0.21 已发布（Latest）**：移植上游 `leookun/cursor-byok#484` 的两处子代理准入修复。
+> 故障形态：Windows 上 Cursor 子代理起不来，或一直停在「Planning next moves」，主对话却正常。
+> 根因两条——`x-parent-request-id` 与 `x-parent-agent-tool-call-id` 由客户端**分别**发送，
+> 我们却要求成对（只带一个就 400，模型还没跑就被拒）；Windows 子代理 kickoff 的
+> `UserMessage.message_id` 是空串，我们直接拒绝。改动：`server/src/api/cursor/handlers.rs`
+> 两个头各自可选、`server/src/cursor/transport/handle.rs` 的 `TransportParent` 字段改 `Option`
+> （只拒绝全空/空串）、`conversation/runtime.rs` 只在提供时把 tool_call_id 交给 checkpoint、
+> `compile/run.rs` 空 id 时派生 `synthetic:{sha256}`（重试幂等，不产生重复 turn）；回归测试在
+> `server/tests/error_lifecycle.rs`。经 PR #1 合并：本机没有 Rust 工具链，fmt/clippy/测试由
+> CI 验证（Linux `cargo test --workspace --all-targets` + Windows/macOS desktop clippy），
+> 全绿后合并。`compile/break_messages.rs` 还有一处同形状检查在"运行中插话"路径上，
+> 上游与本仓库日志都没命中，**故意未动**，保持与上游同范围。
+>
+> 同一轮确认：本机 1.0.20 是**用户在应用内更新**装上的（新做的失败分类、重启后核对版本、
+> 显示可执行文件与数据目录都由此走了一遍）。
+>
+> 已知门禁不稳（未修）：`store::retention::tests::blob_deletion_does_not_scan_every_trace_reference`
+> 断言的是 `EXPLAIN QUERY PLAN DELETE FROM blobs` 里不出现 `SCAN cursor_run_trace_artifacts`。
+> 2026-09-28 起最近 5 次 CI 红了 3 次，与本次改动无关；本机用 Node 的 sqlite 复现"有/无
+> `sqlite_stat1`"两种情况都得到 `SEARCH ... USING COVERING INDEX`，**没有复现出扫表**，
+> 因此不猜原因、不改断言。要收敛它只有两条路：等能复现，或把断言换成"索引存在"（迁移 0011
+> 的 `cursor_run_trace_artifacts_blob`）——后者是确定性的，但会削弱"计划真的走索引"这层保护。
+
 > 2026-10-08 **1.0.19 已发布（Latest）**：顶栏状态条不再显示累计调用次数——那个数字要按
 > 时间范围读，位置在首页「LLM 调用」卡片与「调用」页。改动同时更新了 i18n 词条（`次调用`
 > 与它的提示语随扫描一起消失）。验收：Release 非草稿且为 Latest、`latest.json` 匿名 200
@@ -57,7 +80,7 @@ Windows 桌面应用（Tauri 2 + Rust 后端 + React 前端），交付物是 **
 ```
 产品名:   haxsd byok
 identifier: dev.haxsd.byok
-版本:     1.0.20
+版本:     1.0.21
 更新地址: https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
 
@@ -106,8 +129,8 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 
 ```
 安装位置: D:\cursor-byok\haxsd-byok
-版本:     1.0.18（2026-09-28 已安装并启动验证，模型、CA、接管与调用统计正常；2026-10-08 仍停
-          在这个版本——1.0.19 的安装包被本机 Smart App Control 拦下，见开头那段与第六节）
+版本:     1.0.20（2026-10-09 由用户在应用内更新装上，验证了新做的那条链路：下载 → 安装 →
+          重启后自动核对「上次更新已生效」；更新登记与快捷方式都指向 D 盘这一份）
 数据目录: C:\Users\32488\.haxsd-byok-devin-v3\haxsd-byok.db   ← 用户数据在这里（本机用户是 32488；
           HANDOFF 早先写的 C:\Users\Administrator 是换 profile 之前的记录）
 ```
@@ -115,8 +138,9 @@ Devin 侧不改模型库本身，而是建立「Devin 模型 UID → 模型库�
 ### 已发布
 
 ```
-Release:   haxsd-byok-v1.0.19（Latest），2026-10-08   ← 顶栏去掉调用次数
-产物:      haxsd.byok_1.0.19_x64-setup.exe / .sig / latest.json
+Release:   haxsd-byok-v1.0.21（Latest），2026-10-09   ← 子代理准入修复（父头部可选、空 message_id 派生身份）
+Release:   haxsd-byok-v1.0.20，2026-10-08（更新失败可见性、开发者模式与诊断、服务端四处正确性）
+Release:   haxsd-byok-v1.0.19，2026-10-08（顶栏去掉累计调用次数）
 Release:   haxsd-byok-v1.0.18，2026-09-28（启动清理阻塞的修复）
 更新地址:  https://github.com/haxsd/haxsd-byok/releases/latest/download/latest.json
 ```
