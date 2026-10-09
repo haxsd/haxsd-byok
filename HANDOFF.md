@@ -16,6 +16,13 @@
 > 同一轮确认：本机 1.0.20 是**用户在应用内更新**装上的（新做的失败分类、重启后核对版本、
 > 显示可执行文件与数据目录都由此走了一遍）。
 >
+> 也是这一天，**本机重新装上了 Rust**（用户装的 rustup 在 `D:\rust`；我补装了 GNU 工具链
+> `stable-x86_64-pc-windows-gnu`，并修掉两份仓库里过期的 `-lmcfgthread` 链接开关）——也就是说
+> 开头 2026-10-08 那段"本机已没有 Rust 工具链"的结论**自 2026-10-09 起不再成立**，本地
+> fmt/clippy/测试都可以跑了，细节见第四节的工具链一节。Cursor BYOK 的那份修复就是靠它
+> 在本地先跑过 fmt/clippy/新回归测试，再交给 CI 的（那份仓库里同样的 `.cargo/config.toml`
+> 也一并修正了）。
+>
 > 已知门禁不稳（未修）：`store::retention::tests::blob_deletion_does_not_scan_every_trace_reference`
 > 断言的是 `EXPLAIN QUERY PLAN DELETE FROM blobs` 里不出现 `SCAN cursor_run_trace_artifacts`。
 > 2026-09-28 起最近 5 次 CI 红了 3 次，与本次改动无关；本机用 Node 的 sqlite 复现"有/无
@@ -202,10 +209,20 @@ Cursor BYOK     ← 另一个产品，安装在 D:\cursor-byok\Cursor BYOK，进
 ## 四、工具链与硬性约定
 
 ```
-Rust:    stable-x86_64-pc-windows-gnu（MSVC 未安装）——**2026-10-08 起本机已没有 Rust**：
-         C:/D: 全盘无 `cargo.exe`、无 `~\.cargo`，所以 `cargo fmt/clippy/test` 与
-         `tauri:build` 在本机都跑不了；二进制一律由 CI 产出。重新装工具链时注意本项目要的是
-         GNU 目标（WinLibs MCF/UCRT），仓库外的 `.cargo\config.toml` 里有链接参数与并发数。
+Rust:    stable-x86_64-pc-windows-gnu（MSVC 未安装；rustup 在 `D:\rust`，`RUSTUP_HOME=D:\rust\rustup`、
+         `CARGO_HOME=D:\rust\cargo`，用户 PATH 里有 `D:\rust\cargo\bin`）。
+         **2026-10-09 起本机可以本地编译/测试了**：装的是 GNU 工具链（rustc 1.99.0），配套 mingw 是
+         `D:\dev\toolchain\mingw64`（WinLibs UCRT + **POSIX 线程**，gcc 16.2.0）。两份仓库里未跟踪的
+         `.cargo/config.toml` 原先带 `link-arg=-lmcfgthread`（那是配套已不在本机的 WinLibs **MCF**
+         mingw 的），会导致每个二进制报 `cannot find -lmcfgthread`；已去掉并注明何时加回。
+         本地可用的校验命令（在两份仓库都成立）：
+            cargo fmt --all -- --check
+            cargo clippy -p cursor-server --all-targets -- -D warnings
+            cargo test -p cursor-server --lib        # 注意下面这条既有失败
+            cargo test -p cursor-server --test error_lifecycle
+         既有失败（与本项目代码无关，Linux CI 上通过）：本机 GNU 环境下
+         `provider::attempt::tests::request_transport_failure_is_one_failed_attempt` 会失败
+         （上游 PR #484 亦注明），排查时别把它当成回归。
 前端:    `D:\dev\toolchain\node22`（node 22.23.2 / npm 10.9.8）。PATH 上的 `D:\nodejs` 是
          node 16，Vite 8 跑不动，跑 `npm run check` 前先把它放到 PATH 最前面。
 Shell:   Windows PowerShell 5.1
