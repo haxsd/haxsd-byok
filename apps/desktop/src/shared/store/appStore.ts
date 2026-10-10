@@ -142,6 +142,21 @@ async function perform(task: () => Promise<void>) {
  */
 let refreshGeneration = 0;
 
+/** 当前在跑的刷新。发起新刷新或做数据变更前先中止它，避免旧结果回填。 */
+let refreshController: AbortController | null = null;
+
+/**
+ * 作废在途的刷新：只递增代际并中止它的请求，不发起新的一次。
+ *
+ * 变更类操作在动手前先调用，保证旧刷新晚返回时不会把刚写入的状态覆盖回去；
+ * 之后再按需调用 refresh() 拉取权威数据。
+ */
+function invalidateRefresh() {
+  refreshGeneration += 1;
+  refreshController?.abort();
+  refreshController = null;
+}
+
 export const appStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);
@@ -156,22 +171,33 @@ export const appStore = {
    */
   async refresh() {
     const generation = ++refreshGeneration;
+    // 中止上一次还没落库的刷新，避免它晚返回时把新数据覆盖回旧值。
+    refreshController?.abort();
+    const controller = new AbortController();
+    refreshController = controller;
+    const { signal } = controller;
     update({ busy: true, error: null });
     const results = await Promise.allSettled([
-      api.models(),
-      api.calls(),
-      api.overview(),
-      api.observability(),
-      api.ports(),
-      api.pricingSettings(),
-      api.cursorHarness(),
-      api.devinStatus(),
-      api.pluginRuntime(),
-      api.plugins(),
-      api.desktopSettings(),
+      api.models(signal),
+      api.calls(signal),
+      api.overview(undefined, signal),
+      api.observability(signal),
+      api.ports(signal),
+      api.pricingSettings(signal),
+      api.cursorHarness(signal),
+      api.devinStatus(signal),
+      api.pluginRuntime(signal),
+      api.plugins(signal),
+      api.desktopSettings(signal),
     ]);
-    // 已经有更新的一批在跑：这一批整批丢弃，连 busy 也交给新的一批收尾。
-    if (generation !== refreshGeneration) return;
+    // 已经有更新的一批在跑：这一批整批丢弃，busy 交给新的一批收尾。
+    // 若是变更操作只作废、没有新开刷新（refreshController 已清空），这里要自己把 busy 清掉，
+    // 否则界面会一直转圈。
+    if (generation !== refreshGeneration) {
+      if (refreshController === null) update({ busy: false });
+      return;
+    }
+    if (refreshController === controller) refreshController = null;
     const labels = [
       t("模型库"), t("调用记录"), t("概览统计"), t("调用观测"), t("端口设置"),
       t("Token 定价"), t("Cursor 接管状态"), t("Devin 网关状态"), t("插件运行时"),
@@ -191,6 +217,7 @@ export const appStore = {
     if (plugins.status === "fulfilled") patch.plugins = plugins.value;
     if (desktop.status === "fulfilled") patch.developerMode = desktop.value.developer_mode;
     const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    // 只有「服务连不上」才算离线；超时是 RequestTimeoutError，不算离线。
     const unreachable = failures.some((failure) => failure.reason instanceof ServiceUnreachableError);
     // offline 的语义不变：只要有接口报"连不上"就是离线；只要有接口答了话，就不算离线。
     if (unreachable) patch.offline = true;
@@ -205,6 +232,9 @@ export const appStore = {
 
   async deleteModel(modelHash: string) {
     await perform(async () => {
+      // 变更前先作废在途刷新，并乐观移除，界面立刻反映删除。
+      invalidateRefresh();
+      update({ models: snapshot.models.filter((model) => model.model_hash !== modelHash) });
       await api.deleteModel(modelHash);
       await appStore.refresh();
     });
@@ -279,7 +309,15 @@ export const appStore = {
   async createModels(models: ModelInput[]) {
     update({ cursorBusy: true, error: null });
     try {
+      // 变更前先作废在途刷新：否则旧 GET 晚返回会盖掉刚建的模型。
+      invalidateRefresh();
       const created = await api.createModels(models);
+      // 先把新建结果并进快照，界面不必等刷新完成就能看到变化。
+      if (created.length > 0) {
+        const byHash = new Map(snapshot.models.map((model) => [model.model_hash, model] as const));
+        for (const model of created) byHash.set(model.model_hash, model);
+        update({ models: [...byHash.values()].sort((a, b) => a.sort_order - b.sort_order) });
+      }
       await appStore.refresh();
       return created;
     } catch (cause) {
@@ -291,7 +329,13 @@ export const appStore = {
   async duplicateModel(hash: string, displayName: string) {
     update({ cursorBusy: true, error: null });
     try {
+      invalidateRefresh();
       const created = await api.duplicateModel(hash, displayName);
+      if (created) {
+        const byHash = new Map(snapshot.models.map((model) => [model.model_hash, model] as const));
+        byHash.set(created.model_hash, created);
+        update({ models: [...byHash.values()].sort((a, b) => a.sort_order - b.sort_order) });
+      }
       await appStore.refresh();
       return created;
     } catch (cause) {
@@ -302,6 +346,7 @@ export const appStore = {
   async importV0049Models() {
     update({ cursorBusy: true, error: null });
     try {
+      invalidateRefresh();
       const result = await api.importV0049Models();
       await appStore.refresh();
       return result;
@@ -313,7 +358,12 @@ export const appStore = {
   async updateCursorModel(hash: string, model: ModelInput) {
     update({ cursorBusy: true, error: null });
     try {
+      invalidateRefresh();
       const updated = await api.updateModel(hash, model);
+      // 立刻反映这一条模型的改动，其余字段交给紧随其后的刷新。
+      if (updated) {
+        update({ models: snapshot.models.map((item) => item.model_hash === updated.model_hash ? updated : item) });
+      }
       await appStore.refresh();
       return updated;
     } catch (cause) {
@@ -322,6 +372,8 @@ export const appStore = {
     } finally { update({ cursorBusy: false }); }
   },
   async reorderCursorModels(modelHashes: string[]) {
+    // 作废在途刷新，避免它晚返回时用旧顺序覆盖这次重排。
+    invalidateRefresh();
     const previous = snapshot.models;
     const byHash = new Map(previous.map((model) => [model.model_hash, model]));
     if (modelHashes.length !== previous.length || new Set(modelHashes).size !== previous.length) {
