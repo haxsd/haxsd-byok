@@ -588,34 +588,114 @@ export class ServiceUnreachableError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_ROOT}${path}`, {
-      ...init,
-      headers: init?.body ? { "content-type": "application/json", ...init.headers } : init?.headers,
-    });
-  } catch (cause) {
-    throw new ServiceUnreachableError({ cause });
+/**
+ * 管理请求超时：本地服务在给定时间内没有回应。
+ *
+ * 和 ServiceUnreachableError 分开：超时通常说明服务还活着、只是这次太慢，
+ * 界面不该把它当成「服务没连上」持续重试，只当作一次普通的模块失败。
+ */
+export class RequestTimeoutError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(t("管理请求超时"), options);
+    this.name = "RequestTimeoutError";
   }
-  if (!response.ok) {
-    const body = await response.text();
-    let message = body;
-    try {
-      const parsed = JSON.parse(body) as { message?: unknown };
-      if (typeof parsed.message === "string") message = parsed.message;
-    } catch {
-      // Plain-text errors are already suitable for display.
+}
+
+/** 默认请求超时（毫秒）。长任务显式传 `timeoutMs: null` 关闭。 */
+const DEFAULT_TIMEOUT_MS = 15000;
+
+/** 请求选项：在标准 RequestInit 之上多一个可选的超时毫秒数。 */
+type RequestOptions = RequestInit & { timeoutMs?: number | null };
+
+/** 判断一个错误是否由超时中止产生（原生 AbortSignal.timeout 抛 name 为 TimeoutError 的异常）。 */
+function isTimeoutAbort(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null) return false;
+  return (cause as { name?: unknown }).name === "TimeoutError";
+}
+
+async function request<T>(path: string, init?: RequestOptions): Promise<T> {
+  const { timeoutMs, ...rest } = init ?? {};
+  const callerSignal = rest.signal ?? undefined;
+  const effectiveTimeoutMs = typeof timeoutMs === "undefined"
+    ? DEFAULT_TIMEOUT_MS
+    : typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : null;
+  const hasTimeout = effectiveTimeoutMs !== null;
+
+  // AbortSignal.timeout / AbortSignal.any 不一定存在：按需探测，缺失时用兜底实现。
+  const abortStatics: {
+    timeout?: (ms: number) => AbortSignal;
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  } = typeof AbortSignal !== "undefined"
+    ? (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal; any?: (signals: AbortSignal[]) => AbortSignal })
+    : {};
+  const nativeTimeout = abortStatics.timeout;
+  const nativeAny = abortStatics.any;
+
+  let combinedSignal: AbortSignal | undefined = callerSignal;
+  let timedOut = false;
+  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+
+  if (hasTimeout) {
+    if (nativeTimeout && (!callerSignal || nativeAny)) {
+      // 优先用平台自带的超时信号；有调用方信号时用 any 合并两者。
+      const timeoutSignal = nativeTimeout.call(AbortSignal, effectiveTimeoutMs);
+      combinedSignal = callerSignal && nativeAny
+        ? nativeAny.call(AbortSignal, [callerSignal, timeoutSignal])
+        : timeoutSignal;
+    } else {
+      // 兜底：AbortController + setTimeout，并把调用方的取消转发进来。
+      const controller = new AbortController();
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        controller.abort(new DOMException("timeout", "TimeoutError"));
+      }, effectiveTimeoutMs);
+      combinedSignal = controller.signal;
+      if (callerSignal) {
+        if (callerSignal.aborted) controller.abort(callerSignal.reason);
+        else callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), { once: true });
+      }
     }
-    throw new Error(message || `${response.status} ${response.statusText}`);
   }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+
+  const abortedByTimeout = (cause: unknown): boolean =>
+    timedOut || isTimeoutAbort(cause) || isTimeoutAbort(combinedSignal?.reason);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(`${API_ROOT}${path}`, {
+        ...rest,
+        signal: combinedSignal,
+        headers: rest.body ? { "content-type": "application/json", ...rest.headers } : rest.headers,
+      });
+    } catch (cause) {
+      // 超时和「连不上」必须分开：前者是这次请求太慢，后者是服务没起来。
+      if (abortedByTimeout(cause)) throw new RequestTimeoutError({ cause });
+      // 调用方主动取消：原样抛出，交给上层判断。
+      if (callerSignal?.aborted) throw cause;
+      throw new ServiceUnreachableError({ cause });
+    }
+    if (!response.ok) {
+      const body = await response.text();
+      let message = body;
+      try {
+        const parsed = JSON.parse(body) as { message?: unknown };
+        if (typeof parsed.message === "string") message = parsed.message;
+      } catch {
+        // Plain-text errors are already suitable for display.
+      }
+      throw new Error(message || `${response.status} ${response.statusText}`);
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
+  } finally {
+    if (timeoutTimer !== null) clearTimeout(timeoutTimer);
+  }
 }
 
 export const api = {
   appInfo: () => request<AppInfo>("/app-info"),
-  models: () => request<Model[]>("/models"),
+  models: (signal?: AbortSignal) => request<Model[]>("/models", { signal }),
   createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
   duplicateModel: (hash: string, displayName: string) => request<Model>(`/models/${encodeURIComponent(hash)}/duplicate`, { method: "POST", body: JSON.stringify({ display_name: displayName }) }),
   reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
@@ -624,9 +704,10 @@ export const api = {
   importV0049Models: () => request<LegacyModelImportResult>("/models/import-v0049", { method: "POST" }),
   updateModel: (hash: string, model: ModelInput) => request<Model>(`/models/${hash}`, { method: "PUT", body: JSON.stringify(model) }),
   deleteModel: (hash: string) => request<void>(`/models/${hash}`, { method: "DELETE" }),
-  testModel: (hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal }),
+  // 连通性测试可能跑几十秒，关掉默认超时，沿用调用方传进来的取消信号。
+  testModel: (hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal, timeoutMs: null }),
   cancelModelTest: (hash: string, testId: string) => request<void>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "DELETE" }),
-  overview: (filter?: { startMs: number; endMs: number; modelHashes?: string[]; bucketMs?: number }) => {
+  overview: (filter?: { startMs: number; endMs: number; modelHashes?: string[]; bucketMs?: number }, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (filter) {
       params.set("start_ms", String(filter.startMs));
@@ -635,11 +716,11 @@ export const api = {
       if (filter.bucketMs) params.set("bucket_ms", String(filter.bucketMs));
     }
     const query = params.toString();
-    return request<Overview>(`/overview${query ? `?${query}` : ""}`);
+    return request<Overview>(`/overview${query ? `?${query}` : ""}`, { signal });
   },
-  cursorHarness: () => request<CursorHarnessStatus>("/harness/cursor/status"),
+  cursorHarness: (signal?: AbortSignal) => request<CursorHarnessStatus>("/harness/cursor/status", { signal }),
   devinSettings: () => request<DevinSettings>("/devin/settings"),
-  devinStatus: () => request<DevinStatus>("/devin/status"),
+  devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }),
   setDevinSettings: (settings: DevinSettings) => request<DevinSettings>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }),
   /** Without a path the server finds the installation itself. */
   devinHostStatus: (path?: string) => request<DevinHostPatchStatus>(path ? `/harness/devin/host/status?path=${encodeURIComponent(path)}` : "/harness/devin/host/status"),
@@ -648,9 +729,10 @@ export const api = {
   applyDevinHostPatch: (path?: string) => request<DevinHostPatchReceipt>("/harness/devin/host/apply", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
   restoreDevinHostPatch: (receipt: DevinHostPatchReceipt) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify({ receipt }) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
-  plugins: () => request<PluginDescriptor[]>("/plugins"),
+  plugins: (signal?: AbortSignal) => request<PluginDescriptor[]>("/plugins", { signal }),
   pluginOAuthBegin: (pluginId: string, resourceType: string, methodId: string) => request<PluginOAuthBegin>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/add/${encodeURIComponent(methodId)}/begin`, { method: "POST" }),
-  pluginOAuthPoll: (sessionId: string, signal?: AbortSignal) => request<PluginOAuthPoll>(`/plugins/oauth/${encodeURIComponent(sessionId)}/poll`, { method: "POST", signal }),
+  // OAuth 轮询由调用方按服务端给的间隔反复发起，单次请求不该用默认超时掐断。
+  pluginOAuthPoll: (sessionId: string, signal?: AbortSignal) => request<PluginOAuthPoll>(`/plugins/oauth/${encodeURIComponent(sessionId)}/poll`, { method: "POST", signal, timeoutMs: null }),
   importPluginResources: (pluginId: string, resourceType: string, files: PluginImportFile[]) => request<PluginImportResult>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/import`, { method: "POST", body: JSON.stringify(files) }),
   refreshPluginResource: (pluginId: string, resourceType: string, resourceId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/refresh`, { method: "POST" }),
   pluginResourceAction: (pluginId: string, resourceType: string, resourceId: string, actionId: string, input: unknown = {}) => request<PluginResourceActionResult>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/actions/${encodeURIComponent(actionId)}`, { method: "POST", body: JSON.stringify(input) }),
@@ -659,7 +741,7 @@ export const api = {
   setPluginModelEnabled: (pluginId: string, providerId: string, modelId: string, enabled: boolean) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/enabled`, { method: "PUT", body: JSON.stringify({ modelId, enabled }) }),
   pluginResourceExportUrl: (servicePort: number, pluginId: string, resourceType: string) => `http://127.0.0.1:${servicePort}${API_ROOT}/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/export`,
   removePluginConfiguration: (pluginId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}`, { method: "DELETE" }),
-  pluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime"),
+  pluginRuntime: (signal?: AbortSignal) => request<PluginRuntimeStatus>("/plugins/runtime", { signal }),
   initializePluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "POST" }),
   cancelPluginRuntimeInitialization: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "DELETE" }),
   openCursorCaInstallTerminal: async (command: string) => {
@@ -684,7 +766,7 @@ export const api = {
     await invoke("open_log_directory");
   },
   setCursorEnabled: (enabled: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
-  calls: () => request<LlmCall[]>("/llm-calls?limit=200"),
+  calls: (signal?: AbortSignal) => request<LlmCall[]>("/llm-calls?limit=200", { signal }),
   call: (id: string) => request<CallDetail>(`/llm-calls/${encodeURIComponent(id)}`),
   openCallDetails: async (id: string) => {
     const url = new URL(window.location.href);
@@ -692,9 +774,9 @@ export const api = {
     await request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url: url.toString() }) });
   },
   openExternalUrl: (url: string) => request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url }) }),
-  observability: () => request<{ detailed: boolean }>("/settings/observability"),
+  observability: (signal?: AbortSignal) => request<{ detailed: boolean }>("/settings/observability", { signal }),
   setObservability: (detailed: boolean) => request<{ detailed: boolean }>("/settings/observability", { method: "PUT", body: JSON.stringify({ detailed }) }),
-  ports: () => request<PortSettings>("/settings/ports"),
+  ports: (signal?: AbortSignal) => request<PortSettings>("/settings/ports", { signal }),
   setPorts: (settings: PortSettings) => request<PortSettings>("/settings/ports", { method: "PUT", body: JSON.stringify(settings) }),
   statisticsStorage: () => request<StatisticsStorage>("/settings/storage/statistics"),
   clearStatisticsStorage: (scope: StatisticsStorageScope) => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE", body: JSON.stringify({ scope }) }),
@@ -703,10 +785,10 @@ export const api = {
   outboundStatus: () => request<OutboundStatus>("/settings/outbound"),
   tabSettings: () => request<TabSettings>("/settings/tab"),
   setTabSettings: (settings: TabSettings) => request<TabSettings>("/settings/tab", { method: "PUT", body: JSON.stringify(settings) }),
-  desktopSettings: () => request<DesktopSettings>("/settings/desktop"),
+  desktopSettings: (signal?: AbortSignal) => request<DesktopSettings>("/settings/desktop", { signal }),
   setDesktopSettings: (settings: DesktopSettings) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(settings) }),
   commitSettings: (locale: Locale) => request<CommitSettingsView>("/settings/commit", { headers: { "accept-language": locale } }),
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
-  pricingSettings: () => request<TokenPricingSettings>("/settings/pricing"),
+  pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }),
   setPricingSettings: (settings: TokenPricingSettings) => request<TokenPricingSettings>("/settings/pricing", { method: "PUT", body: JSON.stringify(settings) }),
 };
