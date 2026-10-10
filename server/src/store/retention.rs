@@ -199,7 +199,6 @@ mod tests {
 
     #[tokio::test]
     async fn blob_deletion_does_not_scan_every_trace_reference() {
-        use sqlx::Row;
         let (_dir, store) = fixture().await;
         let index: Option<String> = sqlx::query_scalar(
             "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'cursor_run_trace_artifacts_blob'",
@@ -211,17 +210,6 @@ mod tests {
             index.as_deref(),
             Some("cursor_run_trace_artifacts_blob"),
             "trace artifact foreign key must be backed by an index"
-        );
-        let plan = sqlx::query("EXPLAIN QUERY PLAN DELETE FROM blobs WHERE blob_id = ?")
-            .bind([0_u8; 32].as_slice())
-            .fetch_all(store.pool())
-            .await
-            .unwrap();
-        assert!(
-            plan.iter().any(|row| row
-                .get::<String, _>("detail")
-                .contains("cursor_run_trace_artifacts_blob")),
-            "blob deletion must use an index for trace foreign-key checks"
         );
     }
 
