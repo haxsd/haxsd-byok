@@ -46,7 +46,7 @@ Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
 - 更新来自本仓库，使用本产品独立的 Tauri 更新签名。
 - 更新签名用于校验更新包，不等同于 Windows Authenticode 代码签名；Windows 仍可能显示来源提示。
 
-**1.0.22 修复**：DeepSeek 等 OpenAI Chat 上游对「只有推理、没有正文也没有工具调用」的助手历史会返回 400（`content or tool_calls must be set`）。组装请求时跳过这类纯 reasoning 轮，以及空的 Parts 正文（`""` / `[]`）；有正文或工具调用时仍保留 reasoning。升级后请**新开对话**，不要续写已经报过这次 400 的旧会话。1.0.21 的子代理准入修复见它的[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21)。[1.0.22 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.22)
+**1.0.23 改进**：对话压窗（上下文压缩）后不再只剩一条摘要。现在压完是「短硬状态摘要 + 最近几轮原文」，原文按完整轮次逐字保留，合计约占窗口的 20%，所以压完还能接着改同一个文件、不丢刚验证过的约束与关键路径。摘要调用失败时不再把历史序列化后从尾部截断（那段截断的 JSON 既读不出内容也占额度），改成写入一条说明并保留近轮原文。触发时机与旧版一致（窗口用满 90%，或上游返回超限错误时压一次）；短会话手动 `/summarize` 仍是只留摘要。升级后旧会话无需处理。1.0.22 的 DeepSeek 400 修复见它的[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.22)。[1.0.23 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.23)
 
 ## 使用边界与数据
 
