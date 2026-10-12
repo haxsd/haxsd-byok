@@ -265,10 +265,13 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
                     .and_then(Value::as_str)
                     .filter(|reasoning| !reasoning.is_empty());
 
-                // Chat Completions rejects an empty assistant content string. Tool-call
-                // assistant messages use null content, while an assistant with no visible
-                // content at all does not need to be sent.
-                if text.is_empty() && calls.is_empty() && replay_reasoning.is_none() {
+                // Chat Completions rejects an empty assistant content string, and some
+                // providers (notably DeepSeek) reject an assistant message that carries a
+                // null content with no tool_calls. A pure reasoning-only assistant turn
+                // (no text and no tool_calls) must therefore be omitted entirely; the
+                // reasoning is still attached below whenever the turn also has text and/or
+                // tool_calls.
+                if text.is_empty() && calls.is_empty() {
                     continue;
                 }
                 value.insert(
@@ -441,6 +444,27 @@ pub(crate) fn openai_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::ProviderReplayState;
+
+    fn assistant_message(
+        text: &str,
+        reasoning: Option<&str>,
+        calls: Vec<ToolCallContent>,
+    ) -> ProjectedMessage {
+        ProjectedMessage {
+            message_id: "assistant-1".into(),
+            role: Role::Assistant,
+            content: ProjectedContent::Assistant {
+                text: text.into(),
+                thinking: String::new(),
+                replay_state: reasoning.map(|reasoning| ProviderReplayState {
+                    provider_kind: "openai_chat".into(),
+                    value: json!({"reasoning_content": reasoning}),
+                }),
+                calls,
+            },
+        }
+    }
 
     #[test]
     fn observed_tool_calls_outrank_ordinary_stop_reasons() {
@@ -467,5 +491,46 @@ mod tests {
     fn a_truncated_response_stays_truncated_even_with_tool_calls() {
         assert_eq!(map_finish("length", true), FinishReason::Length);
         assert_eq!(map_finish("length", false), FinishReason::Length);
+    }
+
+    #[test]
+    fn assistant_with_only_reasoning_content_is_omitted() {
+        let message = assistant_message("", Some("only thinking"), Vec::new());
+        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        assert!(
+            messages.is_empty(),
+            "reasoning-only assistant turn must be omitted, got: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn assistant_with_text_and_reasoning_content_is_kept() {
+        let message = assistant_message("hello", Some("reasoning"), Vec::new());
+        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], json!("assistant"));
+        assert_eq!(messages[0]["content"], json!("hello"));
+        assert_eq!(messages[0]["reasoning_content"], json!("reasoning"));
+    }
+
+    #[test]
+    fn assistant_with_tool_calls_and_reasoning_content_is_kept() {
+        let message = assistant_message(
+            "",
+            Some("reasoning"),
+            vec![ToolCallContent {
+                index: 0,
+                call_id: "c1".into(),
+                name: "f".into(),
+                arguments: json!({}),
+            }],
+        );
+        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], json!("assistant"));
+        assert_eq!(messages[0]["content"], Value::Null);
+        assert_eq!(messages[0]["reasoning_content"], json!("reasoning"));
+        assert_eq!(messages[0]["tool_calls"][0]["id"], json!("c1"));
+        assert_eq!(messages[0]["tool_calls"][0]["function"]["name"], json!("f"));
     }
 }
