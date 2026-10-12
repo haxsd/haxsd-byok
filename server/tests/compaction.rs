@@ -1071,6 +1071,104 @@ fn archive_of(
     pb::ConversationSummaryArchive::decode(output.blobs[archive_id].as_slice()).unwrap()
 }
 
+#[tokio::test]
+async fn a_second_overflow_refusal_compacts_without_the_recent_turns() {
+    // The ladder that keeps the worst case equal to 1.0.22: the retained
+    // compaction is attempted first, and if the provider still refuses because
+    // the real prompt is larger than the estimator thought, the next compaction
+    // drops the recent turns and sends the summary alone.
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("ladder-model", Some(200_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(
+        &format!("{} BIG-TAIL", "y".repeat(400_000)),
+        150_000,
+        1_000,
+    ));
+    provider.push_error(cursor_server::Error::Provider(
+        "Anthropic 400 Bad Request: {\"type\":\"error\",\"error\":{\"type\":\
+         \"invalid_request_error\",\"message\":\"prompt is too long: 210000 tokens > \
+         200000 maximum\"}}"
+            .into(),
+    ));
+    provider.push(text_response("first summary", 100_000, 20));
+    provider.push_error(cursor_server::Error::Provider(
+        "Anthropic 400 Bad Request: {\"type\":\"error\",\"error\":{\"type\":\
+         \"invalid_request_error\",\"message\":\"prompt is too long: 205000 tokens > \
+         200000 maximum\"}}"
+            .into(),
+    ));
+    provider.push(text_response("second summary", 30_000, 20));
+    provider.push(text_response("answer after compacting twice", 20_000, 12));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "ladder-first",
+        user_request(
+            "ladder-conversation",
+            "ladder-user-1",
+            "read the big report",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(first.summary_started, 0);
+
+    let second = run(
+        &registry,
+        "ladder-second",
+        user_request(
+            "ladder-conversation",
+            "ladder-user-2",
+            "continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 2, "two compactions in one run");
+    assert_eq!(second.summary_completed, 2);
+    assert_eq!(second.turn_ended, 1);
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        6,
+        "turn, refused retry, retained compaction, refused retry, summary-only compaction, answer"
+    );
+    assert!(requests[2].prompt.tools.is_empty(), "retained compaction");
+    assert!(
+        requests[4].prompt.tools.is_empty(),
+        "summary-only compaction"
+    );
+    assert!(
+        requests[3]
+            .history
+            .iter()
+            .any(|message| assistant_text(message).is_some_and(|text| text.contains("BIG-TAIL"))),
+        "the first compaction keeps the newest turn verbatim"
+    );
+    assert!(
+        requests[5]
+            .history
+            .iter()
+            .all(|message| !assistant_text(message)
+                .unwrap_or_default()
+                .contains("BIG-TAIL")),
+        "the second compaction drops it, exactly like the 1.0.22 replacement"
+    );
+    assert!(requests[5]
+        .history
+        .iter()
+        .any(|message| message_text(message).is_some_and(|text| text.contains("second summary"))));
+    assert!(text_message(&requests[5].history, "continue").is_some());
+}
+
 #[derive(Default)]
 struct Output {
     checkpoints: Vec<pb::ConversationStateStructure>,

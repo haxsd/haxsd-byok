@@ -177,10 +177,14 @@ impl RunEngine {
             };
         }
 
-        // A provider refusal for an over-limit prompt triggers one compaction
-        // per run. A second refusal after compacting means the current input
-        // itself does not fit, and compacting again would only destroy history.
-        let mut overflow_compacted = false;
+        // A provider refusal for an over-limit prompt compacts twice at most:
+        // the first compaction keeps the recent turns verbatim, and a second
+        // refusal compacts with the summary alone — the replacement 1.0.22
+        // sent. That ladder keeps the worst case equal to the old behaviour (a
+        // short summary that recovers the conversation) instead of a failed
+        // run. A third refusal means the current input itself does not fit, and
+        // compacting again would only destroy history.
+        let mut overflow_compactions = 0_u8;
         'model: loop {
             if cancellation.is_cancelled() {
                 return (RunOutcome::Cancelled, usage);
@@ -209,7 +213,14 @@ impl RunEngine {
                     return (client_failure(), usage);
                 }
                 match self
-                    .auto_compact(prepared, checkpoint, &messages, client, cancellation)
+                    .auto_compact(
+                        prepared,
+                        checkpoint,
+                        &messages,
+                        client,
+                        cancellation,
+                        super::compaction::Retention::Window,
+                    )
                     .await
                 {
                     Ok((next_checkpoint, compaction_usage)) => {
@@ -386,22 +397,29 @@ impl RunEngine {
                         // The estimate that cleared the compaction check can
                         // still land over the real limit: it trails the
                         // provider's own count by whatever the request adds
-                        // after the anchor was taken. The provider is the
-                        // authority, so treat its refusal as the trigger the
-                        // estimate missed. Without this a conversation that
-                        // crosses the line is wedged: every retry rebuilds the
-                        // same prompt and gets the same refusal.
-                        if !overflow_compacted
-                            && prepared.action != RunAction::Compact
+                        // after the anchor was taken, and CJK-heavy content is
+                        // counted far lower by the estimator than by the
+                        // provider. The provider is the authority, so treat its
+                        // refusal as the trigger the estimate missed. Without
+                        // this a conversation that crosses the line is wedged:
+                        // every retry rebuilds the same prompt and gets the
+                        // same refusal.
+                        let overflow_retention = match overflow_compactions {
+                            0 => Some(super::compaction::Retention::Window),
+                            1 => Some(super::compaction::Retention::None),
+                            _ => None,
+                        };
+                        let overflow_refusal = prepared.action != RunAction::Compact
                             && matches!(&cycle_failure.failure, RunFailure::Provider(message)
-                                if super::compaction::is_context_overflow(message))
-                        {
+                                if super::compaction::is_context_overflow(message));
+                        if let Some(retention) = overflow_retention.filter(|_| overflow_refusal) {
                             tracing::warn!(
                                 provider_call_index,
                                 checkpoint_id = checkpoint.0,
+                                keep_recent_turns = retention == super::compaction::Retention::Window,
                                 "provider rejected the prompt as over-limit; compacting and retrying"
                             );
-                            overflow_compacted = true;
+                            overflow_compactions += 1;
                             checkpoint = match super::messages::append_batches(
                                 &self.store,
                                 prepared,
@@ -421,7 +439,14 @@ impl RunEngine {
                                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                                 };
                             match self
-                                .auto_compact(prepared, checkpoint, &messages, client, cancellation)
+                                .auto_compact(
+                                    prepared,
+                                    checkpoint,
+                                    &messages,
+                                    client,
+                                    cancellation,
+                                    retention,
+                                )
                                 .await
                             {
                                 Ok((next_checkpoint, compaction_usage)) => {
@@ -581,11 +606,15 @@ impl RunEngine {
                 let event_id = format!("summary:{}", prepared.run_id);
                 let summary_message = super::compaction::summary_message(&event_id, &summary);
                 let summary_message_id = summary_message.message_id.clone();
-                let replacement =
-                    match super::compaction::replacement(prepared, &messages, summary_message) {
-                        Ok(replacement) => replacement,
-                        Err(error) => return (RunOutcome::Failed(error.into()), usage),
-                    };
+                let replacement = match super::compaction::replacement(
+                    prepared,
+                    &messages,
+                    summary_message,
+                    super::compaction::Retention::Window,
+                ) {
+                    Ok(replacement) => replacement,
+                    Err(error) => return (RunOutcome::Failed(error.into()), usage),
+                };
                 checkpoint = match self
                     .store
                     .replace_checkpoint(
@@ -804,6 +833,7 @@ impl RunEngine {
         messages: &[CanonicalMessage],
         client: &mut RunPort,
         cancellation: &CancellationToken,
+        retention: super::compaction::Retention,
     ) -> std::result::Result<(crate::model::CheckpointId, Option<Usage>), RunOutcome> {
         let current_ids = prepared
             .initial_messages
@@ -926,8 +956,9 @@ impl RunEngine {
         let event_id = format!("summary:auto:{}:{provider_call_index}", prepared.run_id);
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();
-        let replacement = super::compaction::replacement(prepared, messages, summary_message)
-            .map_err(|error| RunOutcome::Failed(error.into()))?;
+        let replacement =
+            super::compaction::replacement(prepared, messages, summary_message, retention)
+                .map_err(|error| RunOutcome::Failed(error.into()))?;
         let projected_replacement = crate::model::project_messages(&replacement)
             .map_err(|error| RunOutcome::Failed(error.into()))?;
         super::compaction::validate_compacted(prepared, &projected_replacement)

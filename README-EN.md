@@ -46,7 +46,12 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Updates use this repository's manifest, installer and independent Tauri signing key.
 - Tauri update signatures are distinct from Windows Authenticode signing. Windows may still display a source prompt.
 
-**1.0.23** reworks conversation compaction. A compacted turn no longer collapses to a single summary: the model now gets a short handover state plus the most recent turns replayed verbatim, whole turn by turn, for roughly 20% of the context window in total. The model keeps working on the same file and keeps the constraints and paths it just verified. When the summarizer call fails, the app writes a stated slot instead of pasting a truncated JSON tail, and the recent turns are still replayed. When compaction triggers is unchanged (90% of the window, or a provider over-limit error); `/summarize` on a short conversation still keeps the summary alone. Existing conversations need no action. See the [1.0.22 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.22) for the DeepSeek 400 fix. [1.0.23 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.23)
+**1.1.0 milestone** (it carries everything since 1.0.22):
+
+- **Compaction reworked**: a compacted turn no longer collapses to a single summary. The model gets a short handover state plus the most recent turns replayed verbatim, whole turn by turn, for roughly 20% of the context window, so it keeps working on the same file and keeps the constraints it just verified.
+- **Compaction fallback**: if the provider still refuses the result as over-limit, the app compacts again with the summary alone — the exact shape older versions sent — so the worst case matches the previous behaviour instead of failing the turn. A failed summarizer call now writes a stated slot plus the recent turns instead of a truncated JSON tail.
+- **DeepSeek and other OpenAI Chat 400s** (1.0.22): assistant turns that are only reasoning with no text and no tool calls, and empty Parts content, are omitted when the request is built.
+- When compaction triggers (90% of the window, or a provider over-limit error), `/summarize` on short conversations, and models without a configured window all behave exactly as before. Existing conversations need no action. [1.1.0 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.1.0)
 
 ## Boundaries and data
 

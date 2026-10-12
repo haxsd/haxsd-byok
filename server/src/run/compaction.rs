@@ -368,6 +368,18 @@ pub(super) fn summary_message(event_id: &str, summary: &str) -> CanonicalMessage
     }
 }
 
+/// Whether a compaction replays recent turns verbatim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Retention {
+    /// Keep the newest whole turns within the retention budget.
+    Window,
+    /// Keep nothing but the summary slot, its request context, and the run's
+    /// own initial messages — the replacement 1.0.22 sent. Used when the
+    /// provider refused a retained compaction, so an over-limit conversation
+    /// falls back to the old shape instead of failing the run.
+    None,
+}
+
 /// Builds the history a compaction leaves behind.
 ///
 /// The order is fixed: the latest request context, the summary slot, the
@@ -378,6 +390,7 @@ pub(super) fn replacement(
     prepared: &PreparedRun,
     messages: &[CanonicalMessage],
     summary: CanonicalMessage,
+    retention: Retention,
 ) -> crate::Result<Vec<CanonicalMessage>> {
     let current_ids = prepared
         .initial_messages
@@ -387,11 +400,13 @@ pub(super) fn replacement(
     let (compactable, retained_request_context) = partition(messages, &current_ids);
     let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
     replacement.push(summary);
-    let tail = match retention_budget(prepared, &replacement, &prepared.initial_messages)? {
-        Some(budget) => retained_tail(&compactable, budget)?,
-        None => Vec::new(),
-    };
-    replacement.extend(tail);
+    if retention == Retention::Window {
+        let tail = match retention_budget(prepared, &replacement, &prepared.initial_messages)? {
+            Some(budget) => retained_tail(&compactable, budget)?,
+            None => Vec::new(),
+        };
+        replacement.extend(tail);
+    }
     replacement.extend(prepared.initial_messages.iter().cloned());
     Ok(replacement)
 }
@@ -932,6 +947,7 @@ mod tests {
             &prepared,
             &history,
             summary_message("summary:auto:run:1", "hard state"),
+            Retention::Window,
         )
         .unwrap();
         let projected = project_messages(&replacement).unwrap();
@@ -1007,6 +1023,7 @@ mod tests {
             &prepared,
             &history,
             summary_message("summary:auto:run:1", "hard state"),
+            Retention::Window,
         )
         .unwrap();
         assert!(!replacement.is_empty());
@@ -1029,6 +1046,37 @@ mod tests {
     }
 
     #[test]
+    fn a_retention_free_replacement_keeps_only_the_slot_and_the_run() {
+        // The fallback used when the provider refused a retained compaction:
+        // the result must be no larger than the summary-only replacement of
+        // 1.0.22, whatever the history looked like.
+        let mut history = big_turn("u1", "a1", 400_000);
+        history.extend(big_turn("u2", "a2", 40_000));
+        history.push(canonical_context("request-context:new", "current rules"));
+        let mut prepared = prepared(200_000);
+        prepared.initial_messages = vec![canonical_user("runtime:current", "do it")];
+
+        let replacement = replacement(
+            &prepared,
+            &history,
+            summary_message("summary:auto:run:1", "hard state"),
+            Retention::None,
+        )
+        .unwrap();
+        assert_eq!(
+            replacement
+                .iter()
+                .map(|message| message.message_id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "request-context:new",
+                "runtime:summary:auto:run:1",
+                "runtime:current"
+            ]
+        );
+    }
+
+    #[test]
     fn replacement_orders_context_summary_tail_and_initial_messages() {
         let mut history = big_turn("u1", "a1", 400_000);
         history.push(canonical_context("request-context:new", "current rules"));
@@ -1040,6 +1088,7 @@ mod tests {
             &prepared,
             &history,
             summary_message("summary:auto:run:1", "hard state"),
+            Retention::Window,
         )
         .unwrap();
         assert_eq!(
@@ -1066,6 +1115,7 @@ mod tests {
             &prepared,
             &history,
             summary_message("summary:auto:run:1", "hard state"),
+            Retention::Window,
         )
         .unwrap();
         assert_eq!(
