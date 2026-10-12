@@ -46,7 +46,7 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Updates use this repository's manifest, installer and independent Tauri signing key.
 - Tauri update signatures are distinct from Windows Authenticode signing. Windows may still display a source prompt.
 
-**1.0.21** fixes BYOK subagents that never started or stayed at "Planning next moves" while the main conversation kept working: two admission checks were stricter than the client. Parent headers no longer have to arrive as a pair, and a Windows subagent kickoff without a `message_id` now derives a stable identity from its content (idempotent retries). See the [1.0.20 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.20) for its update-visibility, developer mode and server fixes. [1.0.21 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21)
+**1.0.22** stops DeepSeek and other OpenAI Chat providers from returning 400 (`content or tool_calls must be set`) when history contains an assistant turn that is only reasoning, with no text and no tool calls. Those turns, and empty Parts content (`""` / `[]`), are omitted when the request is built; reasoning is kept when the turn also has text or tool calls. After updating, **start a new chat** instead of continuing a session that already hit this 400. See the [1.0.21 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21) for the subagent admission fix. [1.0.22 release notes](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.22)
 
 ## Boundaries and data
 

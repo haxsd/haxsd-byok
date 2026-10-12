@@ -46,7 +46,7 @@ Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
 - 更新来自本仓库，使用本产品独立的 Tauri 更新签名。
 - 更新签名用于校验更新包，不等同于 Windows Authenticode 代码签名；Windows 仍可能显示来源提示。
 
-**1.0.21 修复**：Cursor 子代理起不来、或一直停在「Planning next moves」（主对话正常）——我们两处准入比客户端更严：父头部不再要求成对出现，Windows 子代理启动消息缺少 `message_id` 时改为按内容派生稳定身份（重试幂等）。1.0.20 的更新可见性、开发者模式与服务端修复见它的[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.20)。[1.0.21 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21)
+**1.0.22 修复**：DeepSeek 等 OpenAI Chat 上游对「只有推理、没有正文也没有工具调用」的助手历史会返回 400（`content or tool_calls must be set`）。组装请求时跳过这类纯 reasoning 轮，以及空的 Parts 正文（`""` / `[]`）；有正文或工具调用时仍保留 reasoning。升级后请**新开对话**，不要续写已经报过这次 400 的旧会话。1.0.21 的子代理准入修复见它的[发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.21)。[1.0.22 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.0.22)
 
 ## 使用边界与数据
 
