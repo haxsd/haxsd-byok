@@ -14,7 +14,7 @@ use cursor_server::{
     },
     model::{
         ContentPart, ConversationId, MessageContent, ModelConfigInput, ModelType, Origin,
-        ProjectedContent, Role, Usage, OPENAI_CHAT_ENDPOINT,
+        ProjectedContent, ProjectedMessage, Role, Usage, OPENAI_CHAT_ENDPOINT,
     },
     provider::{FinishReason, ModelEvent},
 };
@@ -658,6 +658,417 @@ async fn assistant_terminated_history_is_sent_with_a_user_tail() {
             .all(|message| message.message_id != "runtime:continue"),
         "the continuation tail is provider-visible only and never persisted"
     );
+}
+
+#[tokio::test]
+async fn automatic_compaction_replays_the_newest_turn_verbatim() {
+    // Compaction keeps the newest turn word for word and summarizes the older
+    // one away. The retained turn is larger than the 20% target share, so it
+    // survives on the hard limit: it carries the output the model needs to
+    // continue, and a summary cannot stand in for it.
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("retain-model", Some(200_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(
+        &format!("{} NOISE-ALPHA", "y".repeat(560_000)),
+        60_000,
+        1_000,
+    ));
+    provider.push(text_response(
+        &format!("{} TAIL-BETA", "z".repeat(200_000)),
+        30_000,
+        1_000,
+    ));
+    provider.push(text_response("hard state summary", 170_000, 20));
+    provider.push(text_response("third answer", 20_000, 12));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "retain-first",
+        user_request(
+            "retain-conversation",
+            "retain-user-1",
+            "read the big report",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(first.summary_started, 0, "the first turn fits the window");
+
+    let second = run(
+        &registry,
+        "retain-second",
+        user_request(
+            "retain-conversation",
+            "retain-user-2",
+            "KEEPME-BETA continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 0, "the second turn still fits");
+
+    let third = run(
+        &registry,
+        "retain-third",
+        user_request(
+            "retain-conversation",
+            "retain-user-3",
+            "what next?",
+            &model.model_hash,
+            second.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(third.summary_started, 1);
+    assert_eq!(third.summary_completed, 1);
+
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 4, "two turns, summary call, continued turn");
+    assert!(requests[2].prompt.tools.is_empty());
+
+    let history = &requests[3].history;
+    let retained =
+        text_message(history, "KEEPME-BETA").expect("the newest turn is replayed verbatim");
+    let original = text_message(&requests[1].history, "KEEPME-BETA")
+        .expect("the newest turn was sent before the compaction");
+    assert_eq!(
+        retained, original,
+        "a retained turn is the same provider message, byte for byte"
+    );
+    let position = history
+        .iter()
+        .position(|message| message.message_id == retained.message_id)
+        .expect("the retained turn is in the compacted history");
+    let slot = message_text(
+        history[..position]
+            .last()
+            .expect("a slot precedes the turn"),
+    )
+    .expect("the summary slot is text");
+    assert!(slot.contains("<conversation_summary>"));
+    assert!(slot.contains("hard state summary"));
+    assert!(
+        history
+            .iter()
+            .any(|message| assistant_text(message).is_some_and(|text| text.contains("TAIL-BETA"))),
+        "the assistant half of the retained turn comes with it"
+    );
+    assert!(
+        history.iter().all(|message| !assistant_text(message)
+            .unwrap_or_default()
+            .contains("NOISE-ALPHA")),
+        "the older turn is summarized away instead of being replayed"
+    );
+
+    let state = third.checkpoints.last().unwrap();
+    let archive = archive_of(&third, state);
+    assert!(
+        state
+            .root_prompt_messages_json
+            .contains(&archive.summary_message),
+        "the archive points at a root of the compacted state"
+    );
+    assert_ne!(
+        Some(&archive.summary_message),
+        state.root_prompt_messages_json.last(),
+        "the archive does not simply point at the last root"
+    );
+    assert!(
+        archive.window_tail >= 1,
+        "the retained turn is reported as a kept window tail"
+    );
+    let previous_roots = &second.checkpoints.last().unwrap().root_prompt_messages_json;
+    assert_eq!(
+        archive.summarized_messages.len() + archive.window_tail as usize,
+        previous_roots.len() - 1,
+        "every root outside the summary is either summarized or kept"
+    );
+}
+
+#[tokio::test]
+async fn explicit_summarize_keeps_recent_turns_and_points_the_archive_at_the_summary() {
+    // `/summarize` runs the same replacement assembly as the preflight, so the
+    // Cursor state has to describe it: the summary message is located by
+    // identity, the retained turns are reported as the window tail, and only
+    // the dropped roots count as summarized.
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("summarize-model", Some(200_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response("first answer", 60_000, 12));
+    provider.push(text_response("second answer", 61_000, 12));
+    provider.push(text_response("Durable summary", 62_000, 20));
+    provider.push(text_response("after compaction", 40_000, 12));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "summarize-first",
+        user_request(
+            "summarize-conversation",
+            "summarize-user-1",
+            &format!("{} KEEPME-OLD", "x".repeat(240_000)),
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "summarize-second",
+        user_request(
+            "summarize-conversation",
+            "summarize-user-2",
+            "keep me KEEPME-NEW",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 0);
+
+    let compacted = run(
+        &registry,
+        "summarize-command",
+        summary_request(
+            "summarize-conversation",
+            &model.model_hash,
+            second.checkpoints.last().unwrap().clone(),
+        ),
+    )
+    .await;
+    assert_eq!(compacted.summary, "Durable summary");
+    let state = compacted.checkpoints.last().unwrap();
+    let archive = archive_of(&compacted, state);
+    assert!(
+        state
+            .root_prompt_messages_json
+            .contains(&archive.summary_message),
+        "the archive points at a root of the compacted state"
+    );
+    assert_ne!(
+        Some(&archive.summary_message),
+        state.root_prompt_messages_json.last(),
+        "the archive must not point at whatever root happens to be last"
+    );
+    assert!(
+        archive.window_tail >= 1,
+        "the newest turn is kept verbatim, so it is a window tail"
+    );
+    let previous_roots = &second.checkpoints.last().unwrap().root_prompt_messages_json;
+    assert_eq!(
+        archive.summarized_messages.len() + archive.window_tail as usize,
+        previous_roots.len() - 1,
+        "every root outside the summary is either summarized or kept"
+    );
+
+    let after = run(
+        &registry,
+        "summarize-after",
+        user_request(
+            "summarize-conversation",
+            "summarize-user-3",
+            "what next?",
+            &model.model_hash,
+            Some(state.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(
+        after.summary_started, 0,
+        "the compacted prompt has room again"
+    );
+    let requests = provider.requests();
+    let history = &requests[3].history;
+    let slot = message_text(&history[0]).expect("the compacted history opens with the slot");
+    assert!(slot.contains("Durable summary"));
+    let retained = text_message(history, "KEEPME-NEW").expect("the newest turn survives");
+    let original = text_message(&requests[1].history, "KEEPME-NEW")
+        .expect("the newest turn was sent before the compaction");
+    assert_eq!(
+        retained, original,
+        "the compacted prefix stays byte-stable for the turns that follow"
+    );
+    assert!(text_message(history, "KEEPME-OLD").is_none());
+}
+
+#[tokio::test]
+async fn failed_summary_slot_states_the_compaction_and_keeps_the_turns() {
+    // A summarizer failure must not shrink the prompt to a fragment of the
+    // serialized history, and it must not pretend to summarize: the slot says
+    // what happened and the newest turn is still replayed verbatim.
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("fallback-model", Some(200_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(
+        &format!("{} NOISE-ALPHA", "y".repeat(560_000)),
+        60_000,
+        1_000,
+    ));
+    provider.push(text_response(
+        &format!("{} TAIL-BETA", "z".repeat(200_000)),
+        30_000,
+        1_000,
+    ));
+    provider.push_error(cursor_server::Error::Provider(
+        "Anthropic 500 Internal Server Error: upstream unavailable".into(),
+    ));
+    provider.push(text_response("answer after fallback", 20_000, 12));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "fallback-first",
+        user_request(
+            "fallback-conversation",
+            "fallback-user-1",
+            "read the big report",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "fallback-second",
+        user_request(
+            "fallback-conversation",
+            "fallback-user-2",
+            "KEEPME-FALLBACK continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 0);
+    let third = run(
+        &registry,
+        "fallback-third",
+        user_request(
+            "fallback-conversation",
+            "fallback-user-3",
+            "what next?",
+            &model.model_hash,
+            second.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(third.summary_started, 1);
+    assert_eq!(third.summary_completed, 1, "the compaction still completes");
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        4,
+        "two turns, failed summary call, continued turn"
+    );
+    assert!(requests[2].prompt.tools.is_empty());
+    let history = &requests[3].history;
+    assert!(
+        history.iter().all(|message| !message_text(message)
+            .unwrap_or_default()
+            .contains("Durable recent conversation state:")),
+        "the removed fallback pasted a truncated JSON tail"
+    );
+    let slot = history
+        .iter()
+        .find_map(|message| {
+            message_text(message).filter(|text| text.contains("<conversation_summary>"))
+        })
+        .expect("the summary slot is in the compacted history");
+    assert!(
+        slot.contains("summary call failed"),
+        "the slot states the failure instead of pretending to summarize"
+    );
+    let retained =
+        text_message(history, "KEEPME-FALLBACK").expect("the newest turn is replayed verbatim");
+    let original = text_message(&requests[1].history, "KEEPME-FALLBACK")
+        .expect("the newest turn was sent before the compaction");
+    assert_eq!(
+        retained, original,
+        "a retained turn is the same provider message, byte for byte"
+    );
+    assert!(
+        history
+            .iter()
+            .any(|message| assistant_text(message).is_some_and(|text| text.contains("TAIL-BETA"))),
+        "the assistant half of the retained turn comes with it"
+    );
+    assert!(
+        history.iter().all(|message| !assistant_text(message)
+            .unwrap_or_default()
+            .contains("NOISE-ALPHA")),
+        "history the failed summary dropped stays dropped"
+    );
+}
+
+fn registry(
+    store: cursor_server::store::Store,
+    provider: &fake_provider::FakeProvider,
+) -> TransportRegistry {
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    )
+}
+
+fn message_text(message: &ProjectedMessage) -> Option<String> {
+    let ProjectedContent::Parts(parts) = &message.content else {
+        return None;
+    };
+    Some(
+        parts
+            .iter()
+            .filter_map(|part| match part {
+                ContentPart::Text { text } => Some(text.as_str()),
+                ContentPart::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+fn text_message<'a>(history: &'a [ProjectedMessage], needle: &str) -> Option<&'a ProjectedMessage> {
+    history
+        .iter()
+        .find(|message| message_text(message).is_some_and(|text| text.contains(needle)))
+}
+
+fn assistant_text(message: &ProjectedMessage) -> Option<&str> {
+    match &message.content {
+        ProjectedContent::Assistant { text, .. } => Some(text.as_str()),
+        _ => None,
+    }
+}
+
+fn archive_of(
+    output: &Output,
+    state: &pb::ConversationStateStructure,
+) -> pb::ConversationSummaryArchive {
+    let archive_id = state
+        .summary_archive
+        .as_ref()
+        .expect("compaction records a summary archive");
+    pb::ConversationSummaryArchive::decode(output.blobs[archive_id].as_slice()).unwrap()
 }
 
 #[derive(Default)]

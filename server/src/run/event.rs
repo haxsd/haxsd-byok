@@ -64,10 +64,18 @@ pub enum RunOutcome {
 pub enum CommitCause {
     InitialMessages,
     ToolRoundStarted(ToolRoundId),
-    ToolResult { call_id: String, interrupted: bool },
+    ToolResult {
+        call_id: String,
+        interrupted: bool,
+    },
     FinalTurn,
-    Compaction { summary: String },
-    RuntimeEvent { event_id: String },
+    Compaction {
+        summary: String,
+        summary_message_id: String,
+    },
+    RuntimeEvent {
+        event_id: String,
+    },
 }
 
 #[derive(Debug)]

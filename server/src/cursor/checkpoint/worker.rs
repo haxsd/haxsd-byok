@@ -33,6 +33,7 @@ pub(crate) enum CheckpointKind {
     Compaction {
         checkpoint_id: CheckpointId,
         summary: String,
+        summary_message_id: String,
         result: oneshot::Sender<Result<pb::ConversationStateStructure>>,
     },
 }
@@ -103,13 +104,20 @@ impl CheckpointWorker {
                     CheckpointKind::Compaction {
                         checkpoint_id,
                         summary,
+                        summary_message_id,
                         result,
                     } => {
                         let messages = store.load_checkpoint_messages(checkpoint_id).await;
                         let checkpoint = match messages {
                             Ok(messages) => {
                                 builder
-                                    .compacted(&messages, mode, &summary, &presentation)
+                                    .compacted(
+                                        &messages,
+                                        mode,
+                                        &summary,
+                                        &summary_message_id,
+                                        &presentation,
+                                    )
                                     .await
                             }
                             Err(error) => Err(error),

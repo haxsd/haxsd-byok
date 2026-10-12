@@ -4,11 +4,80 @@ use std::collections::HashSet;
 use serde_json::{json, Value};
 
 use crate::model::{
-    project_messages, CanonicalMessage, ContentPart, MessageContent, ProjectedContent,
-    ProjectedMessage, ProviderReplayState, Role, ToolCall, ToolResultContent, ToolRoundAssistant,
+    project_messages, CanonicalMessage, ContentPart, MessageContent, Origin, ProjectedContent,
+    ProjectedMessage, ProviderReplayState, Role, ToolCall, ToolCallContent, ToolResultContent,
+    ToolRoundAssistant,
 };
 
-use super::{decode, decode_pending, encode::wire_message, staged_tool_round};
+use super::{decode, decode_pending, encode::wire_message, stable_messages, staged_tool_round};
+
+/// `CheckpointBuilder::compacted` locates the summary root by encoding that one
+/// message on its own, while `replace_roots` persists the whole replacement
+/// list. The summary slot must encode to the same bytes both ways, or the
+/// summary archive would reference a blob that is not in the compacted state.
+#[test]
+fn the_summary_slot_encodes_the_same_alone_and_inside_a_tool_round_list() {
+    let summary = CanonicalMessage::text(
+        "runtime:summary:auto:run:1",
+        Role::User,
+        Origin::Runtime,
+        "<conversation_summary>\nhand state\n</conversation_summary>",
+    );
+    let messages = vec![
+        CanonicalMessage::text("u1", Role::User, Origin::Runtime, "read src/main.rs"),
+        CanonicalMessage {
+            message_id: "a1".into(),
+            role: Role::Assistant,
+            origin: Origin::Assistant,
+            content: MessageContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                tool_round_id: Some(crate::model::ToolRoundId::new("round")),
+                replay_state: None,
+                tool_calls: vec![ToolCallContent {
+                    index: 0,
+                    call_id: "call-1".into(),
+                    name: "Read".into(),
+                    arguments: json!({"path": "src/main.rs"}),
+                }],
+            },
+            runtime_event_id: None,
+        },
+        CanonicalMessage {
+            message_id: "t1".into(),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: "call-1".into(),
+                name: "Read".into(),
+                content: "file body".into(),
+                is_error: false,
+                image: None,
+                provider_parts: Vec::new(),
+            }),
+            runtime_event_id: None,
+        },
+        summary.clone(),
+    ];
+    let whole = stable_messages("checkpoint prompt", &messages, "claude").unwrap();
+    let alone = stable_messages(
+        "checkpoint prompt",
+        std::slice::from_ref(&summary),
+        "claude",
+    )
+    .unwrap();
+    assert_eq!(whole.len(), messages.len() + 1);
+    assert_eq!(alone.len(), 2, "system root plus the summary");
+    assert_eq!(
+        alone[0], whole[0],
+        "the system root is position independent"
+    );
+    assert_eq!(
+        alone.last().unwrap(),
+        whole.last().unwrap(),
+        "the summary slot encodes differently on its own"
+    );
+}
 
 #[test]
 fn pending_tool_round_is_one_complete_assistant_message_and_round_trips() {

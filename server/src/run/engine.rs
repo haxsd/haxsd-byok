@@ -579,26 +579,20 @@ impl RunEngine {
                     );
                 }
                 let event_id = format!("summary:{}", prepared.run_id);
-                let summary_message = CanonicalMessage {
-                    message_id: format!("runtime:{event_id}"),
-                    role: Role::User,
-                    origin: Origin::Runtime,
-                    content: MessageContent::Parts {
-                        parts: vec![crate::model::ContentPart::Text {
-                            text: format!(
-                                "<conversation_summary>\n{summary}\n</conversation_summary>"
-                            ),
-                        }],
-                    },
-                    runtime_event_id: Some(event_id),
-                };
+                let summary_message = super::compaction::summary_message(&event_id, &summary);
+                let summary_message_id = summary_message.message_id.clone();
+                let replacement =
+                    match super::compaction::replacement(prepared, &messages, summary_message) {
+                        Ok(replacement) => replacement,
+                        Err(error) => return (RunOutcome::Failed(error.into()), usage),
+                    };
                 checkpoint = match self
                     .store
                     .replace_checkpoint(
                         &prepared.conversation_id,
                         &prepared.run_id,
                         checkpoint,
-                        &[summary_message],
+                        &replacement,
                     )
                     .await
                 {
@@ -646,7 +640,10 @@ impl RunEngine {
                     RunEvent::MessagesCommitted(MessagesCommitted {
                         checkpoint_id: checkpoint,
                         tool_round_version: 0,
-                        cause: CommitCause::Compaction { summary },
+                        cause: CommitCause::Compaction {
+                            summary,
+                            summary_message_id,
+                        },
                         barrier,
                     }),
                 )
@@ -781,6 +778,25 @@ impl RunEngine {
         }
     }
 
+    /// Output budget for the summarizer call.
+    ///
+    /// The summary stays provider-visible until the next compaction, so it is
+    /// capped well below what the model could produce. Providers reject a
+    /// `max_tokens` above the model's own output limit, so the constant is
+    /// clamped by the configured model limit when one is set.
+    async fn summary_output_tokens(&self, prepared: &PreparedRun) -> u64 {
+        let configured = self
+            .store
+            .model(&prepared.model.model_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|model| model.max_output_tokens());
+        configured.map_or(super::compaction::OUTPUT_TOKENS, |limit| {
+            limit.min(super::compaction::OUTPUT_TOKENS)
+        })
+    }
+
     async fn auto_compact(
         &self,
         prepared: &PreparedRun,
@@ -794,8 +810,7 @@ impl RunEngine {
             .iter()
             .map(|message| message.message_id.as_str())
             .collect::<HashSet<_>>();
-        let (compactable, retained_request_context) =
-            super::compaction::partition(messages, &current_ids);
+        let (compactable, _) = super::compaction::partition(messages, &current_ids);
         if compactable.is_empty() {
             let projected = crate::model::project_messages(messages)
                 .map_err(|error| RunOutcome::Failed(error.into()))?;
@@ -822,7 +837,7 @@ impl RunEngine {
             })
             .map_err(|error| RunOutcome::Failed(error.into()))?;
         let mut model = prepared.model.clone();
-        model.max_output_tokens = Some(super::compaction::OUTPUT_TOKENS);
+        model.max_output_tokens = Some(self.summary_output_tokens(prepared).await);
         model.reasoning.enabled = false;
         model.reasoning.effort = None;
         let invocation = crate::model::ModelInvocation {
@@ -888,12 +903,9 @@ impl RunEngine {
         drop(silent_events);
         let _ = drain.await;
         let (summary, compaction_usage) = match (break_messages.is_some(), cycle) {
-            (true, Ok(cycle)) => (
-                super::compaction::fallback_summary(&compactable),
-                cycle.usage,
-            ),
+            (true, Ok(cycle)) => (super::compaction::FALLBACK_SUMMARY.to_string(), cycle.usage),
             (true, Err(failure)) => (
-                super::compaction::fallback_summary(&compactable),
+                super::compaction::FALLBACK_SUMMARY.to_string(),
                 failure.usage,
             ),
             (false, Ok(cycle)) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
@@ -901,34 +913,21 @@ impl RunEngine {
             }
             (false, Ok(cycle)) => {
                 tracing::warn!("automatic compaction returned no usable summary; using fallback");
-                (
-                    super::compaction::fallback_summary(&compactable),
-                    cycle.usage,
-                )
+                (super::compaction::FALLBACK_SUMMARY.to_string(), cycle.usage)
             }
             (false, Err(failure)) => {
                 tracing::warn!(error = ?failure.failure, "automatic compaction model failed; using fallback");
                 (
-                    super::compaction::fallback_summary(&compactable),
+                    super::compaction::FALLBACK_SUMMARY.to_string(),
                     failure.usage,
                 )
             }
         };
         let event_id = format!("summary:auto:{}:{provider_call_index}", prepared.run_id);
-        let summary_message = CanonicalMessage {
-            message_id: format!("runtime:{event_id}"),
-            role: Role::User,
-            origin: Origin::Runtime,
-            content: MessageContent::Parts {
-                parts: vec![crate::model::ContentPart::Text {
-                    text: format!("<conversation_summary>\n{summary}\n</conversation_summary>"),
-                }],
-            },
-            runtime_event_id: Some(event_id),
-        };
-        let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
-        replacement.push(summary_message);
-        replacement.extend(prepared.initial_messages.iter().cloned());
+        let summary_message = super::compaction::summary_message(&event_id, &summary);
+        let summary_message_id = summary_message.message_id.clone();
+        let replacement = super::compaction::replacement(prepared, messages, summary_message)
+            .map_err(|error| RunOutcome::Failed(error.into()))?;
         let projected_replacement = crate::model::project_messages(&replacement)
             .map_err(|error| RunOutcome::Failed(error.into()))?;
         super::compaction::validate_compacted(prepared, &projected_replacement)
@@ -949,7 +948,10 @@ impl RunEngine {
             RunEvent::MessagesCommitted(MessagesCommitted {
                 checkpoint_id: checkpoint,
                 tool_round_version: 0,
-                cause: CommitCause::Compaction { summary },
+                cause: CommitCause::Compaction {
+                    summary,
+                    summary_message_id,
+                },
                 barrier,
             }),
         )

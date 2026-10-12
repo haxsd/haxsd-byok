@@ -560,7 +560,11 @@ impl ConversationOutput {
                             tool_round_settled = snapshot.status == ToolRoundStatus::Settled;
                         }
                         let final_turn = state.cause == CommitCause::FinalTurn;
-                        if let CommitCause::Compaction { summary } = &state.cause {
+                        if let CommitCause::Compaction {
+                            summary,
+                            summary_message_id,
+                        } = &state.cause
+                        {
                             if !state.barrier.is_required() {
                                 return Err(Error::Protocol(
                                     "compaction state has no completion barrier".into(),
@@ -573,6 +577,7 @@ impl ConversationOutput {
                                     kind: CheckpointKind::Compaction {
                                         checkpoint_id: state.checkpoint_id,
                                         summary: summary.clone(),
+                                        summary_message_id: summary_message_id.clone(),
                                         result: sender,
                                     },
                                     presentation: presentation.take(),
