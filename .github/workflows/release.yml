@@ -91,6 +91,10 @@ jobs:
   publish:
     name: Publish (windows-x86_64)
     needs: prepare
+    # 本地发布（桌面端已在本机构建签名）转正草稿时会创建 tag ref，同样触发本工作流；
+    # 此时 prepare 已判定"该版本已发布"，整段跳过，不再白烧一次 Windows runner。
+    # 手动 workflow_dispatch（ref_type=branch）的验证构建不受影响。
+    if: needs.prepare.outputs.should_publish == 'true' || github.ref_type != 'tag'
     strategy:
       fail-fast: false
       matrix:
