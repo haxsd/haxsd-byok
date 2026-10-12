@@ -57,9 +57,11 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
       const reasoning = message.replayState?.providerKind === REPLAY_KIND
         ? text(record(message.replayState.value)?.reasoning_content)
         : null;
-      // Chat Completions 拒绝空字符串的 assistant content;完全无可见
-      // 内容的 assistant 消息不需要发送。
-      if (!message.text && message.toolCalls.length === 0 && !reasoning) continue;
+      // Chat Completions 拒绝空字符串的 assistant content;对于只有
+      // reasoning_content、既无文本也无 tool_calls 的纯思考轮次,发送
+      // content: null 会被 DeepSeek 以 400 拒绝,因此整条消息必须省略。
+      // 当存在文本和/或 tool_calls 时,reasoning_content 仍然附带发送。
+      if (!message.text && message.toolCalls.length === 0) continue;
       const value: Record<string, JsonValue> = {
         role: "assistant",
         content: message.text ? message.text : null,
@@ -80,7 +82,10 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
         tool_call_id: message.callId,
       });
     } else {
-      messages.push({ role: message.role, content: chatContent(message.content) });
+      const content = chatContent(message.content);
+      // Some Chat Completions upstreams reject empty-string content.
+      if (content === "" || (Array.isArray(content) && content.length === 0)) continue;
+      messages.push({ role: message.role, content });
     }
   }
   const body: Record<string, JsonValue> = {

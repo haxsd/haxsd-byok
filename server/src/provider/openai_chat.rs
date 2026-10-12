@@ -250,7 +250,14 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
         );
         match &message.content {
             ProjectedContent::Parts(parts) => {
-                value.insert("content".into(), chat_content(&message.role, parts)?);
+                let content = chat_content(&message.role, parts)?;
+                // Some Chat Completions upstreams reject empty-string content.
+                match &content {
+                    Value::String(text) if text.is_empty() => continue,
+                    Value::Array(parts) if parts.is_empty() => continue,
+                    _ => {}
+                }
+                value.insert("content".into(), content);
             }
             ProjectedContent::Assistant {
                 text,
@@ -532,5 +539,21 @@ mod tests {
         assert_eq!(messages[0]["reasoning_content"], json!("reasoning"));
         assert_eq!(messages[0]["tool_calls"][0]["id"], json!("c1"));
         assert_eq!(messages[0]["tool_calls"][0]["function"]["name"], json!("f"));
+    }
+
+    #[test]
+    fn empty_parts_content_is_omitted() {
+        let message = ProjectedMessage {
+            message_id: "user-1".into(),
+            role: Role::User,
+            content: ProjectedContent::Parts(vec![ContentPart::Text {
+                text: String::new(),
+            }]),
+        };
+        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        assert!(
+            messages.is_empty(),
+            "empty Parts content must be omitted, got: {messages:?}"
+        );
     }
 }
