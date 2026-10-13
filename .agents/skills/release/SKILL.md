@@ -5,7 +5,7 @@ description: Prepare, authorize, publish, troubleshoot, and verify Cursor BYOK d
 
 # Desktop release
 
-Release through `.github/workflows/release.yml`. Preserve both updater formats: Tauri uses `latest.json`; legacy `v0.0.49` clients use `update.json`.
+Release through `.github/workflows/release.yml`. The pipeline ships one updater format: Tauri's `latest.json` (the legacy `update.json` is no longer produced).
 
 ## Publication authority
 
@@ -73,5 +73,5 @@ After the author explicitly authorizes publication:
 2. Create the matching tag on that commit, for example `haxsd-byok-v0.1.0-beta.1`, and push only that tag. This tag push is the publication trigger.
 3. Follow the triggered `Release desktop app` run through completion. Report the run URL and stop on failure; diagnose locally before asking the author to authorize another live attempt.
 4. Verify `haxsd-byok-v<version>` exists, is published rather than draft, has `prerelease: false`, and is the repository's Latest release.
-5. Verify the Release contains signed Tauri updater artifacts plus `latest.json`, and the legacy platform archives plus `update.json`.
+5. Verify the Release contains the signed NSIS installer, its `.sig`, and `latest.json` (three assets, matching v1.1.0 onwards).
 6. For a beta, report clearly that it is a test version even though GitHub represents it as a normal Latest Release.
