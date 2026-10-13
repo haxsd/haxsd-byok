@@ -5,6 +5,10 @@
 //! 子代理里打字"这类交互式子代理上才会发完成通知，代理派出的后台子代理不会——
 //! 所以 BYOK 这边必须由我们补上这一步，否则父轮收尾之后没人再想起子代理。
 
+use std::{collections::HashSet, sync::LazyLock};
+
+use parking_lot::Mutex;
+
 use crate::{
     cursor::{
         compile::{project_background_completion, subagent_completion, wakeup_message},
@@ -15,6 +19,15 @@ use crate::{
 };
 
 use super::{CompiledMessages, ConversationRegistry, MessageDelivery, TransportFinish};
+
+/// 已经通知过父会话的完成身份：`KIND:subagent:tool_call`。
+///
+/// 子代理那条传输偶尔会收尾两次（客户端重连、两代 generation 各收一次），同一身份
+/// 只该通知一次。重复的那份虽然会被消息身份幂等吃掉，但会多留一条 pending 与一次
+/// 无谓的唤醒。积满上限就整体清空：清空只会让极端情况下多通知一次，不会漏。
+static NOTIFIED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+const NOTIFIED_LIMIT: usize = 4096;
 
 /// 子代理这次跑完的结局，翻译成协议里的后台任务状态。
 fn completion_status(finish: &TransportFinish) -> pb::BackgroundTaskStatus {
@@ -103,6 +116,17 @@ pub(super) async fn subagent_finished(
         child_conversation,
         tool_call_id
     );
+    {
+        let mut notified = NOTIFIED.lock();
+        if notified.contains(&event_id) {
+            tracing::debug!(%event_id, "this subagent completion was already notified");
+            return;
+        }
+        if notified.len() >= NOTIFIED_LIMIT {
+            notified.clear();
+        }
+        notified.insert(event_id.clone());
+    }
     let message = match wakeup_message(&event_id, &projection.context) {
         Ok(message) => message,
         Err(error) => {

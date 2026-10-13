@@ -1,4 +1,4 @@
-import type { OutboundStatus, ProxySettings, ProxySettingsInput } from "../../shared/api";
+import type { CursorMode, OutboundStatus, ProxySettings, ProxySettingsInput } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { Checkbox } from "../../shared/ui/Checkbox";
 import { TextInput } from "../../shared/ui/FormControls";
@@ -9,6 +9,7 @@ import styles from "./ProxySettingsCard.module.scss";
 export function ProxySettingsCard({
   settings,
   outbound,
+  cursorMode,
   draft,
   editing,
   saving,
@@ -19,6 +20,7 @@ export function ProxySettingsCard({
 }: {
   settings: ProxySettings | null;
   outbound: OutboundStatus | null;
+  cursorMode: CursorMode;
   draft: ProxySettingsInput;
   editing: boolean;
   saving: boolean;
@@ -28,6 +30,10 @@ export function ProxySettingsCard({
   onSave: () => void;
 }) {
   const custom = draft.mode === "custom";
+  const effectiveMode = editing ? draft.mode : settings?.mode;
+  // 官方模型的那条请求要出我们这一跳到境外上游，而"直连"是全局的：它同时关掉转发
+  // 那条路的代理。官方/混合模式下选直连 = 官方模型必然连不上，得在这里说清楚。
+  const officialNeedsProxy = cursorMode !== "local" && effectiveMode === "direct";
   // 配置说"跟随系统代理"，而实际正在直连：两者不一致时必须说出来，否则用户只会看到
   // 代理开着却查不出网络为什么绕着走（Clash 更新那几分钟就是这样）。
   const bypassed = (outbound?.system_proxy_bypassed ?? false) && (editing ? draft.mode : settings?.mode) === "default";
@@ -104,6 +110,11 @@ export function ProxySettingsCard({
       {bypassed && <div className={styles.row}>
         <div className={styles.description}>
           <small>{t("系统代理暂时连不上，出网正在直连；稍后会自动再试系统代理。")}</small>
+        </div>
+      </div>}
+      {officialNeedsProxy && <div className={styles.row}>
+        <div className={styles.description}>
+          <small>{t("官方模型需要能访问境外；直连下官方与混合模式里的官方模型会连不上。要用官方模型请改为「跟随系统代理」。")}</small>
         </div>
       </div>}
     </div>

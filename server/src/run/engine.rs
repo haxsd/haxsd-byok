@@ -130,6 +130,48 @@ impl RunEngine {
         if !prepared.initial_messages.is_empty() {
             let mut changed = false;
             for message in &prepared.initial_messages {
+                // 后台完成通知是幂等投递：身份相同就说明这条通知已经送达过（服务端
+                // 自己发的，或客户端发来的那一份）。这时不该跑模型——否则同一次子
+                // 代理完成会得到两轮 follow-up，而且两份通知正文的差别会被 store 判
+                // 成"同一身份内容不同"的冲突，把这一轮直接判死。
+                if matches!(prepared.action, RunAction::BackgroundCompletion) {
+                    match self
+                        .store
+                        .message(&prepared.conversation_id, &message.message_id)
+                        .await
+                    {
+                        Ok(Some(_)) => {
+                            tracing::info!(
+                                conversation_id = %prepared.conversation_id,
+                                message_id = %message.message_id,
+                                "background completion was already delivered; this turn has nothing to do"
+                            );
+                            // 仍然推一次已收敛的状态：客户端这一轮要看到一个
+                            // "没有待办"的终态，否则它会把这一轮当成没结束。
+                            let (barrier, ready) = CommitBarrier::before_continue();
+                            if emit(
+                                client,
+                                RunEvent::MessagesCommitted(MessagesCommitted {
+                                    checkpoint_id: checkpoint,
+                                    tool_round_version: 0,
+                                    cause: CommitCause::InitialMessages,
+                                    barrier,
+                                }),
+                            )
+                            .await
+                            .is_err()
+                            {
+                                return (client_failure(), usage);
+                            }
+                            if let Err(outcome) = wait_for_state_ready(ready, cancellation).await {
+                                return (outcome, usage);
+                            }
+                            return (RunOutcome::Completed, usage);
+                        }
+                        Ok(None) => {}
+                        Err(error) => return (RunOutcome::Failed(error.into()), usage),
+                    }
+                }
                 match self
                     .store
                     .append_message_once(

@@ -79,6 +79,7 @@
   "146da2e2a991493e": "Fetching…",
   "15730c19fd7eef51": "Request protocol",
   "15d431a5bb64d1c3": "Connection status",
+  "1641745662b82f7e": "Official models need outbound access; with Direct, the official models in the Official and Mixed modes cannot connect. To use them, switch to “Default (follow system proxy)”.",
   "168e845a86bc3703": "Add model",
   "16d0d7e2b332af72": "Total calls: {count}",
   "1715814541727f6d": "10 min",

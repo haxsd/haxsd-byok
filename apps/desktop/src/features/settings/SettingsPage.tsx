@@ -40,7 +40,7 @@ type SettingsGroup = {
 };
 
 export function SettingsPage() {
-  const { detailed, developerMode, ports, theme } = useAppStore();
+  const { detailed, developerMode, ports, theme, cursorHarness } = useAppStore();
   const { preference, locale } = useI18n();
   const message = useMessage();
   const [proxyPort, setProxyPort] = useState(String(ports.proxy_port));
@@ -391,7 +391,7 @@ export function SettingsPage() {
             </TitledCard>
           </div>}
           <div data-card="proxy" ref={registerCard("proxy")}>
-            <ProxySettingsCard settings={outboundProxy} outbound={outboundStatus} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
+            <ProxySettingsCard settings={outboundProxy} outbound={outboundStatus} cursorMode={cursorHarness?.mode ?? "official"} draft={proxyDraft} editing={editingProxy} saving={savingProxy} onDraftChange={setProxyDraft} onEdit={editProxy} onCancel={cancelProxyEdit} onSave={() => void saveProxy()} />
           </div>
           <div data-card="tab" ref={registerCard("tab")}>
             <TabSettingsCard settings={tabSettings} draft={tabDraft} editing={editingTab} saving={savingTab} onDraftChange={setTabDraft} onEdit={editTab} onCancel={cancelTabEdit} onSave={() => void saveTab()} />

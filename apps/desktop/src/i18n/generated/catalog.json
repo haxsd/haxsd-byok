@@ -294,7 +294,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 53,
+          "line": 59,
           "column": 8
         },
         {
@@ -875,7 +875,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 44,
+          "line": 50,
           "column": 12
         }
       ]
@@ -1145,6 +1145,18 @@
         }
       ]
     },
+    "1641745662b82f7e": {
+      "source": "官方模型需要能访问境外；直连下官方与混合模式里的官方模型会连不上。要用官方模型请改为「跟随系统代理」。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 117,
+          "column": 19
+        }
+      ]
+    },
     "168e845a86bc3703": {
       "source": "添加模型",
       "kind": "text",
@@ -1200,12 +1212,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 39,
+          "line": 45,
           "column": 12
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 65,
+          "line": 71,
           "column": 129
         }
       ]
@@ -1337,12 +1349,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 78,
+          "line": 84,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 99,
+          "line": 105,
           "column": 50
         }
       ]
@@ -2159,7 +2171,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 48,
+          "line": 54,
           "column": 66
         },
         {
@@ -2291,7 +2303,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 100,
+          "line": 106,
           "column": 134
         }
       ]
@@ -3448,7 +3460,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 74,
+          "line": 80,
           "column": 59
         }
       ]
@@ -3708,7 +3720,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 57,
+          "line": 63,
           "column": 29
         },
         {
@@ -3766,7 +3778,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 93,
+          "line": 99,
           "column": 81
         },
         {
@@ -4202,12 +4214,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 37,
+          "line": 43,
           "column": 35
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 65,
+          "line": 71,
           "column": 174
         },
         {
@@ -5707,17 +5719,17 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 62,
+          "line": 68,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 65,
+          "line": 71,
           "column": 62
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 90,
+          "line": 96,
           "column": 22
         }
       ]
@@ -6355,7 +6367,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 106,
+          "line": 112,
           "column": 19
         }
       ]
@@ -6996,7 +7008,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 83,
+          "line": 89,
           "column": 169
         }
       ]
@@ -7294,7 +7306,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 42,
+          "line": 48,
           "column": 35
         }
       ]
@@ -7894,7 +7906,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 49,
+          "line": 55,
           "column": 103
         },
         {
@@ -8045,12 +8057,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 82,
+          "line": 88,
           "column": 24
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 100,
+          "line": 106,
           "column": 50
         }
       ]
@@ -8586,12 +8598,12 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 38,
+          "line": 44,
           "column": 35
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 65,
+          "line": 71,
           "column": 212
         },
         {
@@ -9060,12 +9072,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 69,
+          "line": 75,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 96,
+          "line": 102,
           "column": 48
         }
       ]
@@ -9375,7 +9387,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 43,
+          "line": 49,
           "column": 35
         }
       ]
@@ -10372,12 +10384,12 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 73,
+          "line": 79,
           "column": 22
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 97,
+          "line": 103,
           "column": 48
         }
       ]
@@ -11170,7 +11182,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 97,
+          "line": 103,
           "column": 121
         }
       ]
@@ -11194,7 +11206,7 @@
       "refs": [
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 100,
+          "line": 106,
           "column": 123
         }
       ]
@@ -12374,7 +12386,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 97,
+          "line": 103,
           "column": 132
         },
         {
@@ -12791,7 +12803,7 @@
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 49,
+          "line": 55,
           "column": 91
         },
         {

@@ -303,7 +303,10 @@ pub(crate) async fn prepare(
         .match_checkpoint_prefix(&conversation_id, base_checkpoint_id, &initial_messages)
         .await?;
     initial_messages.drain(..reused);
-    let action = if compacting {
+    let action = if background_completion {
+        // 完成通知是幂等投递：身份相同就说明有人已经送过，别因为正文差别重跑一轮。
+        RunAction::BackgroundCompletion
+    } else if compacting {
         RunAction::Compact
     } else if starts_turn {
         RunAction::Start

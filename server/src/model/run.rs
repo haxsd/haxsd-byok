@@ -42,6 +42,11 @@ pub enum RunAction {
     Resume {
         pending_tool_round: Option<RecoveredToolRound>,
     },
+    /// 这一轮只是把一条后台完成通知带进会话。
+    ///
+    /// 同一条通知可能由服务端和客户端各发一次（身份相同、正文略有差别），所以
+    /// 它必须是幂等投递：通知已经在历史里时，这一轮不该再跑模型。
+    BackgroundCompletion,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

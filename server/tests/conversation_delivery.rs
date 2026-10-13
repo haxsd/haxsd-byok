@@ -260,6 +260,69 @@ async fn retrying_one_background_completion_reuses_its_runtime_message() {
     );
 }
 
+/// 同一条完成通知由两边各投递一次（身份相同、正文略有差别）时，第二轮既不该重复
+/// 跑模型，也不该因为"同一身份内容不同"被 store 判死。
+#[tokio::test]
+async fn a_duplicate_background_completion_does_not_run_another_turn() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(stop_response("model-call", "followed up"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let first = registry
+        .get_or_create("duplicate-completion-1")
+        .await
+        .unwrap();
+    let (checkpoint, _) = drive_completion(
+        &first,
+        completion_run_with_detail(
+            "duplicate-child",
+            "duplicate-run-1",
+            pb::ConversationStateStructure::default(),
+            "child result",
+        ),
+    )
+    .await;
+
+    // 客户端自己那份：身份相同、detail 不同（正文因此与第一份不同）。
+    let second = registry
+        .get_or_create("duplicate-completion-2")
+        .await
+        .unwrap();
+    drive_completion(
+        &second,
+        completion_run_with_detail(
+            "duplicate-child",
+            "duplicate-run-2",
+            checkpoint,
+            "child result (client copy)",
+        ),
+    )
+    .await;
+
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "重复的完成通知不该再跑一轮模型"
+    );
+    let statuses: Vec<String> = sqlx::query_scalar(
+        "SELECT status FROM runs WHERE conversation_id = 'parent-conversation' ORDER BY created_at_ms",
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(statuses, ["completed", "completed"]);
+}
+
 #[tokio::test]
 async fn background_shell_completion_wakes_the_parent_with_the_captured_notification() {
     let (_directory, store) = fixtures::temp_store().await;
