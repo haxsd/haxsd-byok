@@ -23,3 +23,16 @@
 - For stateful or concurrent behavior, show timing, ownership, state boundaries, and before/during/after behavior explicitly. Distinguish continuation within the same lifecycle from creation of a new lifecycle.
 - Prefer compact trees, flow diagrams, state matrices, and mappings when they communicate the structure more clearly than paragraphs.
 - Tie recommendations to the actual repository structure and code. Do not present a speculative target architecture as if it already exists.
+
+## 仓库边界：内部资料不进公开仓库
+
+本仓库对陌生人可见。**内部资料**——交接说明、内部方案与审查/审计记录、含机器路径或真实用量数据的笔记、
+逆向工具——一律写进私有记录仓库 `haxsd/haxsd-dev-records`（本仓库对应分区 `haxsd-byok/` 或 `cursor-byok/`），
+公开仓库只放产品与贡献者需要的内容。
+
+公开仓库不得出现这些路径：`HANDOFF.md`、`BRANCH_ISOLATION.md`、`docs/plans/**`、`docs/superpowers/**`、
+`docs/quality-review-*`、`docs/devin-router-vendor-evidence.md`、`support/cursor-capture/**`、
+`support/cursor-protocol-extractor/**`。CI 的 `records-guard` 任务会拦下它们。
+
+提交信息里也别写内部细节（账号、机器路径、真实 token 数），这些写进记录仓库的提交信息。
+收尾检查：在记录仓库里跑 `sync-records.ps1`（扫描五个公开仓库的当前树与历史，发现内部资料即报错）。

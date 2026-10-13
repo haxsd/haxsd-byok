@@ -126,3 +126,31 @@ jobs:
       - name: Run the desktop unit tests on MSVC
         if: matrix.os == 'windows-latest' && vars.RUN_DESKTOP_UNIT_TESTS == 'true'
         run: cargo test --package haxsd-byok-desktop --lib
+
+  records-guard:
+    name: Public repo hygiene
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 内部资料（交接说明、内部方案/审查/审计、逆向工具）属于私有记录仓库
+      # haxsd/haxsd-dev-records；公开仓库里出现即失败。
+      - name: 公开仓库不得包含内部资料
+        run: |
+          set -euo pipefail
+          forbidden='^(HANDOFF\.md|BRANCH_ISOLATION\.md|docs/plans/|docs/superpowers/|docs/quality-review-|docs/devin-router-vendor-evidence\.md|support/cursor-capture/|support/cursor-protocol-extractor/)'
+          tracked=$(git ls-files | grep -E "$forbidden" || true)
+          if [ -n "$tracked" ]; then
+            echo "::error::公开仓库出现内部资料（应放在私有记录仓库 haxsd/haxsd-dev-records）："
+            echo "$tracked"
+            exit 1
+          fi
+          history=$(git log --all --name-only --pretty=format: | sort -u | grep -E "$forbidden" || true)
+          if [ -n "$history" ]; then
+            echo "::error::历史里出现内部资料路径："
+            echo "$history"
+            exit 1
+          fi
+          echo "公开仓库没有内部资料 ✓"
