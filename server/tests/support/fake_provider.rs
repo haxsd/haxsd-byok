@@ -44,7 +44,11 @@ impl FakeProvider {
             .push_back(FakeResponse::Events(events.into_iter().map(Ok).collect()));
     }
     /// 同 [`push_for`]，但这一轮要等到 `Notify` 被唤醒才产出事件。
-    pub fn push_gated_for(&self, conversation_id: &str, events: Vec<ModelEvent>) -> Arc<tokio::sync::Notify> {
+    pub fn push_gated_for(
+        &self,
+        conversation_id: &str,
+        events: Vec<ModelEvent>,
+    ) -> Arc<tokio::sync::Notify> {
         let ready = Arc::new(tokio::sync::Notify::new());
         self.by_conversation
             .lock()
@@ -97,7 +101,10 @@ impl Provider for FakeProvider {
         invocation: ModelInvocation,
         _cancellation: CancellationToken,
     ) -> ProviderStream {
-        self.requests.lock().unwrap().push(invocation.request.clone());
+        self.requests
+            .lock()
+            .unwrap()
+            .push(invocation.request.clone());
         let per_conversation = self
             .by_conversation
             .lock()

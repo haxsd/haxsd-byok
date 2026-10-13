@@ -291,12 +291,11 @@ async fn a_background_subagent_wakes_the_parent_turn() {
     // 用 notify_one：万一流还没被轮询到，通知会留成许可，不会丢。
     finish_child.notify_one();
     for _ in 0..100 {
-        let status: Option<String> = sqlx::query_scalar(
-            "SELECT status FROM runs WHERE cursor_request_id = 'child-request'",
-        )
-        .fetch_optional(store.pool())
-        .await
-        .unwrap();
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM runs WHERE cursor_request_id = 'child-request'")
+                .fetch_optional(store.pool())
+                .await
+                .unwrap();
         if status.as_deref().is_some_and(|status| status != "running") {
             break;
         }
@@ -344,7 +343,10 @@ async fn a_background_subagent_wakes_the_parent_turn() {
             .fetch_all(store.pool())
             .await
             .unwrap();
-    println!("DIAG tool_round_calls = {calls:?}\nDIAG runs = {runs:?}\nDIAG requests = {}", requests.len());
+    println!(
+        "DIAG tool_round_calls = {calls:?}\nDIAG runs = {runs:?}\nDIAG requests = {}",
+        requests.len()
+    );
     assert_eq!(requests.len(), 4, "父轮 3 次 + 子代理 1 次");
     let follow_up = &requests[3];
     let completion = follow_up
@@ -375,7 +377,9 @@ async fn a_background_subagent_wakes_the_parent_turn() {
 
     // 父会话最后的状态里，任务气泡该被标成完成。
     let messages = store
-        .load_current_messages(&cursor_server::model::ConversationId::new(PARENT_CONVERSATION))
+        .load_current_messages(&cursor_server::model::ConversationId::new(
+            PARENT_CONVERSATION,
+        ))
         .await
         .unwrap();
     assert!(messages.iter().any(|message| {
