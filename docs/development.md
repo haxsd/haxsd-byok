@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-修改与推送前核对 `git remote -v` 和 `git branch --show-current`。本仓库只服务于 haxsd byok，隔离约定见 [BRANCH_ISOLATION.md](../BRANCH_ISOLATION.md)。
+修改与推送前核对 `git remote -v` 和 `git branch --show-current`。本仓库只服务于 haxsd byok。
 
 ## 结构与主流程
 

@@ -62,11 +62,11 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Candidate routes are switched manually, without automatic provider fallback. Host patching accepts recognized versions; recheck after client updates.
 - Data defaults to `%USERPROFILE%\.haxsd-byok-devin-v3`. Keys are stored in the local database; protect backups as sensitive files.
 - Detailed payloads and inactive runtime state expire; lifetime usage statistics remain. [Retention rules](./docs/user-guide.md#记录与数据保留)
-- This is independent of [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok), with separate identity, data and updates. [Isolation rules](./BRANCH_ISOLATION.md)
+- This is independent of [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok), with separate identity, data and updates.
 
 ## Development and support
 
-See the [development guide](./docs/development.md) for structure, build, validation and publishing, [Devin integration](./docs/devin-integration.md) for protocol evidence, and the [1.0.18 quality review](./docs/quality-review-2026-09-28.md) for confirmed issues and recommendations.
+See the [development guide](./docs/development.md) for structure, build, validation and publishing, and [Devin integration](./docs/devin-integration.md) for protocol evidence.
 
 For [issues](https://github.com/haxsd/haxsd-byok/issues), include versions, reproduction steps and redacted errors. Do not upload keys, CA private keys or entire databases.
 

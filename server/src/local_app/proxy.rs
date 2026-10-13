@@ -117,7 +117,7 @@ impl ProxyRuntime {
 /// 配置端口被占用时的重试窗口。
 ///
 /// 占用者多半就是"上一次的我们"：进程正在退出、监听端口还没释放。立刻退到随机
-/// 端口会把 Cursor 指向一个马上要消失的地址（HANDOFF 记过 17:24–17:26 那批报错），
+/// 端口会把 Cursor 指向一个马上要消失的地址（实测会连续报连接错误），
 /// 所以先在这个窗口里重试；实在拿不到才退到随机端口。
 const PORT_RETRY_WINDOW: Duration = Duration::from_secs(5);
 const PORT_RETRY_INTERVAL: Duration = Duration::from_millis(250);

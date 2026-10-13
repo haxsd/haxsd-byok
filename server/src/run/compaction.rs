@@ -1013,7 +1013,7 @@ mod tests {
         // The slot and the request context are both user messages, and every
         // retained turn is reused verbatim, so a compacted history cannot
         // introduce an assistant turn that carries no visible content — the
-        // shape Chat Completions providers reject (`docs/plans/provider-400-scan-2026-10-12.md` P2).
+        // shape Chat Completions providers reject (`content or tool_calls must be set` 400).
         let mut history = big_turn("u1", "a1", 400_000);
         history.extend(big_turn("u2", "a2", 40_000));
         let mut prepared = prepared(200_000);

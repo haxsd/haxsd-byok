@@ -22,7 +22,7 @@ type UpdateStatus =
  *
  * 下载与安装分成两步（`download()` + `install()`），因为两者失败的原因完全不同：
  * 下载失败是到 GitHub 的连接问题，安装失败常常是 Windows 没放行未签名的安装包
- * （Smart App Control / 代码完整性，实测见 HANDOFF 第六节）。合成一步时这两种原因
+ * （Smart App Control / 代码完整性会拦下这类安装包）。合成一步时这两种原因
  * 都只剩一句英文系统错误，用户既看不出原因，也看不出下一步该换代理还是改系统策略。
  */
 export function UpdateCard() {

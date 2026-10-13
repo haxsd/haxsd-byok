@@ -62,11 +62,11 @@ Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
 - Devin 候选路由由用户手动切换，失败时不会自动换路由。宿主补丁只接受可识别版本，客户端升级后需重新检查。
 - 默认数据目录为 `%USERPROFILE%\.haxsd-byok-devin-v3`，含数据库、证书与运行数据。API Key 保存在本地数据库中，备份也应按敏感文件保管。
 - 请求与响应详情、闲置会话运行状态有保留期限，累计用量统计保留。[数据保留规则](./docs/user-guide.md#记录与数据保留)
-- 本产品与 [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok) 使用不同的数据、标识与更新渠道。[仓库隔离规则](./BRANCH_ISOLATION.md)
+- 本产品与 [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok) 使用不同的数据、标识与更新渠道。
 
 ## 开发与反馈
 
-结构、构建、验证范围和发布步骤见 [开发指南](./docs/development.md)；协议与验证证据见 [Devin 集成说明](./docs/devin-integration.md)。[1.0.18 质量检查报告](./docs/quality-review-2026-09-28.md)记录了本轮确认的问题与建议。
+结构、构建、验证范围和发布步骤见 [开发指南](./docs/development.md)；协议与验证证据见 [Devin 集成说明](./docs/devin-integration.md)。
 
 遇到问题先看 [故障排查](./docs/troubleshooting.md)，再提交 [Issue](https://github.com/haxsd/haxsd-byok/issues)。提供版本、出错步骤和脱敏错误信息，不要上传 API Key、CA 私钥或整个数据库。
 
