@@ -44,7 +44,9 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 - Use System settings → Software update to check and install.
 - For manual updates, exit the app and run the newer installer. It reuses the registered installation directory; data is separate.
 - Updates use this repository's manifest, installer and independent Tauri signing key.
-- Tauri update signatures are distinct from Windows Authenticode signing. Windows may still display a source prompt.
+- The Tauri update signature validates the update package; it is not a Windows Authenticode signature. This is a personal project without a purchased code-signing certificate (the upstream project ships unsigned too), so Windows may still show a source prompt.
+  - SmartScreen ("Windows protected your PC"): choose **More info** → **Run anyway**.
+  - If **Smart App Control** is on (Settings → Privacy & security → Windows Security → App & browser control), unsigned installers are blocked with no "Run anyway": turn Smart App Control off first, then install or update (turning it off is one-way — re-enabling requires resetting Windows).
 
 **1.1.0 milestone** (it carries everything since 1.0.22):
 
