@@ -150,6 +150,98 @@ impl Store {
         Ok(run_id.map(RunId))
     }
 
+    /// 这次运行还有"后台子代理"在跑吗——父轮靠它决定"先别收尾，等它们回来"。
+    ///
+    /// 条件要求两件事同时成立：子运行在跑，**且**父会话里那次 Task 调用已经有结果。
+    /// 阻塞式 Task 期间父轮拿不到工具结果、根本走不到收尾点，所以这个条件实际只在
+    /// 后台子代理上成立；之所以 join 一次而不是只看子运行，是为了万一留下孤立的
+    /// running 子行时，父轮不会被白等一场。
+    pub async fn has_running_background_subagents(&self, run_id: &RunId) -> Result<bool> {
+        let running: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM runs child
+                JOIN tool_round_calls call ON call.call_id = child.parent_tool_call_id
+                WHERE child.parent_run_id = ?
+                  AND child.status = 'running'
+                  AND call.status = 'completed'
+             )",
+        )
+        .bind(run_id.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(running)
+    }
+
+    /// 父会话里那次 Task 调用：只有"结果已经提交"的才是后台子代理。
+    ///
+    /// 阻塞式 Task 的工具结果要等子代理跑完才提交，而后台子代理的结果在它开跑后立刻
+    /// 就回来了——所以这条查询既是"该不该由服务端唤醒"的判据，也顺带给出标题和父会话。
+    /// 只按 `call_id` 匹配（它本身唯一），不依赖工具名，免得客户端换个名字就把唤醒断掉。
+    pub async fn background_task(&self, call_id: &str) -> Result<Option<(ConversationId, String)>> {
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT runs.conversation_id, tool_round_calls.arguments_json
+             FROM tool_round_calls
+             JOIN tool_rounds ON tool_rounds.round_id = tool_round_calls.round_id
+             JOIN runs ON runs.run_id = tool_rounds.run_id
+             WHERE tool_round_calls.call_id = ?
+               AND tool_round_calls.status = 'completed'
+             ORDER BY tool_round_calls.completed_at_ms DESC
+             LIMIT 1",
+        )
+        .bind(call_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((conversation_id, arguments)) = row else {
+            return Ok(None);
+        };
+        let Some(title) = serde_json::from_str::<serde_json::Value>(&arguments)
+            .ok()
+            .and_then(|arguments| {
+                arguments
+                    .get("description")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|description| !description.is_empty())
+                    .map(str::to_owned)
+            })
+        else {
+            return Ok(None);
+        };
+        Ok(Some((ConversationId::new(conversation_id), title)))
+    }
+
+    /// 这些父工具调用对应的子代理运行已经结束了没：结束了就带着终态返回。
+    ///
+    /// 用于把 `SubagentRunState` 从派发时的 `Backgrounded` 纠正成终态——客户端
+    /// 靠这个状态把任务气泡标成完成。
+    pub async fn finished_child_runs(
+        &self,
+        parent_tool_call_ids: &[String],
+    ) -> Result<Vec<(String, RunStatus, u64)>> {
+        let mut finished = Vec::new();
+        for tool_call_id in parent_tool_call_ids {
+            let row: Option<(String, i64)> = sqlx::query_as(
+                "SELECT status, updated_at_ms FROM runs
+                 WHERE parent_tool_call_id = ?
+                   AND run_kind = 'subagent'
+                   AND status IN ('completed', 'failed', 'cancelled')
+                 ORDER BY updated_at_ms DESC
+                 LIMIT 1",
+            )
+            .bind(tool_call_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            if let Some((status, updated_at_ms)) = row {
+                let status = match status.as_str() {
+                    "completed" => RunStatus::Completed,
+                    "failed" => RunStatus::Failed,
+                    _ => RunStatus::Cancelled,
+                };
+                finished.push((tool_call_id.clone(), status, updated_at_ms.max(0) as u64));
+            }
+        }
+        Ok(finished)
+    }
+
     pub async fn begin_provider_call(&self, run_id: &RunId) -> Result<u64> {
         let _write = self.writes.lock().await;
         let index: Option<i64> = sqlx::query_scalar(
@@ -338,10 +430,9 @@ fn run_kind_columns(kind: &RunKind) -> (Option<&str>, Option<&str>, &'static str
             parent_run_id,
             parent_tool_call_id,
             kind,
-            ..
         } => (
-            Some(parent_run_id.as_str()),
-            Some(parent_tool_call_id.as_str()),
+            parent_run_id.as_ref().map(RunId::as_str),
+            parent_tool_call_id.as_deref(),
             "subagent",
             Some(match kind {
                 crate::model::SubagentKind::GeneralPurpose => "generalPurpose".into(),
@@ -409,6 +500,147 @@ mod tests {
         .execute(store.pool())
         .await
         .unwrap();
+    }
+
+    /// 父轮靠它决定"先别收尾"：只有"子运行在跑 + 那次 Task 调用已经有结果"才算后台子代理，
+    /// 孤立的 running 子行不会把父轮挂住。
+    #[tokio::test]
+    async fn detects_running_background_subagents() {
+        let (_dir, store) = fixture().await;
+        let conversation = crate::model::ConversationId("parent-conversation".into());
+        let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('parent-run',?,?,?,'root','running',1,1)",
+        )
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tool_rounds(round_id,run_id,base_checkpoint_id,assistant_json,status,created_at_ms,updated_at_ms)
+             VALUES ('parent-round','parent-run',?,'{}','completed',1,1)",
+        )
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        let parent = RunId::from("parent-run");
+        assert!(!store
+            .has_running_background_subagents(&parent)
+            .await
+            .unwrap());
+
+        // 子运行起来了，但父会话那次 Task 调用还没有结果（阻塞式 Task 的形状）：不等待。
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,parent_run_id,parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('child-run',?,?,?,'parent-run','task-call','subagent','running',2,2)",
+        )
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert!(!store
+            .has_running_background_subagents(&parent)
+            .await
+            .unwrap());
+
+        // 结果提交了 = 后台子代理：父轮等它。
+        sqlx::query(
+            "INSERT INTO tool_round_calls(round_id,call_index,call_id,model_call_id,name,arguments_json,status,completed_at_ms)
+             VALUES ('parent-round',0,'task-call','model-call','Task','{}','completed',2)",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert!(store
+            .has_running_background_subagents(&parent)
+            .await
+            .unwrap());
+        assert!(store
+            .finished_child_runs(&["task-call".to_owned()])
+            .await
+            .unwrap()
+            .is_empty());
+
+        sqlx::query(
+            "UPDATE runs SET status = 'completed', updated_at_ms = 3 WHERE run_id = 'child-run'",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert!(!store
+            .has_running_background_subagents(&parent)
+            .await
+            .unwrap());
+        assert_eq!(
+            store
+                .finished_child_runs(&["task-call".to_owned()])
+                .await
+                .unwrap(),
+            vec![("task-call".to_owned(), RunStatus::Completed, 3)]
+        );
+    }
+
+    /// 唤醒的判据：父会话里那次 Task 调用的结果已经提交才是后台子代理。
+    #[tokio::test]
+    async fn background_task_requires_a_committed_task_result() {
+        let (_dir, store) = fixture().await;
+        let conversation = crate::model::ConversationId("task-conversation".into());
+        let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('task-run',?,?,?,'root','running',1,1)",
+        )
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tool_rounds(round_id,run_id,base_checkpoint_id,assistant_json,status,created_at_ms,updated_at_ms)
+             VALUES ('task-round','task-run',?,'{}','completed',1,1)",
+        )
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        let insert_call = |call_index: i64, call_id: &'static str, status: &'static str| {
+            let store = store.clone();
+            async move {
+                sqlx::query(
+                    "INSERT INTO tool_round_calls(round_id,call_index,call_id,model_call_id,name,arguments_json,status,completed_at_ms)
+                     VALUES ('task-round',?,?,'model-call','Task','{\"description\":\"研究多智能体模式\"}',?,2)",
+                )
+                .bind(call_index)
+                .bind(call_id)
+                .bind(status)
+                .execute(store.pool())
+                .await
+                .unwrap();
+            }
+        };
+        // 还没结果 = 阻塞式 Task：此刻不该由服务端唤醒。
+        insert_call(0, "foreground-call", "running").await;
+        assert!(store
+            .background_task("foreground-call")
+            .await
+            .unwrap()
+            .is_none());
+        // 结果已经提交 = 后台子代理：给出父会话与标题。
+        insert_call(1, "background-call", "completed").await;
+        let (parent, title) = store
+            .background_task("background-call")
+            .await
+            .unwrap()
+            .expect("background task");
+        assert_eq!(parent.as_str(), "task-conversation");
+        assert_eq!(title, "研究多智能体模式");
     }
 
     /// 上一次崩溃留下的 running 行必须被清算：回收不再停摆、界面不再永远显示"进行中"。

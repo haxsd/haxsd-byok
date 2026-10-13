@@ -428,6 +428,42 @@
   padding: var(--oa-card-padding);
 }
 
+/* 模型来源：三选一，切换会改变代理配置与模型列表，所以把说明紧跟在控件下面。 */
+.modeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oa-space-2);
+}
+
+.modeNote {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  line-height: 1.5;
+}
+
+.modeList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    line-height: 1.5;
+
+    &::before {
+      content: "·";
+      color: var(--oa-accent);
+    }
+  }
+}
+
 .caFact {
   display: flex;
   align-items: flex-start;

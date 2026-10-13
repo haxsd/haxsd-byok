@@ -2,7 +2,7 @@
 use axum::{extract::State, Json};
 
 use crate::{
-    local_app::{CursorHarnessStatus, SetEnabled},
+    local_app::{CursorHarnessStatus, SetMode},
     Result,
 };
 
@@ -18,11 +18,9 @@ pub async fn initialize_ca(
     Ok(Json(service.cursor_harness().initialize_ca().await?))
 }
 
-pub async fn set_enabled(
+pub async fn set_mode(
     State(service): State<ControlService>,
-    Json(input): Json<SetEnabled>,
+    Json(input): Json<SetMode>,
 ) -> Result<Json<CursorHarnessStatus>> {
-    Ok(Json(
-        service.cursor_harness().set_enabled(input.enabled).await?,
-    ))
+    Ok(Json(service.cursor_harness().set_mode(input.mode).await?))
 }

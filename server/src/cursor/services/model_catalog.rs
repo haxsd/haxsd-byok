@@ -10,6 +10,7 @@ use prost::Message;
 use crate::{
     api::cursor::proxy::{self, CursorProxy},
     cursor::{protocol::proto::agent::v1 as agent, transport::TransportRegistry},
+    local_app::CursorHarness,
     model::{format_token_count, parse_token_count, ModelConfig},
     plugin::PluginModelDescriptor,
     Error, Result,
@@ -249,8 +250,10 @@ fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> 
 pub async fn available_models(
     State(registry): State<TransportRegistry>,
     Extension(proxy): Extension<CursorProxy>,
+    Extension(harness): Extension<CursorHarness>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
+    let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
@@ -272,9 +275,26 @@ pub async fn available_models(
         models: available_models,
     }
     .encode_to_vec();
+    if !mode.includes_official_models() {
+        // 本地模式：官方模型不进列表，也不再去上游取一次必然被拒的目录。
+        return Ok(local_response(local));
+    }
     match proxy::forward_buffered(&proxy, request).await {
-        Ok(upstream) => merge_response(upstream, local),
+        Ok(upstream) if upstream.status.is_success() => {
+            harness.catalog_health().record_success();
+            merge_response(upstream, local)
+        }
+        Ok(upstream) => {
+            harness
+                .catalog_health()
+                .record_failure(format!("upstream returned {}", upstream.status));
+            tracing::warn!(status = %upstream.status, "Cursor model catalog upstream rejected request; using local catalog");
+            Ok(local_response(local))
+        }
         Err(error) => {
+            harness
+                .catalog_health()
+                .record_failure(format!("network: {error}"));
             tracing::warn!(%error, "Cursor AvailableModels upstream unavailable; using local catalog");
             Ok(local_response(local))
         }
@@ -284,8 +304,10 @@ pub async fn available_models(
 pub async fn usable_models(
     State(registry): State<TransportRegistry>,
     Extension(proxy): Extension<CursorProxy>,
+    Extension(harness): Extension<CursorHarness>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
+    let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
@@ -304,9 +326,25 @@ pub async fn usable_models(
             .collect(),
     }
     .encode_to_vec();
+    if !mode.includes_official_models() {
+        return Ok(local_response(local));
+    }
     match proxy::forward_buffered(&proxy, request).await {
-        Ok(upstream) => merge_response(upstream, local),
+        Ok(upstream) if upstream.status.is_success() => {
+            harness.catalog_health().record_success();
+            merge_response(upstream, local)
+        }
+        Ok(upstream) => {
+            harness
+                .catalog_health()
+                .record_failure(format!("upstream returned {}", upstream.status));
+            tracing::warn!(status = %upstream.status, "Cursor model catalog upstream rejected request; using local catalog");
+            Ok(local_response(local))
+        }
         Err(error) => {
+            harness
+                .catalog_health()
+                .record_failure(format!("network: {error}"));
             tracing::warn!(%error, "Cursor GetUsableModels upstream unavailable; using local catalog");
             Ok(local_response(local))
         }
@@ -401,11 +439,8 @@ fn default_model_nudge_response(
     }
 }
 
+/// 把本机模型追加到上游返回的目录后面。调用方已经确认上游是 2xx。
 fn merge_response(upstream: proxy::BufferedResponse, extra: Vec<u8>) -> Result<Response<Body>> {
-    if !upstream.status.is_success() {
-        tracing::warn!(status = %upstream.status, "Cursor model catalog upstream rejected request; using local catalog");
-        return Ok(local_response(extra));
-    }
     let (framed, payload) = unary_payload(&upstream.body)?;
     let body = if framed {
         let mut merged = BytesMut::with_capacity(5 + payload.len() + extra.len());

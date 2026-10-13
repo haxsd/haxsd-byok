@@ -10,7 +10,7 @@ use crate::{
         protocol::proto::agent::v1 as pb,
         services::blob_sync::BlobSynchronizer,
     },
-    model::{CanonicalMessage, MessageContent, Origin, Role},
+    model::{CanonicalMessage, ContentPart, MessageContent, Origin, Role},
     store::BlobId,
     Error, Result,
 };
@@ -297,6 +297,28 @@ async fn message(
             parts: images::parts(user, text, blobs).await?,
         },
         runtime_event_id: Some(event_id),
+    })
+}
+
+/// 服务端自己发起的唤醒消息：完成上下文 + 那句 follow-up 指令。
+///
+/// 与客户端发来完成通知时的形状一致（同样以 `background-completed:<identity>` 作事件
+/// 身份），区别只是没有请求上下文可依，时间戳按 UTC 记。
+pub(crate) fn wakeup_message(event_id: &str, context: &str) -> Result<CanonicalMessage> {
+    let timestamp = Time::now(None)?.timestamp;
+    let text = format!(
+        "<timestamp>{timestamp}</timestamp>\n{}\n<user_query>{}</user_query>",
+        context.trim(),
+        super::insert_messages::FOLLOW_UP
+    );
+    Ok(CanonicalMessage {
+        message_id: format!("runtime:{event_id}"),
+        role: Role::User,
+        origin: Origin::Runtime,
+        content: MessageContent::Parts {
+            parts: vec![ContentPart::Text { text }],
+        },
+        runtime_event_id: Some(event_id.to_owned()),
     })
 }
 

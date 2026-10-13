@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, ServiceUnreachableError, type CurrencyPricing, type CursorHarnessStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, ServiceUnreachableError, type CurrencyPricing, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
 
 /**
@@ -300,9 +300,9 @@ export const appStore = {
       update({ plugins: await api.plugins() });
     });
   },
-  async setCursorEnabled(enabled: boolean) {
+  async setCursorMode(mode: CursorMode) {
     update({ cursorBusy: true, error: null });
-    try { update({ cursorHarness: await api.setCursorEnabled(enabled) }); }
+    try { update({ cursorHarness: await api.setCursorMode(mode) }); }
     catch (cause) { update({ error: cause instanceof Error ? cause.message : String(cause) }); }
     finally { update({ cursorBusy: false }); }
   },

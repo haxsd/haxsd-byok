@@ -100,9 +100,24 @@ export interface ModelConnectivityResult {
 
 export type CaState = "missing" | "untrusted" | "ready" | "invalid";
 export type IntegrationState = "disabled" | "enabled" | "degraded";
+/** 模型来源模式：官方 / 本地 / 混合。 */
+export type CursorMode = "official" | "local" | "mixed";
+/** 客户端当前用的账号：没有 / 我们注入的本地账号 / 用户自己的账号。 */
+export type CursorAccountState = "missing" | "local" | "official";
+export interface CursorAccount {
+  state: CursorAccountState;
+  email: string | null;
+}
+/** 官方模型目录最近一次抓取的成败；本地模式不使用官方目录。 */
+export interface CatalogHealth {
+  last_success_ms: number | null;
+  last_failure_ms: number | null;
+  last_failure: string | null;
+}
 export interface CursorHarnessStatus {
   platform: string;
   ca: CaState;
+  mode: CursorMode;
   configured_models: number;
   enabled_models: number;
   integration: IntegrationState;
@@ -111,6 +126,8 @@ export interface CursorHarnessStatus {
   foreign_configuration: boolean;
   proxy_url: string | null;
   ca_install_command: string | null;
+  account: CursorAccount;
+  catalog: CatalogHealth;
 }
 
 export interface PortSettings {
@@ -765,7 +782,7 @@ export const api = {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("open_log_directory");
   },
-  setCursorEnabled: (enabled: boolean) => request<CursorHarnessStatus>("/harness/cursor/enabled", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  setCursorMode: (mode: CursorMode) => request<CursorHarnessStatus>("/harness/cursor/mode", { method: "PUT", body: JSON.stringify({ mode }) }),
   calls: (signal?: AbortSignal) => request<LlmCall[]>("/llm-calls?limit=200", { signal }),
   call: (id: string) => request<CallDetail>(`/llm-calls/${encodeURIComponent(id)}`),
   openCallDetails: async (id: string) => {

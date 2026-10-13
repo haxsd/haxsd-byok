@@ -603,6 +603,7 @@ async fn newer_run_request_on_one_bidi_stream_replaces_the_active_run() {
 
 #[tokio::test]
 async fn parent_request_does_not_need_to_resolve_to_an_active_run() {
+    // 没有子代理标记：这次运行仍是根运行，父头只用于子代理血缘。
     assert_run_starts_without_parent_dependency(
         "finished-parent-request",
         Some(TransportParent {
@@ -610,16 +611,19 @@ async fn parent_request_does_not_need_to_resolve_to_an_active_run() {
             tool_call_id: Some("original-tool-call".into()),
         }),
         None,
+        ("root", None, None),
     )
     .await;
 }
 
 #[tokio::test]
 async fn subagent_type_does_not_require_parent_metadata() {
+    // 子代理标记就足以把它记成子代理运行；父头缺失时父血缘留空，而不是拒绝运行。
     assert_run_starts_without_parent_dependency(
         "parentless-subagent-request",
         None,
         Some("generalPurpose"),
+        ("subagent", None, None),
     )
     .await;
 }
@@ -628,6 +632,7 @@ async fn assert_run_starts_without_parent_dependency(
     request_id: &str,
     parent: Option<TransportParent>,
     subagent_type_name: Option<&str>,
+    expected_lineage: (&str, Option<&str>, Option<&str>),
 ) {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
@@ -670,7 +675,87 @@ async fn assert_run_starts_without_parent_dependency(
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(row, ("root".into(), None, None));
+    assert_eq!(
+        (row.0.as_str(), row.1.as_deref(), row.2.as_deref()),
+        expected_lineage
+    );
+}
+
+/// 子代理带上父请求头、且父运行还在跑时，血缘落库：run_kind=subagent，父运行与
+/// 父工具调用都记上。后台完成通知要靠这份血缘才知道该唤醒谁。
+#[tokio::test]
+async fn a_subagent_records_the_parent_run_it_belongs_to() {
+    let (_directory, store) = fixtures::temp_store().await;
+    // 正在运行的父运行：血缘只认还活着的父（子代理比父轮活得久是常态，
+    // 那时父运行已经不是 running，血缘就只能留空）。
+    let parent_conversation =
+        cursor_server::model::ConversationId::new("lineage-parent-conversation");
+    let checkpoint = store
+        .ensure_conversation(&parent_conversation)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO runs
+         (run_id, cursor_request_id, conversation_id, base_checkpoint_id, head_checkpoint_id,
+          run_kind, status, created_at_ms, updated_at_ms)
+         VALUES ('lineage-parent:parent-run', 'lineage-parent', ?, ?, ?, 'root', 'running', 0, 0)",
+    )
+    .bind(parent_conversation.as_str())
+    .bind(checkpoint.0)
+    .bind(checkpoint.0)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(vec![
+        ModelEvent::Start {
+            model_call_id: "lineage-child-call".into(),
+        },
+        ModelEvent::TextStart,
+        ModelEvent::TextDelta("subagent finished".into()),
+        ModelEvent::TextEnd,
+        ModelEvent::Done(FinishReason::Stop),
+    ]);
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let terminal = run_to_terminal(
+        &registry,
+        "lineage-subagent",
+        Some(TransportParent {
+            request_id: Some("lineage-parent".into()),
+            tool_call_id: Some("task-call-1".into()),
+        }),
+        subagent_run("explore the repository", "lineage-subagent-conversation"),
+    )
+    .await;
+
+    assert!(terminal.get("error").is_none(), "{terminal}");
+    let row: (String, Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT run_kind, parent_run_id, parent_tool_call_id FROM runs WHERE cursor_request_id = ?",
+    )
+    .bind("lineage-subagent")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            "subagent".into(),
+            Some("lineage-parent:parent-run".into()),
+            Some("task-call-1".into())
+        )
+    );
 }
 
 /// 把一条客户端消息送进传输层并等到 EndStream，返回终态 JSON。
@@ -798,7 +883,11 @@ async fn subagent_run_without_message_id_starts_and_completes() {
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(row, ("root".into(), None, None));
+    // 只有父工具调用 ID：父请求 ID 缺失，父运行就无从查起，只有工具调用记下来。
+    assert_eq!(
+        row,
+        ("subagent".into(), None, Some("parent-task-call".into()))
+    );
 }
 
 /// 同一条无 `message_id` 的 kickoff 换 request id 重试时要幂等；内容不同则各自成一条。

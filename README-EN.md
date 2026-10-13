@@ -13,7 +13,7 @@ Use your configured model APIs in Cursor and Devin, with local model management,
 | Feature | What it does |
 | --- | --- |
 | Model library | Configure endpoints, keys and model IDs for OpenAI Chat / Responses and Anthropic; add, copy, reorder and test models |
-| Cursor integration | Local proxy and CA, with certificate, ownership and takeover status |
+| Cursor integration | Three model sources: **official** (this app stays out), **local** (model library only, unknown models are rejected) and **mixed** (vendor models and your own models side by side), plus the local proxy, CA and takeover status |
 | Devin integration | Optional loopback gateway, model UID bindings, manual candidate routes and a verified host patch with backup |
 | Call records | Success/failure, duration and token usage, with configurable payload recording |
 | Value estimates | Editable fixed or peak/off-peak reference prices; independent CNY and USD settings |
@@ -31,7 +31,7 @@ You supply the model service. Settings and keys are local; requests go to your c
 
 1. Install the Windows asset ending in `x64-setup.exe` from [Releases](https://github.com/haxsd/haxsd-byok/releases/latest).
 2. Add an endpoint, key and model ID on the Models page. Select the correct protocol. Test sends a real model request.
-3. For Cursor, initialize the local CA, follow trust instructions and enable takeover. **Save your work first: enabling takeover terminates running Cursor processes. Reopen Cursor manually.**
+3. For Cursor, initialize the local CA, follow the trust instructions, then pick a model source on the Cursor page. **Save your work first: enabling local or mixed mode closes running Cursor processes. Reopen Cursor manually.** To keep the vendor's models alongside your own, pick mixed and sign in to your own account inside Cursor.
 4. For Devin, configure bindings, enable and save the gateway, restart haxsd byok, apply the [host integration](./docs/devin-go-live.md), then restart Devin.
 5. Send a message and verify its record on the Calls page. Configure only the integrations you use.
 
@@ -57,7 +57,10 @@ Official releases currently provide a **Windows x64 NSIS installer**. Other plat
 
 ## Boundaries and data
 
-- Keep the app running while integrated. To stop, disable Cursor takeover, or restore Devin's host file before disabling its gateway.
+- Keep the app running in local and mixed modes; both rewrite Cursor's proxy configuration, and crossing the official boundary in either direction requires restarting Cursor. Official mode writes no configuration, injects no account and produces no call records or compaction.
+- The Cursor page shows the current mode, the account the client is actually signed in with, and the state of the vendor model catalog (failures are reported there — a 401 means the client needs to sign in again).
+- Compaction applies only to requests answered by your own models; the vendor's models manage their own context.
+- Local mode knows only the models in your library; a model that is not there is rejected instead of quietly going to the vendor.
 - Devin is off by default and listens on `127.0.0.1` only, with ports `43110/43111/43112`. Port changes require restart and reapplying the host patch.
 - Candidate routes are switched manually, without automatic provider fallback. Host patching accepts recognized versions; recheck after client updates.
 - Data defaults to `%USERPROFILE%\.haxsd-byok-devin-v3`. Keys are stored in the local database; protect backups as sensitive files.

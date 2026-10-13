@@ -49,18 +49,65 @@ impl DecodedAppend {
         request.conversation_id.as_deref()
     }
 
-    pub fn is_background_task_completion(&self) -> bool {
-        let Some(agent::agent_client_message::Message::RunRequest(request)) =
-            self.message.message.as_ref()
-        else {
-            return false;
+    /// 这条 append 的动作类型：RunRequest 的动作按协议名给出（snake_case），其它消息
+    /// 给出消息类型。
+    ///
+    /// 日志与追踪元数据共用这一份命名，免得两处各写一遍再慢慢分叉；`match` 是穷尽的，
+    /// 协议新增动作时编译器会提醒我们补上。
+    pub fn action_kind(&self) -> &'static str {
+        let Some(message) = self.message.message.as_ref() else {
+            return "empty";
         };
+        let agent::agent_client_message::Message::RunRequest(request) = message else {
+            return client_message_type(message);
+        };
+        let Some(action) = request
+            .action
+            .as_ref()
+            .and_then(|action| action.action.as_ref())
+        else {
+            return "none";
+        };
+        match action {
+            agent::conversation_action::Action::UserMessageAction(_) => "user_message",
+            agent::conversation_action::Action::ResumeAction(_) => "resume",
+            agent::conversation_action::Action::CancelAction(_) => "cancel",
+            agent::conversation_action::Action::SummarizeAction(_) => "summarize",
+            agent::conversation_action::Action::ShellCommandAction(_) => "shell_command",
+            agent::conversation_action::Action::StartPlanAction(_) => "start_plan",
+            agent::conversation_action::Action::ExecutePlanAction(_) => "execute_plan",
+            agent::conversation_action::Action::AsyncAskQuestionCompletionAction(_) => {
+                "async_ask_question_completion"
+            }
+            agent::conversation_action::Action::CancelSubagentAction(_) => "cancel_subagent",
+            agent::conversation_action::Action::BackgroundTaskCompletionAction(_) => {
+                "background_task_completion"
+            }
+            agent::conversation_action::Action::BackgroundShellAction(_) => "background_shell",
+            agent::conversation_action::Action::BackgroundSubagentAction(_) => {
+                "background_subagent"
+            }
+            agent::conversation_action::Action::SubscriptionNotificationAction(_) => {
+                "subscription_notification"
+            }
+            agent::conversation_action::Action::GoalContinuationAction(_) => "goal_continuation",
+            agent::conversation_action::Action::InjectContextAction(_) => "inject_context",
+        }
+    }
+
+    /// 高频、且与子代理唤醒链路无关的 append：工具结果与其控制消息、KV 同步、
+    /// 心跳、预热、以及用户轮（用户轮已经有「routing Cursor Run to ...」那条日志）。
+    /// 这些不值得再单独记一条 INFO；其余动作（后台任务、取消、计划、总结……）都要。
+    pub fn is_routine(&self) -> bool {
         matches!(
-            request
-                .action
-                .as_ref()
-                .and_then(|action| action.action.as_ref()),
-            Some(agent::conversation_action::Action::BackgroundTaskCompletionAction(_))
+            self.action_kind(),
+            "empty"
+                | "user_message"
+                | "exec_client_message"
+                | "exec_client_control_message"
+                | "kv_client_message"
+                | "client_heartbeat"
+                | "prewarm_request"
         )
     }
 
@@ -90,12 +137,7 @@ impl DecodedAppend {
                         history.map_or(0, history_image_count),
                     )
                 }
-                agent::conversation_action::Action::BackgroundTaskCompletionAction(_) => {
-                    ("background_task_completion", 0, 0)
-                }
-                agent::conversation_action::Action::ExecutePlanAction(_) => ("execute_plan", 0, 0),
-                agent::conversation_action::Action::SummarizeAction(_) => ("summarize", 0, 0),
-                _ => ("other", 0, 0),
+                _ => (self.action_kind(), 0, 0),
             })
             .unwrap_or(("none", 0, 0));
         let state = request.conversation_state.as_ref();

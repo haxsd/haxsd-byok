@@ -31,16 +31,18 @@ use crate::{
 pub fn router(
     registry: TransportRegistry,
     clients: crate::network::NetworkClients,
+    harness: crate::local_app::CursorHarness,
 ) -> Result<Router> {
     let proxy = CursorProxy::cursor(clients);
     let knowledge = knowledge::KnowledgeService::managed()?;
-    Ok(router_with_proxy(registry, proxy, knowledge))
+    Ok(router_with_proxy(registry, proxy, knowledge, harness))
 }
 
 fn router_with_proxy(
     registry: TransportRegistry,
     proxy: CursorProxy,
     knowledge_service: knowledge::KnowledgeService,
+    harness: crate::local_app::CursorHarness,
 ) -> Router {
     let web_cache = registry.web_cache().router();
     let free_entitlements = FreeEntitlementCache::default();
@@ -163,6 +165,7 @@ fn router_with_proxy(
         .layer(Extension(proxy))
         .layer(Extension(knowledge_service))
         .layer(Extension(free_entitlements))
+        .layer(Extension(harness))
         .with_state(registry)
         .merge(web_cache)
 }
@@ -233,21 +236,43 @@ async fn bidi_handler(
     let (parts, body) = buffered(request).await?;
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
     let decoded = bidi::decode(&request)?;
+    let action = decoded.action_kind();
+    if !decoded.is_routine() {
+        // 后台任务完成、取消、计划、总结这类低频动作必须留痕：子代理唤醒链路里
+        // "子代理结束的那一刻客户端到底发了什么" 只能靠这条日志回答。
+        tracing::info!(
+            request_id = decoded.request_id,
+            seqno = decoded.seqno,
+            action,
+            "Cursor append received"
+        );
+    }
     let first_model = decoded.model_id().map(str::to_owned);
     let conversation_id = decoded.conversation_id().map(str::to_owned);
     let trace_metadata = decoded.trace_metadata();
     let trace = registry.trace(&decoded.request_id);
+    let mode = registry.store().cursor_mode().await?;
     let local = if let Some(model_id) = decoded.model_id() {
         // 插件模型 ID 只在本地有意义,永远不转发到 Cursor 官方上游。
-        if model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX)
-            || registry.store().model(model_id).await?.is_some()
-        {
+        if is_local_model(&registry, model_id).await? {
             tracing::info!(
                 request_id = decoded.request_id,
                 model_id,
                 "routing Cursor Run to BYOK provider"
             );
             true
+        } else if !mode.includes_official_models() {
+            // 本地模式只认模型库里的模型。走到这里说明客户端手里还是上一份目录
+            // （模式刚切过来、列表还没刷新）。明确拒绝比悄悄转发到官方诚实：静默
+            // 转发会让用户以为在用本机模型，实际花的是官方额度。
+            tracing::warn!(
+                request_id = decoded.request_id,
+                model_id,
+                "rejecting a model that is not configured in local mode"
+            );
+            return Err(crate::Error::Protocol(format!(
+                "model {model_id} is not in the model library; local mode answers only configured models. Reload the Cursor window to refresh the model list, or switch to mixed mode to use official models."
+            )));
         } else {
             tracing::info!(
                 request_id = decoded.request_id,
@@ -267,9 +292,16 @@ async fn bidi_handler(
             body.clone(),
             trace_outcome(trace_metadata, false, "missing_transport", None),
         );
-        return Err(crate::Error::Protocol(
-            "first BidiAppend message must select a model".into(),
-        ));
+        // 这条路径上没有模型、也没有已知 transport。以前它只留一句协议错误，
+        // 说不出被拒的是什么动作——而"子代理完成通知"恰好可能长这个样子。
+        tracing::warn!(
+            request_id = decoded.request_id,
+            action,
+            "rejecting an append with neither a model nor a known transport"
+        );
+        return Err(crate::Error::Protocol(format!(
+            "first BidiAppend message must select a model (action: {action})"
+        )));
     };
     if first_model.is_some() {
         trace.begin(
@@ -342,6 +374,14 @@ async fn bidi_handler(
         HeaderValue::from_static("application/proto"),
     );
     Ok(response)
+}
+
+/// 这个模型 ID 是不是由我们回答的（模型库里的模型，或插件模型）。
+async fn is_local_model(registry: &TransportRegistry, model_id: &str) -> Result<bool> {
+    if model_id.starts_with(crate::plugin::ADAPTER_ID_PREFIX) {
+        return Ok(true);
+    }
+    Ok(registry.store().model(model_id).await?.is_some())
 }
 
 fn trace_outcome(

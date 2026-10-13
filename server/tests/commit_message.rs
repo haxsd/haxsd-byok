@@ -35,8 +35,9 @@ async fn commit_router(
     )
     .unwrap();
     let clients = NetworkClients::new(store.clone());
+    let harness = cursor_server::local_app::CursorHarness::new(store.clone()).unwrap();
     let registry = TransportRegistry::new(store, Arc::new(provider), PromptCompiler::new(assets));
-    cursor::router(registry, clients).unwrap()
+    cursor::router(registry, clients, harness).unwrap()
 }
 
 fn model_input(model_id: &str) -> ModelConfigInput {

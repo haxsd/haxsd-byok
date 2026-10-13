@@ -46,9 +46,10 @@ export function AppLayout() {
   // the shared store refresh, so there is one source of truth.
   const menuStatus = (path: string) => {
     if (path === "/harness/cursor" && cursorHarness) {
+      const takenOver = cursorHarness.mode !== "official" && cursorHarness.settings_applied;
       return {
-        label: cursorHarness.settings_applied ? t("已接管") : t("未接管"),
-        tone: cursorHarness.settings_applied ? "ok" as const : "idle" as const,
+        label: cursorHarness.mode === "official" ? t("官方") : takenOver ? t("已接管") : t("未接管"),
+        tone: takenOver ? "ok" as const : "idle" as const,
       };
     }
     if (path === "/harness/devin" && devinStatus) {

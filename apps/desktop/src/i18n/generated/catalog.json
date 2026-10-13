@@ -107,12 +107,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 123,
+          "line": 185,
           "column": 35
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 221,
+          "line": 335,
           "column": 46
         },
         {
@@ -141,7 +141,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 270,
+          "line": 372,
           "column": 11
         }
       ]
@@ -202,17 +202,17 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 202,
           "column": 36
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 118,
+          "line": 119,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 121,
+          "line": 122,
           "column": 20
         }
       ]
@@ -384,12 +384,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 202,
+          "line": 316,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 205,
+          "line": 319,
           "column": 29
         }
       ]
@@ -401,7 +401,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 100,
+          "line": 103,
           "column": 15
         }
       ]
@@ -461,7 +461,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 105,
+          "line": 134,
           "column": 13
         },
         {
@@ -600,6 +600,18 @@
         }
       ]
     },
+    "0a1e9b52ddcb4e2a": {
+      "source": "证书已就绪，还差重启 Cursor",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 76,
+          "column": 15
+        }
+      ]
+    },
     "0a379c1e7398fba1": {
       "source": "全部状态",
       "kind": "text",
@@ -609,6 +621,18 @@
           "file": "features/calls/CallsPage.tsx",
           "line": 107,
           "column": 34
+        }
+      ]
+    },
+    "0a8588c0af5c2a17": {
+      "source": "重新打开 Cursor",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 197,
+          "column": 16
         }
       ]
     },
@@ -703,7 +727,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 216,
+          "line": 219,
           "column": 24
         }
       ]
@@ -863,8 +887,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 147,
-          "column": 39
+          "line": 216,
+          "column": 64
         }
       ]
     },
@@ -959,18 +983,6 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 196,
           "column": 41
-        }
-      ]
-    },
-    "10d714d11fbb2cff": {
-      "source": "这一步会强制结束所有正在运行的 Cursor 进程，未保存的编辑内容会丢失。请先保存工作；配置写入后需要你手动重新打开 Cursor。是否继续？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 252,
-          "column": 11
         }
       ]
     },
@@ -1082,7 +1094,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 145,
+          "line": 148,
           "column": 6
         }
       ]
@@ -1128,7 +1140,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 142,
+          "line": 211,
           "column": 14
         }
       ]
@@ -1232,18 +1244,6 @@
         {
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 391,
-          "column": 15
-        }
-      ]
-    },
-    "1824ec48957a50f4": {
-      "source": "Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要继续用本应用接管，请先关闭对方的接管，或打开右侧开关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 151,
           "column": 15
         }
       ]
@@ -1427,6 +1427,23 @@
         }
       ]
     },
+    "1b76c104f489615a": {
+      "source": "混合",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 139,
+          "column": 12
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 250,
+          "column": 40
+        }
+      ]
+    },
     "1b7d5b1a9315fc64": {
       "source": "计算中…",
       "kind": "text",
@@ -1439,6 +1456,30 @@
         }
       ]
     },
+    "1bb298458f116b94": {
+      "source": "官方模式下本应用不介入；要用自己的模型就选这两个模式之一。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 191,
+          "column": 52
+        }
+      ]
+    },
+    "1bddd15d3e1f50b7": {
+      "source": "Cursor 的代理配置现在由另一个同类软件管着；切换模式会强制结束 Cursor 并覆盖对方那份配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 199,
+          "column": 13
+        }
+      ]
+    },
     "1c4eb7c468627024": {
       "source": "初始化并信任本地 CA",
       "kind": "text",
@@ -1446,8 +1487,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 130,
-          "column": 37
+          "line": 194,
+          "column": 39
         }
       ]
     },
@@ -1472,7 +1513,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 84,
+          "line": 87,
           "column": 11
         }
       ]
@@ -1496,6 +1537,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 379,
           "column": 64
+        }
+      ]
+    },
+    "1cc0eb50e4883eff": {
+      "source": "需要先信任本地 CA",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 254,
+          "column": 72
         }
       ]
     },
@@ -1532,6 +1585,18 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 65,
           "column": 20
+        }
+      ]
+    },
+    "1da9b14b4628d620": {
+      "source": "本地模式不要求官方账号；库里没有的模型会被明确拒绝，不会静默走官方。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 264,
+          "column": 19
         }
       ]
     },
@@ -1581,12 +1646,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 56,
+          "line": 57,
           "column": 40
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 124,
+          "line": 125,
           "column": 40
         }
       ]
@@ -1598,7 +1663,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 200,
+          "line": 203,
           "column": 34
         }
       ]
@@ -1838,7 +1903,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 89,
+          "line": 92,
           "column": 15
         }
       ]
@@ -1876,6 +1941,20 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 198,
           "column": 36
+        }
+      ]
+    },
+    "277db877d22f0ca9": {
+      "source": "官方模型目录：{catalog}",
+      "kind": "template",
+      "placeholders": [
+        "catalog"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 271,
+          "column": 22
         }
       ]
     },
@@ -1922,15 +2001,15 @@
         }
       ]
     },
-    "296da37506328d89": {
-      "source": "关闭接管Cursor",
+    "296de0e31f8c22d9": {
+      "source": "正常",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 50,
-          "column": 43
+          "line": 160,
+          "column": 11
         }
       ]
     },
@@ -1975,8 +2054,20 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 123,
+          "line": 124,
           "column": 15
+        }
+      ]
+    },
+    "2bd854b0bb2a0eb7": {
+      "source": "Cursor 直连官方：本应用不写代理配置、不注入账号，也不记录它的请求。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 218,
+          "column": 13
         }
       ]
     },
@@ -2033,12 +2124,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 244,
-          "column": 20
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 257,
+          "line": 358,
           "column": 20
         },
         {
@@ -2103,18 +2189,6 @@
         }
       ]
     },
-    "2cdf7d3275016cc2": {
-      "source": "关闭接管Cursor？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 256,
-          "column": 14
-        }
-      ]
-    },
     "2d30c2a98ebb5278": {
       "source": "当前：{rate}",
       "kind": "template",
@@ -2143,7 +2217,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 225,
+          "line": 339,
           "column": 40
         }
       ]
@@ -2179,7 +2253,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 203,
+          "line": 206,
           "column": 20
         }
       ]
@@ -2304,7 +2378,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 229,
+          "line": 232,
           "column": 18
         }
       ]
@@ -2328,19 +2402,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 102,
-          "column": 11
-        }
-      ]
-    },
-    "312d1c8fa8028441": {
-      "source": "Cursor 的代理配置现在由另一个同类软件管着；打开开关会强制结束 Cursor 并覆盖对方那份配置。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 135,
+          "line": 131,
           "column": 11
         }
       ]
@@ -2352,7 +2414,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 98,
+          "line": 101,
           "column": 75
         }
       ]
@@ -2461,8 +2523,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 108,
+          "line": 111,
           "column": 15
+        }
+      ]
+    },
+    "34632f53e1fdc8dc": {
+      "source": "只用模型库里的模型：官方模型不进列表，不在库里的模型会被明确拒绝；没有账号时本应用补一个本地账号。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 143,
+          "column": 12
         }
       ]
     },
@@ -2473,13 +2547,18 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 98,
+          "line": 127,
           "column": 7
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 152,
-          "column": 40
+          "line": 147,
+          "column": 7
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 223,
+          "column": 42
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
@@ -2532,7 +2611,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 198,
+          "line": 312,
           "column": 39
         }
       ]
@@ -2568,7 +2647,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 131,
+          "line": 134,
           "column": 17
         }
       ]
@@ -2580,7 +2659,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 216,
+          "line": 219,
           "column": 47
         }
       ]
@@ -2736,7 +2815,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 195,
+          "line": 198,
           "column": 16
         }
       ]
@@ -2813,7 +2892,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 233,
+          "line": 236,
           "column": 18
         }
       ]
@@ -2953,7 +3032,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 217,
+          "line": 331,
           "column": 20
         }
       ]
@@ -3013,7 +3092,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 95,
+          "line": 98,
           "column": 14
         }
       ]
@@ -3044,7 +3123,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 142,
+          "line": 145,
           "column": 15
         }
       ]
@@ -3147,7 +3226,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 369,
           "column": 80
         },
         {
@@ -3263,18 +3342,6 @@
         }
       ]
     },
-    "419ffe45b0f283eb": {
-      "source": "两件事：生成并信任本地 CA（用于读取 Cursor 的 HTTPS 请求），然后打开接管开关把 Cursor 的请求引到本机。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 68,
-          "column": 15
-        }
-      ]
-    },
     "42655ed8e4108ae2": {
       "source": "输入（非缓存）",
       "kind": "text",
@@ -3357,7 +3424,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 160,
+          "line": 231,
           "column": 38
         }
       ]
@@ -3369,7 +3436,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 120,
+          "line": 123,
           "column": 15
         }
       ]
@@ -3417,7 +3484,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 159,
+          "line": 230,
           "column": 61
         }
       ]
@@ -3488,7 +3555,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 207,
+          "line": 210,
           "column": 24
         }
       ]
@@ -3557,7 +3624,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 198,
+          "line": 201,
           "column": 35
         }
       ]
@@ -3605,8 +3672,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 200,
+          "line": 203,
           "column": 53
+        }
+      ]
+    },
+    "48a050d98552690f": {
+      "source": "已清除本应用注入的本地账号",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 280,
+          "column": 45
         }
       ]
     },
@@ -3665,7 +3744,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 132,
+          "line": 135,
           "column": 15
         }
       ]
@@ -3849,12 +3928,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 56,
+          "line": 57,
           "column": 73
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 124,
+          "line": 125,
           "column": 74
         }
       ]
@@ -3866,7 +3945,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 115,
+          "line": 118,
           "column": 17
         }
       ]
@@ -3928,7 +4007,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 134,
+          "line": 135,
           "column": 34
         }
       ]
@@ -3964,7 +4043,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 71,
+          "line": 72,
           "column": 29
         }
       ]
@@ -4020,7 +4099,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 176,
+          "line": 202,
           "column": 17
         }
       ]
@@ -4058,7 +4137,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 124,
+          "line": 127,
           "column": 15
         }
       ]
@@ -4086,6 +4165,23 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 214,
           "column": 41
+        }
+      ]
+    },
+    "4e799afc8f82384c": {
+      "source": "模型来源",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 237,
+          "column": 14
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 245,
+          "column": 24
         }
       ]
     },
@@ -4157,7 +4253,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 123,
+          "line": 185,
           "column": 80
         }
       ]
@@ -4198,6 +4294,20 @@
         }
       ]
     },
+    "51242f0b2c6df093": {
+      "source": "最近一次成功：{time}；失败时官方模型会从列表里消失，这里会显示原因。",
+      "kind": "template",
+      "placeholders": [
+        "time"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 275,
+          "column": 19
+        }
+      ]
+    },
     "5185de3c3963fad9": {
       "source": "Cursor 接管状态",
       "kind": "text",
@@ -4205,7 +4315,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 177,
+          "line": 203,
           "column": 22
         }
       ]
@@ -4279,23 +4389,18 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 147,
-          "column": 28
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 236,
-          "column": 108
+          "line": 216,
+          "column": 53
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 71,
-          "column": 11
+          "line": 74,
+          "column": 13
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 50,
-          "column": 49
+          "line": 51,
+          "column": 74
         }
       ]
     },
@@ -4330,7 +4435,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 225,
+          "line": 228,
           "column": 52
         }
       ]
@@ -4393,7 +4498,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 176,
+          "line": 202,
           "column": 50
         }
       ]
@@ -4528,6 +4633,18 @@
         }
       ]
     },
+    "568b0cd8bca9ecef": {
+      "source": "混合模式要求 Cursor 登录你自己的账号，本应用会先清除自己注入的本地账号。切换后请在 Cursor 里登录。是否继续？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 124,
+          "column": 11
+        }
+      ]
+    },
     "5696af066112cee8": {
       "source": "代理 {proxy} / 服务 {service}",
       "kind": "template",
@@ -4550,7 +4667,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 177,
+          "line": 291,
           "column": 14
         }
       ]
@@ -4728,8 +4845,8 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 74,
-          "column": 13
+          "line": 77,
+          "column": 15
         }
       ]
     },
@@ -4752,8 +4869,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 111,
-          "column": 33
+          "line": 172,
+          "column": 13
         }
       ]
     },
@@ -4788,6 +4905,18 @@
         }
       ]
     },
+    "5f1bf296018c201a": {
+      "source": "选择本地或混合模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 191,
+          "column": 30
+        }
+      ]
+    },
     "5f4b3b1a612da5fa": {
       "source": "本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它只保存在本机数据目录，也不会安装到系统证书库。",
       "kind": "text",
@@ -4795,7 +4924,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 143,
+          "line": 146,
           "column": 18
         }
       ]
@@ -4874,7 +5003,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 146,
+          "line": 149,
           "column": 17
         }
       ]
@@ -4971,7 +5100,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 144,
+          "line": 147,
           "column": 17
         }
       ]
@@ -5073,7 +5202,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 76,
+          "line": 79,
           "column": 15
         }
       ]
@@ -5140,7 +5269,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 671,
+          "line": 770,
           "column": 43
         }
       ]
@@ -5198,7 +5327,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 116,
+          "line": 119,
           "column": 15
         }
       ]
@@ -5239,7 +5368,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 67,
+          "line": 68,
           "column": 44
         },
         {
@@ -5288,18 +5417,6 @@
         }
       ]
     },
-    "6633fcfe1ba249c5": {
-      "source": "打开接管开关",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 133,
-          "column": 14
-        }
-      ]
-    },
     "6744b4c6a9aa0038": {
       "source": "已关闭",
       "kind": "text",
@@ -5317,7 +5434,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 124,
+          "line": 125,
           "column": 85
         }
       ]
@@ -5394,7 +5511,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 75,
+          "line": 76,
           "column": 47
         },
         {
@@ -5423,7 +5540,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 81,
+          "line": 84,
           "column": 15
         }
       ]
@@ -5486,7 +5603,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 177,
+          "line": 203,
           "column": 40
         }
       ]
@@ -5578,7 +5695,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 86,
+          "line": 89,
           "column": 13
         }
       ]
@@ -5660,7 +5777,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 80,
+          "line": 83,
           "column": 14
         }
       ]
@@ -5751,7 +5868,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 255,
+          "line": 258,
           "column": 13
         }
       ]
@@ -5775,7 +5892,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 68,
+          "line": 69,
           "column": 29
         }
       ]
@@ -5804,6 +5921,18 @@
         }
       ]
     },
+    "72f3de8d1f92c00e": {
+      "source": "你的账号",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 154,
+          "column": 13
+        }
+      ]
+    },
     "736c9dc2a04c65fd": {
       "source": "模型配置已发生变化，请刷新后重试",
       "kind": "text",
@@ -5811,13 +5940,25 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 328,
+          "line": 380,
           "column": 23
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 335,
+          "line": 387,
           "column": 25
+        }
+      ]
+    },
+    "74a20012e632f45a": {
+      "source": "尚未登录官方账号",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 280,
+          "column": 66
         }
       ]
     },
@@ -5840,7 +5981,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 245,
+          "line": 248,
           "column": 18
         }
       ]
@@ -5927,7 +6068,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 371,
           "column": 11
         }
       ]
@@ -5963,7 +6104,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 666,
+          "line": 765,
           "column": 43
         }
       ]
@@ -6009,7 +6150,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 170,
+          "line": 173,
           "column": 20
         }
       ]
@@ -6026,7 +6167,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 128,
+          "line": 129,
           "column": 80
         }
       ]
@@ -6062,8 +6203,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 63,
+          "line": 64,
           "column": 15
+        }
+      ]
+    },
+    "7ca3d45d07424717": {
+      "source": "Cursor 只在启动时读取这份配置：如果它是在切换模式之前打开的，需要重启一次。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 227,
+          "column": 13
         }
       ]
     },
@@ -6091,7 +6244,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 176,
+          "line": 202,
           "column": 28
         }
       ]
@@ -6151,7 +6304,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 163,
+          "line": 166,
           "column": 198
         }
       ]
@@ -6175,7 +6328,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 171,
+          "line": 174,
           "column": 77
         }
       ]
@@ -6231,7 +6384,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 128,
+          "line": 131,
           "column": 15
         }
       ]
@@ -6243,7 +6396,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 586,
+          "line": 603,
           "column": 11
         },
         {
@@ -6284,7 +6437,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 159,
+          "line": 162,
           "column": 50
         }
       ]
@@ -6308,8 +6461,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 192,
+          "line": 195,
           "column": 49
+        }
+      ]
+    },
+    "82d16bbabd913382": {
+      "source": "Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要继续用本应用接管，请先关闭对方的接管，或在上方选择模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 222,
+          "column": 17
         }
       ]
     },
@@ -6320,7 +6485,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 91,
+          "line": 94,
           "column": 15
         }
       ]
@@ -6332,7 +6497,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 58,
+          "line": 59,
           "column": 14
         }
       ]
@@ -6393,6 +6558,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 161,
           "column": 334
+        }
+      ]
+    },
+    "841f55fb2add46ea": {
+      "source": "官方模式：直连",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 170,
+          "column": 11
         }
       ]
     },
@@ -6471,7 +6648,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 139,
           "column": 15
         }
       ]
@@ -6521,6 +6698,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 69,
           "column": 17
+        }
+      ]
+    },
+    "889db3fadee68ab3": {
+      "source": "尚未获取",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 161,
+          "column": 11
         }
       ]
     },
@@ -6603,6 +6792,18 @@
           "file": "features/calls/CallTable.tsx",
           "line": 61,
           "column": 14
+        }
+      ]
+    },
+    "8bb90d13d54507fd": {
+      "source": "三件事：生成并信任本地 CA（用来读取 Cursor 的 HTTPS 请求）、在 Cursor 页选择模型来源（本地只用自己的模型，混合还能同时用官方模型）、再重启一次 Cursor。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 69,
+          "column": 15
         }
       ]
     },
@@ -6709,7 +6910,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 188,
+          "line": 302,
           "column": 23
         }
       ]
@@ -6738,18 +6939,6 @@
         }
       ]
     },
-    "8fac6e7ef63900d6": {
-      "source": "证书已就绪，还差打开接管开关",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 73,
-          "column": 13
-        }
-      ]
-    },
     "8fe3dec68b60bece": {
       "source": "Devin 的宿主补丁可以随时「恢复原文件」，恢复后 Devin 回到厂商直连。",
       "kind": "text",
@@ -6757,7 +6946,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 241,
+          "line": 244,
           "column": 18
         }
       ]
@@ -6785,6 +6974,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 330,
           "column": 18
+        }
+      ]
+    },
+    "90eef75c5e64e3a3": {
+      "source": "还没成功取到官方目录；官方模型暂时不会出现在列表里。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 276,
+          "column": 19
         }
       ]
     },
@@ -6890,14 +7091,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 236,
-          "column": 119
-        },
-        {
           "file": "shell/AppLayout.tsx",
-          "line": 50,
-          "column": 60
+          "line": 51,
+          "column": 85
         }
       ]
     },
@@ -6973,6 +7169,18 @@
         }
       ]
     },
+    "94899743d1c718e9": {
+      "source": "开启本地或混合模式会强制结束所有正在运行的 Cursor 进程，未保存的编辑内容会丢失。配置写入后需要你手动重新打开 Cursor。是否继续？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 123,
+          "column": 11
+        }
+      ]
+    },
     "951195334a287eb5": {
       "source": "出现了未归类的错误，请把这条信息发给开发者。",
       "kind": "text",
@@ -7028,7 +7236,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 200,
+          "line": 227,
           "column": 21
         }
       ]
@@ -7052,18 +7260,6 @@
           "file": "features/settings/TabSettingsCard.tsx",
           "line": 82,
           "column": 20
-        }
-      ]
-    },
-    "96f7642963ca0dbf": {
-      "source": "开启接管Cursor",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 50,
-          "column": 61
         }
       ]
     },
@@ -7189,6 +7385,18 @@
         }
       ]
     },
+    "9aa4b74ee19488dc": {
+      "source": "管理请求超时",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shared/api.ts",
+          "line": 616,
+          "column": 11
+        }
+      ]
+    },
     "9b34f3b6a48bb1a6": {
       "source": "本地 API 端口",
       "kind": "text",
@@ -7220,7 +7428,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 153,
+          "line": 156,
           "column": 14
         }
       ]
@@ -7295,12 +7503,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 122,
+          "line": 184,
           "column": 14
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 216,
+          "line": 330,
           "column": 14
         },
         {
@@ -7310,7 +7518,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 176,
+          "line": 202,
           "column": 7
         },
         {
@@ -7442,7 +7650,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 61,
+          "line": 62,
           "column": 83
         }
       ]
@@ -7579,8 +7787,20 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 178,
+          "line": 204,
           "column": 18
+        }
+      ]
+    },
+    "a1a9da9ee6ed0401": {
+      "source": "未知原因",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 158,
+          "column": 62
         }
       ]
     },
@@ -7701,7 +7921,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 192,
+          "line": 195,
           "column": 24
         }
       ]
@@ -7763,7 +7983,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 59,
+          "line": 60,
           "column": 15
         }
       ]
@@ -7775,7 +7995,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 67,
+          "line": 68,
           "column": 14
         }
       ]
@@ -7980,7 +8200,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 178,
+          "line": 292,
           "column": 20
         }
       ]
@@ -8004,7 +8224,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 123,
+          "line": 126,
           "column": 17
         }
       ]
@@ -8118,18 +8338,6 @@
         }
       ]
     },
-    "aa76cdd40d1c1901": {
-      "source": "开启接管Cursor？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 243,
-          "column": 14
-        }
-      ]
-    },
     "aab0fe17fae0dfbb": {
       "source": "数据存在哪？怎么清理？",
       "kind": "text",
@@ -8137,7 +8345,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 135,
+          "line": 138,
           "column": 17
         }
       ]
@@ -8149,8 +8357,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 129,
-          "column": 70
+          "line": 193,
+          "column": 72
         }
       ]
     },
@@ -8161,7 +8369,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 100,
+          "line": 129,
           "column": 9
         },
         {
@@ -8195,7 +8403,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 107,
+          "line": 110,
           "column": 17
         }
       ]
@@ -8219,8 +8427,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 136,
-          "column": 11
+          "line": 200,
+          "column": 13
         }
       ]
     },
@@ -8318,12 +8526,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 159,
+          "line": 160,
           "column": 60
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 159,
+          "line": 160,
           "column": 121
         }
       ]
@@ -8398,6 +8606,18 @@
         }
       ]
     },
+    "b06ff2e6c3f06a17": {
+      "source": "结束并切换",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 359,
+          "column": 41
+        }
+      ]
+    },
     "b076b9de751972ad": {
       "source": "尚未接入",
       "kind": "text",
@@ -8427,6 +8647,30 @@
         }
       ]
     },
+    "b09ced5e14040254": {
+      "source": "官方模型列表上一次抓取失败，模型列表可能只有本机的模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 284,
+          "column": 16
+        }
+      ]
+    },
+    "b09e7173495445e7": {
+      "source": "完全交给 Cursor：不写代理配置、不注入账号，本应用看不到它的请求，也没有调用记录与压窗。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 142,
+          "column": 15
+        }
+      ]
+    },
     "b0e8708601e592f3": {
       "source": "模型已删除或哈希无效",
       "kind": "text",
@@ -8453,6 +8697,18 @@
         }
       ]
     },
+    "b18d072bbb7913bd": {
+      "source": "先初始化并信任本地 CA，再切换到本地或混合模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 108,
+          "column": 15
+        }
+      ]
+    },
     "b1b4227b3fa268f4": {
       "source": "上手进度 {done}/{total}",
       "kind": "template",
@@ -8463,12 +8719,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 162,
+          "line": 165,
           "column": 22
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 254,
+          "line": 257,
           "column": 78
         }
       ]
@@ -8497,7 +8753,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 143,
+          "line": 212,
           "column": 77
         }
       ]
@@ -8545,6 +8801,18 @@
           "file": "shell/CommandPalette.tsx",
           "line": 221,
           "column": 33
+        }
+      ]
+    },
+    "b329392fed697a69": {
+      "source": "当前是官方模式，本应用不介入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 72,
+          "column": 11
         }
       ]
     },
@@ -8670,7 +8938,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 207,
+          "line": 210,
           "column": 48
         }
       ]
@@ -8720,7 +8988,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 225,
+          "line": 228,
           "column": 24
         }
       ]
@@ -8756,7 +9024,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 369,
           "column": 103
         }
       ]
@@ -8780,7 +9048,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 143,
+          "line": 146,
           "column": 6
         }
       ]
@@ -8799,6 +9067,18 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 96,
           "column": 48
+        }
+      ]
+    },
+    "b9be00111e43366c": {
+      "source": "官方模型和本机模型同时可用，按模型分流；压窗只作用于由本机模型回答的请求。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 144,
+          "column": 12
         }
       ]
     },
@@ -8940,6 +9220,18 @@
         }
       ]
     },
+    "bb316a6b7a42aeca": {
+      "source": "官方模式下账号完全由 Cursor 自己管理。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 265,
+          "column": 19
+        }
+      ]
+    },
     "bb7d2e5d5f248dec": {
       "source": "把 Devin 的模型标识指向模型库里的模型；Devin 只会用到这里配置的映射。",
       "kind": "text",
@@ -8983,6 +9275,18 @@
         }
       ]
     },
+    "bc3b90ef26966551": {
+      "source": "如果失败原因是 401，通常是账号未登录或登录已过期",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 285,
+          "column": 16
+        }
+      ]
+    },
     "bcb7f9ea5643eb05": {
       "source": "请在桌面应用中打开日志目录",
       "kind": "text",
@@ -8990,8 +9294,22 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 682,
+          "line": 781,
           "column": 43
+        }
+      ]
+    },
+    "bcbfc26c0dff0602": {
+      "source": "Cursor 账号：{account}",
+      "kind": "template",
+      "placeholders": [
+        "account"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 260,
+          "column": 22
         }
       ]
     },
@@ -9009,6 +9327,32 @@
           "file": "features/settings/UpdateCard.tsx",
           "line": 171,
           "column": 43
+        }
+      ]
+    },
+    "bd047f0d6b33fb67": {
+      "source": "失败（{reason}）",
+      "kind": "template",
+      "placeholders": [
+        "reason"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 158,
+          "column": 9
+        }
+      ]
+    },
+    "bd69e5313c0796d2": {
+      "source": "混合模式的官方模型来自你的账号；未登录时列表里只有本机模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 205,
+          "column": 15
         }
       ]
     },
@@ -9099,15 +9443,32 @@
         }
       ]
     },
-    "bebbd61c4fd10ae5": {
-      "source": "接管本机代理，让 Cursor 用你自己的模型",
+    "becee58ec38fbb92": {
+      "source": "请在 Cursor 里登录你自己的账号，官方模型才会出现在模型列表里",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 237,
-          "column": 15
+          "line": 281,
+          "column": 16
+        }
+      ]
+    },
+    "bf4ad761840fcd0a": {
+      "source": "本地",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 138,
+          "column": 12
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 249,
+          "column": 40
         }
       ]
     },
@@ -9132,7 +9493,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 196,
+          "line": 199,
           "column": 22
         }
       ]
@@ -9249,6 +9610,18 @@
         }
       ]
     },
+    "c1f65837307903eb": {
+      "source": "未登录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 149,
+          "column": 9
+        }
+      ]
+    },
     "c2a3aa5d757ab1b1": {
       "source": "缓存命中率一直是 0？",
       "kind": "text",
@@ -9256,7 +9629,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 119,
+          "line": 122,
           "column": 17
         }
       ]
@@ -9335,7 +9708,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 141,
+          "line": 144,
           "column": 6
         }
       ]
@@ -9400,7 +9773,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 227,
+          "line": 341,
           "column": 21
         }
       ]
@@ -9418,6 +9791,30 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 501,
           "column": 13
+        }
+      ]
+    },
+    "c65a2c4fd02ff49f": {
+      "source": "本地模式不向上游取官方目录，模型列表里只有本机的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 273,
+          "column": 17
+        }
+      ]
+    },
+    "c6b103b45acf0930": {
+      "source": "混合模式要求登录你自己的账号；本应用不会注入本地账号。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 262,
+          "column": 17
         }
       ]
     },
@@ -9478,11 +9875,6 @@
           "file": "features/models/CursorGates.tsx",
           "line": 57,
           "column": 16
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 245,
-          "column": 21
         }
       ]
     },
@@ -9493,7 +9885,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 169,
+          "line": 172,
           "column": 14
         }
       ]
@@ -9534,7 +9926,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 104,
+          "line": 133,
           "column": 13
         }
       ]
@@ -9561,7 +9953,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 72,
+          "line": 73,
           "column": 45
         },
         {
@@ -9655,7 +10047,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 155,
+          "line": 158,
           "column": 13
         }
       ]
@@ -9686,6 +10078,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 171,
           "column": 5
+        }
+      ]
+    },
+    "cce303627ef3cc5b": {
+      "source": "选择模型来源，让 Cursor 用你自己的模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 351,
+          "column": 15
         }
       ]
     },
@@ -9798,7 +10202,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 141,
+          "line": 144,
           "column": 23
         }
       ]
@@ -9820,7 +10224,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 146,
+          "line": 149,
           "column": 6
         }
       ]
@@ -9956,7 +10360,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 116,
+          "line": 178,
           "column": 14
         }
       ]
@@ -10036,7 +10440,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 88,
+          "line": 91,
           "column": 15
         }
       ]
@@ -10111,6 +10515,18 @@
         }
       ]
     },
+    "d6082fcbce9d2084": {
+      "source": "切换模型来源？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 357,
+          "column": 14
+        }
+      ]
+    },
     "d61b33b48713d884": {
       "source": "没有证书就无法解析 Cursor 的 HTTPS 请求。",
       "kind": "text",
@@ -10118,8 +10534,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 130,
-          "column": 61
+          "line": 194,
+          "column": 63
         }
       ]
     },
@@ -10130,12 +10546,12 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 144,
+          "line": 145,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 148,
+          "line": 149,
           "column": 25
         }
       ]
@@ -10183,8 +10599,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 111,
-          "column": 48
+          "line": 173,
+          "column": 13
         }
       ]
     },
@@ -10197,18 +10613,6 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 508,
           "column": 14
-        }
-      ]
-    },
-    "d71b0171c44b668a": {
-      "source": "关闭后将移除 Cursor 本地代理配置。如果你需要登陆官方账号，通常不需要关闭操作，推荐直接登陆你的账号即可(byok模型与官方账号的模型已支持无缝衔接)，是否继续关闭并清理代理？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 265,
-          "column": 11
         }
       ]
     },
@@ -10264,7 +10668,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 237,
+          "line": 240,
           "column": 18
         }
       ]
@@ -10278,7 +10682,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 61,
+          "line": 62,
           "column": 35
         }
       ]
@@ -10304,7 +10708,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 98,
+          "line": 99,
           "column": 54
         }
       ]
@@ -10348,6 +10752,18 @@
         }
       ]
     },
+    "d9fa81f9663efd5f": {
+      "source": "官方模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 216,
+          "column": 29
+        }
+      ]
+    },
     "da10695d1be1f0ce": {
       "source": "安装并校验",
       "kind": "text",
@@ -10367,7 +10783,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 268,
+          "line": 370,
           "column": 47
         }
       ]
@@ -10420,7 +10836,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 139,
+          "line": 140,
           "column": 15
         }
       ]
@@ -10446,7 +10862,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 96,
+          "line": 99,
           "column": 15
         }
       ]
@@ -10511,7 +10927,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 154,
+          "line": 157,
           "column": 13
         }
       ]
@@ -10523,7 +10939,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 145,
+          "line": 148,
           "column": 18
         }
       ]
@@ -10576,6 +10992,18 @@
         }
       ]
     },
+    "dd50c7717cf21185": {
+      "source": "本地模式不使用官方目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 156,
+          "column": 7
+        }
+      ]
+    },
     "ddde16f8839da3ce": {
       "source": "总请求",
       "kind": "text",
@@ -10595,7 +11023,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 112,
+          "line": 115,
           "column": 15
         }
       ]
@@ -10607,7 +11035,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 111,
+          "line": 114,
           "column": 17
         }
       ]
@@ -10648,6 +11076,18 @@
         }
       ]
     },
+    "dead5080b363da29": {
+      "source": "本地账号（本应用注入）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 151,
+          "column": 11
+        }
+      ]
+    },
     "df1baa9f706d970b": {
       "source": "将新增",
       "kind": "text",
@@ -10667,7 +11107,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 218,
+          "line": 332,
           "column": 96
         }
       ]
@@ -10689,7 +11129,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 73,
+          "line": 74,
           "column": 29
         }
       ]
@@ -10833,6 +11273,18 @@
         }
       ]
     },
+    "e170b14c8aea57ed": {
+      "source": "在 Cursor 里登录你自己的账号",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 204,
+          "column": 16
+        }
+      ]
+    },
     "e17a5b9c90cda6ab": {
       "source": "模型已复制",
       "kind": "text",
@@ -10864,8 +11316,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 129,
-          "column": 47
+          "line": 193,
+          "column": 49
         }
       ]
     },
@@ -10948,18 +11400,6 @@
         }
       ]
     },
-    "e3cb610005f8b53d": {
-      "source": "Cursor 只在启动时读取这份配置：如果它是在开启接管之前打开的，需要重启一次。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 156,
-          "column": 13
-        }
-      ]
-    },
     "e3fee05f688708b4": {
       "source": "LLM 调用",
       "kind": "text",
@@ -11003,7 +11443,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 117,
+          "line": 118,
           "column": 56
         }
       ]
@@ -11027,7 +11467,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 178,
+          "line": 204,
           "column": 7
         }
       ]
@@ -11080,7 +11520,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 202,
           "column": 55
         }
       ]
@@ -11149,6 +11589,21 @@
           "file": "features/calls/CallTable.tsx",
           "line": 96,
           "column": 108
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 137,
+          "column": 15
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 248,
+          "column": 43
+        },
+        {
+          "file": "shell/AppLayout.tsx",
+          "line": 51,
+          "column": 52
         }
       ]
     },
@@ -11209,7 +11664,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 144,
+          "line": 147,
           "column": 6
         }
       ]
@@ -11299,7 +11754,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 152,
+          "line": 155,
           "column": 47
         }
       ]
@@ -11333,7 +11788,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 176,
+          "line": 202,
           "column": 39
         }
       ]
@@ -11345,7 +11800,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 142,
+          "line": 145,
           "column": 6
         }
       ]
@@ -11483,7 +11938,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 98,
+          "line": 101,
           "column": 26
         }
       ]
@@ -11495,7 +11950,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 267,
+          "line": 369,
           "column": 53
         }
       ]
@@ -11538,8 +11993,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 149,
-          "column": 13
+          "line": 220,
+          "column": 15
         }
       ]
     },
@@ -11578,6 +12033,30 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 434,
           "column": 84
+        }
+      ]
+    },
+    "efa2a40cae8ee8bb": {
+      "source": "切换到官方模式会结束所有正在运行的 Cursor 进程（未保存的编辑会丢失），并清除本应用注入的本地账号，之后 Cursor 直连官方。请先保存工作。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 119,
+          "column": 7
+        }
+      ]
+    },
+    "eff514b8b83f29ff": {
+      "source": "切换",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 359,
+          "column": 54
         }
       ]
     },
@@ -11636,7 +12115,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 163,
+          "line": 166,
           "column": 72
         }
       ]
@@ -11696,6 +12175,20 @@
         }
       ]
     },
+    "f4e349abaf4866d9": {
+      "source": "你的账号（{email}）",
+      "kind": "template",
+      "placeholders": [
+        "email"
+      ],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 153,
+          "column": 13
+        }
+      ]
+    },
     "f4f0ead1116b5b62": {
       "source": "启用",
       "kind": "text",
@@ -11715,7 +12208,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 177,
+          "line": 203,
           "column": 57
         }
       ]
@@ -11787,7 +12280,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 127,
+          "line": 130,
           "column": 17
         }
       ]
@@ -11804,7 +12297,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 74,
+          "line": 75,
           "column": 46
         },
         {
@@ -11864,7 +12357,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 127,
+          "line": 128,
           "column": 32
         }
       ]
@@ -11886,7 +12379,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 56,
+          "line": 57,
           "column": 84
         }
       ]
@@ -12085,18 +12578,6 @@
         }
       ]
     },
-    "fc50d0b72bc871db": {
-      "source": "关闭接管",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 258,
-          "column": 21
-        }
-      ]
-    },
     "fc949676c0e20a10": {
       "source": "证书已就绪",
       "kind": "text",
@@ -12104,7 +12585,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 187,
+          "line": 301,
           "column": 24
         }
       ]
@@ -12118,6 +12599,18 @@
           "file": "shared/ui/Select.tsx",
           "line": 156,
           "column": 90
+        }
+      ]
+    },
+    "fd076a57261d5aa7": {
+      "source": "决定 Cursor 的模型列表里有什么，以及请求由谁回答。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 238,
+          "column": 20
         }
       ]
     },
@@ -12198,7 +12691,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 177,
+          "line": 203,
           "column": 7
         }
       ]
@@ -12210,12 +12703,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 193,
+          "line": 307,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 196,
+          "line": 310,
           "column": 29
         }
       ]
@@ -12232,7 +12725,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 66,
+          "line": 67,
           "column": 39
         },
         {
@@ -12249,12 +12742,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 253,
+          "line": 256,
           "column": 14
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 76,
+          "line": 77,
           "column": 47
         },
         {

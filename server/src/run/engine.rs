@@ -16,8 +16,8 @@ use crate::{
 use super::{
     consume_model_cycle,
     model_retry::{should_retry, MODEL_RETRY_DELAY},
-    CommitBarrier, CommitCause, MessagesCommitted, RunCommand, RunEvent, RunFailure, RunOutcome,
-    RunPort,
+    CommitBarrier, CommitCause, MessageBatch, MessagesCommitted, RunCommand, RunEvent, RunFailure,
+    RunOutcome, RunPort,
 };
 
 pub struct RunEngine {
@@ -30,6 +30,23 @@ pub struct RunEngine {
 /// finished (for example after a cancelled follow-up).
 const CONTINUE_MESSAGE_ID: &str = "runtime:continue";
 const CONTINUE_INSTRUCTION: &str = "Continue from where you left off.";
+
+/// 父轮等后台子代理时重查"还有子代理在跑吗"的间隔。
+const BACKGROUND_WORK_POLL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 子运行落成终态之后再宽限这么久，等它那条完成消息投进来再收尾。
+const BACKGROUND_COMPLETION_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// 等后台子代理的上限：超时就照常收尾。宁可少一次唤醒，也不能把父轮永久挂住。
+const BACKGROUND_WORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// 父轮收尾前等待后台子代理的结果。
+enum BackgroundWait {
+    /// 等到了完成消息并已写进历史：模型循环继续。
+    Continued,
+    /// 没有在跑的子代理了（或超时）：照常收尾。
+    Drained,
+}
 
 impl RunEngine {
     pub fn new(store: Store, provider: Arc<dyn Provider>) -> Self {
@@ -735,6 +752,30 @@ impl RunEngine {
                         continue 'model;
                     }
                 }
+                // 还有后台子代理在跑：这一轮先不收尾。父轮挂在这里等它们的完成消息
+                // 被投递进来（InsertMessages），写进历史后回到模型循环继续干活。
+                if self
+                    .store
+                    .has_running_background_subagents(&prepared.run_id)
+                    .await
+                    .unwrap_or(false)
+                {
+                    let mut waiting = Vec::new();
+                    match self
+                        .await_background_subagents(
+                            prepared,
+                            client,
+                            cancellation,
+                            &mut checkpoint,
+                            &mut waiting,
+                        )
+                        .await
+                    {
+                        Ok(BackgroundWait::Continued) => continue 'model,
+                        Ok(BackgroundWait::Drained) => {}
+                        Err(outcome) => return (outcome, usage),
+                    }
+                }
                 client.phase.begin_finalizing();
                 let closing_insertions = match super::messages::drain_accepted(client) {
                     Ok(insertions) => insertions,
@@ -804,6 +845,110 @@ impl RunEngine {
                 Ok(checkpoint) => checkpoint,
                 Err(outcome) => return (outcome, usage),
             };
+        }
+    }
+
+    /// 收尾前等后台子代理：父轮停在这里，等它们的完成消息被投递进来。
+    ///
+    /// 消息由上层（子代理运行结束时的唤醒）通过 `InsertMessages` 投进这条运行；
+    /// 写进历史后回到模型循环，父代就带着子代理的结果继续工作。等不到也有两条出路：
+    /// 子运行都结束了、或等超时——都按"没有后台活"收尾，最坏情况等于没有这个特性。
+    async fn await_background_subagents(
+        &self,
+        prepared: &PreparedRun,
+        client: &mut RunPort,
+        cancellation: &CancellationToken,
+        checkpoint: &mut crate::model::CheckpointId,
+        pending: &mut Vec<MessageBatch>,
+    ) -> Result<BackgroundWait, RunOutcome> {
+        let deadline = tokio::time::Instant::now() + BACKGROUND_WORK_TIMEOUT;
+        let mut drained_since: Option<tokio::time::Instant> = None;
+        let mut announced = false;
+        loop {
+            if !pending.is_empty() {
+                let batches = std::mem::take(pending);
+                let (next, inserted) = super::messages::append_batches(
+                    &self.store,
+                    prepared,
+                    client,
+                    cancellation,
+                    *checkpoint,
+                    batches,
+                )
+                .await?;
+                *checkpoint = next;
+                if inserted {
+                    return Ok(BackgroundWait::Continued);
+                }
+            }
+            match self
+                .store
+                .has_running_background_subagents(&prepared.run_id)
+                .await
+            {
+                Ok(true) => drained_since = None,
+                Ok(false) => {
+                    // 子代理的 run 落成终态、与它的完成消息投到我们这儿之间有一个很短的
+                    // 窗口；直接收尾会把那条消息留到父会话的下一轮，所以先宽限一瞬。
+                    let since = *drained_since.get_or_insert_with(tokio::time::Instant::now);
+                    if since.elapsed() >= BACKGROUND_COMPLETION_GRACE {
+                        return Ok(BackgroundWait::Drained);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        run_id = %prepared.run_id,
+                        %error,
+                        "failed to check for running subagents; ending the turn"
+                    );
+                    return Ok(BackgroundWait::Drained);
+                }
+            }
+            if !announced {
+                announced = true;
+                tracing::info!(
+                    conversation_id = %prepared.conversation_id,
+                    run_id = %prepared.run_id,
+                    "parent turn is waiting for background subagents"
+                );
+            }
+            tracing::debug!(
+                run_id = %prepared.run_id,
+                drained = drained_since.is_some(),
+                "background wait check"
+            );
+            let wait = match drained_since {
+                Some(since) => BACKGROUND_COMPLETION_GRACE.saturating_sub(since.elapsed()),
+                None => BACKGROUND_WORK_POLL,
+            };
+            tokio::select! {
+                biased;
+                _ = cancellation.cancelled() => {
+                    let _ = emit(client, RunEvent::CycleInterrupted).await;
+                    return Err(RunOutcome::Cancelled);
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    tracing::warn!(
+                        run_id = %prepared.run_id,
+                        timeout_secs = BACKGROUND_WORK_TIMEOUT.as_secs(),
+                        "background subagents did not report back in time; ending the turn"
+                    );
+                    return Ok(BackgroundWait::Drained);
+                }
+                _ = tokio::time::sleep(wait) => {}
+                command = client.commands.recv() => match command {
+                    Some(
+                        RunCommand::InsertMessages(batch) | RunCommand::BreakMessages(batch),
+                    ) => pending.push(batch),
+                    Some(RunCommand::Cancel) => {
+                        let _ = emit(client, RunEvent::CycleInterrupted).await;
+                        return Err(RunOutcome::Cancelled);
+                    }
+                    // 收尾前没有待处理的工具调用，这里不该出现工具结果；忽略即可。
+                    Some(RunCommand::ToolResult(_)) => {}
+                    None => return Err(client_failure()),
+                },
+            }
         }
     }
 

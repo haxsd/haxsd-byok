@@ -48,6 +48,7 @@ export function TutorialPage() {
 
   const caReady = cursorHarness?.ca === "ready";
   const cursorTakenOver = cursorHarness?.settings_applied ?? false;
+  const cursorTakesOver = (cursorHarness?.mode ?? "official") !== "official";
   const gatewayUp = Boolean(devinStatus?.enabled && devinStatus?.listening);
   const hostPatched = hostStatus?.patched ?? false;
   const hasCalls = calls.length > 0 || overview.metrics.llm_calls > 0;
@@ -65,13 +66,15 @@ export function TutorialPage() {
     {
       key: "cursor",
       title: t("让 Cursor 用上它"),
-      detail: t("两件事：生成并信任本地 CA（用于读取 Cursor 的 HTTPS 请求），然后打开接管开关把 Cursor 的请求引到本机。"),
-      done: caReady && cursorTakenOver,
-      status: cursorTakenOver
-        ? t("已接管")
-        : caReady
-          ? t("证书已就绪，还差打开接管开关")
-          : t("本地 CA 还没就绪"),
+      detail: t("三件事：生成并信任本地 CA（用来读取 Cursor 的 HTTPS 请求）、在 Cursor 页选择模型来源（本地只用自己的模型，混合还能同时用官方模型）、再重启一次 Cursor。"),
+      done: cursorTakesOver && caReady && cursorTakenOver,
+      status: !cursorTakesOver
+        ? t("当前是官方模式，本应用不介入")
+        : cursorTakenOver
+          ? t("已接管")
+          : caReady
+            ? t("证书已就绪，还差重启 Cursor")
+            : t("本地 CA 还没就绪"),
       path: "/harness/cursor",
       action: t("去 Cursor 页"),
     },

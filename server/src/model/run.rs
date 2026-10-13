@@ -15,11 +15,16 @@ pub enum SubagentKind {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RunKind {
     Root,
+    /// 由父会话派生的子代理运行。
+    ///
+    /// 父身份来自客户端随 append 带来的两个头（`x-parent-request-id` /
+    /// `x-parent-agent-tool-call-id`），它们是**可选**的：Cursor 这两个头是分别发的，
+    /// 只出现一个、或都不出现都是合法请求（准入不能因此拒绝，见 error_lifecycle 的用例）。
+    /// 所以父身份也按"有就记、没有就留空"落库，而不是伪造一个父。
     Subagent {
-        parent_run_id: RunId,
-        parent_tool_call_id: String,
+        parent_run_id: Option<RunId>,
+        parent_tool_call_id: Option<String>,
         kind: SubagentKind,
-        background: bool,
     },
 }
 

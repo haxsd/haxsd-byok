@@ -13,6 +13,7 @@ use crate::{
         services::blob_sync::BlobSynchronizer,
         services::context_sync::RequestContextSynchronizer,
         tools::runtime::{ExecContext, SubagentModel},
+        transport::TransportParent,
     },
     model::{
         CanonicalMessage, ContentPart, ConversationId, MessageContent, Origin, PreparedRun,
@@ -53,6 +54,8 @@ pub(crate) struct PrepareDependencies<'a> {
     pub blob_sync: &'a BlobSynchronizer,
     pub context_sync: &'a RequestContextSynchronizer,
     pub local_rules_dir: Option<&'a std::path::Path>,
+    /// 客户端随这次 append 带来的父身份（子代理请求才有，且两个头可以只出现一个）。
+    pub parent: Option<&'a TransportParent>,
 }
 
 pub(crate) async fn prepare(
@@ -67,6 +70,7 @@ pub(crate) async fn prepare(
         blob_sync,
         context_sync,
         local_rules_dir,
+        parent,
     } = dependencies;
     checkpoint
         .import_prefetched(&request.pre_fetched_blobs)
@@ -329,12 +333,13 @@ pub(crate) async fn prepare(
         subagents_disabled,
         &subagent_model_overrides,
     );
+    let kind = run_kind(request, parent, store).await?;
     Ok((
         PreparedRun {
             run_id,
             cursor_request_id: Some(request_id.into()),
             conversation_id,
-            kind: RunKind::Root,
+            kind,
             model,
             prompt,
             initial_messages,
@@ -355,6 +360,29 @@ pub(crate) async fn prepare(
             background_completion,
         },
     ))
+}
+
+/// 这次运行的身份：子代理运行（请求带了 `subagent_type_name`）记下父身份。
+///
+/// 父身份两个来源都是可选的：父请求头只有客户端发才有，而父运行可能已经结束
+/// （子代理比父轮活得久是常态）——查不到就留空，不猜、也不因此拒绝运行。
+async fn run_kind(
+    request: &pb::AgentRunRequest,
+    parent: Option<&TransportParent>,
+    store: &Store,
+) -> Result<RunKind> {
+    let Some(name) = request.subagent_type_name.as_deref() else {
+        return Ok(RunKind::Root);
+    };
+    let parent_run_id = match parent.and_then(|parent| parent.request_id.as_deref()) {
+        Some(request_id) => store.active_run_for_cursor_request(request_id).await?,
+        None => None,
+    };
+    Ok(RunKind::Subagent {
+        parent_run_id,
+        parent_tool_call_id: parent.and_then(|parent| parent.tool_call_id.clone()),
+        kind: model::subagent_kind(name),
+    })
 }
 
 fn runtime_message_text(message: &CanonicalMessage) -> Result<String> {

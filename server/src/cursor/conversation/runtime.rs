@@ -89,7 +89,7 @@ impl ConversationRuntime {
                             command = receiver.recv() => match command {
                                 Some(command) => command,
                                 None => {
-                                    finish_pending(&handle, &current, pending_finish.take());
+                                    finish_pending(&registry, &handle, &current, pending_finish.take()).await;
                                     break;
                                 }
                             },
@@ -101,7 +101,8 @@ impl ConversationRuntime {
                             Ok(command) => command,
                             Err(mpsc::error::TryRecvError::Empty)
                             | Err(mpsc::error::TryRecvError::Disconnected) => {
-                                finish_pending(&handle, &current, pending_finish.take());
+                                finish_pending(&registry, &handle, &current, pending_finish.take())
+                                    .await;
                                 break;
                             }
                         }
@@ -185,6 +186,16 @@ impl ConversationRuntime {
                                     .as_ref()
                                     .is_none_or(|run| run.phase() != RunPhase::Running)
                             });
+                        if current.is_some() {
+                            // 子代理那条流被客户端断开（关掉子代理/点停止）：父会话也要收到
+                            // 一条 aborted，否则它会一直等到超时。官方同样是 aborted 也通知。
+                            super::subagents::subagent_finished(
+                                &registry,
+                                &handle,
+                                &TransportFinish::Cancelled,
+                            )
+                            .await;
+                        }
                         if turn_completed {
                             super::finish_success(&handle);
                         } else {
@@ -204,6 +215,15 @@ impl ConversationRuntime {
                                 pending_finish = None;
                                 draining = false;
                                 waiting_for_action = true;
+                                // 这一轮跑完就该通知父会话了：transport 收尾还要等一个 idle
+                                // 超时，那条路会把唤醒拖到父轮等待的宽限之外（真机上表现为
+                                // "有时不唤醒"）。重复通知无害——同一条完成消息按身份去重。
+                                super::subagents::subagent_finished(
+                                    &registry,
+                                    &handle,
+                                    &TransportFinish::Success,
+                                )
+                                .await;
                             }
                             RunFinish::Transport(finish) => {
                                 waiting_for_action = false;
@@ -592,7 +612,8 @@ async fn start_generation(
     );
 }
 
-fn finish_pending(
+async fn finish_pending(
+    registry: &ConversationRegistry,
     handle: &TransportHandle,
     current: &Option<RunGeneration>,
     pending: Option<(u64, TransportFinish)>,
@@ -604,15 +625,18 @@ fn finish_pending(
         .as_ref()
         .is_some_and(|current| current.id == generation)
     {
-        finish_transport(handle, finish);
+        // 先把子代理自己这条流收干净（用户看到它结束），再通知父会话——
+        // 父会话那边可能在忙，通知慢一步不该拖着子代理不收尾。
+        finish_transport(handle, &finish);
+        super::subagents::subagent_finished(registry, handle, &finish).await;
     }
 }
 
-fn finish_transport(handle: &TransportHandle, finish: TransportFinish) {
+fn finish_transport(handle: &TransportHandle, finish: &TransportFinish) {
     match finish {
         TransportFinish::Success => super::finish_success(handle),
         TransportFinish::Failed(error) => {
-            let _ = super::finish_failed(handle, &error);
+            let _ = super::finish_failed(handle, error);
         }
         TransportFinish::Cancelled => {
             let _ = super::finish_cancelled(handle);
@@ -667,6 +691,7 @@ fn spawn_run_request(
                     blob_sync: &blob_sync,
                     context_sync: &context_sync,
                     local_rules_dir: dependencies.local_rules_dir.as_deref(),
+                    parent: handle.parent(),
                 },
             ) => prepared,
         };
@@ -717,6 +742,11 @@ fn spawn_run_request(
                 .await
             {
                 CommandResult::Applied | CommandResult::Duplicate => {
+                    tracing::info!(
+                        conversation_id = %prepared.conversation_id,
+                        run_id = %prepared.run_id,
+                        "background completion inserted into the active run"
+                    );
                     if !generation.superseded.is_cancelled() {
                         let _ = handle
                             .command(TransportCommand::RunFinished {
@@ -728,6 +758,12 @@ fn spawn_run_request(
                     return;
                 }
                 CommandResult::RunClosing => {
+                    // 会话正在收尾：这条完成消息只能排进 pending，等下一次该会话的
+                    // 运行把它当成运行时的前置消息。客户端下次开口才会看到它。
+                    tracing::info!(
+                        conversation_id = %prepared.conversation_id,
+                        "background completion queued: the conversation run was closing"
+                    );
                     prepared.initial_messages.clear();
                     tokio::select! {
                         biased;
@@ -743,9 +779,17 @@ fn spawn_run_request(
                     }
                 }
                 CommandResult::RunEnded => {
+                    tracing::info!(
+                        conversation_id = %prepared.conversation_id,
+                        "background completion queued: no run is active for this conversation"
+                    );
                     prepared.initial_messages.clear();
                 }
                 CommandResult::StaleTarget => {
+                    tracing::warn!(
+                        conversation_id = %prepared.conversation_id,
+                        "background completion dropped: its target run was replaced"
+                    );
                     if !generation.superseded.is_cancelled() {
                         let _ = handle
                             .command(TransportCommand::RunFinished {

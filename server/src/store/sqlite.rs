@@ -30,6 +30,9 @@ impl Store {
             .connect_with(options)
             .await?;
         migrations::run(&pool, &database_path).await?;
+        // 旧版的接管布尔在这里换成模式：设置行是用户数据，迁移只做一次，
+        // 之后所有代码只认 `cursor_mode`。
+        super::settings::migrate_cursor_mode(&pool).await?;
         Ok(Self {
             pool,
             writes: WriteCoordinator::default(),

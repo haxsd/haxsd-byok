@@ -1,6 +1,7 @@
 import type {
   CallDetail,
   CursorHarnessStatus,
+  CursorMode,
   DevinHostPatchReceipt,
   DevinHostPatchStatus,
   DevinSettings,
@@ -79,6 +80,7 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
 let harnessStatus: CursorHarnessStatus = {
   platform: "macos",
   ca: "ready",
+  mode: "mixed",
   configured_models: models.length,
   enabled_models: models.length,
   integration: "enabled",
@@ -86,6 +88,8 @@ let harnessStatus: CursorHarnessStatus = {
   foreign_configuration: false,
   proxy_url: "http://127.0.0.1:54321",
   ca_install_command: null,
+  account: { state: "official", email: "developer@example.com" },
+  catalog: { last_success_ms: 1_700_000_000_000, last_failure_ms: null, last_failure: null },
 };
 
 let devinSettings: DevinSettings = {
@@ -156,13 +160,18 @@ export function installDemoApi() {
     if (path.startsWith("/llm-calls/")) return json(createCallDetail(path.slice("/llm-calls/".length)));
     if (path === "/harness/cursor/status") return json(harnessStatus);
     if (path === "/harness/cursor/ca/initialize") return json(harnessStatus);
-    if (path === "/harness/cursor/enabled") {
-      const enabled = Boolean((body as { enabled?: unknown } | null)?.enabled);
+    if (path === "/harness/cursor/mode") {
+      const mode = ((body as { mode?: unknown } | null)?.mode ?? "official") as CursorMode;
+      const takesOver = mode !== "official";
       harnessStatus = {
         ...harnessStatus,
-        integration: enabled ? "enabled" : "disabled",
-        settings_applied: enabled,
-        proxy_url: enabled ? "http://127.0.0.1:54321" : null,
+        mode,
+        integration: takesOver ? "enabled" : "disabled",
+        settings_applied: takesOver,
+        proxy_url: takesOver ? "http://127.0.0.1:54321" : null,
+        account: mode === "local"
+          ? { state: "local", email: "cursor@ai.com" }
+          : { state: "official", email: "developer@example.com" },
       };
       return json(harnessStatus);
     }

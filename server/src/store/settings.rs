@@ -10,7 +10,10 @@ const PROXY_SETTINGS_KEY: &str = "outbound_proxy";
 const TAB_SETTINGS_KEY: &str = "cursor_tab";
 const DESKTOP_SETTINGS_KEY: &str = "desktop_lifecycle";
 const COMMIT_SETTINGS_KEY: &str = "commit_settings";
-const CURSOR_TAKEOVER_ENABLED_KEY: &str = "cursor_takeover_enabled";
+const CURSOR_MODE_KEY: &str = "cursor_mode";
+/// 旧版把"是否接管"存成一个布尔键。模式化之后它只剩一次性搬移的价值：
+/// 读过一次就换算成 `cursor_mode` 并删掉，不再有第二处读它。
+const LEGACY_CURSOR_TAKEOVER_KEY: &str = "cursor_takeover_enabled";
 const PRICING_SETTINGS_KEY: &str = "token_pricing";
 const DEVIN_SETTINGS_KEY: &str = "devin_router";
 
@@ -177,6 +180,39 @@ pub enum ProxyMode {
 impl ProxyMode {
     pub fn is_custom(self) -> bool {
         self == Self::Custom
+    }
+}
+
+/// Cursor 的模型来源模式。三种模式的差别只落在四处：代理配置、账号策略、
+/// 模型目录的来源、以及模型 ID 不认识时怎么处理。
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CursorMode {
+    /// 完全交给 Cursor：不写代理配置、不注入账号、我们看不见它的请求。
+    #[default]
+    Official,
+    /// 只用模型库里的模型：模型目录只有本机模型，不认识的模型 ID 明确拒绝。
+    /// 客户端没有账号时补一个本地账号，好让 BYOK 在没有官方订阅时也能用。
+    Local,
+    /// 官方模型和本机模型同时可用：目录取官方目录再追加本机模型，请求按模型 ID
+    /// 分流。要求客户端真的登录了官方账号，所以绝不注入本地账号。
+    Mixed,
+}
+
+impl CursorMode {
+    /// 是否需要把 Cursor 引到本机代理（也就是"接管"）。
+    pub fn takes_over(self) -> bool {
+        !matches!(self, Self::Official)
+    }
+
+    /// 是否需要让官方模型出现在客户端的模型列表里。
+    pub fn includes_official_models(self) -> bool {
+        !matches!(self, Self::Local)
+    }
+
+    /// 是否允许在客户端没有账号时注入本地账号。
+    pub fn injects_local_account(self) -> bool {
+        matches!(self, Self::Local)
     }
 }
 
@@ -373,33 +409,30 @@ impl Store {
         Ok(settings)
     }
 
-    /// Whether this product should take Cursor over.
+    /// 当前选定的 Cursor 模型来源模式。
     ///
-    /// Absent means no. Taking over rewrites the user's Cursor configuration and
-    /// force-terminates the running editor, so it has to be something they asked
-    /// for. This used to default to yes, which meant a fresh install that merely
-    /// trusted the CA took Cursor over before the user ever touched the switch —
-    /// and on a machine where another product also drives Cursor, that is not a
-    /// decision this app gets to make on its own.
-    pub(crate) async fn cursor_takeover_enabled(&self) -> Result<bool> {
+    /// 缺省是"官方"：接管会改写用户的 Cursor 配置并强制结束正在运行的编辑器，
+    /// 只能是用户明确选过的结果——全新安装不该自己接管，在同机上还有另一个同类
+    /// 软件驱动 Cursor 时更不该由这个应用替用户决定。
+    pub(crate) async fn cursor_mode(&self) -> Result<CursorMode> {
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
         )
-        .bind(CURSOR_TAKEOVER_ENABLED_KEY)
+        .bind(CURSOR_MODE_KEY)
         .fetch_optional(&self.pool)
         .await?;
         value
             .map(|value| serde_json::from_str(&value).map_err(Into::into))
-            .unwrap_or(Ok(false))
+            .unwrap_or(Ok(CursorMode::Official))
     }
 
-    pub(crate) async fn set_cursor_takeover_enabled(&self, enabled: bool) -> Result<()> {
-        let value_json = serde_json::to_string(&enabled)?;
+    pub(crate) async fn set_cursor_mode(&self, mode: CursorMode) -> Result<()> {
+        let value_json = serde_json::to_string(&mode)?;
         let _write = self.writes.lock().await;
         sqlx::query(
             "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
         )
-        .bind(CURSOR_TAKEOVER_ENABLED_KEY)
+        .bind(CURSOR_MODE_KEY)
         .bind(value_json)
         .bind(now_ms())
         .execute(&self.pool)
@@ -646,13 +679,50 @@ impl Store {
     }
 }
 
+/// 把旧版的"是否接管"布尔换算成模式，然后删掉旧键。
+///
+/// 只在还没有 `cursor_mode` 的库上留下结果：接管过 → 本地（保住"没有官方订阅也
+/// 能用"的能力），没接管 → 官方。旧键无论如何都删掉——它的语义已经被模式取代，
+/// 留着只会让后来的人以为还有第二处真相。
+pub(crate) async fn migrate_cursor_mode(pool: &sqlx::SqlitePool) -> Result<()> {
+    let legacy = sqlx::query_scalar::<_, String>(
+        "SELECT value_json FROM service_settings WHERE setting_key = ?",
+    )
+    .bind(LEGACY_CURSOR_TAKEOVER_KEY)
+    .fetch_optional(pool)
+    .await?;
+    let Some(legacy) = legacy else {
+        return Ok(());
+    };
+    let mode = if serde_json::from_str::<bool>(&legacy).unwrap_or(false) {
+        CursorMode::Local
+    } else {
+        CursorMode::Official
+    };
+    let mut transaction = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO NOTHING",
+    )
+    .bind(CURSOR_MODE_KEY)
+    .bind(serde_json::to_string(&mode)?)
+    .bind(now_ms())
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query("DELETE FROM service_settings WHERE setting_key = ?")
+        .bind(LEGACY_CURSOR_TAKEOVER_KEY)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        read_proxy_settings, CommitPromptLocale, CommitSettings, CurrencyPricing, PricingMode,
-        ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TokenPrice,
-        TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
-        PROXY_SETTINGS_KEY,
+        migrate_cursor_mode, read_proxy_settings, CommitPromptLocale, CommitSettings,
+        CurrencyPricing, CursorMode, PricingMode, ProxyMode, ProxySettingsInput,
+        ProxySettingsSecret, Store, TokenPrice, TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US,
+        DEFAULT_COMMIT_PROMPT_ZH_CN, LEGACY_CURSOR_TAKEOVER_KEY, PROXY_SETTINGS_KEY,
     };
     use crate::devin::{DevinModelBinding, DevinSettings};
 
@@ -777,7 +847,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn taking_cursor_over_requires_an_explicit_choice() {
+    async fn a_database_without_a_choice_stays_in_official_mode() {
         let directory = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}", directory.path().join("test.db").display());
         let store = Store::connect(&url).await.unwrap();
@@ -785,13 +855,64 @@ mod tests {
         // A database that has never recorded a choice must not take Cursor over:
         // doing so rewrites the user's Cursor configuration and force-terminates
         // their editor.
-        assert!(!store.cursor_takeover_enabled().await.unwrap());
+        assert_eq!(store.cursor_mode().await.unwrap(), CursorMode::Official);
 
-        store.set_cursor_takeover_enabled(true).await.unwrap();
-        assert!(store.cursor_takeover_enabled().await.unwrap());
+        store.set_cursor_mode(CursorMode::Mixed).await.unwrap();
+        assert_eq!(store.cursor_mode().await.unwrap(), CursorMode::Mixed);
 
-        store.set_cursor_takeover_enabled(false).await.unwrap();
-        assert!(!store.cursor_takeover_enabled().await.unwrap());
+        store.set_cursor_mode(CursorMode::Official).await.unwrap();
+        assert_eq!(store.cursor_mode().await.unwrap(), CursorMode::Official);
+    }
+
+    /// 旧版的接管布尔换算成模式：接管过 → 本地（保住"没有官方订阅也能用"），
+    /// 没接管 → 官方；旧键在任何情况下都不留下。
+    #[tokio::test]
+    async fn the_legacy_takeover_boolean_becomes_a_mode_once() {
+        for (legacy, expected) in [("true", CursorMode::Local), ("false", CursorMode::Official)] {
+            let directory = tempfile::tempdir().unwrap();
+            let url = format!("sqlite://{}", directory.path().join("test.db").display());
+            let store = Store::connect(&url).await.unwrap();
+            sqlx::query(
+                "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, 0)",
+            )
+            .bind(LEGACY_CURSOR_TAKEOVER_KEY)
+            .bind(legacy)
+            .execute(store.pool())
+            .await
+            .unwrap();
+
+            migrate_cursor_mode(store.pool()).await.unwrap();
+
+            assert_eq!(store.cursor_mode().await.unwrap(), expected);
+            let leftover: Option<String> =
+                sqlx::query_scalar("SELECT value_json FROM service_settings WHERE setting_key = ?")
+                    .bind(LEGACY_CURSOR_TAKEOVER_KEY)
+                    .fetch_optional(store.pool())
+                    .await
+                    .unwrap();
+            assert!(leftover.is_none(), "the legacy key must not survive");
+        }
+    }
+
+    /// 已经记过模式的库不被旧键改写，旧键照样清掉。
+    #[tokio::test]
+    async fn an_existing_mode_wins_over_the_legacy_boolean() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, 0)",
+        )
+        .bind(LEGACY_CURSOR_TAKEOVER_KEY)
+        .bind("true")
+        .execute(store.pool())
+        .await
+        .unwrap();
+        store.set_cursor_mode(CursorMode::Official).await.unwrap();
+
+        migrate_cursor_mode(store.pool()).await.unwrap();
+
+        assert_eq!(store.cursor_mode().await.unwrap(), CursorMode::Official);
     }
 
     #[tokio::test]

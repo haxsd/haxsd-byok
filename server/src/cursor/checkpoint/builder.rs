@@ -11,7 +11,7 @@ use crate::{
         transport::TransportHandle,
     },
     model::{CanonicalMessage, ToolCall, ToolDefinition, ToolRoundAssistant},
-    store::Store,
+    store::{RunStatus, Store},
     Result,
 };
 
@@ -158,6 +158,7 @@ impl CheckpointBuilder {
         presentation: &PendingSteps,
     ) -> Result<pb::ConversationStateStructure> {
         self.record_background_subagents(presentation);
+        self.apply_subagent_completions().await?;
         let root_ids = self.project_roots(messages).await?;
         let turn_ids = self.project_turns(mode, presentation).await?;
         let (todo_ids, plan_id) = self.build_derived_state(messages).await?;
@@ -197,6 +198,44 @@ impl CheckpointBuilder {
             )?);
         }
         Ok(checkpoint)
+    }
+
+    /// 后台子代理跑完之后把终态补进会话状态。
+    ///
+    /// `record_background_subagents` 只写派发的那一刻（`Backgrounded`），终态记在子代理
+    /// 自己的 run 上；客户端靠这个状态把任务气泡标成完成，所以每次重建状态时对齐一次。
+    async fn apply_subagent_completions(&mut self) -> Result<()> {
+        if self.base.subagent_runs_by_parent_tool_call_id.is_empty() {
+            return Ok(());
+        }
+        let tool_call_ids = self
+            .base
+            .subagent_runs_by_parent_tool_call_id
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for (tool_call_id, status, completed_at_ms) in
+            self.store.finished_child_runs(&tool_call_ids).await?
+        {
+            let Some(state) = self
+                .base
+                .subagent_runs_by_parent_tool_call_id
+                .get_mut(&tool_call_id)
+            else {
+                continue;
+            };
+            if state.completed_timestamp_ms.is_some() {
+                continue;
+            }
+            state.status = match status {
+                RunStatus::Completed => pb::SubagentRunStatus::Success as i32,
+                RunStatus::Failed => pb::SubagentRunStatus::Error as i32,
+                RunStatus::Cancelled | RunStatus::Running => pb::SubagentRunStatus::Aborted as i32,
+            };
+            state.completed_timestamp_ms = Some(completed_at_ms);
+            state.completion_reason = Some(pb::BackgroundTaskCompletionReason::TaskFinished as i32);
+        }
+        Ok(())
     }
 
     fn record_background_subagents(&mut self, presentation: &PendingSteps) {
