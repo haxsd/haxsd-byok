@@ -13,18 +13,8 @@ import { StatusPill } from "../../shared/ui/StatusPill";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { arrowRightIcon, checkCircleIcon, refreshIcon } from "../../shared/ui/icons";
 import { navCallsIcon, navDevinIcon, navModelsIcon, navSettingsIcon } from "../../shared/ui/navIcons";
+import { buildOnboarding, type OnboardingClient } from "./onboarding";
 import styles from "./TutorialPage.module.scss";
-
-type Step = {
-  key: string;
-  title: string;
-  detail: string;
-  done: boolean;
-  /** 已经做到哪一步，用一句话说清（未完成时给下一步动作）。 */
-  status: string;
-  path: string;
-  action: string;
-};
 
 /**
  * 产品自己的使用教程。
@@ -32,78 +22,38 @@ type Step = {
  * 以前这个入口打开的是**上游产品的文档站**：那里的步骤、截图和概念都不是这个应用的，
  * 用户照着做会对不上界面。这一页写的是这个产品的真实流程，而且会**读当前状态**——
  * 已经做完的步骤直接打勾，并指出下一步该去哪一页。
+ *
+ * Cursor 和 Devin 是两条独立的接入路径，所以先选客户端：只有选定的那一条进入
+ * 清单与进度，另一条不会被当成欠下的待办。选择只存在于页面状态里。
  */
 export function TutorialPage() {
   const { models, cursorHarness, devinStatus, overview, calls } = useAppStore();
   const navigate = useNavigate();
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
+  const [hostAttempt, setHostAttempt] = useState(0);
+  const [client, setClient] = useState<OnboardingClient | null>(null);
 
+  // 计数由「刷新状态」按钮推进，让宿主补丁状态跟着重读；卸载守卫保持原样。
   useEffect(() => {
     let cancelled = false;
     void api.devinHostStatus()
       .then((status) => { if (!cancelled) setHostStatus(status); })
       .catch(() => { if (!cancelled) setHostStatus(null); });
     return () => { cancelled = true; };
-  }, []);
+  }, [hostAttempt]);
 
-  const caReady = cursorHarness?.ca === "ready";
-  const cursorTakenOver = cursorHarness?.settings_applied ?? false;
-  const cursorTakesOver = (cursorHarness?.mode ?? "official") !== "official";
-  const gatewayUp = Boolean(devinStatus?.enabled && devinStatus?.listening);
-  const hostPatched = hostStatus?.patched ?? false;
-  const hasCalls = calls.length > 0 || overview.metrics.llm_calls > 0;
-
-  const steps: Step[] = [
-    {
-      key: "model",
-      title: t("添加一个模型"),
-      detail: t("模型库里的一项配置就是一个可用的模型：服务器地址、API Key、模型 ID。Cursor 与 Devin 共用这一份。"),
-      done: models.length > 0,
-      status: models.length > 0 ? t("已有 {count} 个模型", { count: models.length }) : t("还没有模型，任何客户端都无从回答"),
-      path: "/models",
-      action: t("去模型库"),
-    },
-    {
-      key: "cursor",
-      title: t("让 Cursor 用上它"),
-      detail: t("三件事：生成并信任本地 CA（用来读取 Cursor 的 HTTPS 请求）、在 Cursor 页选择模型来源（本地只用自己的模型，混合还能同时用官方模型）、再重启一次 Cursor。"),
-      done: cursorTakesOver && caReady && cursorTakenOver,
-      status: !cursorTakesOver
-        ? t("当前是官方模式，本应用不介入")
-        : cursorTakenOver
-          ? t("已接管")
-          : caReady
-            ? t("证书已就绪，还差重启 Cursor")
-            : t("本地 CA 还没就绪"),
-      path: "/harness/cursor",
-      action: t("去 Cursor 页"),
-    },
-    {
-      key: "devin",
-      title: t("让 Devin 用上它"),
-      detail: t("三件事：启用本机网关、把 Devin 的模型标识绑定到模型库、给 Devin 的宿主文件打补丁。绑定之后 Devin 才认识这些模型。"),
-      done: gatewayUp && hostPatched,
-      status: !devinStatus?.enabled
-        ? t("网关未启用")
-        : !devinStatus.listening
-          ? t("网关已启用，等待端口就绪")
-          : hostPatched
-            ? t("已接通")
-            : t("网关在运行，还差宿主补丁"),
-      path: "/harness/devin",
-      action: t("去 Devin 页"),
-    },
-    {
-      key: "verify",
-      title: t("在客户端里跑一次对话"),
-      detail: t("回到 Cursor 或 Devin 里发一句话。成功后回到「调用」页，会看到这次调用的模型、耗时与 Token。"),
-      done: hasCalls,
-      status: hasCalls ? t("已有 {count} 条调用记录", { count: calls.length }) : t("还没有调用记录"),
-      path: "/calls",
-      action: t("去调用页"),
-    },
-  ];
-  const completed = steps.filter((step) => step.done).length;
+  const { steps, completed, total } = buildOnboarding({
+    client,
+    modelCount: models.length,
+    cursor: cursorHarness ? {
+      caReady: cursorHarness.ca === "ready",
+      settingsApplied: cursorHarness.settings_applied,
+      mode: cursorHarness.mode,
+    } : null,
+    devin: devinStatus ? { enabled: devinStatus.enabled, listening: devinStatus.listening } : null,
+    hostPatched: hostStatus?.patched ?? false,
+    callCount: Math.max(calls.length, overview.metrics.llm_calls),
+  });
 
   const faq: Array<{ question: string; answer: string }> = [
     {
@@ -124,7 +74,7 @@ export function TutorialPage() {
     },
     {
       question: t("「价值估算」的钱是怎么算的？"),
-      answer: t("用你在设置里填的单价乘实际用量。默认按高峰/低谷分时计价（UTC 工作日 01:00-04:00 与 06:00-10:00 为高峰），币种跟随界面语言：简体中文用人民币，英文用美元。它是估算，不是账单。"),
+      answer: t("用你在设置里为每个模型填的单价乘实际用量；没填单价的模型不计入金额。计价方式（全时段固定，或高峰与低谷分别计价）由你为每个模型选择，币种跟随界面语言。它是估算，不是账单。"),
     },
     {
       question: t("退出软件后 Cursor / Devin 还能用吗？"),
@@ -132,18 +82,18 @@ export function TutorialPage() {
     },
     {
       question: t("会影响机器上另一个同类软件吗？"),
-      answer: t("端口、数据目录与安装目录都是独立的，它也只会清理自己写过的配置条目（凭自己留下的标记），卸载同样不动别人的配置。唯一的交汇点是 Cursor 的 settings.json：两个软件都往同一份文件里写代理设置。如果那份配置是对方写的，本应用不会覆盖它，只在 Cursor 页说明冲突；要由本应用接管，请先关闭对方的接管。"),
+      answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。唯一的交汇点是 Cursor 的 settings.json：如果代理设置是别的软件写入的，本应用不会覆盖它，只在 Cursor 页说明冲突；要由本应用接管，请先关闭对方的接管。"),
     },
     {
       question: t("数据存在哪？怎么清理？"),
-      answer: t("都在本机：数据库在用户目录下的 .haxsd-byok-devin-v3 里。默认只记时间、状态与用量；开启「详细模式」才会保存完整请求与响应。清理入口在设置页的存储管理，可以只清详细记录或清空全部统计。"),
+      answer: t("都在本机用户目录下的 .haxsd-byok-devin-v3 里。默认只记录时间、状态与用量，开启「详细模式」才会保存完整请求与响应；清理入口在设置页的存储管理。"),
     },
   ];
 
   const glossary: Array<[string, string]> = [
     [t("自带密钥（BYOK）"), t("Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。")],
     [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置；对 Devin 来说是改宿主文件的端口。")],
-    [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它只保存在本机数据目录，也不会安装到系统证书库。")],
+    [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。")],
     [t("宿主补丁"), t("改写 Devin 自己的 extension.js，把它的上游地址指向本机端口。应用前会校验版本锚点并备份原文件。")],
     [t("缓存命中率"), t("缓存读取 /（缓存读取 + 非缓存输入）。它衡量的是「有多少输入是从提供方的缓存里读回来的」。")],
     [t("详细模式"), t("额外保存完整的请求头、请求体与响应流，便于排查问题；它会让数据库明显变大。")],
@@ -154,25 +104,40 @@ export function TutorialPage() {
       <div className={styles.heroText}>
         <span className={styles.heroEyebrow}>{t("这是什么")}</span>
         <h2>{t("把 Cursor 和 Devin 接到你自己的模型上")}</h2>
-        <p>{t("两个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发给厂商，所以厂商登录照常可用。")}</p>
-        <p>{t("Cursor 与 Devin 是两个并行的模块：各自独立的网关、端口与开关，互不影响；它们共用同一份模型库和同一份统计数据。")}</p>
+        <p>{t("两个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。两个客户端各自独立接入，共用同一份模型库与统计数据。")}</p>
       </div>
       <div className={styles.heroProgress}>
-        <span className={styles.heroCount}>{completed}<small>/{steps.length}</small></span>
-        <span className={styles.heroCountLabel}>{t("已完成的上手步骤")}</span>
-        <Meter
-          height={6}
-          ariaLabel={t("上手进度 {done}/{total}", { done: completed, total: steps.length })}
-          segments={[{ value: completed, color: "var(--oa-ok)", label: t("已完成") }, { value: steps.length - completed, color: "color-mix(in srgb, var(--vscode-foreground) 12%, transparent)", label: t("待完成") }]}
-        />
+        {client === null ? <span className={styles.heroPrompt}>{t("先选择要接入的客户端")}</span> : <>
+          <span className={styles.heroCount}>{completed}<small>/{total}</small></span>
+          <span className={styles.heroCountLabel}>{t("已完成的上手步骤")}</span>
+          <Meter
+            height={6}
+            ariaLabel={t("上手进度 {done}/{total}", { done: completed, total })}
+            segments={[{ value: completed, color: "var(--oa-ok)", label: t("已完成") }, { value: total - completed, color: "color-mix(in srgb, var(--vscode-foreground) 12%, transparent)", label: t("待完成") }]}
+          />
+        </>}
       </div>
     </Card>
 
     <TitledCard
       title={t("上手清单")}
       description={t("按顺序做即可；这一步的状态会跟着你的实际操作变化。")}
-      action={<Button size="small" onClick={() => void appStore.refresh()}>{t("刷新状态")}</Button>}
+      action={<Button size="small" onClick={() => { void appStore.refresh(); setHostAttempt(value => value + 1); }}>{t("刷新状态")}</Button>}
     >
+      <div className={styles.clientPicker}>
+        <span className={styles.clientPickerLabel} id="tutorial-client-label">{t("先选择要接入的客户端")}</span>
+        <div className={styles.clientOptions} role="group" aria-labelledby="tutorial-client-label">
+          {(["cursor", "devin"] as const).map((option) => <button
+            key={option}
+            type="button"
+            className={styles.clientOption}
+            data-active={client === option || undefined}
+            aria-pressed={client === option}
+            onClick={() => setClient(option)}
+          >{option === "cursor" ? "Cursor" : "Devin"}</button>)}
+        </div>
+        <span className={styles.clientHint}>{t("清单只跟随所选客户端，另一个客户端不计入进度。")}</span>
+      </div>
       <ol className={styles.steps}>
         {steps.map((step, index) => <li key={step.key} className={styles.step} data-done={step.done || undefined}>
           <span className={styles.stepMark} aria-hidden="true">
@@ -254,7 +219,7 @@ export function TutorialPage() {
   return <PageContent
     title={<PageTitle
       title={t("使用教程")}
-      status={<StatusPill tone={completed === steps.length ? "ok" : "idle"}>{t("上手进度 {done}/{total}", { done: completed, total: steps.length })}</StatusPill>}
+      status={client === null ? undefined : <StatusPill tone={completed === total ? "ok" : "idle"}>{t("上手进度 {done}/{total}", { done: completed, total })}</StatusPill>}
       meta={t("从零到第一条调用记录的完整流程，含常见问题与术语")}
     />}
     sections={[{ key: "tutorial", estimatedHeight: 1400, content }]}

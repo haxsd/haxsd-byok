@@ -5,6 +5,7 @@ import { CursorModelCards, cursorModelGroups, type CursorModelGroup, type Cursor
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
 import { LegacyModelImport } from "./LegacyModelImport";
+import { modelLibraryFacts } from "./modelLibraryFacts";
 import styles from "./CursorSettings.module.scss";
 import { PageContent } from "../../shell/layout/PageContent";
 import { PageActions } from "../../shell/PageActions";
@@ -77,6 +78,13 @@ export function ModelLibraryPage() {
 
   const testedOk = [...modelTestResults.values()].filter((state) => state.status === "success").length;
   const testedFailed = [...modelTestResults.values()].filter((state) => state.status === "error").length;
+  const facts = modelLibraryFacts({
+    modelCount: models.length,
+    providerCount: providerGroups.length,
+    pluginModelCount: pluginModels.length,
+    testedOk,
+    testedFailed,
+  });
 
   useEffect(() => {
     if ((grouping === "provider" && !canGroupByProvider) || (grouping === "type" && !canGroupByType)) {
@@ -347,12 +355,18 @@ export function ModelLibraryPage() {
           {batchTesting ? t("取消全部测试") : t("一键测试")}
         </button>
       </Card>
-      {models.length > 0 && <div className={toolbar.facts}>
-        <Fact label={t("模型")} value={String(models.length)} />
-        <Fact label={t("供应商")} value={String(providerGroups.length)} />
-        <Fact label={t("插件模型")} value={String(pluginModels.length)} />
-        <Fact label={t("测试通过")} value={String(testedOk)} tone={testedOk > 0 ? "ok" : "none"} />
-        <Fact label={t("测试失败")} value={String(testedFailed)} tone={testedFailed > 0 ? "bad" : "none"} />
+      {/* 统计条只放有信息量的数字：哪些该出现由 modelLibraryFacts 决定，
+          否则「插件模型 0、测试通过 0、测试失败 0」三个 0 只是噪音。 */}
+      {facts.length > 0 && <div className={`${toolbar.facts} ${styles.facts}`}>
+        {facts.map((kind) => kind === "models"
+          ? <Fact key={kind} label={t("模型")} value={String(models.length)} />
+          : kind === "providers"
+            ? <Fact key={kind} label={t("供应商")} value={String(providerGroups.length)} />
+            : kind === "pluginModels"
+              ? <Fact key={kind} label={t("插件模型")} value={String(pluginModels.length)} />
+              : kind === "testsPassed"
+                ? <Fact key={kind} label={t("测试通过")} value={String(testedOk)} tone={testedOk > 0 ? "ok" : "none"} />
+                : <Fact key={kind} label={t("测试失败")} value={String(testedFailed)} tone={testedFailed > 0 ? "bad" : "none"} />)}
       </div>}
       {list}
     </div>;

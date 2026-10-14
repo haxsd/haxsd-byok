@@ -88,7 +88,7 @@ export function SettingsPage() {
     <nav className={styles.categories} aria-label={t("设置分类")}>
       {sections.map(section => <button type="button" key={section.id} className={styles.category} aria-current={!query && selected === section.id ? "page" : undefined} onClick={() => select(section.id)}>{section.label}</button>)}
     </nav>
-    <ScrollableContent className={styles.content} contentClassName={styles.contentInner}>
+    <ScrollableContent className={styles.content} contentClassName={styles.contentInner} resetKey={`${selected}|${query}`}>
       {/* Keep drafts mounted when changing categories or searching; hidden regions are not visible or focusable. */}
       {sections.map(section => <section key={section.id} hidden={!shown.some(item => item.id === section.id)} className={styles.cards} aria-label={section.label}>
         {query.trim() && <h2 className={styles.resultsHeading}>{section.label}</h2>}

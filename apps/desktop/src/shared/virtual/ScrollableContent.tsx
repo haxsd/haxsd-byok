@@ -10,14 +10,23 @@ type ScrollableContentProps = {
   scrollbarInsetTop?: string;
   horizontal?: boolean;
   alwaysShowVertical?: boolean;
+  /** 变化时把视口滚回顶部。用于"内容常驻挂载、只换显隐"的页面（切换分类、改搜索词）。 */
+  resetKey?: string;
 };
 
-export function ScrollableContent({ children, className, viewportClassName, contentClassName, scrollbarInsetTop, horizontal = false, alwaysShowVertical = false }: ScrollableContentProps) {
+export function ScrollableContent({ children, className, viewportClassName, contentClassName, scrollbarInsetTop, horizontal = false, alwaysShowVertical = false, resetKey }: ScrollableContentProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const horizontalDragOffset = useRef<number | null>(null);
   const [metrics, setMetrics] = useState({ visible: false, left: 0, width: 0 });
+
+  // 切换分类/搜索时回到顶部。卡片是常驻挂载的（只切 hidden），滚动位置不会自己重置，
+  // 于是短分类会停在底部。注意不能用 key 重挂载来解决：那会连带丢掉未保存的草稿。
+  useEffect(() => {
+    const node = viewport.current;
+    if (node) node.scrollTop = 0;
+  }, [resetKey]);
   useEffect(() => {
     if (!horizontal || !viewport.current || !content.current || !track.current) return;
     const viewportNode = viewport.current;

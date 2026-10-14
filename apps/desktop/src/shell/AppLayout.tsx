@@ -14,6 +14,7 @@ import { appStore, useAppStore } from "../shared/store/appStore";
 import { useAvailableUpdate } from "../features/settings/startupUpdateCheck";
 import styles from "./AppLayout.module.scss";
 import { CommandPalette } from "./CommandPalette";
+import { cursorEntryStatus, devinEntryStatus, localServiceStatus } from "./connectionStatus";
 import { OfflineBanner } from "./OfflineBanner";
 import { PageActionsTarget } from "./PageActions";
 import { PageErrorBoundary } from "./PageErrorBoundary";
@@ -41,25 +42,15 @@ export function AppLayout() {
     }
   });
 
-  // Both harnesses report the same kind of state, so Cursor and Devin read as
-  // parallel modules rather than one annotated and one bare. Both values come from
-  // the shared store refresh, so there is one source of truth.
+  // 客户端状态挂在各自入口上：Cursor 的接管模式和 Devin 的网关状态互不代表对方，
+  // 两者也都不是「整个应用」的状态。两个值都来自共享 store 的刷新，只有一个来源。
   const menuStatus = (path: string) => {
-    if (path === "/harness/cursor" && cursorHarness) {
-      const takenOver = cursorHarness.mode !== "official" && cursorHarness.settings_applied;
-      return {
-        label: cursorHarness.mode === "official" ? t("官方") : takenOver ? t("已接管") : t("未接管"),
-        tone: takenOver ? "ok" as const : "idle" as const,
-      };
-    }
-    if (path === "/harness/devin" && devinStatus) {
-      return {
-        label: devinStatus.listening ? t("运行中") : devinStatus.enabled ? t("待重启") : t("未启用"),
-        tone: devinStatus.enabled && devinStatus.listening ? "ok" as const : devinStatus.enabled ? "warn" as const : "idle" as const,
-      };
-    }
+    if (path === "/harness/cursor") return cursorEntryStatus(cursorHarness);
+    if (path === "/harness/devin") return devinEntryStatus(devinStatus);
     return null;
   };
+  // 全局那一颗只说一件事：本地管理服务能不能连上。
+  const service = localServiceStatus(offline);
 
   // Groups stay in the list as separators: a horizontal bar has no room for the
   // section headings a vertical list used to carry.
@@ -110,19 +101,14 @@ export function AppLayout() {
             })()}
           </NavLink>)}
       </nav>
-      {/* The state of the machine, on every page. It replaced a per-page hunt: the
-          gateway's health and how many models exist were each only visible on one
-          page, so "is it working" had no single answer.
+      {/* 常驻状态只回答「本地管理服务连上了没有」。以前这里显示的是 Devin 网关，
+          网关没启用就写「已关闭」——看起来像整个应用被关掉了，而实际上 Cursor
+          模块可能正常。客户端自己的状态放在各自入口上（Cursor / Devin 导航项）。
           调用次数不属于这里：它是一个要按范围读的统计结果（首页的「LLM 调用」卡片
           与「调用」页），常驻状态条里的那个累计值既与页面范围口径不一致，也读不出趋势。 */}
       <div className={styles.systemStatus} aria-label={t("运行状态")}>
-        <TooltipTrigger label={t("本机网关")}>
-          <StatusPill
-            tone={offline ? "bad" : devinStatus?.listening ? "ok" : devinStatus?.enabled ? "warn" : "idle"}
-            title={t("本机网关")}
-          >{offline
-            ? t("服务未连接")
-            : devinStatus?.listening ? t("运行中") : devinStatus?.enabled ? t("待重启") : t("已关闭")}</StatusPill>
+        <TooltipTrigger label={t("本地管理服务")}>
+          <StatusPill tone={service.tone} title={t("本地管理服务")}>{service.label}</StatusPill>
         </TooltipTrigger>
         <span className={styles.statusDivider} aria-hidden="true" />
         <TooltipTrigger label={t("模型库里可用的模型")}>
@@ -136,8 +122,9 @@ export function AppLayout() {
             <button
               type="button"
               className={styles.updateMarker}
-              onClick={() => void navigate("/settings")}
-            >{t("有新版本")}</button>
+              aria-label={t("有新版本 {version} 可以安装", { version: availableUpdate.version })}
+              onClick={() => void navigate("/settings?section=about")}
+            ><span className={styles.updateMarkerText}>{t("有新版本")}</span></button>
           </TooltipTrigger>
         </>}
         <span className={styles.statusDivider} aria-hidden="true" />

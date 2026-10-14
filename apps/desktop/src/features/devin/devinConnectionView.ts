@@ -92,9 +92,11 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
     listening: gatewayListening,
     ready: savedEnabled && gatewayListening === true,
     pendingRestart: savedEnabled && gatewayListening === false,
-    tone: savedEnabled && gatewayListening === true ? "ok" : savedEnabled ? "warn" : "idle",
+    tone: savedEnabled ? (gatewayListening === true ? "ok" : "warn") : gatewayListening === true ? "warn" : "idle",
     label: !savedEnabled
-      ? t("已关闭")
+      ? gatewayListening === true
+        ? t("已关闭（仍在监听，重启后停止）")
+        : t("已关闭")
       : gatewayListening === null
         ? t("检查中…")
         : gatewayListening
@@ -104,7 +106,9 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
   const summary = {
     tone: gateway.tone,
     label: !savedEnabled
-      ? t("未启用")
+      ? gatewayListening === true
+        ? t("已关闭（仍在监听，重启后停止）")
+        : t("未启用")
       : gateway.ready
         ? t("运行中")
         : gatewayListening === null

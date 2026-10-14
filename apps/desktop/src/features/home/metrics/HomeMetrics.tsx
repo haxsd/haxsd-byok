@@ -90,7 +90,19 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
   const unpricedModels = estimate?.models.filter(row => row.cost === null && row.tokens > 0) ?? [];
   const totalCost = estimate?.total ?? 0;
   const cacheCost = (estimate?.cacheRead ?? 0) + (estimate?.cacheWrite ?? 0);
-  const costValue = pricingFailure ? t("估算不可用") : !estimate ? t("计算中…") : unpricedModels.length > 0 && pricedModels.length === 0 ? t("未定价") : formatCost(totalCost, currency);
+  // 标题用全口径的「价值估算」，不再出现「已定价小计」这种半口径措辞：后者在一个
+  // 模型都没定价时，标题说"有小计"、数值说"没有"，自己和自己打脸。金额只覆盖已定价
+  // 部分时，由下面的说明写清有多少模型、多少 Token 未计入。
+  const costLabel = t("价值估算");
+  // 一段已定价用量都没有时没有数字可给：直说「未定价」（原因写在下面的说明里），
+  // 把「估算不可用」留给真正的取数失败——否则用户会以为这个功能坏了。
+  const costValue = pricingFailure
+    ? t("估算不可用")
+    : !estimate
+      ? t("计算中…")
+      : unpricedModels.length > 0 && pricedModels.length === 0
+        ? t("未定价")
+        : formatCost(totalCost, currency);
   const costHint = pricingFailure === "range"
     ? t("所选范围超过 660 天，未生成费用估算")
     : pricingFailure
@@ -143,7 +155,7 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
       t("缓存写入估算：{cost}", { cost: formatMoney(estimate.cacheWrite, currency) }),
     ] : []),
     costHint,
-    t("已定价小计：{cost}", { cost: estimate ? formatCost(totalCost, currency) : "—" }),
+    t("已计入金额：{cost}", { cost: pricedModels.length > 0 ? formatCost(totalCost, currency) : "—" }),
     t("修改单价会重新估算历史用量；这里不是服务商账单。"),
   ].join("\n");
 
@@ -191,7 +203,7 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
       visual={tokenTrend && <Sparkline values={tokenTrend} tone="accent" ariaLabel={t("Token 用量趋势")} />}
     />
     <StatTile
-      label={unpricedModels.length > 0 ? t("已定价小计") : t("价值估算")}
+      label={costLabel}
       info={<InfoTooltip content={costTooltip} />}
       value={costValue}
       hint={costHint}

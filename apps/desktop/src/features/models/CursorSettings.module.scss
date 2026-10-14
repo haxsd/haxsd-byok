@@ -83,9 +83,21 @@
 
 /* ---------- 模型卡片 ---------- */
 
+/* 统计条按内容宽度排布：模型库里通常只有两三个数字，让它们各占半屏会显得空。 */
+.facts {
+  justify-content: flex-start;
+
+  > * {
+    flex: 0 1 auto;
+    min-width: calc(var(--oa-space-6) * 3);
+  }
+}
+
 .modelGrid {
+  /* 卡片最小宽度由间距刻度推导（32 × 7 = 224px），列数交给窗口宽度决定：
+     宽窗口一行多排几列，窄窗口自动减列，卡片本身仍是弹性宽度。 */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--oa-space-6) * 7), 1fr));
   gap: var(--oa-space-3);
 }
 
@@ -220,6 +232,9 @@
 
 .modelCardContent {
   min-width: 0;
+  /* 卡片高度由同一行的最高卡片决定（grid 默认 stretch）：内容撑满、操作行贴底，
+     未测试的卡片少了那 32px 也不会让按钮各排各的。 */
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--oa-space-3);
@@ -315,6 +330,8 @@
   display: flex;
   align-items: center;
   gap: var(--oa-space-2);
+  /* 操作行永远贴在本行卡片的最下面，和相邻卡片的按钮对齐。 */
+  margin-top: auto;
 
   .testButton,
   .secondaryAction {
@@ -591,6 +608,53 @@
 .fullWidth {
   width: 100%;
   grid-column: 1 / -1;
+}
+
+/* 高级分组：常用字段之外的设置折在一行标题后面，展开后仍走同一套两列表单网格。 */
+.advanced {
+  display: grid;
+  gap: var(--oa-space-3);
+}
+
+.advancedCount {
+  padding: 0 var(--oa-space-2);
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  border-radius: 999px;
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.advancedToggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--oa-space-1);
+  padding: var(--oa-space-1) 0;
+  color: var(--vscode-descriptionForeground);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+  cursor: pointer;
+
+  &:hover { color: var(--vscode-foreground); }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+}
+
+.advancedChevron {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  transition: transform var(--oa-transition-base);
+
+  &[data-open="true"] { transform: rotate(90deg); }
 }
 
 .discoverButton {

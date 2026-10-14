@@ -305,3 +305,40 @@
     animation: none;
   }
 }
+
+/*
+ * 窗口变窄时的让位顺序。
+ *
+ * 最窄的窗口（880×600，中文和英文都要成立）必须容纳全部主入口，所以被压缩的
+ * 只能是次要信息：状态条里的计数与快捷键提示、导航项上的客户端状态词、更新
+ * 标记的文字。导航入口的完整标签始终保留；窄窗口收起分组分隔线，最窄一档再让
+ * 图标为标签让位。
+ */
+@media (max-width: 1240px) {
+  .statusFact { display: none; }
+  .commandButton kbd { display: none; }
+  .commandButton { padding: 0 5px; }
+}
+
+/* 客户端状态词（官方 / 已接管 / 运行中…）在窄窗口收起：它们的归宿是各自的入口页。 */
+@media (max-width: 1120px) {
+  .navStatus { display: none; }
+}
+
+@media (max-width: 1000px) {
+  .updateMarkerText { display: none; }
+  .topBar { gap: 8px; }
+  .navDivider { display: none; }
+  .navItem { gap: 5px; padding: 0 7px; }
+  .systemStatus { gap: 5px; padding: 3px 6px; }
+  .updateMarker { padding: 0 6px; }
+}
+
+/*
+ * 最窄一档（窗口下限 880×600）：状态条里的服务名换成任何一种英文译法都可能再宽
+ * 几十像素，而入口标签必须完整。这里让导航项的图标让位——标签、顺序与点击区域
+ * 都保留，条目在视觉上退化成纯文字。
+ */
+@media (max-width: 900px) {
+  .navItem > div { display: none; }
+}

@@ -105,6 +105,22 @@ function viewInput(overrides = {}) {
   };
 }
 
+test("a saved-off gateway that is still listening is reported as such, not as disabled", async () => {
+  const devinConnectionView = await loadView();
+  // 已保存关闭，但上一轮运行里起来的网关任务还没随进程退出：端口仍然在应答请求。
+  const saved = devinSettings({ enabled: false });
+
+  const view = devinConnectionView(viewInput({ draft: saved, saved, gatewayListening: true }));
+
+  assert.equal(view.gateway.ready, false, "a closed gateway is never ready");
+  assert.equal(view.gateway.pendingRestart, false, "nothing waits for a restart; the ports are already open");
+  assert.equal(view.gateway.tone, "warn", "ports are live while the setting says off — that is a warning, not idle");
+  assert.equal(view.gateway.listening, true);
+  assert.match(view.gateway.label, /监听/, "the label must say the ports are still listening");
+  assert.equal(view.summary.tone, "warn");
+  assert.equal(view.hero.connected, false);
+});
+
 test("an unsaved switch does not claim the gateway is saved or running", async () => {
   const devinConnectionView = await loadView();
   const saved = devinSettings({ enabled: false });

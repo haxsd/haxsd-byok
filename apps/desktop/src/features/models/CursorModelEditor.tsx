@@ -1,14 +1,15 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { ModelInput, ModelType } from "../../shared/api";
 import { defaultCustomHeadersText } from "../../shared/utils/modelDefaults";
 import { modelPresets, presetEndpoint, trimTrailingSlash, type ModelPreset } from "../../shared/utils/modelPresets";
 import { Button } from "../../shared/ui/Button";
 import { Checkbox } from "../../shared/ui/Checkbox";
 import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
+import { Icon } from "../../shared/ui/Icon";
 import { JsonEditor } from "../../shared/ui/JsonEditor";
 import { Combobox, Select, type ComboboxHandle } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
-import { claudeIcon, openAiIcon } from "../../shared/ui/icons";
+import { claudeIcon, chevronRightIcon, openAiIcon } from "../../shared/ui/icons";
 import { CursorPresetChips } from "./CursorPresetChips";
 import styles from "./CursorSettings.module.scss";
 
@@ -61,6 +62,10 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
   onDiscover: () => Promise<boolean>;
 }) {
   const modelCombobox = useRef<ComboboxHandle>(null);
+  // 高级分组默认折叠，只有一件事能改变初始状态：草稿里已经有非默认的高级值
+  // （编辑已有模型）→ 直接展开，否则用户会以为上下文窗口这些配置丢了。
+  const advancedCount = advancedValueCount(draft);
+  const [advancedOpen, setAdvancedOpen] = useState(() => advancedCount > 0);
   const setModel = (patch: Partial<ModelInput>) => onChange({ ...draft, model: { ...draft.model, ...patch } });
   const setType = (type: ModelType) => {
     // 切换协议类型时，若当前地址命中某预设的另一协议端点，自动换到该预设对应协议的端点，
@@ -160,40 +165,79 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
 
       <FormField label={t("模型名称")} hint={t("可以直接输入模型标识，也可以读取接口返回的模型列表。")}><Combobox ref={modelCombobox} value={draft.model.model_id} options={combinedOptions} placeholder="gpt-5" append={<Button className={styles.discoverButton} disabled={discovering || !canDiscover} onClick={() => void discoverModels()}>{discovering ? t("获取中…") : t("获取模型")}</Button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} /></FormField>
       <FormField label={t("显示名称")} hint={t("仅用于界面展示，不会改变发送给模型服务的模型名称。")}> <TextInput placeholder={t("例如：主力模型")} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
+      {/* 备注是保存时的必填项（服务端同样要求），所以它必须留在第一屏：
+          折进「高级」会让用户在不展开时永远保存不了，也看不到报错说的是哪一栏。 */}
       <FormField className={styles.fullWidth} label={t("备注")} hint={t("显示在 Cursor 模型说明中。")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
 
-      <FormField label={t("上下文窗口 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })} /></FormField>
-      {draft.model.type === "openai" ? <>
-        <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.max_completion_tokens ?? ""} onChange={(event) => setModel({ max_completion_tokens: numberValue(event.target.value) })} /></FormField>
-        <FormField label={t("推理强度")}> <Select ariaLabel={t("推理强度")} value={draft.model.reasoning_effort ?? ""} options={effortOptions(true)} onChange={(value) => setModel({ reasoning_effort: value || null })} /></FormField>
-      </> : <>
-        <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.anthropic_max_tokens ?? ""} onChange={(event) => setModel({ anthropic_max_tokens: numberValue(event.target.value) })} /></FormField>
-        <FormField label={t("思考强度")}> <Select ariaLabel={t("思考强度")} value={draft.model.anthropic_thinking_effort ?? "xhigh"} options={effortOptions(false)} onChange={(anthropic_thinking_effort) => setModel({ anthropic_thinking_effort })} /></FormField>
-        <FormField label={t("思考预算 Token")} hint={t("留空时使用 adaptive thinking。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用 adaptive thinking")} value={draft.model.thinking_budget_tokens ?? ""} onChange={(event) => setModel({ thinking_budget_tokens: numberValue(event.target.value) })} /></FormField>
-      </>}
+      <div className={`${styles.fullWidth} ${styles.advanced}`}>
+        <button type="button" className={styles.advancedToggle} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>
+          <span className={styles.advancedChevron} data-open={advancedOpen} aria-hidden="true"><Icon icon={chevronRightIcon} size="1em" /></span>
+          {t("高级")}
+          {!advancedOpen && advancedCount > 0 && <span className={styles.advancedCount}>{t("已设置 {count} 项", { count: advancedCount })}</span>}
+        </button>
+        {advancedOpen && <div className={styles.grid}>
+          <FormField label={t("上下文窗口 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })} /></FormField>
+          {draft.model.type === "openai" ? <>
+            <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.max_completion_tokens ?? ""} onChange={(event) => setModel({ max_completion_tokens: numberValue(event.target.value) })} /></FormField>
+            <FormField label={t("推理强度")}> <Select ariaLabel={t("推理强度")} value={draft.model.reasoning_effort ?? ""} options={effortOptions(true)} onChange={(value) => setModel({ reasoning_effort: value || null })} /></FormField>
+          </> : <>
+            <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.anthropic_max_tokens ?? ""} onChange={(event) => setModel({ anthropic_max_tokens: numberValue(event.target.value) })} /></FormField>
+            <FormField label={t("思考强度")}> <Select ariaLabel={t("思考强度")} value={draft.model.anthropic_thinking_effort ?? "xhigh"} options={effortOptions(false)} onChange={(anthropic_thinking_effort) => setModel({ anthropic_thinking_effort })} /></FormField>
+            <FormField label={t("思考预算 Token")} hint={t("留空时使用 adaptive thinking。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用 adaptive thinking")} value={draft.model.thinking_budget_tokens ?? ""} onChange={(event) => setModel({ thinking_budget_tokens: numberValue(event.target.value) })} /></FormField>
+          </>}
 
-      <ToggleJsonField
-        label={t("自定义 Headers")}
-        enabled={draft.model.custom_headers_enabled}
-        text={draft.customHeadersText}
-        onEnabledChange={(custom_headers_enabled) => setModel({ custom_headers_enabled })}
-        onTextChange={(customHeadersText) => onChange({ ...draft, customHeadersText })}
-      />
-      {draft.model.type === "openai" ? <ToggleJsonField
-        label={t("OpenAI 额外参数")}
-        enabled={draft.model.openai_extra_params_enabled}
-        text={draft.openAIExtraParamsText}
-        onEnabledChange={(openai_extra_params_enabled) => setModel({ openai_extra_params_enabled })}
-        onTextChange={(openAIExtraParamsText) => onChange({ ...draft, openAIExtraParamsText })}
-      /> : <ToggleJsonField
-        label={t("Anthropic 额外参数")}
-        enabled={draft.model.anthropic_extra_params_enabled}
-        text={draft.anthropicExtraParamsText}
-        onEnabledChange={(anthropic_extra_params_enabled) => setModel({ anthropic_extra_params_enabled })}
-        onTextChange={(anthropicExtraParamsText) => onChange({ ...draft, anthropicExtraParamsText })}
-      />}
+          <ToggleJsonField
+            label={t("自定义 Headers")}
+            enabled={draft.model.custom_headers_enabled}
+            text={draft.customHeadersText}
+            onEnabledChange={(custom_headers_enabled) => setModel({ custom_headers_enabled })}
+            onTextChange={(customHeadersText) => onChange({ ...draft, customHeadersText })}
+          />
+          {draft.model.type === "openai" ? <ToggleJsonField
+            label={t("OpenAI 额外参数")}
+            enabled={draft.model.openai_extra_params_enabled}
+            text={draft.openAIExtraParamsText}
+            onEnabledChange={(openai_extra_params_enabled) => setModel({ openai_extra_params_enabled })}
+            onTextChange={(openAIExtraParamsText) => onChange({ ...draft, openAIExtraParamsText })}
+          /> : <ToggleJsonField
+            label={t("Anthropic 额外参数")}
+            enabled={draft.model.anthropic_extra_params_enabled}
+            text={draft.anthropicExtraParamsText}
+            onEnabledChange={(anthropic_extra_params_enabled) => setModel({ anthropic_extra_params_enabled })}
+            onTextChange={(anthropicExtraParamsText) => onChange({ ...draft, anthropicExtraParamsText })}
+          />}
+        </div>}
+      </div>
     </div>
   </div>;
+}
+
+/**
+ * 高级分组里已经设置了多少项。
+ *
+ * 两个用途：编辑已有模型时据此默认展开；折叠着的时候把这个数字写在标题旁边，
+ * 让用户知道里面还有东西——尤其是「点预设」或「切模型类型」会就地写入上下文窗口、
+ * 输出上限和伪装 Headers 的时候。
+ *
+ * 「默认值」就是 `emptyCursorModelDraft` 的那一份：四个数字留空、强度未设置、
+ * 各类开关关闭、额外参数为空。自定义 Headers 的文本不算——它默认带着一份预设
+ * Headers，只有开关打开才代表用户真的在用。
+ */
+export function advancedValueCount(draft: CursorModelDraft) {
+  const model = draft.model;
+  return [
+    model.context_window_tokens !== null,
+    model.max_completion_tokens !== null,
+    model.anthropic_max_tokens !== null,
+    model.thinking_budget_tokens !== null,
+    model.reasoning_effort !== null,
+    Boolean(model.anthropic_thinking_effort && model.anthropic_thinking_effort !== "xhigh"),
+    model.custom_headers_enabled,
+    model.openai_extra_params_enabled,
+    model.anthropic_extra_params_enabled,
+    Object.keys(model.openai_extra_params).length > 0,
+    Object.keys(model.anthropic_extra_params).length > 0,
+  ].filter(Boolean).length;
 }
 
 function ToggleJsonField({ label, enabled, text, onEnabledChange, onTextChange }: {

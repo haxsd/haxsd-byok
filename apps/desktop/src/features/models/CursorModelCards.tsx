@@ -306,9 +306,10 @@ function ModelGrid({
             </span>
             <ModelChips model={model} />
           </div>
-          <div className={styles.modelCardTest}>
+          {/* 没有测试结果就整行不渲染：16 张卡片各写一次「未测试」只是噪音。 */}
+          {(testing || result) && <div className={styles.modelCardTest}>
             <CursorModelTestResult state={result} testing={testing} />
-          </div>
+          </div>}
           <div className={styles.modelCardActions}>
             <button type="button" className={styles.testButton} disabled={disabled && !testing} onClick={() => onTest(model)}>
               <Icon icon={playIcon} size="1em" />{testing ? t("取消测试") : t("测试")}
