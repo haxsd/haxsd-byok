@@ -8,7 +8,8 @@ use serde_json::{json, Map, Value};
 use crate::{
     config::ProviderConfig,
     model::{
-        ContentPart, ModelInvocation, ModelLatency, ProjectedContent, ProjectedMessage, Role, Usage,
+        ContentPart, ModelInvocation, ModelLatency, ProjectedContent, ProjectedMessage, Role,
+        ToolDefinition, Usage,
     },
     network::OutboundClient,
     Error, Result,
@@ -77,10 +78,7 @@ impl Provider for OpenAiResponsesProvider {
                 "include": ["reasoning.encrypted_content"]
             });
             if !request.prompt.tools.is_empty() {
-                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({
-                    "type":"function", "name":tool.name, "description":tool.description,
-                    "parameters":tool.parameters, "strict":false
-                })).collect::<Vec<_>>());
+                body["tools"] = responses_tools(&request.prompt.tools);
             }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
@@ -385,6 +383,62 @@ fn apply_model(
     Ok(())
 }
 
+/// 必须写成整数的 JSON Schema 关键字。
+const INTEGER_SCHEMA_KEYWORDS: &[&str] = &[
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+    "minProperties",
+    "maxProperties",
+    "minContains",
+    "maxContains",
+];
+
+/// 把这些关键字上的整值浮点归一成整数（`20000.0` → `20000`）。
+///
+/// Cursor 内置工具的 schema 里会出现浮点写法，而 OpenAI 的 Responses 接口按整数校验这些
+/// 关键字，直接回 `keyword "maxLength" must use an integer JSON value: 20000.0` 把整轮请求
+/// 挡掉。语义上这些关键字本来就是整数，整值浮点归一不改变含义；非整值原样保留。
+fn normalize_schema_integers(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, child)| {
+                    let normalized = normalize_schema_integers(child);
+                    let integral = INTEGER_SCHEMA_KEYWORDS.contains(&key.as_str())
+                        && normalized
+                            .as_f64()
+                            .is_some_and(|number| number.fract() == 0.0 && number.abs() < 9.0e15);
+                    match integral {
+                        true => (
+                            key.clone(),
+                            json!(normalized.as_f64().unwrap_or_default() as i64),
+                        ),
+                        false => (key.clone(), normalized),
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(normalize_schema_integers).collect()),
+        other => other.clone(),
+    }
+}
+
+/// 构造 Responses 请求里的 `tools` 字段。
+fn responses_tools(tools: &[ToolDefinition]) -> Value {
+    json!(tools
+        .iter()
+        .map(|tool| json!({
+            "type": "function",
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": normalize_schema_integers(&tool.parameters),
+            "strict": false
+        }))
+        .collect::<Vec<_>>())
+}
+
 fn responses_input(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
     let mut input = Vec::new();
     for message in messages {
@@ -545,6 +599,63 @@ fn responses_usage(value: &Value) -> Usage {
 mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
+
+    #[test]
+    fn tool_schemas_normalize_float_written_integer_keywords() {
+        // Cursor 内置工具会给出 `"maxLength": 20000.0` 这种浮点写法，OpenAI 的 Responses
+        // 接口按整数校验这些关键字，直接回 `keyword "maxLength" must use an integer JSON
+        // value: 20000.0`，把整轮请求挡掉（实测 78 次同一个路径）。
+        let tools = vec![ToolDefinition {
+            name: "cursor-app-control-cursor_dialog".into(),
+            description: "dialog".into(),
+            parameters: json!({
+                "type": "object",
+                "oneOf": [
+                    { "type": "string" },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "content": { "type": "string", "maxLength": 20000.0 }
+                        }
+                    }
+                ],
+                "properties": {
+                    "ids": { "type": "array", "minItems": 1.0, "maxItems": 8.0 },
+                    "nested": {
+                        "type": "object",
+                        "properties": { "title": { "type": "string", "minLength": 1.0 } }
+                    },
+                    "ratio": { "type": "number", "minimum": 0.5, "maximum": 2.0 }
+                }
+            }),
+        }];
+
+        let body = responses_tools(&tools);
+        let serialized = serde_json::to_string(&body).unwrap();
+        // 用带分隔符的整词断言：`"maxLength":20000` 是 `"maxLength":20000.0` 的前缀，
+        // 前缀断言会让修复失效时测试照样通过（反向验证抓到过这一次）。
+        assert!(serialized.contains("\"maxLength\":20000,"), "{serialized}");
+        assert!(serialized.contains("\"minItems\":1,"), "{serialized}");
+        assert!(serialized.contains("\"maxItems\":8,"), "{serialized}");
+        assert!(serialized.contains("\"minLength\":1,"), "{serialized}");
+        assert!(!serialized.contains("20000.0"), "{serialized}");
+        assert_eq!(
+            body[0]["parameters"]["oneOf"][1]["properties"]["content"]["maxLength"],
+            json!(20000)
+        );
+        // 数值关键字允许小数，原样保留。
+        assert!(serialized.contains("\"minimum\":0.5"), "{serialized}");
+        assert!(serialized.contains("\"maximum\":2.0"), "{serialized}");
+        assert_eq!(body[0]["type"], json!("function"));
+        assert_eq!(body[0]["name"], json!("cursor-app-control-cursor_dialog"));
+        assert_eq!(body[0]["strict"], json!(false));
+    }
+
+    #[test]
+    fn non_integral_length_keywords_are_left_alone() {
+        let schema = json!({ "maxLength": 2.5 });
+        assert_eq!(normalize_schema_integers(&schema), schema);
+    }
 
     #[test]
     fn reasoning_replay_projects_response_items_to_valid_input_items() {
