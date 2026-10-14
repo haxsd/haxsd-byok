@@ -120,9 +120,9 @@ export function PricingSettingsCard() {
     {saved && <Button size="small" disabled={saving || !targetKey} onClick={() => void remove()}>{t("移除定价")}</Button>}
     <Button size="small" disabled={saving || !modelHash} onClick={edit}>{t("编辑")}</Button>
   </div>;
-  return <TitledCard title={t("模型 Token 定价")} action={actions} collapsible storageKey="settings-pricing">
+  return <TitledCard title={t("模型定价")} action={actions}>
     <div className={styles.content}>
-      <small>{t("按每个模型的实际渠道价格独立估算，再汇总已定价模型；未定价用量不计入金额。")}</small>
+      <small className={styles.rule}>{t("按模型单价估算；未定价用量不计入金额。")}</small>
       <small className={styles.rule}>{t("价格币种跟随界面语言：简体中文用人民币，英文用美元，两套价格各自独立维护。")}</small>
       <ModelSelect mode="single" label={t("选择定价模型")} options={options} value={modelHash} disabled={editing || saving} onChange={setSelected} />
       {options.length === 0 ? <small>{t("请先添加模型，再设置单价。")}</small> : editing ? <div className={styles.fields}>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { api, type AppInfo } from "../../shared/api";
+import { api } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { forgetPendingUpdate, rememberPendingUpdate, usePendingUpdateOutcome } from "./pendingUpdate";
@@ -28,8 +28,6 @@ type UpdateStatus =
 export function UpdateCard() {
   const [version, setVersion] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
-  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
-  const [appInfoError, setAppInfoError] = useState<string | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
   const [downloaded, setDownloaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,28 +35,14 @@ export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ kind: "none" });
   const lastApply = usePendingUpdateOutcome();
 
-  // 版本与"跑的哪一份"都在挂载时读：这是卡片唯一总能回答的问题。
+  // Runtime version is a native capability; browser previews read it from the management API.
   useEffect(() => {
     let cancelled = false;
     void getVersion()
-      .then((value) => {
-        if (!cancelled) setVersion(value);
-      })
-      .catch((cause) => {
-        if (!cancelled) setVersionError(cause instanceof Error ? cause.message : String(cause));
-      });
-    // 本机可以同时存在两份安装（`D:\...` 与 `%LOCALAPPDATA%\...`），
-    // 只看版本号分不清更新装到了哪一份、跑起来的又是哪一份。
-    void api.appInfo()
-      .then((value) => {
-        if (!cancelled) setAppInfo(value);
-      })
-      .catch((cause) => {
-        if (!cancelled) setAppInfoError(cause instanceof Error ? cause.message : String(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => api.appInfo().then(info => info.version))
+      .then(value => { if (!cancelled) setVersion(value); })
+      .catch(cause => { if (!cancelled) setVersionError(String(cause)); });
+    return () => { cancelled = true; };
   }, []);
 
   const checkForUpdate = async () => {
@@ -136,7 +120,6 @@ export function UpdateCard() {
     }
   };
 
-  const shownVersion = version ?? appInfo?.version ?? null;
   /** 更新行的说明：下载中显示进度，下载完成后说明可以直接重试安装。 */
   const updateHint = () => {
     if (downloaded) return t("安装包已下载，可以直接重试安装");
@@ -148,19 +131,9 @@ export function UpdateCard() {
     title={t("软件更新")}
     action={<Button size="small" variant="primary" disabled={busy} onClick={() => void checkForUpdate()}>{busy ? t("检查中…") : t("检查更新")}</Button>}
   >
-    {/* 运行的是哪一份：本机有两份安装时，"更新完还是旧版本"和"更新装到别处去了"
-        长得一模一样，所以版本、可执行文件和数据目录都要能看到。 */}
     <div className={styles.runtimeRow}>
       <strong>{t("当前版本")}</strong>
-      <small title={versionError ?? undefined}>{shownVersion ?? (versionError ? t("读取失败") : t("读取中…"))}</small>
-    </div>
-    <div className={styles.runtimeRow}>
-      <strong>{t("可执行文件")}</strong>
-      <small title={appInfoError ?? undefined}>{appInfo?.executable_path ?? (appInfoError ? t("读取失败") : t("读取中…"))}</small>
-    </div>
-    <div className={styles.runtimeRow}>
-      <strong>{t("数据目录")}</strong>
-      <small title={appInfoError ?? undefined}>{appInfo?.data_dir ?? (appInfoError ? t("读取失败") : t("读取中…"))}</small>
+      <small title={versionError ?? undefined}>{version ?? (versionError ? t("读取失败") : t("读取中…"))}</small>
     </div>
     {update && <div className={styles.settingRow}>
       <div>

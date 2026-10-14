@@ -1,7 +1,7 @@
 import type { CursorMode, OutboundStatus, ProxySettings, ProxySettingsInput } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { Checkbox } from "../../shared/ui/Checkbox";
-import { TextInput } from "../../shared/ui/FormControls";
+import { SecretTextInput, TextInput } from "../../shared/ui/FormControls";
 import { Select } from "../../shared/ui/Select";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import styles from "./ProxySettingsCard.module.scss";
@@ -13,6 +13,7 @@ export function ProxySettingsCard({
   draft,
   editing,
   saving,
+  error,
   onDraftChange,
   onEdit,
   onCancel,
@@ -24,6 +25,7 @@ export function ProxySettingsCard({
   draft: ProxySettingsInput;
   editing: boolean;
   saving: boolean;
+  error: string | null;
   onDraftChange: (draft: ProxySettingsInput) => void;
   onEdit: () => void;
   onCancel: () => void;
@@ -31,8 +33,7 @@ export function ProxySettingsCard({
 }) {
   const custom = draft.mode === "custom";
   const effectiveMode = editing ? draft.mode : settings?.mode;
-  // 官方模型的那条请求要出我们这一跳到境外上游，而"直连"是全局的：它同时关掉转发
-  // 那条路的代理。官方/混合模式下选直连 = 官方模型必然连不上，得在这里说清楚。
+  // 官方模型仍需当前网络能够访问 Cursor 官方服务，直连是否可用取决于网络条件。
   const officialNeedsProxy = cursorMode !== "local" && effectiveMode === "direct";
   // 配置说"跟随系统代理"，而实际正在直连：两者不一致时必须说出来，否则用户只会看到
   // 代理开着却查不出网络为什么绕着走（Clash 更新那几分钟就是这样）。
@@ -45,9 +46,9 @@ export function ProxySettingsCard({
     return t("默认（跟随系统代理）");
   };
   const modeHint = (mode: ProxySettingsInput["mode"]) => {
-    if (mode === "custom") return t("始终走下面填写的地址，系统代理怎么变都不影响。");
-    if (mode === "direct") return t("不使用任何代理，直接连接网络。");
-    return t("跟随 Windows 的系统代理设置；在那里开关代理后会自动切换，不用重启。");
+    if (mode === "custom") return t("使用指定的代理地址。");
+    if (mode === "direct") return t("不使用代理，直接连接网络。");
+    return t("跟随系统代理，修改后自动生效。");
   };
   const action = editing ? (
     <div className={styles.actionGroup}>
@@ -60,7 +61,7 @@ export function ProxySettingsCard({
     </button>
   );
 
-  return <TitledCard title={t("代理设置")} action={action} collapsible storageKey="settings-proxy">
+  return <TitledCard title={t("出网代理")} action={action}>
     <div className={styles.content}>
       {editing ? <>
         <div className={styles.row}>
@@ -73,7 +74,7 @@ export function ProxySettingsCard({
         {custom && <div className={styles.customFields}>
           <div className={styles.row}>
             <strong>{t("代理地址")}</strong>
-            <div className={styles.control}><TextInput value={draft.address} placeholder="http://127.0.0.1:7890" onChange={(event) => onDraftChange({ ...draft, address: event.target.value })} /></div>
+            <div className={styles.control}><TextInput aria-label={t("代理地址")} value={draft.address} placeholder="http://127.0.0.1:7890" onChange={(event) => onDraftChange({ ...draft, address: event.target.value })} /></div>
           </div>
           <div className={styles.row}>
             <strong>{t("认证")}</strong>
@@ -82,11 +83,11 @@ export function ProxySettingsCard({
           {draft.auth_enabled && <div className={styles.customFields}>
             <div className={styles.row}>
               <strong>{t("用户名")}</strong>
-              <div className={styles.control}><TextInput value={draft.username} autoComplete="off" onChange={(event) => onDraftChange({ ...draft, username: event.target.value })} /></div>
+              <div className={styles.control}><TextInput aria-label={t("用户名")} value={draft.username} autoComplete="off" onChange={(event) => onDraftChange({ ...draft, username: event.target.value })} /></div>
             </div>
             <div className={styles.row}>
               <strong>{t("密码")}</strong>
-              <div className={styles.control}><TextInput type="password" value={draft.password ?? ""} autoComplete="new-password" placeholder={settings?.has_password ? t("留空表示保留当前密码") : ""} onChange={(event) => onDraftChange({ ...draft, password: event.target.value })} /></div>
+              <div className={styles.control}><SecretTextInput aria-label={t("密码")} value={draft.password ?? ""} autoComplete="new-password" placeholder={settings?.has_password ? t("留空表示保留当前密码") : ""} onChange={(event) => onDraftChange({ ...draft, password: event.target.value })} /></div>
             </div>
           </div>}
         </div>}
@@ -96,7 +97,7 @@ export function ProxySettingsCard({
             <strong>{t("代理方式")}</strong>
             {settings && <small>{modeHint(settings.mode)}</small>}
           </div>
-          <span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span>
+          <span className={styles.value}>{settings ? modeLabel(settings.mode) : error ? t("读取失败") : t("加载中…")}</span>
         </div>
         {settings?.mode === "custom" && <div className={styles.customFields}>
           <div className={styles.row}><strong>{t("代理地址")}</strong><span className={styles.value}>{settings.address}</span></div>
@@ -114,7 +115,7 @@ export function ProxySettingsCard({
       </div>}
       {officialNeedsProxy && <div className={styles.row}>
         <div className={styles.description}>
-          <small>{t("官方模型需要能访问境外；直连下官方与混合模式里的官方模型会连不上。要用官方模型请改为「跟随系统代理」。")}</small>
+          <small>{t("直连时，请确认当前网络可以访问 Cursor 官方服务。")}</small>
         </div>
       </div>}
     </div>

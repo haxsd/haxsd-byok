@@ -54,7 +54,7 @@ export function DiagnosticsCard() {
     `${t("数据目录")}: ${appInfo?.data_dir ?? failed}`,
     `${t("日志目录")}: ${logDirectory ?? failed}`,
     `${t("监听端口")}: ${portsText}`,
-    `${t("本机网关")}: ${gateway}`,
+    `${t("Devin 网关")}: ${gateway}`,
     `${t("诊断现场")}: ${logDirectory ? joinPath(logDirectory, "diagnostics-<时间戳>.log") : failed}`,
   ].join("\n");
 
@@ -103,7 +103,7 @@ export function DiagnosticsCard() {
       <small>{portsText}</small>
     </div>
     <div className={styles.runtimeRow}>
-      <strong>{t("本机网关")}</strong>
+      <strong>{t("Devin 网关")}</strong>
       <small>{gateway}</small>
     </div>
     <div className={styles.diagnosticsActions}>

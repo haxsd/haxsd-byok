@@ -84,7 +84,7 @@ export function AppLifecycleSettingsCard() {
     }
   };
 
-  return <TitledCard title={t("应用设置")} collapsible storageKey="settings-app-lifecycle">
+  return <TitledCard title={t("启动与窗口")}>
     <div className={styles.row}>
       <div>
         <strong>{t("开机启动")}</strong>
