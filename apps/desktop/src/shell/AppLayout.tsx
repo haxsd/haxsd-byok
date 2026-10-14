@@ -42,6 +42,24 @@ export function AppLayout() {
     }
   });
 
+  // 窗口不在前台时给 <html> 打上 data-idle：全局样式据此暂停动画（见 styles/globals.scss）。
+  // 用失焦 + 可见性两个信号：只按可见性判断的话，被其他窗口盖住但仍"可见"的窗口会照旧空转。
+  useEffect(() => {
+    const sync = () => {
+      document.documentElement.toggleAttribute("data-idle", document.hidden || !document.hasFocus());
+    };
+    sync();
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+      document.removeEventListener("visibilitychange", sync);
+      document.documentElement.removeAttribute("data-idle");
+    };
+  }, []);
+
   // 客户端状态挂在各自入口上：Cursor 的接管模式和 Devin 的网关状态互不代表对方，
   // 两者也都不是「整个应用」的状态。两个值都来自共享 store 的刷新，只有一个来源。
   const menuStatus = (path: string) => {

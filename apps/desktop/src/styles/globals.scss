@@ -1,6 +1,14 @@
 @use "./typography" as type;
 @use "./themes";
 
+/* 窗口不在前台（失焦或隐藏）时把所有动画暂停：内容看不见，合成器却仍在按 60fps 画
+   （实测 WebView2 的 GPU 进程是整套进程里最大的一块）。回到前台会从当前帧继续。 */
+html[data-idle] *,
+html[data-idle] *::before,
+html[data-idle] *::after {
+  animation-play-state: paused !important;
+}
+
 @font-face {
   font-family: "HFKos";
   src: url("../shared/assets/fonts/HFKos-R.ttf") format("truetype");
