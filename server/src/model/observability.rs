@@ -254,6 +254,24 @@ mod overview {
         pub cache_read_tokens: i64,
         pub cache_write_tokens: i64,
         pub output_tokens: i64,
+        /// 桶内按模型分组的用量。父字段恒等于这些分组之和；没有数据的桶为空。
+        pub models: Vec<ModelTokenUsage>,
+    }
+
+    /// 一个模型在一个时间桶里的用量。
+    ///
+    /// `model_hash` 是定价用的稳定身份；历史调用可能没有它（模型配置被删除后
+    /// 清成 NULL），此时保持 `None`——绝不按 `model_id` 或显示名猜身份。
+    #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+    pub struct ModelTokenUsage {
+        pub model_hash: Option<String>,
+        pub model_id: String,
+        pub display_name: String,
+        pub llm_calls: i64,
+        pub input_tokens: i64,
+        pub cache_read_tokens: i64,
+        pub cache_write_tokens: i64,
+        pub output_tokens: i64,
     }
 
     impl TokenUsageBucket {

@@ -45,7 +45,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 140,
+          "line": 119,
           "column": 5
         }
       ]
@@ -56,9 +56,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 395,
-          "column": 25
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 184,
+          "column": 21
         }
       ]
     },
@@ -170,12 +170,12 @@
       "refs": [
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 33,
+          "line": 34,
           "column": 17
         },
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 41,
+          "line": 42,
           "column": 17
         }
       ]
@@ -186,9 +186,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 367,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 155,
+          "column": 14
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -236,7 +236,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 405,
+          "line": 314,
           "column": 57
         }
       ]
@@ -250,20 +250,6 @@
           "file": "shell/CommandPalette.tsx",
           "line": 86,
           "column": 16
-        }
-      ]
-    },
-    "046a01112a0c9169": {
-      "source": "{group}的缓存写入价格",
-      "kind": "template",
-      "placeholders": [
-        "group"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 62,
-          "column": 72
         }
       ]
     },
@@ -289,8 +275,8 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 189,
-          "column": 75
+          "line": 121,
+          "column": 74
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -345,7 +331,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 259,
+          "line": 270,
           "column": 22
         }
       ]
@@ -413,7 +399,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 383,
+          "line": 380,
           "column": 21
         }
       ]
@@ -478,7 +464,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 463,
+          "line": 372,
           "column": 39
         }
       ]
@@ -492,7 +478,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 152,
+          "line": 131,
           "column": 5
         }
       ]
@@ -506,7 +492,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 149,
+          "line": 128,
           "column": 5
         }
       ]
@@ -534,9 +520,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 344,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 135,
+          "column": 14
         }
       ]
     },
@@ -595,8 +581,8 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 245,
-          "column": 14
+          "line": 194,
+          "column": 55
         }
       ]
     },
@@ -624,6 +610,18 @@
         }
       ]
     },
+    "0a6d3c24e0f33bcc": {
+      "source": "已保存的历史模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 75,
+          "column": 117
+        }
+      ]
+    },
     "0a8588c0af5c2a17": {
       "source": "重新打开 Cursor",
       "kind": "text",
@@ -645,7 +643,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 108,
+          "line": 49,
           "column": 38
         }
       ]
@@ -657,7 +655,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 274,
+          "line": 272,
           "column": 15
         }
       ]
@@ -681,7 +679,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 514,
+          "line": 423,
           "column": 44
         }
       ]
@@ -795,7 +793,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 409,
+          "line": 318,
           "column": 23
         }
       ]
@@ -935,7 +933,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 395,
+          "line": 406,
           "column": 45
         },
         {
@@ -981,8 +979,8 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 196,
-          "column": 41
+          "line": 126,
+          "column": 39
         }
       ]
     },
@@ -993,20 +991,8 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 236,
+          "line": 247,
           "column": 7
-        }
-      ]
-    },
-    "12430375c0db4727": {
-      "source": "按配置的 Token 价格估算。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 166,
-          "column": 8
         }
       ]
     },
@@ -1017,7 +1003,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 234,
+          "line": 183,
           "column": 14
         }
       ]
@@ -1063,7 +1049,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 526,
+          "line": 435,
           "column": 72
         }
       ]
@@ -1089,7 +1075,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 208,
+          "line": 157,
           "column": 14
         },
         {
@@ -1135,8 +1121,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 386,
-          "column": 33
+          "line": 298,
+          "column": 24
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -1188,7 +1174,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 139,
+          "line": 118,
           "column": 5
         }
       ]
@@ -1254,9 +1240,9 @@
       ],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 391,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 180,
+          "column": 11
         }
       ]
     },
@@ -1325,23 +1311,6 @@
         }
       ]
     },
-    "19ecb383bd4216af": {
-      "source": "规则：UTC 周一至周五 01:00-04:00、06:00-10:00 为高峰期，其余时段（含周末）为低谷期；低谷价通常为高峰价的一半。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 212,
-          "column": 46
-        },
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 228,
-          "column": 44
-        }
-      ]
-    },
     "1a3f0617d6de8e52": {
       "source": "用户名",
       "kind": "text",
@@ -1369,7 +1338,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 257,
+          "line": 256,
           "column": 23
         }
       ]
@@ -1410,7 +1379,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 514,
+          "line": 423,
           "column": 27
         }
       ]
@@ -1434,7 +1403,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 430,
+          "line": 339,
           "column": 54
         }
       ]
@@ -1461,6 +1430,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 93,
+          "column": 63
+        },
         {
           "file": "features/settings/SettingsPage.tsx",
           "line": 445,
@@ -1513,7 +1487,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 147,
+          "line": 126,
           "column": 5
         }
       ]
@@ -1571,7 +1545,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 128,
+          "line": 107,
           "column": 7
         }
       ]
@@ -1642,14 +1616,14 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 283,
-          "column": 72
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 101,
+          "column": 13
         },
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 311,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 109,
+          "column": 11
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -1724,7 +1698,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 526,
+          "line": 435,
           "column": 27
         }
       ]
@@ -1798,7 +1772,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 515,
+          "line": 424,
           "column": 132
         }
       ]
@@ -1841,7 +1815,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 367,
+          "line": 364,
           "column": 122
         }
       ]
@@ -1853,7 +1827,7 @@
       "refs": [
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 44,
+          "line": 45,
           "column": 34
         }
       ]
@@ -1877,7 +1851,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 518,
+          "line": 427,
           "column": 27
         }
       ]
@@ -1927,7 +1901,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 447,
+          "line": 356,
           "column": 52
         }
       ]
@@ -1939,7 +1913,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 292,
+          "line": 303,
           "column": 20
         }
       ]
@@ -1979,7 +1953,7 @@
       "refs": [
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 37,
+          "line": 38,
           "column": 38
         }
       ]
@@ -2032,7 +2006,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 242,
+          "line": 191,
           "column": 85
         }
       ]
@@ -2044,7 +2018,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 137,
+          "line": 116,
           "column": 5
         }
       ]
@@ -2151,7 +2125,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 357,
+          "line": 354,
           "column": 70
         },
         {
@@ -2166,8 +2140,8 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 183,
-          "column": 64
+          "line": 117,
+          "column": 81
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -2210,12 +2184,12 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 127,
+          "line": 106,
           "column": 7
         },
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 135,
+          "line": 114,
           "column": 7
         }
       ]
@@ -2484,23 +2458,18 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 199,
-          "column": 31
+          "line": 129,
+          "column": 27
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 203,
-          "column": 28
+          "line": 129,
+          "column": 181
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 221,
-          "column": 24
-        },
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 233,
-          "column": 24
+          "line": 135,
+          "column": 46
         }
       ]
     },
@@ -2688,6 +2657,20 @@
         }
       ]
     },
+    "36ffd5d35b429d60": {
+      "source": "缓存读取估算：{cost}",
+      "kind": "template",
+      "placeholders": [
+        "cost"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 142,
+          "column": 7
+        }
+      ]
+    },
     "37125ef2e1d707cb": {
       "source": "服务器地址或完整请求 URL、API Key、模型名称、显示名称和备注不能为空",
       "kind": "text",
@@ -2733,7 +2716,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 109,
+          "line": 50,
           "column": 39
         }
       ]
@@ -2791,7 +2774,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 227,
+          "line": 176,
           "column": 13
         }
       ]
@@ -2815,7 +2798,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 251,
+          "line": 198,
           "column": 81
         }
       ]
@@ -2839,7 +2822,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 438,
+          "line": 347,
           "column": 41
         },
         {
@@ -2854,7 +2837,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 326,
+          "line": 323,
           "column": 30
         }
       ]
@@ -2880,7 +2863,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 106,
+          "line": 47,
           "column": 33
         }
       ]
@@ -3032,7 +3015,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 430,
+          "line": 339,
           "column": 33
         }
       ]
@@ -3157,6 +3140,18 @@
         }
       ]
     },
+    "3d3c9861a9db5006": {
+      "source": "移除定价",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 120,
+          "column": 99
+        }
+      ]
+    },
     "3d60477f560f430f": {
       "source": "自定义时间范围",
       "kind": "text",
@@ -3202,7 +3197,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 527,
+          "line": 436,
           "column": 111
         }
       ]
@@ -3243,7 +3238,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 357,
+          "line": 354,
           "column": 80
         },
         {
@@ -3291,6 +3286,21 @@
         }
       ]
     },
+    "40cd486ccf96a68e": {
+      "source": "{count} 个模型未定价，{tokens} Token 未计入金额",
+      "kind": "template",
+      "placeholders": [
+        "count",
+        "tokens"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 101,
+          "column": 13
+        }
+      ]
+    },
     "40dfd2c673e87fa1": {
       "source": "Devin 宿主文件已恢复",
       "kind": "text",
@@ -3298,7 +3308,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 261,
+          "line": 259,
           "column": 15
         }
       ]
@@ -3555,7 +3565,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 504,
+          "line": 413,
           "column": 34
         }
       ]
@@ -3612,7 +3622,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 142,
+          "line": 121,
           "column": 5
         }
       ]
@@ -3648,8 +3658,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 124,
-          "column": 10
+          "line": 33,
+          "column": 125
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 55,
+          "column": 65
         }
       ]
     },
@@ -3768,7 +3783,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 292,
+          "line": 297,
           "column": 62
         },
         {
@@ -3795,7 +3810,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 312,
+          "line": 323,
           "column": 22
         }
       ]
@@ -3826,7 +3841,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 33,
+          "line": 32,
           "column": 27
         }
       ]
@@ -3894,7 +3909,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 356,
+          "line": 353,
           "column": 12
         }
       ]
@@ -3929,9 +3944,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 283,
-          "column": 121
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 112,
+          "column": 13
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -4042,9 +4057,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 345,
-          "column": 46
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 136,
+          "column": 42
         }
       ]
     },
@@ -4066,19 +4081,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 315,
-          "column": 11
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 322,
-          "column": 17
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 323,
-          "column": 90
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 87,
+          "column": 14
         }
       ]
     },
@@ -4111,7 +4116,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 202,
+          "line": 182,
           "column": 17
         }
       ]
@@ -4136,9 +4141,9 @@
       ],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 395,
-          "column": 61
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 184,
+          "column": 58
         }
       ]
     },
@@ -4204,7 +4209,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 402,
+          "line": 413,
           "column": 21
         },
         {
@@ -4241,7 +4246,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 253,
+          "line": 264,
           "column": 16
         }
       ]
@@ -4277,7 +4282,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 468,
+          "line": 377,
           "column": 283
         }
       ]
@@ -4289,7 +4294,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 313,
+          "line": 310,
           "column": 47
         }
       ]
@@ -4301,7 +4306,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 413,
+          "line": 322,
           "column": 72
         }
       ]
@@ -4327,7 +4332,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 203,
+          "line": 183,
           "column": 22
         }
       ]
@@ -4351,7 +4356,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 399,
+          "line": 410,
           "column": 26
         }
       ]
@@ -4389,7 +4394,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 487,
+          "line": 396,
           "column": 34
         }
       ]
@@ -4423,7 +4428,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 532,
+          "line": 441,
           "column": 14
         }
       ]
@@ -4459,7 +4464,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 231,
+          "line": 180,
           "column": 83
         }
       ]
@@ -4510,7 +4515,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 202,
+          "line": 182,
           "column": 50
         }
       ]
@@ -4533,9 +4538,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 338,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 129,
+          "column": 14
         }
       ]
     },
@@ -4594,7 +4599,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 505,
+          "line": 414,
           "column": 39
         }
       ]
@@ -4618,8 +4623,8 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 162,
-          "column": 17
+          "line": 104,
+          "column": 97
         }
       ]
     },
@@ -4691,7 +4696,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 446,
+          "line": 355,
           "column": 35
         }
       ]
@@ -4826,6 +4831,18 @@
         }
       ]
     },
+    "5bbb215524c4f032": {
+      "source": "估算不可用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 93,
+          "column": 38
+        }
+      ]
+    },
     "5be053adf7b4daf4": {
       "source": "配色方案；图表与热力图会跟着一起换",
       "kind": "text",
@@ -4835,6 +4852,23 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 315,
           "column": 54
+        }
+      ]
+    },
+    "5c337ecec2c7a504": {
+      "source": "修改单价会重新估算历史用量；这里不是服务商账单。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 147,
+          "column": 5
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 139,
+          "column": 39
         }
       ]
     },
@@ -4869,7 +4903,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 349,
+          "line": 346,
           "column": 7
         }
       ]
@@ -4907,12 +4941,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 462,
+          "line": 371,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 462,
+          "line": 371,
           "column": 117
         }
       ]
@@ -4960,7 +4994,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 457,
+          "line": 366,
           "column": 119
         }
       ]
@@ -4974,25 +5008,6 @@
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 53,
           "column": 40
-        }
-      ]
-    },
-    "5fd2ec5a6e9b654c": {
-      "source": "合计：{cost}",
-      "kind": "template",
-      "placeholders": [
-        "cost"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 196,
-          "column": 5
-        },
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 199,
-          "column": 24
         }
       ]
     },
@@ -5071,12 +5086,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 440,
+          "line": 349,
           "column": 103
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 469,
+          "line": 378,
           "column": 158
         }
       ]
@@ -5126,7 +5141,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 141,
+          "line": 120,
           "column": 5
         }
       ]
@@ -5166,7 +5181,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 151,
+          "line": 130,
           "column": 5
         }
       ]
@@ -5192,6 +5207,23 @@
           "file": "features/home/charts/ContributionCalendarChart.tsx",
           "line": 179,
           "column": 14
+        }
+      ]
+    },
+    "6309a3bb5ba4c714": {
+      "source": "保存失败",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 105,
+          "column": 58
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 113,
+          "column": 58
         }
       ]
     },
@@ -5281,7 +5313,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 770,
+          "line": 801,
           "column": 43
         }
       ]
@@ -5435,9 +5467,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 307,
-          "column": 11
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 97,
+          "column": 9
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -5487,7 +5519,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 468,
+          "line": 377,
           "column": 271
         }
       ]
@@ -5499,8 +5531,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
-          "column": 107
+          "line": 405,
+          "column": 123
         }
       ]
     },
@@ -5540,7 +5572,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 400,
+          "line": 309,
           "column": 14
         }
       ]
@@ -5615,7 +5647,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 203,
+          "line": 183,
           "column": 40
         }
       ]
@@ -5656,6 +5688,18 @@
         }
       ]
     },
+    "6ae2745404668e92": {
+      "source": "按每个模型的实际渠道价格独立估算，再汇总已定价模型；未定价用量不计入金额。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 125,
+          "column": 15
+        }
+      ]
+    },
     "6ae80538c2b2572d": {
       "source": "最小化窗口",
       "kind": "text",
@@ -5688,6 +5732,18 @@
         }
       ]
     },
+    "6b66c2962524107a": {
+      "source": "按各模型的单价与调用时段分别估算后汇总。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 136,
+          "column": 5
+        }
+      ]
+    },
     "6bea77acefb364ac": {
       "source": "标准",
       "kind": "text",
@@ -5695,7 +5751,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 289,
+          "line": 294,
           "column": 53
         }
       ]
@@ -5741,7 +5797,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 475,
+          "line": 384,
           "column": 58
         }
       ]
@@ -5828,7 +5884,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 338,
+          "line": 349,
           "column": 24
         }
       ]
@@ -5856,8 +5912,8 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 250,
-          "column": 11
+          "line": 102,
+          "column": 13
         }
       ]
     },
@@ -5891,9 +5947,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 312,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 102,
+          "column": 13
         }
       ]
     },
@@ -5952,12 +6008,12 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 380,
+          "line": 360,
           "column": 23
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 387,
+          "line": 367,
           "column": 25
         }
       ]
@@ -6051,8 +6107,22 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 429,
           "column": 27
+        }
+      ]
+    },
+    "7879f5b08c5cb92f": {
+      "source": "缓存写入估算：{cost}",
+      "kind": "template",
+      "placeholders": [
+        "cost"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 143,
+          "column": 7
         }
       ]
     },
@@ -6091,9 +6161,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 350,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 141,
+          "column": 14
         }
       ]
     },
@@ -6116,7 +6186,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 765,
+          "line": 796,
           "column": 43
         }
       ]
@@ -6128,7 +6198,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 206,
+          "line": 155,
           "column": 55
         }
       ]
@@ -6140,18 +6210,23 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 77,
-          "column": 31
+          "line": 38,
+          "column": 95
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 208,
-          "column": 54
+          "line": 39,
+          "column": 69
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 224,
-          "column": 52
+          "line": 131,
+          "column": 50
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 136,
+          "column": 123
         }
       ]
     },
@@ -6174,7 +6249,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 314,
+          "line": 311,
           "column": 45
         },
         {
@@ -6203,7 +6278,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 382,
+          "line": 379,
           "column": 31
         }
       ]
@@ -6256,7 +6331,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 202,
+          "line": 182,
           "column": 28
         }
       ]
@@ -6378,13 +6453,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 395,
-          "column": 113
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 184,
+          "column": 110
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 310,
+          "line": 307,
           "column": 80
         }
       ]
@@ -6408,7 +6483,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 603,
+          "line": 628,
           "column": 11
         },
         {
@@ -6442,6 +6517,21 @@
         }
       ]
     },
+    "822cc236bfcdaaec": {
+      "source": "{model}：未定价，{tokens} Token 未计入金额",
+      "kind": "template",
+      "placeholders": [
+        "model",
+        "tokens"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 138,
+          "column": 34
+        }
+      ]
+    },
     "8241ed1d21182aea": {
       "source": "已完成的上手步骤",
       "kind": "text",
@@ -6451,18 +6541,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 162,
           "column": 50
-        }
-      ]
-    },
-    "82702dcfb6429b27": {
-      "source": "下方单价为所选范围内的加权平均价。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 164,
-          "column": 7
         }
       ]
     },
@@ -6556,7 +6634,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 367,
+          "line": 364,
           "column": 20
         }
       ]
@@ -6636,7 +6714,7 @@
       "refs": [
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 27,
+          "line": 28,
           "column": 22
         }
       ]
@@ -6648,8 +6726,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 123,
-          "column": 10
+          "line": 33,
+          "column": 58
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 55,
+          "column": 17
         }
       ]
     },
@@ -6674,6 +6757,18 @@
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 66,
           "column": 25
+        }
+      ]
+    },
+    "86d10b84da93d260": {
+      "source": "已移除此模型定价，相关用量将显示为未定价",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 112,
+          "column": 91
         }
       ]
     },
@@ -6708,7 +6803,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 69,
+          "line": 52,
           "column": 17
         }
       ]
@@ -6744,7 +6839,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 379,
+          "line": 376,
           "column": 32
         }
       ]
@@ -6872,7 +6967,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 254,
+          "line": 265,
           "column": 22
         }
       ]
@@ -6889,17 +6984,15 @@
         }
       ]
     },
-    "8f597c295f87d185": {
-      "source": "{group}的输入价格",
-      "kind": "template",
-      "placeholders": [
-        "group"
-      ],
+    "8efcde4212c82138": {
+      "source": "此模型在当前币种下未定价，请填写单价。",
+      "kind": "text",
+      "placeholders": [],
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 59,
-          "column": 60
+          "line": 137,
+          "column": 21
         }
       ]
     },
@@ -6951,6 +7044,20 @@
         }
       ]
     },
+    "8fe1c5af70454bf1": {
+      "source": "输入估算：{cost}",
+      "kind": "template",
+      "placeholders": [
+        "cost"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 140,
+          "column": 7
+        }
+      ]
+    },
     "8fe3dec68b60bece": {
       "source": "Devin 的宿主补丁可以随时「恢复原文件」，恢复后 Devin 回到厂商直连。",
       "kind": "text",
@@ -6984,7 +7091,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 330,
+          "line": 341,
           "column": 18
         }
       ]
@@ -7020,7 +7127,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 320,
+          "line": 317,
           "column": 51
         }
       ]
@@ -7056,7 +7163,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 238,
+          "line": 249,
           "column": 9
         }
       ]
@@ -7092,8 +7199,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 495,
-          "column": 150
+          "line": 404,
+          "column": 170
         }
       ]
     },
@@ -7152,7 +7259,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 381,
+          "line": 378,
           "column": 31
         }
       ]
@@ -7248,7 +7355,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 227,
+          "line": 207,
           "column": 21
         }
       ]
@@ -7356,7 +7463,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 410,
+          "line": 319,
           "column": 78
         }
       ]
@@ -7368,7 +7475,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 456,
+          "line": 365,
           "column": 26
         }
       ]
@@ -7382,6 +7489,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 64,
           "column": 86
+        }
+      ]
+    },
+    "9a5576a8cdab1e19": {
+      "source": "选择定价模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 127,
+          "column": 41
         }
       ]
     },
@@ -7404,7 +7523,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 616,
+          "line": 641,
           "column": 11
         }
       ]
@@ -7416,7 +7535,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 519,
+          "line": 428,
           "column": 27
         }
       ]
@@ -7464,7 +7583,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 429,
           "column": 49
         }
       ]
@@ -7498,7 +7617,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 524,
+          "line": 433,
           "column": 35
         }
       ]
@@ -7509,9 +7628,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 377,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 164,
+          "column": 14
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -7530,7 +7649,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 202,
+          "line": 182,
           "column": 7
         },
         {
@@ -7552,8 +7671,20 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 351,
+          "line": 348,
           "column": 9
+        }
+      ]
+    },
+    "9df8ef27268ad0f6": {
+      "source": "规则：UTC 周一至周五 01:00-04:00、06:00-10:00 为高峰期，其余时段（含周末）为低谷期；两段单价分别填写。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 138,
+          "column": 99
         }
       ]
     },
@@ -7566,6 +7697,20 @@
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 66,
           "column": 40
+        }
+      ]
+    },
+    "9e41bfc5b85f541a": {
+      "source": "输出估算：{cost}",
+      "kind": "template",
+      "placeholders": [
+        "cost"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 141,
+          "column": 7
         }
       ]
     },
@@ -7602,7 +7747,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 380,
+          "line": 377,
           "column": 30
         }
       ]
@@ -7616,7 +7761,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 259,
+          "line": 258,
           "column": 17
         },
         {
@@ -7650,7 +7795,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 400,
+          "line": 411,
           "column": 25
         }
       ]
@@ -7691,27 +7836,15 @@
         }
       ]
     },
-    "a05ca3335d229fbe": {
-      "source": "按高峰 / 低谷时段逐小时计价。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 159,
-          "column": 11
-        }
-      ]
-    },
     "a0643d500918814f": {
       "source": "已保存，重启应用后端口才会打开",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 332,
-          "column": 17
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 123,
+          "column": 13
         }
       ]
     },
@@ -7736,7 +7869,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 485,
+          "line": 394,
           "column": 20
         }
       ]
@@ -7760,7 +7893,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 454,
+          "line": 363,
           "column": 69
         }
       ]
@@ -7772,12 +7905,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 447,
+          "line": 356,
           "column": 35
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 448,
+          "line": 357,
           "column": 81
         }
       ]
@@ -7799,7 +7932,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 204,
+          "line": 184,
           "column": 18
         }
       ]
@@ -7833,18 +7966,6 @@
         }
       ]
     },
-    "a1bd393ff1dcd085": {
-      "source": "规则：UTC 周一至周五 01:00-04:00、06:00-10:00 为高峰期，其余时段（含周末）为低谷期，低谷价 = 高峰价 5 折。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 163,
-          "column": 7
-        }
-      ]
-    },
     "a21d9da6c83a3fdc": {
       "source": "诊断摘要已复制",
       "kind": "text",
@@ -7864,7 +7985,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 466,
+          "line": 375,
           "column": 60
         }
       ]
@@ -7876,7 +7997,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 442,
           "column": 114
         },
         {
@@ -7901,8 +8022,8 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 185,
-          "column": 31
+          "line": 118,
+          "column": 126
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -7982,9 +8103,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 317,
-          "column": 13
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 84,
+          "column": 11
         }
       ]
     },
@@ -8127,13 +8248,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 177,
-          "column": 30
+          "line": 129,
+          "column": 100
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 234,
-          "column": 47
+          "line": 135,
+          "column": 122
         }
       ]
     },
@@ -8200,7 +8321,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 341,
+          "line": 352,
           "column": 58
         }
       ]
@@ -8248,7 +8369,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 436,
+          "line": 345,
           "column": 78
         }
       ]
@@ -8259,9 +8380,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 319,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 85,
+          "column": 16
         }
       ]
     },
@@ -8272,18 +8393,8 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 76,
-          "column": 33
-        },
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 214,
-          "column": 54
-        },
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 236,
-          "column": 52
+          "line": 38,
+          "column": 63
         }
       ]
     },
@@ -8306,7 +8417,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 445,
+          "line": 354,
           "column": 35
         },
         {
@@ -8323,18 +8434,18 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 78,
-          "column": 38
+          "line": 40,
+          "column": 75
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 210,
-          "column": 54
+          "line": 132,
+          "column": 50
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 226,
-          "column": 52
+          "line": 136,
+          "column": 222
         }
       ]
     },
@@ -8344,9 +8455,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 333,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 124,
+          "column": 11
         }
       ]
     },
@@ -8405,6 +8516,18 @@
           "file": "shared/ui/ModelSelect.tsx",
           "line": 233,
           "column": 67
+        }
+      ]
+    },
+    "abc2dd8436b3bbe8": {
+      "source": "模型 Token 定价",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 123,
+          "column": 29
         }
       ]
     },
@@ -8555,7 +8678,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 540,
+          "line": 449,
           "column": 13
         }
       ]
@@ -8567,7 +8690,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 438,
+          "line": 347,
           "column": 31
         }
       ]
@@ -8636,13 +8759,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 321,
-          "column": 17
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 86,
+          "column": 12
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 489,
+          "line": 398,
           "column": 38
         }
       ]
@@ -8689,23 +8812,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 378,
-          "column": 78
-        }
-      ]
-    },
-    "b16ffcd3f2c432ea": {
-      "source": "{group}的输出价格",
-      "kind": "template",
-      "placeholders": [
-        "group"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 60,
-          "column": 62
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 165,
+          "column": 74
         }
       ]
     },
@@ -8760,8 +8869,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 386,
-          "column": 109
+          "line": 298,
+          "column": 100
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -8777,7 +8886,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 370,
+          "line": 367,
           "column": 70
         }
       ]
@@ -8847,7 +8956,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 331,
+          "line": 342,
           "column": 24
         }
       ]
@@ -8873,7 +8982,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 148,
+          "line": 127,
           "column": 5
         }
       ]
@@ -8916,6 +9025,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 409,
           "column": 22
+        }
+      ]
+    },
+    "b630df9e860e2675": {
+      "source": "所选范围超过 660 天，未生成费用估算",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 95,
+          "column": 7
         }
       ]
     },
@@ -8962,7 +9083,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 293,
+          "line": 304,
           "column": 26
         }
       ]
@@ -8976,8 +9097,25 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 150,
+          "line": 129,
           "column": 5
+        }
+      ]
+    },
+    "b769180d023c4d19": {
+      "source": "未定价",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 93,
+          "column": 132
+        },
+        {
+          "file": "features/home/overview/ModelUsageList.tsx",
+          "line": 34,
+          "column": 111
         }
       ]
     },
@@ -9024,7 +9162,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 263,
+          "line": 274,
           "column": 38
         }
       ]
@@ -9115,11 +9253,6 @@
           "file": "features/settings/CommitSettingsCard.tsx",
           "line": 213,
           "column": 14
-        },
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 182,
-          "column": 72
         }
       ]
     },
@@ -9171,23 +9304,6 @@
         }
       ]
     },
-    "ba935d4fe726eafa": {
-      "source": "缓存读取：{tokens} × {unit}{price}/1M = {cost}",
-      "kind": "template",
-      "placeholders": [
-        "tokens",
-        "unit",
-        "price",
-        "cost"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 183,
-          "column": 5
-        }
-      ]
-    },
     "baff6c144180b185": {
       "source": "连通性测试完成：成功 {successful}，失败 {failed}",
       "kind": "template",
@@ -9199,18 +9315,6 @@
         {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 217,
-          "column": 13
-        }
-      ]
-    },
-    "bb1f956600a56e29": {
-      "source": "按小时的用量读取失败，费用暂时按当前时段单价估算，不是所选范围的高峰 / 低谷计价。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 161,
           "column": 13
         }
       ]
@@ -9251,7 +9355,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 409,
+          "line": 318,
           "column": 50
         }
       ]
@@ -9306,7 +9410,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 781,
+          "line": 812,
           "column": 43
         }
       ]
@@ -9399,7 +9503,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 290,
+          "line": 295,
           "column": 64
         }
       ]
@@ -9536,22 +9640,8 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 219,
+          "line": 168,
           "column": 20
-        }
-      ]
-    },
-    "bfe61b1e05ce1ed9": {
-      "source": "{group}的缓存读取价格",
-      "kind": "template",
-      "placeholders": [
-        "group"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 61,
-          "column": 70
         }
       ]
     },
@@ -9562,25 +9652,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 357,
+          "line": 354,
           "column": 45
-        }
-      ]
-    },
-    "c0b4051594d4992e": {
-      "source": "模型输出：{tokens} × {unit}{price}/1M = {cost}",
-      "kind": "template",
-      "placeholders": [
-        "tokens",
-        "unit",
-        "price",
-        "cost"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 177,
-          "column": 5
         }
       ]
     },
@@ -9602,9 +9675,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 352,
-          "column": 15
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 143,
+          "column": 11
         }
       ]
     },
@@ -9654,9 +9727,9 @@
       ],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 389,
-          "column": 41
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 178,
+          "column": 37
         }
       ]
     },
@@ -9667,7 +9740,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 285,
+          "line": 296,
           "column": 16
         }
       ]
@@ -9679,7 +9752,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 401,
+          "line": 310,
           "column": 20
         }
       ]
@@ -9732,7 +9805,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 517,
+          "line": 426,
           "column": 27
         }
       ]
@@ -9744,13 +9817,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 176,
-          "column": 38
+          "line": 129,
+          "column": 149
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 222,
-          "column": 47
+          "line": 135,
+          "column": 137
         }
       ]
     },
@@ -9801,7 +9874,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 501,
+          "line": 410,
           "column": 13
         }
       ]
@@ -9873,7 +9946,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 491,
+          "line": 400,
           "column": 40
         }
       ]
@@ -9997,20 +10070,6 @@
         }
       ]
     },
-    "c9d146d006993cc1": {
-      "source": "缓存统计策略：默认口径（{rate}）",
-      "kind": "template",
-      "placeholders": [
-        "rate"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 169,
-          "column": 5
-        }
-      ]
-    },
     "c9dd59beefd7144f": {
       "source": "缓存读取 /（缓存读取 + 非缓存输入）",
       "kind": "text",
@@ -10018,7 +10077,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 211,
+          "line": 160,
           "column": 13
         }
       ]
@@ -10064,32 +10123,15 @@
         }
       ]
     },
-    "cb6dd6bc73e2da1c": {
-      "source": "正在读取按小时的用量，暂时按当前时段估价。",
+    "cbecbdc933407a73": {
+      "source": "请先添加模型，再设置单价。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 162,
-          "column": 13
-        }
-      ]
-    },
-    "cbed0d5074d28bb5": {
-      "source": "普通输入：{tokens} × {unit}{price}/1M = {cost}",
-      "kind": "template",
-      "placeholders": [
-        "tokens",
-        "unit",
-        "price",
-        "cost"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 171,
-          "column": 5
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 128,
+          "column": 39
         }
       ]
     },
@@ -10207,6 +10249,18 @@
         }
       ]
     },
+    "cf26a001822a7451": {
+      "source": "用量读取失败，未生成费用估算",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 97,
+          "column": 9
+        }
+      ]
+    },
     "cf871a6af3dae332": {
       "source": "Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。",
       "kind": "text",
@@ -10260,7 +10314,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 311,
+          "line": 322,
           "column": 16
         }
       ]
@@ -10272,7 +10326,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 401,
+          "line": 412,
           "column": 26
         }
       ]
@@ -10284,7 +10338,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 247,
+          "line": 246,
           "column": 15
         }
       ]
@@ -10297,9 +10351,9 @@
       ],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 339,
-          "column": 39
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 130,
+          "column": 35
         }
       ]
     },
@@ -10401,7 +10455,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 288,
+          "line": 287,
           "column": 20
         }
       ]
@@ -10446,9 +10500,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 389,
-          "column": 30
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 178,
+          "column": 26
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
@@ -10587,7 +10641,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 484,
+          "line": 393,
           "column": 14
         }
       ]
@@ -10623,7 +10677,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 508,
+          "line": 417,
           "column": 14
         }
       ]
@@ -10637,22 +10691,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 371,
+          "line": 368,
           "column": 44
-        }
-      ]
-    },
-    "d7ddf4334b1997fe": {
-      "source": "用于首页价值估算的 Token 单价，单位：{unit} / 百万 Token。",
-      "kind": "template",
-      "placeholders": [
-        "unit"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 195,
-          "column": 17
         }
       ]
     },
@@ -10743,9 +10783,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 355,
-          "column": 17
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 146,
+          "column": 13
         }
       ]
     },
@@ -10819,7 +10859,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 398,
+          "line": 409,
           "column": 25
         }
       ]
@@ -10903,7 +10943,7 @@
       "refs": [
         {
           "file": "features/home/overview/ModelUsageList.tsx",
-          "line": 15,
+          "line": 16,
           "column": 62
         }
       ]
@@ -10999,8 +11039,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 125,
-          "column": 10
+          "line": 33,
+          "column": 193
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 55,
+          "column": 107
         }
       ]
     },
@@ -11059,7 +11104,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 310,
+          "line": 307,
           "column": 69
         }
       ]
@@ -11083,7 +11128,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 145,
+          "line": 124,
           "column": 5
         }
       ]
@@ -11217,9 +11262,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 378,
-          "column": 96
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 165,
+          "column": 92
         }
       ]
     },
@@ -11232,18 +11277,6 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 35,
           "column": 71
-        }
-      ]
-    },
-    "e06047fca141d437": {
-      "source": "按小时的用量读取失败，费用为估价",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 249,
-          "column": 11
         }
       ]
     },
@@ -11407,7 +11440,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 403,
           "column": 109
         }
       ]
@@ -11419,7 +11452,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 223,
+          "line": 172,
           "column": 14
         }
       ]
@@ -11431,7 +11464,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 337,
+          "line": 348,
           "column": 18
         }
       ]
@@ -11443,7 +11476,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 332,
+          "line": 343,
           "column": 112
         }
       ]
@@ -11479,7 +11512,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 204,
+          "line": 184,
           "column": 7
         }
       ]
@@ -11491,7 +11524,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 397,
+          "line": 408,
           "column": 32
         }
       ]
@@ -11567,9 +11600,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 339,
-          "column": 88
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 130,
+          "column": 84
         }
       ]
     },
@@ -11582,7 +11615,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 107,
+          "line": 48,
           "column": 34
         }
       ]
@@ -11638,7 +11671,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 509,
+          "line": 418,
           "column": 20
         }
       ]
@@ -11651,9 +11684,9 @@
       ],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 354,
-          "column": 17
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 145,
+          "column": 13
         }
       ]
     },
@@ -11704,18 +11737,18 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 328,
-          "column": 18
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 119,
+          "column": 14
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 405,
+          "line": 314,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 406,
+          "line": 315,
           "column": 51
         }
       ]
@@ -11730,7 +11763,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 238,
+          "line": 187,
           "column": 13
         }
       ]
@@ -11800,7 +11833,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 202,
+          "line": 182,
           "column": 39
         }
       ]
@@ -11855,7 +11888,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 368,
+          "line": 379,
           "column": 47
         }
       ]
@@ -11879,8 +11912,20 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 323,
+          "line": 320,
           "column": 49
+        }
+      ]
+    },
+    "ebcd82e6e7a090ae": {
+      "source": "已定价小计",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 194,
+          "column": 42
         }
       ]
     },
@@ -11893,8 +11938,8 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 51,
-          "column": 21
+          "line": 30,
+          "column": 80
         }
       ]
     },
@@ -11919,7 +11964,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 263,
+          "line": 274,
           "column": 26
         },
         {
@@ -12093,13 +12138,27 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 431,
+          "line": 340,
           "column": 33
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 431,
+          "line": 340,
           "column": 122
+        }
+      ]
+    },
+    "f195b4fda0310296": {
+      "source": "已定价小计：{cost}",
+      "kind": "template",
+      "placeholders": [
+        "cost"
+      ],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 146,
+          "column": 5
         }
       ]
     },
@@ -12115,7 +12174,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 239,
+          "line": 250,
           "column": 9
         }
       ]
@@ -12167,8 +12226,13 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 126,
-          "column": 10
+          "line": 33,
+          "column": 271
+        },
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 55,
+          "column": 161
         }
       ]
     },
@@ -12220,7 +12284,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 203,
+          "line": 183,
           "column": 57
         }
       ]
@@ -12268,7 +12332,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 278,
+          "line": 277,
           "column": 32
         }
       ]
@@ -12280,7 +12344,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 459,
+          "line": 368,
           "column": 69
         }
       ]
@@ -12294,6 +12358,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 130,
           "column": 17
+        }
+      ]
+    },
+    "f780914a15e1190c": {
+      "source": "正在按模型读取用量",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/metrics/HomeMetrics.tsx",
+          "line": 99,
+          "column": 11
         }
       ]
     },
@@ -12340,7 +12416,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 394,
+          "line": 405,
           "column": 38
         },
         {
@@ -12380,9 +12456,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 283,
-          "column": 46
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 107,
+          "column": 9
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -12428,9 +12504,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 345,
-          "column": 35
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 136,
+          "column": 31
         }
       ]
     },
@@ -12475,7 +12551,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 363,
+          "line": 360,
           "column": 76
         }
       ]
@@ -12498,18 +12574,18 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 283,
-          "column": 109
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 99,
+          "column": 11
         },
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 309,
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 111,
           "column": 13
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 403,
           "column": 97
         },
         {
@@ -12526,23 +12602,6 @@
           "file": "features/settings/UpdateCard.tsx",
           "line": 149,
           "column": 114
-        }
-      ]
-    },
-    "fb33b865d4c123ac": {
-      "source": "缓存写入：{tokens} × {unit}{price}/1M = {cost}",
-      "kind": "template",
-      "placeholders": [
-        "tokens",
-        "unit",
-        "price",
-        "cost"
-      ],
-      "refs": [
-        {
-          "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 189,
-          "column": 5
         }
       ]
     },
@@ -12570,7 +12629,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 378,
+          "line": 375,
           "column": 29
         }
       ]
@@ -12585,7 +12644,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 129,
+          "line": 108,
           "column": 7
         }
       ]
@@ -12645,7 +12704,7 @@
       "refs": [
         {
           "file": "features/home/metrics/HomeMetrics.tsx",
-          "line": 154,
+          "line": 133,
           "column": 5
         }
       ]
@@ -12657,7 +12716,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 278,
+          "line": 277,
           "column": 45
         }
       ]
@@ -12692,18 +12751,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 193,
-          "column": 24
-        },
-        {
           "file": "features/settings/SettingsPage.tsx",
           "line": 113,
           "column": 33
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 203,
+          "line": 183,
           "column": 7
         }
       ]
@@ -12732,7 +12786,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 368,
+          "line": 379,
           "column": 32
         },
         {
@@ -12788,7 +12842,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 442,
           "column": 102
         },
         {
@@ -12798,8 +12852,8 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 185,
-          "column": 19
+          "line": 118,
+          "column": 114
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -12824,9 +12878,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 331,
-          "column": 17
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 122,
+          "column": 13
         }
       ]
     },

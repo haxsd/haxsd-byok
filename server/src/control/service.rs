@@ -24,8 +24,9 @@ use crate::{
     plugin::{PluginDescriptor, PluginRegistry, PluginRuntime, PluginRuntimeStatus},
     provider::{is_valid_response_event, ModelEvent, Provider},
     store::{
-        CommitSettings, DesktopSettings, PortSettings, ProxySettings, ProxySettingsInput,
-        StatisticsStorage, Store, TabSettings, TokenPricingSettings,
+        CommitSettings, DesktopSettings, DesktopSettingsPatch, ModelTokenPricing, PortSettings,
+        ProxySettings, ProxySettingsInput, StatisticsStorage, Store, TabSettings,
+        TokenPricingSettings,
     },
     Error, Result,
 };
@@ -732,8 +733,12 @@ impl ControlService {
         self.store.desktop_settings().await
     }
 
-    pub async fn set_desktop_settings(&self, settings: DesktopSettings) -> Result<()> {
-        self.store.set_desktop_settings(settings).await
+    /// 桌面设置按字段更新：界面每次只提交改动的字段，合并由 store 在写锁内完成。
+    pub async fn update_desktop_settings(
+        &self,
+        patch: DesktopSettingsPatch,
+    ) -> Result<DesktopSettings> {
+        self.store.update_desktop_settings(patch).await
     }
 
     pub async fn commit_settings(&self) -> Result<CommitSettings> {
@@ -748,11 +753,18 @@ impl ControlService {
         self.store.pricing_settings().await
     }
 
-    pub async fn set_pricing_settings(
+    /// 保存一个模型的价格规则，返回合并后的完整规则表。
+    pub async fn set_model_pricing(
         &self,
-        settings: TokenPricingSettings,
+        model_hash: &str,
+        pricing: ModelTokenPricing,
     ) -> Result<TokenPricingSettings> {
-        self.store.set_pricing_settings(settings).await
+        self.store.set_model_pricing(model_hash, pricing).await
+    }
+
+    /// 删除一个模型的价格规则，返回合并后的完整规则表。
+    pub async fn remove_model_pricing(&self, model_hash: &str) -> Result<TokenPricingSettings> {
+        self.store.remove_model_pricing(model_hash).await
     }
 }
 

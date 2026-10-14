@@ -6,13 +6,10 @@
  * 这些都需要把同一份分桶数据按不同口径再算一遍，所以集中在这里，页面只负责画。
  */
 import type {
-  CurrencyPricing,
   LlmCall,
   OverviewTokenUsageBucket,
   TokenUsageGranularity,
 } from "../../../shared/api";
-import { priceAt } from "../metrics/peakOffPeakPricing";
-import { priceTokens } from "../metrics/tokenCost";
 
 export type BucketStat = {
   startMs: number;
@@ -26,14 +23,13 @@ export type BucketStat = {
   cost: number;
 };
 
-/** 单个分桶的用量与费用。费用按分桶起始时刻所属时段计价。 */
-export function bucketStats(series: OverviewTokenUsageBucket[], pricing: CurrencyPricing): BucketStat[] {
+/** Token totals keep their existing bins; monetary values come from the shared model estimate. */
+export function bucketStats(series: OverviewTokenUsageBucket[], costs: ReadonlyMap<number, number>): BucketStat[] {
   return series.map((bucket) => {
     const inputTokens = bucket.input_tokens;
     const cacheReadTokens = bucket.cache_read_tokens;
     const cacheWriteTokens = bucket.cache_write_tokens;
     const outputTokens = bucket.output_tokens;
-    const price = priceAt(pricing, bucket.bucket_start_ms);
     return {
       startMs: bucket.bucket_start_ms,
       totalTokens: inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens,
@@ -42,10 +38,7 @@ export function bucketStats(series: OverviewTokenUsageBucket[], pricing: Currenc
       cacheWriteTokens,
       outputTokens,
       cacheHitRate: cacheReadTokens + inputTokens > 0 ? cacheReadTokens / (cacheReadTokens + inputTokens) : null,
-      cost: priceTokens(inputTokens, price.input_per_million)
-        + priceTokens(outputTokens, price.output_per_million)
-        + priceTokens(cacheReadTokens, price.cache_read_per_million)
-        + priceTokens(cacheWriteTokens, price.cache_write_per_million),
+      cost: costs.get(bucket.bucket_start_ms) ?? 0,
     };
   });
 }
@@ -84,6 +77,8 @@ export type ModelUsageRow = {
   tokens: number;
   calls: number;
   share: number;
+  /** Absent while loading; null is explicitly unpriced. */
+  cost?: number | null;
 };
 
 /**

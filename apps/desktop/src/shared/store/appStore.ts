@@ -1,62 +1,9 @@
 import { useSyncExternalStore } from "react";
-import { api, ServiceUnreachableError, type CurrencyPricing, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, ServiceUnreachableError, type ModelTokenPricing, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
 
-/**
- * 首页「价值估算」的默认价格：DeepSeek-V4.1-Flash 官方单价（每百万 token）。
- *
- * 界面语言决定使用哪一套：简体中文用人民币，英文用美元，
- * 两套都是官方公布的原始价格，而不是按汇率折算出来的。
- * 默认走「高峰 / 低谷」模式，低谷价为高峰价的一半；
- * DeepSeek 不单独收取缓存写入费用，因此该项为 0。
- */
-const CNY_PRICING: CurrencyPricing = {
-  fixed: {
-    input_per_million: 2.0,
-    output_per_million: 8.0,
-    cache_read_per_million: 0.04,
-    cache_write_per_million: 0.0,
-  },
-  peak: {
-    input_per_million: 2.0,
-    output_per_million: 8.0,
-    cache_read_per_million: 0.04,
-    cache_write_per_million: 0.0,
-  },
-  off_peak: {
-    input_per_million: 1.0,
-    output_per_million: 4.0,
-    cache_read_per_million: 0.02,
-    cache_write_per_million: 0.0,
-  },
-};
-
-const USD_PRICING: CurrencyPricing = {
-  fixed: {
-    input_per_million: 0.3,
-    output_per_million: 1.2,
-    cache_read_per_million: 0.006,
-    cache_write_per_million: 0.0,
-  },
-  peak: {
-    input_per_million: 0.3,
-    output_per_million: 1.2,
-    cache_read_per_million: 0.006,
-    cache_write_per_million: 0.0,
-  },
-  off_peak: {
-    input_per_million: 0.15,
-    output_per_million: 0.6,
-    cache_read_per_million: 0.003,
-    cache_write_per_million: 0.0,
-  },
-};
-
-export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = {
-  mode: "peak_off_peak",
-  cny: CNY_PRICING,
-  usd: USD_PRICING,
-};
+/** Missing rules are unpriced; no supplier's rates become a global default. */
+export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = { models: {} };
 
 export type AppSnapshot = {
   models: Model[];
@@ -146,6 +93,22 @@ let refreshGeneration = 0;
 let refreshController: AbortController | null = null;
 
 /**
+ * 已成功写入的服务端设置字段各自的代际。
+ *
+ * 设置类写入就地更新快照、不再整批刷新，但一个刷新批次可能在写入落库之前就读到旧值，
+ * 晚提交时会把刚保存的值盖回去——包括"写入进行中又发起的新刷新"。批次开始时记下这四个
+ * 字段的代际，提交时只对「批次开始后又被写过」的字段弃权：其余字段照常更新，一次开关
+ * 保存不会把整批首页数据丢掉。
+ */
+const settingsWrites = { detailed: 0, ports: 0, pricing: 0, developerMode: 0 };
+type SettingsField = keyof typeof settingsWrites;
+
+/** 记下一个设置字段已经落库：早于此刻开始的刷新批次对该字段弃权。 */
+function markSettingsWritten(field: SettingsField) {
+  settingsWrites[field] += 1;
+}
+
+/**
  * 作废在途的刷新：只递增代际并中止它的请求，不发起新的一次。
  *
  * 变更类操作在动手前先调用，保证旧刷新晚返回时不会把刚写入的状态覆盖回去；
@@ -155,6 +118,20 @@ function invalidateRefresh() {
   refreshGeneration += 1;
   refreshController?.abort();
   refreshController = null;
+}
+
+const pricingWrites = new Map<string, number>();
+
+function commitPricingWrite(modelHash: string, saved: TokenPricingSettings, started: Map<string, number>) {
+  const models = { ...saved.models };
+  for (const [key, generation] of pricingWrites) {
+    if (key === modelHash || generation === (started.get(key) ?? 0)) continue;
+    if (Object.hasOwn(snapshot.pricing.models, key)) models[key] = snapshot.pricing.models[key];
+    else delete models[key];
+  }
+  pricingWrites.set(modelHash, (pricingWrites.get(modelHash) ?? 0) + 1);
+  markSettingsWritten("pricing");
+  update({ pricing: { models } });
 }
 
 export const appStore = {
@@ -171,6 +148,9 @@ export const appStore = {
    */
   async refresh() {
     const generation = ++refreshGeneration;
+    // 这一批请求读到的设置字段：提交时和写入代际比对，避免把刚保存的值盖回去。
+    const settingsWritesAtStart = { ...settingsWrites };
+    const writtenSince = (field: SettingsField) => settingsWritesAtStart[field] !== settingsWrites[field];
     // 中止上一次还没落库的刷新，避免它晚返回时把新数据覆盖回旧值。
     refreshController?.abort();
     const controller = new AbortController();
@@ -208,14 +188,14 @@ export const appStore = {
     if (models.status === "fulfilled") patch.models = models.value;
     if (calls.status === "fulfilled") patch.calls = calls.value;
     if (overview.status === "fulfilled") patch.overview = overview.value;
-    if (observability.status === "fulfilled") patch.detailed = observability.value.detailed;
-    if (ports.status === "fulfilled") patch.ports = ports.value;
-    if (pricing.status === "fulfilled") patch.pricing = pricing.value;
+    if (observability.status === "fulfilled" && !writtenSince("detailed")) patch.detailed = observability.value.detailed;
+    if (ports.status === "fulfilled" && !writtenSince("ports")) patch.ports = ports.value;
+    if (pricing.status === "fulfilled" && !writtenSince("pricing")) patch.pricing = pricing.value;
     if (cursorHarness.status === "fulfilled") patch.cursorHarness = cursorHarness.value;
     if (devinStatus.status === "fulfilled") patch.devinStatus = devinStatus.value;
     if (pluginRuntime.status === "fulfilled") patch.pluginRuntime = pluginRuntime.value;
     if (plugins.status === "fulfilled") patch.plugins = plugins.value;
-    if (desktop.status === "fulfilled") patch.developerMode = desktop.value.developer_mode;
+    if (desktop.status === "fulfilled" && !writtenSince("developerMode")) patch.developerMode = desktop.value.developer_mode;
     const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
     // 只有「服务连不上」才算离线；超时是 RequestTimeoutError，不算离线。
     const unreachable = failures.some((failure) => failure.reason instanceof ServiceUnreachableError);
@@ -417,14 +397,23 @@ export const appStore = {
     await perform(() => api.openCallDetails(callId));
   },
   async updateDetailed(detailed: boolean) {
-    await perform(async () => update(await api.setObservability(detailed)));
+    await perform(async () => {
+      const saved = await api.setObservability(detailed);
+      markSettingsWritten("detailed");
+      update({ detailed: saved.detailed });
+    });
   },
-  // 开发者模式：desktop 设置是一整份，先读回再合并，避免覆盖静默启动等字段。
+  /**
+   * 开发者模式：只提交这一个字段，服务端在写锁内合并。
+   *
+   * 原来先 GET 整份桌面设置再整份 PUT：与静默启动、Dock 图标各自保存时会用同一份
+   * 旧快照互相撤销，界面却都显示成功。
+   */
   async updateDeveloperMode(enabled: boolean) {
     update({ error: null });
     try {
-      const settings = await api.desktopSettings();
-      const saved = await api.setDesktopSettings({ ...settings, developer_mode: enabled });
+      const saved = await api.setDesktopSettings({ developer_mode: enabled });
+      markSettingsWritten("developerMode");
       update({ developerMode: saved.developer_mode });
       return true;
     } catch (cause) {
@@ -435,17 +424,33 @@ export const appStore = {
   async updatePorts(ports: PortSettings) {
     try {
       update({ error: null });
-      update({ ports: await api.setPorts(ports) });
+      const saved = await api.setPorts(ports);
+      markSettingsWritten("ports");
+      update({ ports: saved });
       return true;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
       return false;
     }
   },
-  async updatePricingSettings(pricing: TokenPricingSettings) {
+  async updatePricingSettings(modelHash: string, pricing: ModelTokenPricing) {
+    const started = new Map(pricingWrites);
     try {
       update({ error: null });
-      update({ pricing: await api.setPricingSettings(pricing) });
+      const saved = await api.setModelPricing(modelHash, pricing);
+      commitPricingWrite(modelHash, saved, started);
+      return true;
+    } catch (cause) {
+      update({ error: cause instanceof Error ? cause.message : String(cause) });
+      return false;
+    }
+  },
+  async removePricingSettings(modelHash: string) {
+    const started = new Map(pricingWrites);
+    try {
+      update({ error: null });
+      const saved = await api.removeModelPricing(modelHash);
+      commitPricingWrite(modelHash, saved, started);
       return true;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });

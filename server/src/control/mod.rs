@@ -224,7 +224,11 @@ pub fn api_router(service: ControlService) -> Router {
         )
         .route(
             "/__byok-api__/api/settings/pricing",
-            get(settings::get_pricing_settings).put(settings::update_pricing_settings),
+            get(settings::get_pricing_settings),
+        )
+        .route(
+            "/__byok-api__/api/settings/pricing/{model_hash}",
+            put(settings::update_model_pricing).delete(settings::delete_model_pricing),
         )
         .route(
             "/__byok-api__/api/devin/settings",

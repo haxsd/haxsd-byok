@@ -1,16 +1,16 @@
 //! Implements settings management endpoints.
 use crate::Result;
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{header, HeaderMap},
     Json,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::store::{
-    CommitPromptLocale, CommitSettings, DesktopSettings, PortSettings, ProxySettings,
-    ProxySettingsInput, StatisticsStorage, StatisticsStorageScope, TabSettings,
-    TokenPricingSettings,
+    CommitPromptLocale, CommitSettings, DesktopSettings, DesktopSettingsPatch, ModelTokenPricing,
+    PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage, StatisticsStorageScope,
+    TabSettings, TokenPricingSettings,
 };
 
 use super::{ControlService, ObservabilitySettings};
@@ -99,10 +99,9 @@ pub async fn get_desktop(State(service): State<ControlService>) -> Result<Json<D
 
 pub async fn update_desktop(
     State(service): State<ControlService>,
-    Json(settings): Json<DesktopSettings>,
+    Json(patch): Json<DesktopSettingsPatch>,
 ) -> Result<Json<DesktopSettings>> {
-    service.set_desktop_settings(settings).await?;
-    get_desktop(State(service)).await
+    Ok(Json(service.update_desktop_settings(patch).await?))
 }
 
 /// Settings view for commit message generation. Empty `model_id` means 直连
@@ -153,11 +152,19 @@ pub async fn get_pricing_settings(
     Ok(Json(service.pricing_settings().await?))
 }
 
-pub async fn update_pricing_settings(
+pub async fn update_model_pricing(
     State(service): State<ControlService>,
-    Json(settings): Json<TokenPricingSettings>,
+    Path(model_hash): Path<String>,
+    Json(pricing): Json<ModelTokenPricing>,
 ) -> Result<Json<TokenPricingSettings>> {
-    Ok(Json(service.set_pricing_settings(settings).await?))
+    Ok(Json(service.set_model_pricing(&model_hash, pricing).await?))
+}
+
+pub async fn delete_model_pricing(
+    State(service): State<ControlService>,
+    Path(model_hash): Path<String>,
+) -> Result<Json<TokenPricingSettings>> {
+    Ok(Json(service.remove_model_pricing(&model_hash).await?))
 }
 
 fn requested_commit_locale(headers: &HeaderMap) -> CommitPromptLocale {

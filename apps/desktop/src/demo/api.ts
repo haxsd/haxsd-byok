@@ -2,11 +2,14 @@ import type {
   CallDetail,
   CursorHarnessStatus,
   CursorMode,
+  DesktopSettings,
   DevinHostPatchReceipt,
   DevinHostPatchStatus,
   DevinSettings,
   LlmCall,
   Model,
+  ModelTokenPricing,
+  TokenPricingSettings,
   Overview,
   OverviewTokenUsageBucket,
   ProxySettings,
@@ -114,8 +117,10 @@ let devinSettings: DevinSettings = {
 let devinHostStatus: DevinHostPatchStatus | null = null;
 let devinHostReceipt: DevinHostPatchReceipt | null = null;
 
+let pricingSettings: TokenPricingSettings = { models: {} };
 let detailed = true;
 let portSettings = { proxy_port: 0, service_port: 0 };
+let desktopSettings: DesktopSettings = { silent_start: false, show_dock_icon: true, developer_mode: false };
 let proxySettings: ProxySettings = {
   mode: "default",
   address: "",
@@ -194,9 +199,10 @@ export function installDemoApi() {
         backup_available: Boolean(devinHostReceipt),
         current_sha256: devinHostReceipt?.patched_sha256 ?? "demo-clean",
         backup_sha256: devinHostReceipt?.original_sha256 ?? null,
+        restore_receipt: devinHostReceipt,
         message: "",
       };
-      return json({ ...devinHostStatus, path: hostPath, clean: !devinHostReceipt, patched: Boolean(devinHostReceipt), ports: devinHostReceipt?.ports ?? null });
+      return json({ ...devinHostStatus, path: hostPath, clean: !devinHostReceipt, patched: Boolean(devinHostReceipt), ports: devinHostReceipt?.ports ?? null, restore_receipt: devinHostReceipt });
     }
     if (path === "/harness/devin/host/apply" && method === "POST") {
       const hostPath = (body as { path?: string } | null)?.path || "";
@@ -205,9 +211,20 @@ export function installDemoApi() {
       return json(devinHostReceipt);
     }
     if (path === "/harness/devin/host/restore" && method === "POST") {
+      if (!devinHostReceipt || (body as { path?: string } | null)?.path !== devinHostReceipt.path) {
+        return json({ message: "No matching persisted restore receipt" }, 400);
+      }
       devinHostReceipt = null;
       devinHostStatus = null;
       return json({ restored: true });
+    }
+    if (path === "/settings/pricing" && method === "GET") return json(pricingSettings);
+    if (path.startsWith("/settings/pricing/")) {
+      const modelHash = decodeURIComponent(path.slice("/settings/pricing/".length));
+      if (method === "PUT") pricingSettings.models[modelHash] = body as ModelTokenPricing;
+      else if (method === "DELETE") delete pricingSettings.models[modelHash];
+      else return json({ message: "Unsupported pricing method" }, 405);
+      return json(pricingSettings);
     }
     if (path === "/settings/observability" && method === "GET") return json({ detailed });
     if (path === "/settings/observability") {
@@ -239,8 +256,12 @@ export function installDemoApi() {
       tabSettings = body as TabSettings;
       return json(tabSettings);
     }
-    if (path === "/settings/desktop" && method === "GET") return json({ silent_start: false, show_dock_icon: true });
-    if (path === "/settings/desktop") return json(body);
+    if (path === "/settings/desktop" && method === "GET") return json(desktopSettings);
+    // 与真实服务端一致：请求只带改动的字段，合并后回整份设置。
+    if (path === "/settings/desktop") {
+      desktopSettings = { ...desktopSettings, ...(body as Partial<DesktopSettings>) };
+      return json(desktopSettings);
+    }
     if (path === "/desktop/open-external-url") {
       const target = (body as { url?: string } | null)?.url;
       if (target) {
@@ -329,13 +350,28 @@ function createOverview(params: URLSearchParams): Overview {
 function createSeries(count: number, step: number, end: number): OverviewTokenUsageBucket[] {
   return Array.from({ length: count }, (_, index) => {
     const wave = 0.72 + ((index * 17) % 31) / 50;
+    const input = Math.round(800 * wave);
+    const read = Math.round(79_200 * wave);
+    const write = Math.round(7_500 * wave);
+    const output = Math.round(12_500 * wave);
+    const usedModels = [models[4], models[2]];
+    const first = { input: Math.round(input * 0.7), read: Math.round(read * 0.7), write: Math.round(write * 0.7), output: Math.round(output * 0.7) };
     return {
       bucket_start_ms: end - (count - index) * step,
-      // input : cache_read = 1 : 99，使默认口径缓存命中率恰为 99%
-      input_tokens: Math.round(800 * wave),
-      cache_read_tokens: Math.round(79_200 * wave),
-      cache_write_tokens: Math.round(7_500 * wave),
-      output_tokens: Math.round(12_500 * wave),
+      input_tokens: input,
+      cache_read_tokens: read,
+      cache_write_tokens: write,
+      output_tokens: output,
+      models: usedModels.map((model, part) => ({
+        model_hash: model.model_hash,
+        model_id: model.model_id,
+        display_name: model.display_name,
+        llm_calls: 3,
+        input_tokens: part === 0 ? first.input : input - first.input,
+        cache_read_tokens: part === 0 ? first.read : read - first.read,
+        cache_write_tokens: part === 0 ? first.write : write - first.write,
+        output_tokens: part === 0 ? first.output : output - first.output,
+      })),
     };
   });
 }

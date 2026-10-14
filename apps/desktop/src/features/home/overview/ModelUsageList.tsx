@@ -2,6 +2,7 @@ import { formatCompactInteger } from "../../../shared/utils/numberFormat";
 import { Meter } from "../../../shared/ui/ProgressRing";
 import { chartPalette } from "../charts/chartTheme";
 import styles from "./ModelUsageList.module.scss";
+import { formatMoney, type Currency } from "../metrics/tokenCost";
 import type { ModelUsageRow } from "./overviewStats";
 
 /**
@@ -10,7 +11,7 @@ import type { ModelUsageRow } from "./overviewStats";
  * 模型库页回答「配了哪些模型」，这里回答「谁在干活」。两者用的是同一份数据，
  * 但问的问题不同，所以放在不同的页面上。
  */
-export function ModelUsageList({ rows, limit = 5 }: { rows: ModelUsageRow[]; limit?: number }) {
+export function ModelUsageList({ rows, currency, limit = 5 }: { rows: ModelUsageRow[]; currency: Currency; limit?: number }) {
   const palette = chartPalette();
   if (rows.length === 0) return <p className={styles.empty}>{t("这段时间内还没有模型调用。")}</p>;
   const visible = rows.slice(0, limit);
@@ -30,7 +31,7 @@ export function ModelUsageList({ rows, limit = 5 }: { rows: ModelUsageRow[]; lim
       </span>
       <span className={styles.value}>
         <strong>{formatCompactInteger(row.tokens)}</strong>
-        <small>{t("{calls} 次", { calls: row.calls })}</small>
+        <small>{t("{calls} 次", { calls: row.calls })}{row.cost === undefined ? "" : row.cost === null ? ` · ${t("未定价")}` : ` · ${formatMoney(row.cost, currency)}`}</small>
       </span>
     </li>)}
     {rest.length > 0 && <li className={styles.row}>

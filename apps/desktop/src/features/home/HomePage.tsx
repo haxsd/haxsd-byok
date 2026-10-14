@@ -4,12 +4,12 @@ import { api, pluginText, type Overview, type OverviewTokenUsageBucket } from ".
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
 import { HomeMetrics } from "./metrics/HomeMetrics";
-import { fetchHourlyUsage } from "./metrics/peakOffPeakPricing";
-import { currencyOf, pricingFor } from "./metrics/tokenCost";
+import { fetchHourlyUsage, sumHourlyCost } from "./metrics/peakOffPeakPricing";
+import { currencyOf } from "./metrics/tokenCost";
 import { PageContent } from "../../shell/layout/PageContent";
 import type { VirtualPageSection } from "../../shell/layout/VirtualPage";
 import { ModelUsageList } from "./overview/ModelUsageList";
-import { bucketStats, callsPerBucket, modelUsage, peakDay, sumStats } from "./overview/overviewStats";
+import { bucketStart, bucketStats, callsPerBucket, modelUsage, peakDay, sumStats } from "./overview/overviewStats";
 import { RecentCalls } from "./overview/RecentCalls";
 import { OverviewTimeRangeFilter, type OverviewRangePreset, type QuickPreset } from "./overview/OverviewTimeRangeFilter";
 import { PageActions } from "../../shell/PageActions";
@@ -77,17 +77,21 @@ export function HomePage() {
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [appliedModels, setAppliedModels] = useState<string[]>([]);
   const [rangeOverview, setRangeOverview] = useState<Overview | null>(null);
+  const [loadedRange, setLoadedRange] = useState<TimeRange | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [rangeBusy, setRangeBusy] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [pricingSeries, setPricingSeries] = useState<OverviewTokenUsageBucket[] | null>(null);
-  const [pricingFailed, setPricingFailed] = useState(false);
+  const [pricingSource, setPricingSource] = useState<TimeRange | null>(null);
+  const [pricingFailure, setPricingFailure] = useState<"range" | "read" | null>(null);
   const selectedRange = preset === "custom" ? customRange : presetRange(preset);
 
   useEffect(() => {
     if (!selectedRange) return;
     let active = true;
     setRangeBusy(true);
+    setRangeOverview(null);
+    setLoadedRange(null);
     // 失败时清掉区间数据并留下错误：`overview` 是全量数据，拿它兜底会把"近30天"
     // 的徽标挂到全量数字上——宁可什么都不显示，也不能显示错口径的数字。
     void api.overview({
@@ -96,6 +100,7 @@ export function HomePage() {
     }).then((next) => {
       if (!active) return;
       setRangeOverview(next);
+      setLoadedRange(selectedRange);
       setRangeError(null);
     }).catch((cause) => {
       if (!active) return;
@@ -109,31 +114,27 @@ export function HomePage() {
     // store 刷新都重复抓同一段范围。
   }, [preset, customRange, refreshVersion, appliedModels]);
 
-  // 分时计价需要按小时聚合的用量；固定单价模式不需要额外请求。
-  // 这里不把 selectedRange 放进依赖：非自定义范围每次都返回新对象，会导致重复请求。
+  // Sub-day bins already retain model identity and correct pricing periods.
+  // Day bins need hour-level reads, using the exact same accepted time range.
   useEffect(() => {
-    if (pricing.mode !== "peak_off_peak" || !selectedRange) {
-      setPricingSeries(null);
-      setPricingFailed(false);
-      return;
-    }
+    setPricingSeries(null);
+    setPricingSource(null);
+    setPricingFailure(null);
+    if (!loadedRange || rangeOverview?.token_usage_granularity !== "day") return;
     let active = true;
-    void fetchHourlyUsage(selectedRange, appliedModels)
-      .then((series) => {
-        if (!active) return;
-        setPricingSeries(series);
-        setPricingFailed(false);
+    void fetchHourlyUsage(loadedRange, appliedModels)
+      .then(series => {
+        if (active) {
+          setPricingSeries(series);
+          setPricingSource(loadedRange);
+        }
       })
-      .catch(() => {
-        if (!active) return;
-        // 失败必须说出来：没有它费用会静默按"当前时段单价"估算，
-        // 用户会以为看到的是所选范围的高峰/低谷计价。
-        setPricingSeries(null);
-        setPricingFailed(true);
+      .catch((cause: unknown) => {
+        // 区间超出取数上限是客户端自己的限制，不能说成"用量读取失败"。
+        if (active) setPricingFailure(cause instanceof RangeError ? "range" : "read");
       });
     return () => { active = false; };
-    // 同理：overview 不是这次请求的输入。
-  }, [preset, customRange, refreshVersion, appliedModels, pricing.mode]);
+  }, [rangeOverview, loadedRange, appliedModels]);
 
   const filteredOverview = rangeOverview ?? overview;
   const granularity = filteredOverview.token_usage_granularity;
@@ -157,10 +158,20 @@ export function HomePage() {
     cacheReadTokens: filteredOverview.metrics.cache_read_tokens,
     cacheWriteTokens: filteredOverview.metrics.cache_write_tokens,
   };
-  const priceBook = pricingFor(pricing, currencyOf(locale));
-  const stats = useMemo(() => bucketStats(filteredOverview.token_usage_series, priceBook), [filteredOverview.token_usage_series, priceBook]);
+  const currency = currencyOf(locale);
+  const pricingInput = !rangeOverview || rangeBusy ? null : granularity === "day" ? (pricingSource === loadedRange ? pricingSeries : null) : rangeOverview.token_usage_series;
+  const estimate = useMemo(() => pricingInput === null ? null : sumHourlyCost(pricingInput, pricing, currency), [pricingInput, pricing, currency]);
+  const costs = useMemo(() => {
+    const result = new Map<number, number>();
+    for (const hour of estimate?.hours ?? []) {
+      const start = bucketStart(hour.bucket_start_ms, granularity);
+      result.set(start, (result.get(start) ?? 0) + hour.cost);
+    }
+    return result;
+  }, [estimate, granularity]);
+  const stats = useMemo(() => bucketStats(filteredOverview.token_usage_series, costs), [filteredOverview.token_usage_series, costs]);
   const callCounts = useMemo(() => callsPerBucket(filteredOverview.token_usage_series, calls, granularity), [calls, filteredOverview.token_usage_series, granularity]);
-  const modelRows = useMemo(() => modelUsage(filteredOverview.token_usage_series, calls, granularity), [calls, filteredOverview.token_usage_series, granularity]);
+  const modelRows = useMemo(() => estimate ? estimate.models.map(row => ({ ...row, share: estimate.totalTokens > 0 ? row.tokens / estimate.totalTokens : 0 })) : modelUsage(filteredOverview.token_usage_series, calls, granularity), [estimate, calls, filteredOverview.token_usage_series, granularity]);
   const totals = useMemo(() => sumStats(stats), [stats]);
   const busiest = useMemo(() => peakDay(stats), [stats]);
   const rangeIsEmpty = stats.length > 0 && stats.every((stat) => stat.totalTokens === 0);
@@ -273,8 +284,8 @@ export function HomePage() {
         data={metrics}
         stats={stats}
         callCounts={callCounts}
-        pricingSeries={pricingSeries}
-        pricingFailed={pricingFailed}
+        estimate={estimate}
+        pricingFailure={granularity === "day" ? pricingFailure : null}
         refreshVersion={refreshVersion}
       />,
     },
@@ -339,7 +350,7 @@ export function HomePage() {
         >
           {rangeError
             ? <div className={styles.emptyBlock}><small>{t("范围数据加载失败，暂时无法按模型统计。")}</small></div>
-            : <ModelUsageList rows={modelRows} />}
+            : <ModelUsageList rows={modelRows} currency={currency} />}
         </TitledCard>
       </div>,
     },

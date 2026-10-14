@@ -5,7 +5,7 @@
  * 两种币种在设置里各有一套完整价格（都是官方公布的原始价，不是汇率折算），
  * 这里只负责「当前语言用哪一套、显示什么符号」。
  */
-import type { CurrencyPricing, TokenPricingSettings } from "../../../shared/api";
+import type { CurrencyPricing, ModelTokenPricing } from "../../../shared/api";
 import type { Locale } from "../../../i18n/runtime";
 
 /** 支持的币种。 */
@@ -31,7 +31,7 @@ export function currencySymbol(currency: Currency) {
 }
 
 /** 取某个币种下的整套价格。 */
-export function pricingFor(pricing: TokenPricingSettings, currency: Currency): CurrencyPricing {
+export function pricingFor(pricing: ModelTokenPricing, currency: Currency): CurrencyPricing | null {
   return currency === "CNY" ? pricing.cny : pricing.usd;
 }
 
@@ -43,6 +43,17 @@ export function priceTokens(tokens: number, pricePerMillion: number) {
 /** 把金额格式化为带币种符号、保留两位小数的字符串。 */
 export function formatMoney(value: number, currency: Currency) {
   return `${currencySymbol(currency)}${value.toFixed(2)}`;
+}
+
+/**
+ * 不足一分钱的用量按「<0.01」显示。
+ *
+ * 美元的单价低，一段真实用量的估算值经常落在 0 到 0.01 之间，两位小数会把它显示成
+ * $0.00——那不是「没花钱」，而是「花了但显示不出来」，两者必须区分。
+ */
+export function formatCost(value: number, currency: Currency) {
+  if (value > 0 && value < 0.01) return `<${formatMoney(0.01, currency)}`;
+  return formatMoney(value, currency);
 }
 
 /**

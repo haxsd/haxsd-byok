@@ -197,6 +197,7 @@ export interface DevinHostPatchStatus {
   backup_available: boolean;
   current_sha256: string;
   backup_sha256: string | null;
+  restore_receipt: DevinHostPatchReceipt | null;
   message: string;
 }
 
@@ -266,6 +267,14 @@ export interface DesktopSettings {
   developer_mode: boolean;
 }
 
+/**
+ * 桌面设置的一次修订：只提交改动的字段。
+ *
+ * 服务端在写锁内读回已保存的设置、合并这次修订再写回。前端不得先 GET 整份设置
+ * 再整份 PUT：两个开关各自读到的旧快照会把对方刚保存的字段撤销掉。
+ */
+export type DesktopSettingsPatch = Partial<DesktopSettings>;
+
 export interface CommitSettings {
   model_id: string;
   prompt: string;
@@ -305,12 +314,16 @@ export type PricingMode = "fixed" | "peak_off_peak";
  * 界面语言决定使用哪一套价格：简体中文用人民币，英文用美元。
  * 两种币种各自维护完整的价格表，切换语言不会互相影响。
  */
-export interface TokenPricingSettings {
+export interface ModelTokenPricing {
   mode: PricingMode;
-  /** 人民币价格。 */
-  cny: CurrencyPricing;
-  /** 美元价格。 */
-  usd: CurrencyPricing;
+  /** null means no estimate is available in this currency. */
+  cny: CurrencyPricing | null;
+  usd: CurrencyPricing | null;
+}
+
+/** 单价按模型的稳定标识保存，缺失条目表示未定价。 */
+export interface TokenPricingSettings {
+  models: Record<string, ModelTokenPricing>;
 }
 
 export type PluginRuntimeState = "uninitialized" | "initializing" | "ready" | "failed" | "unsupported";
@@ -502,12 +515,24 @@ export interface OverviewMetrics {
 
 export type TokenUsageGranularity = "minute" | "hour" | "day";
 
+export interface ModelTokenUsage {
+  model_hash: string | null;
+  model_id: string;
+  display_name: string;
+  llm_calls: number;
+  input_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  output_tokens: number;
+}
+
 export interface OverviewTokenUsageBucket {
   bucket_start_ms: number;
   input_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
   output_tokens: number;
+  models: ModelTokenUsage[];
 }
 
 export interface Overview {
@@ -744,7 +769,7 @@ export const api = {
   /** The identifiers Devin itself asks for, read from the installed client. */
   devinModelUids: (path?: string) => request<DevinModelUids>(path ? `/harness/devin/model-uids?path=${encodeURIComponent(path)}` : "/harness/devin/model-uids"),
   applyDevinHostPatch: (path?: string) => request<DevinHostPatchReceipt>("/harness/devin/host/apply", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
-  restoreDevinHostPatch: (receipt: DevinHostPatchReceipt) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify({ receipt }) }),
+  restoreDevinHostPatch: (path?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   plugins: (signal?: AbortSignal) => request<PluginDescriptor[]>("/plugins", { signal }),
   pluginOAuthBegin: (pluginId: string, resourceType: string, methodId: string) => request<PluginOAuthBegin>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/add/${encodeURIComponent(methodId)}/begin`, { method: "POST" }),
@@ -756,15 +781,21 @@ export const api = {
   deletePluginResource: (pluginId: string, resourceType: string, resourceId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`, { method: "DELETE" }),
   syncPluginModels: (pluginId: string, providerId: string) => request<{ models: number }>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/sync`, { method: "POST" }),
   setPluginModelEnabled: (pluginId: string, providerId: string, modelId: string, enabled: boolean) => request<void>(`/plugins/${encodeURIComponent(pluginId)}/providers/${encodeURIComponent(providerId)}/models/enabled`, { method: "PUT", body: JSON.stringify({ modelId, enabled }) }),
-  pluginResourceExportUrl: (servicePort: number, pluginId: string, resourceType: string) => `http://127.0.0.1:${servicePort}${API_ROOT}/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/export`,
+  /**
+   * 导出地址必须留在页面真正的 origin 上（`/__byok-api__/` 与页面同源）。
+   *
+   * 不能用已保存的 `service_port`：那是下次启动的期望端口，改完还没重启时，
+   * 浏览器会拿着一个没人监听的端口去导出。
+   */
+  pluginResourceExportUrl: (pluginId: string, resourceType: string) => `${window.location.origin}${API_ROOT}/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/export`,
   removePluginConfiguration: (pluginId: string) => request<void>(`/plugins/${encodeURIComponent(pluginId)}`, { method: "DELETE" }),
   pluginRuntime: (signal?: AbortSignal) => request<PluginRuntimeStatus>("/plugins/runtime", { signal }),
   initializePluginRuntime: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "POST" }),
   cancelPluginRuntimeInitialization: () => request<PluginRuntimeStatus>("/plugins/runtime", { method: "DELETE" }),
-  openCursorCaInstallTerminal: async (command: string) => {
+  openCursorCaInstallTerminal: async () => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中打开终端安装 CA"));
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("open_terminal_with_command", { command });
+    await invoke("open_cursor_ca_install_terminal");
   },
   copyCursorText: async (text: string) => {
     if (!packagedDesktop) throw new Error(t("请在桌面应用中复制到系统剪贴板"));
@@ -803,9 +834,10 @@ export const api = {
   tabSettings: () => request<TabSettings>("/settings/tab"),
   setTabSettings: (settings: TabSettings) => request<TabSettings>("/settings/tab", { method: "PUT", body: JSON.stringify(settings) }),
   desktopSettings: (signal?: AbortSignal) => request<DesktopSettings>("/settings/desktop", { signal }),
-  setDesktopSettings: (settings: DesktopSettings) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(settings) }),
+  setDesktopSettings: (patch: DesktopSettingsPatch) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(patch) }),
   commitSettings: (locale: Locale) => request<CommitSettingsView>("/settings/commit", { headers: { "accept-language": locale } }),
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
   pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }),
-  setPricingSettings: (settings: TokenPricingSettings) => request<TokenPricingSettings>("/settings/pricing", { method: "PUT", body: JSON.stringify(settings) }),
+  setModelPricing: (modelHash: string, pricing: ModelTokenPricing) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "PUT", body: JSON.stringify(pricing) }),
+  removeModelPricing: (modelHash: string) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "DELETE" }),
 };

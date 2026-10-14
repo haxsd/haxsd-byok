@@ -1,4 +1,6 @@
 //! Persists application settings.
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::Result;
@@ -14,7 +16,11 @@ const CURSOR_MODE_KEY: &str = "cursor_mode";
 /// 旧版把"是否接管"存成一个布尔键。模式化之后它只剩一次性搬移的价值：
 /// 读过一次就换算成 `cursor_mode` 并删掉，不再有第二处读它。
 const LEGACY_CURSOR_TAKEOVER_KEY: &str = "cursor_takeover_enabled";
-const PRICING_SETTINGS_KEY: &str = "token_pricing";
+/// 每个模型的单价规则表。
+const MODEL_PRICING_SETTINGS_KEY: &str = "model_token_pricing";
+/// 旧版的全套全局价。只读键已不存在；唯一剩下的用途是用户成功保存第一条
+/// 按模型规则后把它删掉，见 `Store::set_model_pricing`。
+const LEGACY_PRICING_SETTINGS_KEY: &str = "token_pricing";
 const DEVIN_SETTINGS_KEY: &str = "devin_router";
 
 /// Embedded default system prompts for commit message generation.
@@ -33,6 +39,7 @@ pub struct PortSettings {
 ///
 /// `input_per_million` 指**缓存未命中**的输入，`cache_read_per_million` 指
 /// **缓存命中**的输入；这是 DeepSeek 与 Claude 共用的计费口径。
+/// 缺省价是 0：价格只能由用户为一个具体模型写明，代码不预填任何厂商的价。
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 pub struct TokenPrice {
@@ -43,42 +50,12 @@ pub struct TokenPrice {
 }
 
 impl TokenPrice {
-    /// DeepSeek-V4.1-Flash 高峰时段官方单价（元 / 百万 token）。
-    pub const fn peak_cny() -> Self {
+    /// 全 0：还没定价时的显式值。
+    pub const fn zero() -> Self {
         Self {
-            input_per_million: 2.0,
-            output_per_million: 8.0,
-            cache_read_per_million: 0.04,
-            cache_write_per_million: 0.0,
-        }
-    }
-
-    /// DeepSeek-V4.1-Flash 低谷时段官方单价（元），为高峰价的一半。
-    pub const fn off_peak_cny() -> Self {
-        Self {
-            input_per_million: 1.0,
-            output_per_million: 4.0,
-            cache_read_per_million: 0.02,
-            cache_write_per_million: 0.0,
-        }
-    }
-
-    /// DeepSeek-V4.1-Flash 高峰时段官方单价（美元 / 百万 token）。
-    pub const fn peak_usd() -> Self {
-        Self {
-            input_per_million: 0.3,
-            output_per_million: 1.2,
-            cache_read_per_million: 0.006,
-            cache_write_per_million: 0.0,
-        }
-    }
-
-    /// DeepSeek-V4.1-Flash 低谷时段官方单价（美元），为高峰价的一半。
-    pub const fn off_peak_usd() -> Self {
-        Self {
-            input_per_million: 0.15,
-            output_per_million: 0.6,
-            cache_read_per_million: 0.003,
+            input_per_million: 0.0,
+            output_per_million: 0.0,
+            cache_read_per_million: 0.0,
             cache_write_per_million: 0.0,
         }
     }
@@ -86,18 +63,17 @@ impl TokenPrice {
 
 impl Default for TokenPrice {
     fn default() -> Self {
-        Self::peak_cny()
+        Self::zero()
     }
 }
 
 /// 首页「价值估算」使用的计价模式。
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PricingMode {
     /// 全时段使用同一组单价。
     Fixed,
-    /// 按高峰 / 低谷时段分别计价（默认）。
-    #[default]
+    /// 按高峰 / 低谷时段分别计价。
     PeakOffPeak,
 }
 
@@ -114,53 +90,82 @@ pub struct CurrencyPricing {
 }
 
 impl CurrencyPricing {
-    /// 人民币价格，简体中文界面使用。
-    pub const fn cny() -> Self {
+    /// 全 0：还没定价时的显式值。
+    pub const fn zero() -> Self {
         Self {
-            fixed: TokenPrice::peak_cny(),
-            peak: TokenPrice::peak_cny(),
-            off_peak: TokenPrice::off_peak_cny(),
-        }
-    }
-
-    /// 美元价格，英文界面使用。
-    pub const fn usd() -> Self {
-        Self {
-            fixed: TokenPrice::peak_usd(),
-            peak: TokenPrice::peak_usd(),
-            off_peak: TokenPrice::off_peak_usd(),
+            fixed: TokenPrice::zero(),
+            peak: TokenPrice::zero(),
+            off_peak: TokenPrice::zero(),
         }
     }
 }
 
 impl Default for CurrencyPricing {
     fn default() -> Self {
-        Self::cny()
+        Self::zero()
     }
 }
 
-/// 首页「价值估算」的价格设置。
-///
-/// 界面语言决定使用哪一套价格：简体中文用人民币，英文用美元。
-/// 两种币种各自维护完整的价格表，切换语言不会互相影响。
+/// 一个模型的价格规则。两个币种各自维护完整的价格，界面语言决定用哪一套；
+/// `None` 表示这个币种还没定价——它不是"价格为零"，未定价的用量不计入金额。
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
-pub struct TokenPricingSettings {
+pub struct ModelTokenPricing {
     pub mode: PricingMode,
     /// 人民币价格。
-    pub cny: CurrencyPricing,
+    pub cny: Option<CurrencyPricing>,
     /// 美元价格。
-    pub usd: CurrencyPricing,
+    pub usd: Option<CurrencyPricing>,
 }
 
-impl Default for TokenPricingSettings {
+impl Default for ModelTokenPricing {
+    /// 新建模型的初始草稿：固定单价，两个币种都还没定价。
     fn default() -> Self {
         Self {
-            mode: PricingMode::PeakOffPeak,
-            cny: CurrencyPricing::cny(),
-            usd: CurrencyPricing::usd(),
+            mode: PricingMode::Fixed,
+            cny: None,
+            usd: None,
         }
     }
+}
+
+impl ModelTokenPricing {
+    /// 单价必须是有限、非负的数字：NaN 或负价会让首页算出负成本，
+    /// 也会让序列化出的 JSON 出现 `null`。
+    fn validate(&self) -> Result<()> {
+        for (currency, pricing) in [("cny", self.cny), ("usd", self.usd)] {
+            let Some(pricing) = pricing else { continue };
+            for (slot, price) in [
+                ("fixed", pricing.fixed),
+                ("peak", pricing.peak),
+                ("off_peak", pricing.off_peak),
+            ] {
+                for (field, value) in [
+                    ("input_per_million", price.input_per_million),
+                    ("output_per_million", price.output_per_million),
+                    ("cache_read_per_million", price.cache_read_per_million),
+                    ("cache_write_per_million", price.cache_write_per_million),
+                ] {
+                    if !value.is_finite() || value < 0.0 {
+                        return Err(crate::Error::Config(format!(
+                            "price {currency}.{slot}.{field} must be a finite, non-negative number"
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 首页「价值估算」的价格设置：按模型分开计价。
+///
+/// 键是模型的稳定标识（`model_hash`）。没有规则的模型就是未定价——不存在全局
+/// 回退价，也不从模型名猜价格。
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct TokenPricingSettings {
+    pub models: BTreeMap<String, ModelTokenPricing>,
 }
 
 /// 出网时怎么走代理。三者互斥，且只有 `Custom` 会读下面的地址。
@@ -251,6 +256,35 @@ impl Default for DesktopSettings {
             silent_start: false,
             show_dock_icon: true,
             developer_mode: false,
+        }
+    }
+}
+
+/// 桌面设置的一次按字段更新：只改动值为 `Some` 的字段。
+///
+/// 界面上的每个开关各发一次修订，携带的只有自己那一个字段。服务端在全局写锁内
+/// 读回已保存的设置、合并这次修订再写回，所以两个控件先后保存时不会各自拿着
+/// 同一个旧快照互相撤销——整对象读改写（前端先 GET 再 PUT）正是丢更新的来源。
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+pub struct DesktopSettingsPatch {
+    #[serde(default)]
+    pub silent_start: Option<bool>,
+    #[serde(default)]
+    pub show_dock_icon: Option<bool>,
+    #[serde(default)]
+    pub developer_mode: Option<bool>,
+}
+
+impl DesktopSettingsPatch {
+    fn apply_to(self, settings: &mut DesktopSettings) {
+        if let Some(silent_start) = self.silent_start {
+            settings.silent_start = silent_start;
+        }
+        if let Some(show_dock_icon) = self.show_dock_icon {
+            settings.show_dock_icon = show_dock_icon;
+        }
+        if let Some(developer_mode) = self.developer_mode {
+            settings.developer_mode = developer_mode;
         }
     }
 }
@@ -599,9 +633,18 @@ impl Store {
             .unwrap_or_else(|| Ok(DesktopSettings::default()))
     }
 
-    pub async fn set_desktop_settings(&self, settings: DesktopSettings) -> Result<()> {
-        let value_json = serde_json::to_string(&settings)?;
+    /// 按字段更新桌面设置，返回合并后的完整设置。
+    ///
+    /// 读回、合并、写回都在同一把写锁内完成：两个开关同时保存时，第二个进入锁时
+    /// 读到的已经是第一个写好的设置，不会把对方的字段覆盖掉。
+    pub async fn update_desktop_settings(
+        &self,
+        patch: DesktopSettingsPatch,
+    ) -> Result<DesktopSettings> {
         let _write = self.writes.lock().await;
+        let mut settings = self.desktop_settings().await?;
+        patch.apply_to(&mut settings);
+        let value_json = serde_json::to_string(&settings)?;
         sqlx::query(
             "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
         )
@@ -615,7 +658,7 @@ impl Store {
         if let Err(error) = crate::config::write_dev_mode_mirror(settings.developer_mode) {
             tracing::warn!(%error, "failed to mirror the developer mode setting");
         }
-        Ok(())
+        Ok(settings)
     }
 
     pub async fn commit_settings(&self) -> Result<CommitSettings> {
@@ -649,34 +692,101 @@ impl Store {
         Ok(settings)
     }
 
+    /// 已定价模型的规则表。缺失、空对象、或旧版残留都读成空表。
+    ///
+    /// 读不出来时按空表处理：这个结构里有闭合枚举（`mode`）与可空币种，旧版本或
+    /// 外部工具写下的行可能读不回。把错误抛出去会让保存与删除也一起失败——它们都
+    /// 先读这一行——用户就只能手工改库。与 `read_proxy_settings` 同样的取舍。
     pub async fn pricing_settings(&self) -> Result<TokenPricingSettings> {
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
         )
-        .bind(PRICING_SETTINGS_KEY)
+        .bind(MODEL_PRICING_SETTINGS_KEY)
         .fetch_optional(&self.pool)
         .await?;
-        value
-            .map(|value| serde_json::from_str(&value).map_err(Into::into))
-            .unwrap_or_else(|| Ok(TokenPricingSettings::default()))
+        Ok(value
+            .map(|value| read_model_token_pricing(&value))
+            .unwrap_or_default())
     }
 
-    pub async fn set_pricing_settings(
+    /// 保存（或覆盖）一个模型的价格规则，返回合并后的完整规则表。
+    ///
+    /// 读回、合并、写回都在同一把写锁内完成：两个模型各自保存时，第二个进入锁时
+    /// 读到的已经是第一个写好的表，不会把对方刚保存的规则撤掉。保存成功同时清掉
+    /// 旧版的全局价格键——"一套价给所有模型"的语义已被按模型规则取代。
+    pub async fn set_model_pricing(
         &self,
-        settings: TokenPricingSettings,
+        model_hash: &str,
+        pricing: ModelTokenPricing,
     ) -> Result<TokenPricingSettings> {
-        let value_json = serde_json::to_string(&settings)?;
+        validate_model_hash(model_hash)?;
+        pricing.validate()?;
         let _write = self.writes.lock().await;
+        let mut settings = self.pricing_settings().await?;
+        settings.models.insert(model_hash.to_owned(), pricing);
+        let value_json = serde_json::to_string(&settings)?;
+        let mut transaction = self.pool.begin().await?;
         sqlx::query(
             "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
         )
-        .bind(PRICING_SETTINGS_KEY)
+        .bind(MODEL_PRICING_SETTINGS_KEY)
+        .bind(value_json)
+        .bind(now_ms())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query("DELETE FROM service_settings WHERE setting_key = ?")
+            .bind(LEGACY_PRICING_SETTINGS_KEY)
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(settings)
+    }
+
+    /// 删除一个模型的价格规则，返回合并后的完整规则表。
+    ///
+    /// 删除不存在的规则是空操作：不报错，也不写库。删除同样在写锁内读-改-写，
+    /// 与保存一样不会覆盖另一个模型的规则。
+    pub async fn remove_model_pricing(&self, model_hash: &str) -> Result<TokenPricingSettings> {
+        validate_model_hash(model_hash)?;
+        let _write = self.writes.lock().await;
+        let mut settings = self.pricing_settings().await?;
+        if settings.models.remove(model_hash).is_none() {
+            return Ok(settings);
+        }
+        let value_json = serde_json::to_string(&settings)?;
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(MODEL_PRICING_SETTINGS_KEY)
         .bind(value_json)
         .bind(now_ms())
         .execute(&self.pool)
         .await?;
         Ok(settings)
     }
+}
+
+/// 读回按模型价格表；读不动就当成空表，让下一次保存能把坏行覆盖掉。
+fn read_model_token_pricing(value: &str) -> TokenPricingSettings {
+    serde_json::from_str(value).unwrap_or_else(|error| {
+        tracing::warn!(%error, "ignoring unreadable model token pricing settings");
+        TokenPricingSettings::default()
+    })
+}
+
+/// 价格规则挂在稳定模型标识上，标识本身必须是干净的键：非空、无空白、无控制字符。
+/// 带空白的哈希几乎总是调用方拼错了，静默 trim 会造出第二个看不见的键。
+fn validate_model_hash(model_hash: &str) -> Result<()> {
+    if model_hash.is_empty()
+        || model_hash
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+    {
+        return Err(crate::Error::Config(
+            "model hash must be a non-empty identifier without whitespace".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// 把旧版的"是否接管"布尔换算成模式，然后删掉旧键。
@@ -718,13 +828,37 @@ pub(crate) async fn migrate_cursor_mode(pool: &sqlx::SqlitePool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
         migrate_cursor_mode, read_proxy_settings, CommitPromptLocale, CommitSettings,
-        CurrencyPricing, CursorMode, PricingMode, ProxyMode, ProxySettingsInput,
-        ProxySettingsSecret, Store, TokenPrice, TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US,
-        DEFAULT_COMMIT_PROMPT_ZH_CN, LEGACY_CURSOR_TAKEOVER_KEY, PROXY_SETTINGS_KEY,
+        CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing, PricingMode,
+        ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TokenPrice,
+        TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
+        LEGACY_CURSOR_TAKEOVER_KEY, MODEL_PRICING_SETTINGS_KEY, PROXY_SETTINGS_KEY,
     };
     use crate::devin::{DevinModelBinding, DevinSettings};
+    use crate::store::now_ms;
+
+    async fn temp_store() -> (tempfile::TempDir, Store) {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        (directory, store)
+    }
+
+    /// 旧版写进 `token_pricing` 的整套全局价，一字不改地放回库里。
+    async fn insert_legacy_global_row(store: &Store) {
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES ('token_pricing', ?, 0)",
+        )
+        .bind(
+            r#"{"mode":"peak_off_peak","cny":{"fixed":{"input_per_million":2.0,"output_per_million":8.0,"cache_read_per_million":0.04,"cache_write_per_million":0.0},"peak":{"input_per_million":2.0,"output_per_million":8.0,"cache_read_per_million":0.04,"cache_write_per_million":0.0},"off_peak":{"input_per_million":1.0,"output_per_million":4.0,"cache_read_per_million":0.02,"cache_write_per_million":0.0}},"usd":{"fixed":{"input_per_million":0.3,"output_per_million":1.2,"cache_read_per_million":0.006,"cache_write_per_million":0.0},"peak":{"input_per_million":0.3,"output_per_million":1.2,"cache_read_per_million":0.006,"cache_write_per_million":0.0},"off_peak":{"input_per_million":0.15,"output_per_million":0.6,"cache_read_per_million":0.003,"cache_write_per_million":0.0}}}"#,
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
 
     #[tokio::test]
     async fn unchanged_proxy_port_does_not_wait_for_storage_maintenance() {
@@ -950,34 +1084,428 @@ mod tests {
         assert_eq!(saved.address, "http://127.0.0.1:7890");
     }
 
+    /// 桌面设置按字段保存：一个控件保存自己的字段时，不能撤销另一个控件刚保存的字段。
     #[tokio::test]
-    async fn token_pricing_settings_persists_and_reads_back() {
+    async fn desktop_settings_update_keeps_the_fields_it_did_not_touch() {
         let directory = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}", directory.path().join("test.db").display());
         let store = Store::connect(&url).await.unwrap();
 
-        assert_eq!(
-            store.pricing_settings().await.unwrap(),
-            TokenPricingSettings::default()
+        store
+            .update_desktop_settings(DesktopSettingsPatch {
+                silent_start: Some(true),
+                ..DesktopSettingsPatch::default()
+            })
+            .await
+            .unwrap();
+        let saved = store
+            .update_desktop_settings(DesktopSettingsPatch {
+                developer_mode: Some(true),
+                ..DesktopSettingsPatch::default()
+            })
+            .await
+            .unwrap();
+
+        assert!(saved.silent_start, "the earlier save must survive");
+        assert!(saved.developer_mode);
+        assert!(
+            saved.show_dock_icon,
+            "a field nobody wrote keeps its default"
         );
+        assert_eq!(store.desktop_settings().await.unwrap(), saved);
+    }
 
-        let custom = TokenPricingSettings {
+    /// 两次按字段更新同时落库时各自生效：读取-合并-写回必须在同一把写锁内完成，
+    /// 否则两边都拿着旧的整份设置，后写的那个会把对方的字段撤回去。
+    #[tokio::test]
+    async fn concurrent_desktop_settings_updates_keep_every_field() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        let (silent_start, show_dock_icon) = tokio::join!(
+            store.update_desktop_settings(DesktopSettingsPatch {
+                silent_start: Some(true),
+                ..DesktopSettingsPatch::default()
+            }),
+            store.update_desktop_settings(DesktopSettingsPatch {
+                show_dock_icon: Some(false),
+                ..DesktopSettingsPatch::default()
+            }),
+        );
+        silent_start.unwrap();
+        show_dock_icon.unwrap();
+
+        let settings = store.desktop_settings().await.unwrap();
+        assert!(settings.silent_start);
+        assert!(!settings.show_dock_icon);
+    }
+
+    /// 一条只写了人民币固定单价的规则；美元没有配置，是未定价而不是 0 元。
+    fn fixed_rule(input_per_million: f64) -> ModelTokenPricing {
+        ModelTokenPricing {
             mode: PricingMode::Fixed,
-            cny: CurrencyPricing {
+            cny: Some(CurrencyPricing {
                 fixed: TokenPrice {
-                    input_per_million: 3.0,
-                    output_per_million: 15.0,
-                    cache_read_per_million: 0.3,
-                    cache_write_per_million: 3.75,
+                    input_per_million,
+                    output_per_million: input_per_million * 4.0,
+                    cache_read_per_million: 0.0,
+                    cache_write_per_million: 0.0,
                 },
-                ..CurrencyPricing::cny()
-            },
-            ..TokenPricingSettings::default()
-        };
-        let saved = store.set_pricing_settings(custom).await.unwrap();
-        assert_eq!(saved, custom);
+                ..CurrencyPricing::zero()
+            }),
+            ..ModelTokenPricing::default()
+        }
+    }
 
-        assert_eq!(store.pricing_settings().await.unwrap(), custom);
+    /// 测试里的规则只配了人民币，取价时直接拿这一套。
+    fn cny(pricing: &ModelTokenPricing) -> CurrencyPricing {
+        pricing.cny.expect("cny rule")
+    }
+
+    /// 从没存过规则的库不给任何模型定价：不存在全局价，也不预填厂商价。
+    #[tokio::test]
+    async fn a_database_without_rules_prices_no_model() {
+        let (_directory, store) = temp_store().await;
+
+        assert!(store.pricing_settings().await.unwrap().models.is_empty());
+    }
+
+    /// 保存一个模型的价格不会动到别的模型，读回逐字段一致。
+    #[tokio::test]
+    async fn saving_a_rule_for_a_second_model_keeps_the_first() {
+        let (_directory, store) = temp_store().await;
+
+        store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+        let saved = store
+            .set_model_pricing("bbbb", fixed_rule(4.0))
+            .await
+            .unwrap();
+
+        assert_eq!(saved.models.len(), 2);
+        let first = &saved.models["aaaa"];
+        assert_eq!(first.mode, PricingMode::Fixed);
+        assert_eq!(cny(first).fixed.input_per_million, 2.0);
+        assert_eq!(cny(first).fixed.output_per_million, 8.0);
+        assert_eq!(cny(first).peak.input_per_million, 0.0);
+        assert!(first.usd.is_none(), "没配的币种保持未定价");
+        assert_eq!(cny(&saved.models["bbbb"]).fixed.input_per_million, 4.0);
+        assert_eq!(store.pricing_settings().await.unwrap(), saved);
+    }
+
+    /// 两个模型各自保存时都要留下。用一条 `BEGIN IMMEDIATE` 事务把 SQLite 的写锁
+    /// 攥在手里，逼出"两个保存都读到旧表、又都卡在写入口"的窗口：读回-合并-写回
+    /// 不在同一把写锁内完成时，后写的那个会把对方刚存的规则撤掉。
+    #[tokio::test]
+    async fn concurrent_saves_of_two_models_both_survive() {
+        let (_directory, store) = temp_store().await;
+        let blocker = store.pool().begin_with("BEGIN IMMEDIATE").await.unwrap();
+
+        let first = tokio::spawn({
+            let store = store.clone();
+            async move { store.set_model_pricing("aaaa", fixed_rule(2.0)).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let second = tokio::spawn({
+            let store = store.clone();
+            async move { store.set_model_pricing("bbbb", fixed_rule(4.0)).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        blocker.rollback().await.unwrap();
+
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+
+        let saved = store.pricing_settings().await.unwrap();
+        assert_eq!(saved.models.len(), 2);
+        assert_eq!(cny(&saved.models["aaaa"]).fixed.input_per_million, 2.0);
+        assert_eq!(cny(&saved.models["bbbb"]).fixed.input_per_million, 4.0);
+    }
+
+    /// 删掉一个模型的价格，别的模型的价格还在。
+    #[tokio::test]
+    async fn deleting_one_models_rule_keeps_the_other() {
+        let (_directory, store) = temp_store().await;
+        store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+        store
+            .set_model_pricing("bbbb", fixed_rule(4.0))
+            .await
+            .unwrap();
+
+        let remaining = store.remove_model_pricing("aaaa").await.unwrap();
+
+        assert!(!remaining.models.contains_key("aaaa"));
+        assert_eq!(cny(&remaining.models["bbbb"]).fixed.input_per_million, 4.0);
+        assert_eq!(store.pricing_settings().await.unwrap(), remaining);
+    }
+
+    /// 删除一条不存在的规则是空操作：不报错，也不改动已有规则。
+    #[tokio::test]
+    async fn removing_a_rule_that_does_not_exist_changes_nothing() {
+        let (_directory, store) = temp_store().await;
+        store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+
+        let remaining = store.remove_model_pricing("cccc").await.unwrap();
+
+        assert_eq!(remaining.models.len(), 1);
+        assert_eq!(cny(&remaining.models["aaaa"]).fixed.input_per_million, 2.0);
+        assert_eq!(store.pricing_settings().await.unwrap(), remaining);
+    }
+
+    /// 负价与非有限价一律拒绝，且拒绝时库里不留任何痕迹。
+    #[tokio::test]
+    async fn negative_and_non_finite_rates_are_rejected() {
+        let (_directory, store) = temp_store().await;
+        let rejected = [
+            ModelTokenPricing {
+                cny: Some(CurrencyPricing {
+                    fixed: TokenPrice {
+                        input_per_million: -0.01,
+                        ..TokenPrice::zero()
+                    },
+                    ..CurrencyPricing::zero()
+                }),
+                ..ModelTokenPricing::default()
+            },
+            ModelTokenPricing {
+                cny: Some(CurrencyPricing {
+                    peak: TokenPrice {
+                        output_per_million: f64::NAN,
+                        ..TokenPrice::zero()
+                    },
+                    ..CurrencyPricing::zero()
+                }),
+                ..ModelTokenPricing::default()
+            },
+            ModelTokenPricing {
+                usd: Some(CurrencyPricing {
+                    off_peak: TokenPrice {
+                        cache_write_per_million: f64::INFINITY,
+                        ..TokenPrice::zero()
+                    },
+                    ..CurrencyPricing::zero()
+                }),
+                ..ModelTokenPricing::default()
+            },
+        ];
+
+        for pricing in rejected {
+            let error = store.set_model_pricing("aaaa", pricing).await.unwrap_err();
+            assert!(
+                matches!(error, crate::Error::Config(_)),
+                "expected a configuration error, got {error}"
+            );
+        }
+        assert!(store.pricing_settings().await.unwrap().models.is_empty());
+    }
+
+    /// 价格规则挂在稳定模型标识上，标识必须干净：空白或空的键一律拒绝
+    /// （静默 trim 会造出第二个看不见的键）。
+    #[tokio::test]
+    async fn a_blank_model_hash_is_rejected() {
+        let (_directory, store) = temp_store().await;
+
+        for blank in ["", "   ", "aaaa\nbbbb"] {
+            assert!(
+                store
+                    .set_model_pricing(blank, fixed_rule(1.0))
+                    .await
+                    .is_err(),
+                "{blank:?} must be rejected"
+            );
+            assert!(store.remove_model_pricing(blank).await.is_err());
+        }
+        assert!(store.pricing_settings().await.unwrap().models.is_empty());
+
+        // 插件模型标识带 `/` 与 `:`，是正常键。
+        let plugin_model = "plugin:dev.example/codex/gpt-test";
+        store
+            .set_model_pricing(plugin_model, fixed_rule(1.0))
+            .await
+            .unwrap();
+        assert!(store
+            .pricing_settings()
+            .await
+            .unwrap()
+            .models
+            .contains_key(plugin_model));
+    }
+
+    /// 旧版的整套全局价绝不自动套到任何模型上——包括用户后来保存新规则时。
+    #[tokio::test]
+    async fn the_legacy_global_row_is_never_applied_to_a_model() {
+        let (_directory, store) = temp_store().await;
+        insert_legacy_global_row(&store).await;
+
+        assert!(store.pricing_settings().await.unwrap().models.is_empty());
+
+        let saved = store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+        assert_eq!(saved.models.len(), 1);
+        assert_eq!(cny(&saved.models["aaaa"]).fixed.input_per_million, 2.0);
+        assert_eq!(cny(&saved.models["aaaa"]).fixed.output_per_million, 8.0);
+    }
+
+    /// 用户成功保存第一条按模型规则后，旧版全局价那行被清掉：它的语义已经被取代，
+    /// 留着只会让人以为还有第二处真相。
+    #[tokio::test]
+    async fn an_explicit_save_retires_the_legacy_global_row() {
+        let (_directory, store) = temp_store().await;
+        insert_legacy_global_row(&store).await;
+
+        store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+
+        let leftover: Option<String> = sqlx::query_scalar(
+            "SELECT value_json FROM service_settings WHERE setting_key = 'token_pricing'",
+        )
+        .fetch_optional(store.pool())
+        .await
+        .unwrap();
+        assert!(leftover.is_none(), "the legacy global row must not survive");
+        assert!(store
+            .pricing_settings()
+            .await
+            .unwrap()
+            .models
+            .contains_key("aaaa"));
+    }
+
+    /// 新建模型的初始草稿是固定单价、两个币种都未定价；代码不预填任何厂商的官方价，
+    /// 未定价就是未定价。
+    #[test]
+    fn a_new_model_draft_is_fixed_and_unpriced() {
+        let draft = ModelTokenPricing::default();
+
+        assert_eq!(draft.mode, PricingMode::Fixed);
+        assert!(draft.cny.is_none());
+        assert!(draft.usd.is_none());
+    }
+
+    /// 没写全的规则体不会继承任何厂商价：写了的币种照收，缺的位补 0，
+    /// 没写的币种保持未定价——它不能被看成"价格为零"。
+    #[test]
+    fn a_partial_rule_body_leaves_the_other_currency_unpriced() {
+        let draft: ModelTokenPricing = serde_json::from_str("{}").unwrap();
+        assert_eq!(draft, ModelTokenPricing::default());
+
+        let partial: ModelTokenPricing = serde_json::from_str(
+            r#"{"mode":"peak_off_peak","cny":{"peak":{"input_per_million":1.5}}}"#,
+        )
+        .unwrap();
+        assert_eq!(partial.mode, PricingMode::PeakOffPeak);
+        let cny = partial.cny.expect("cny rule");
+        assert_eq!(cny.peak.input_per_million, 1.5);
+        assert_eq!(cny.peak.output_per_million, 0.0);
+        assert_eq!(cny.fixed.input_per_million, 0.0);
+        assert!(partial.usd.is_none());
+    }
+
+    /// 价格表读不出来时不能变成"改也改不了"：读成空表，下一次保存覆盖坏行。
+    #[tokio::test]
+    async fn an_unreadable_pricing_row_is_replaced_instead_of_blocking_saves() {
+        let (_directory, store) = temp_store().await;
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?)",
+        )
+        .bind(MODEL_PRICING_SETTINGS_KEY)
+        .bind(r#"{"models":{"aaaa":{"mode":"hourly","cny":null}}}"#)
+        .bind(now_ms())
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        assert!(store.pricing_settings().await.unwrap().models.is_empty());
+
+        let saved = store
+            .set_model_pricing("aaaa", fixed_rule(2.0))
+            .await
+            .unwrap();
+        assert_eq!(saved.models.len(), 1);
+        assert_eq!(cny(&saved.models["aaaa"]).fixed.input_per_million, 2.0);
+        assert_eq!(store.pricing_settings().await.unwrap(), saved);
+    }
+
+    /// 旧版全局价那行的形状永远不会变成按模型规则：前端收到的仍是空表。
+    #[test]
+    fn a_global_row_shape_never_becomes_a_model_rule() {
+        let settings: TokenPricingSettings = serde_json::from_str(
+            r#"{"mode":"fixed","cny":{"fixed":{"input_per_million":5.0,"output_per_million":25.0,"cache_read_per_million":0.5,"cache_write_per_million":6.25},"peak":{},"off_peak":{}},"usd":{}}"#,
+        )
+        .unwrap();
+
+        assert!(settings.models.is_empty());
+    }
+
+    /// 与前端共享的线上形状：一个 `models` 映射，键是稳定模型标识，值带
+    /// `mode` 与各币种（未配置的币种是 `null`）完整的单价。
+    #[test]
+    fn the_wire_shape_is_a_map_of_model_rules() {
+        let settings = TokenPricingSettings {
+            models: BTreeMap::from([(
+                "aaaa".to_owned(),
+                ModelTokenPricing {
+                    mode: PricingMode::Fixed,
+                    cny: Some(CurrencyPricing {
+                        fixed: TokenPrice {
+                            input_per_million: 1.0,
+                            output_per_million: 8.0,
+                            cache_read_per_million: 0.04,
+                            cache_write_per_million: 0.0,
+                        },
+                        ..CurrencyPricing::zero()
+                    }),
+                    ..ModelTokenPricing::default()
+                },
+            )]),
+        };
+        let wire = serde_json::json!({
+            "models": {
+                "aaaa": {
+                    "mode": "fixed",
+                    "cny": {
+                        "fixed": {
+                            "input_per_million": 1.0,
+                            "output_per_million": 8.0,
+                            "cache_read_per_million": 0.04,
+                            "cache_write_per_million": 0.0
+                        },
+                        "peak": {
+                            "input_per_million": 0.0,
+                            "output_per_million": 0.0,
+                            "cache_read_per_million": 0.0,
+                            "cache_write_per_million": 0.0
+                        },
+                        "off_peak": {
+                            "input_per_million": 0.0,
+                            "output_per_million": 0.0,
+                            "cache_read_per_million": 0.0,
+                            "cache_write_per_million": 0.0
+                        }
+                    },
+                    "usd": null
+                }
+            }
+        });
+
+        assert_eq!(serde_json::to_value(&settings).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<TokenPricingSettings>(wire).unwrap(),
+            settings
+        );
     }
 
     #[test]
@@ -1065,43 +1593,5 @@ mod tests {
         assert_eq!(reloaded.bindings[0].model_hash, "0123abcd");
         assert!(reloaded.bindings[0].routes.is_empty());
         assert_eq!(reloaded.bindings[0].effective_model_hash(), "0123abcd");
-    }
-
-    /// 旧版本只存了四个单价字段，读取时必须能平滑降级到新的默认值，
-    /// 而不是解析失败导致首页报错。
-    #[test]
-    fn legacy_pricing_row_falls_back_to_defaults() {
-        let settings: TokenPricingSettings =
-            serde_json::from_str(r#"{"input_per_million":5.0,"output_per_million":25.0,"cache_read_per_million":0.5,"cache_write_per_million":6.25}"#)
-                .unwrap();
-        assert_eq!(settings, TokenPricingSettings::default());
-    }
-
-    /// 默认价格应当是 DeepSeek-V4.1-Flash 的官方价，且人民币与美元各自独立。
-    #[test]
-    fn default_pricing_holds_the_official_rates_for_both_currencies() {
-        let settings = TokenPricingSettings::default();
-        assert_eq!(settings.mode, PricingMode::PeakOffPeak);
-
-        let cny = settings.cny;
-        assert_eq!(cny.peak.input_per_million, 2.0);
-        assert_eq!(cny.peak.output_per_million, 8.0);
-        assert_eq!(cny.peak.cache_read_per_million, 0.04);
-        assert_eq!(cny.off_peak.input_per_million, 1.0);
-        assert_eq!(cny.off_peak.output_per_million, 4.0);
-        assert_eq!(cny.off_peak.cache_read_per_million, 0.02);
-
-        let usd = settings.usd;
-        assert_eq!(usd.peak.input_per_million, 0.3);
-        assert_eq!(usd.peak.output_per_million, 1.2);
-        assert_eq!(usd.peak.cache_read_per_million, 0.006);
-        assert_eq!(usd.off_peak.input_per_million, 0.15);
-        assert_eq!(usd.off_peak.output_per_million, 0.6);
-        assert_eq!(usd.off_peak.cache_read_per_million, 0.003);
-
-        // DeepSeek 不单独收取缓存写入费用。
-        for price in [cny.peak, cny.off_peak, usd.peak, usd.off_peak] {
-            assert_eq!(price.cache_write_per_million, 0.0);
-        }
     }
 }
