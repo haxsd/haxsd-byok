@@ -2,77 +2,46 @@
 
 # haxsd byok
 
-让 Cursor 和 Devin 使用你配置的模型 API，在本机管理模型、接入状态与调用记录。
+让 Cursor 和 Devin 使用你配置的模型 API：本机模型网关，含模型库、接入状态与调用记录。
 
-[下载 Windows 安装包](https://github.com/haxsd/haxsd-byok/releases/latest) · [上手与升级](./docs/user-guide.md) · [Devin 接入](./docs/devin-go-live.md) · [故障排查](./docs/troubleshooting.md) · [English](./README-EN.md)
+[下载 Windows 安装包](https://github.com/haxsd/haxsd-byok/releases/latest) · [用户指南](./docs/user-guide.md) · [Devin 接入](./docs/devin-go-live.md) · [故障排查](./docs/troubleshooting.md) · [English](./README-EN.md)
 
 </div>
 
 ## 能做什么
 
-| 功能 | 说明 |
-| --- | --- |
-| 模型库 | 配置地址、API Key 和模型 ID；支持 OpenAI Chat / Responses、Anthropic，新增、复制、排序与连接测试 |
-| Cursor 接入 | 三种模型来源：**官方**（不介入，Cursor 直连）、**本地**（只用模型库，不在库里的模型明确拒绝）、**混合**（官方模型与本机模型同时可用）；含本机代理、本地 CA 与接管状态 |
-| Devin 接入 | 可选本机网关，模型 UID 绑定、手动候选路由，以及有校验和备份的宿主补丁 |
-| 调用观测 | 查看调用成败、耗时、Token 用量；按设置记录请求与响应详情 |
-| 价值估算 | 可编辑的固定或高峰/低谷单价；人民币与美元价格分别保存 |
-| 桌面管理 | 简体中文 / English、多主题、托盘、应用内教程与签名更新 |
+- **模型库**：地址、API Key、模型 ID；OpenAI Chat / Responses 与 Anthropic；带连接测试。
+- **Cursor 接入**：官方 / 本地 / 混合三种模型来源，含本机代理、本地 CA 与接管状态。
+- **Devin 接入**：可选本机网关，模型绑定与宿主补丁。
+- **调用观测与价值估算**：调用成败、耗时、Token 用量，按参考单价估算金额。
+- **桌面管理**：中英双语、多主题、托盘、应用内教程与签名更新。
 
-```text
-Cursor → 本机代理与 CA ─┐
-                        ├→ 模型库 → 你配置的模型 API
-Devin  → 可选本机网关 ─┘        └→ 本地调用记录与统计
-```
+模型服务需要自备。Key 与设置保存在本机，请求发往你配置的服务商。
 
-模型服务需要自行提供。Key 和设置保存在本机，请求会发送到你配置的服务商。价值估算使用应用内参考单价，不等同于服务商账单。
+## 快速开始
 
-## 五分钟上手
+1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的安装包并安装。
+2. 在「模型」页添加地址、API Key 与模型 ID，选择协议，用「测试」确认可用。
+3. 用 Cursor：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。**开启本地或混合模式会结束正在运行的 Cursor，先保存工作**；想让官方模型与你的模型同时可用就选「混合」。
+4. 用 Devin：设置模型映射、启用网关并保存，重启应用后按 [Devin 接入](./docs/devin-go-live.md) 完成宿主侧。
 
-1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的 Windows 安装包并安装。
-2. 打开「模型」，添加地址、API Key 和模型 ID，选择正确协议。「测试」会发送一次真实模型请求。
-3. 使用 Cursor：初始化本地 CA，按提示完成信任，再在「Cursor」页选择模型来源。**先保存工作：开启本地或混合模式会结束正在运行的 Cursor 进程，需要手动重新打开。** 想让官方模型和你的模型同时可用，选「混合」，并在 Cursor 里登录你自己的账号。
-4. 使用 Devin：设置模型映射、启用网关并保存，重启 haxsd byok，再按 [Devin 手册](./docs/devin-go-live.md) 接入宿主并重启 Devin。
-5. 在客户端发起对话，到「调用」页确认记录、模型和结果。只使用一个客户端时，另一个模块无需配置。
-
-详细地址填写、升级、备份和恢复步骤见 [用户指南](./docs/user-guide.md)。
+地址填写、升级、备份与恢复的完整步骤见 [用户指南](./docs/user-guide.md)。
 
 ## 下载与升级
 
-正式发布目前提供 **Windows x64 NSIS 安装包**。其他平台有源码与 CI 检查，Releases 尚未提供 macOS / Linux 安装包。
+- 目前提供 **Windows x64 安装包**（NSIS）；应用内可在「系统设置 → 软件更新」检查并安装。
+- 更新包来自本仓库，用本产品独立的 Tauri 更新签名校验；它不等同于 Windows 代码签名，SmartScreen 可能提示来源，选择「更多信息 → 仍要运行」即可。
+- 数据目录为 `%USERPROFILE%\.haxsd-byok-devin-v3`，含数据库、证书与运行数据。API Key 存在本地数据库里，备份请按敏感文件保管。
 
-- 应用内：在「系统设置 → 软件更新」检查并安装。
-- 手动升级：退出应用，再运行新版安装包。安装器复用原有安装位置，数据保存在独立目录。
-- 更新来自本仓库，使用本产品独立的 Tauri 更新签名。
-- 更新签名用于校验更新包，不等同于 Windows Authenticode 代码签名：本项目是个人项目，没有购买代码签名证书（上游项目同样未签名），Windows 仍可能显示来源提示。
-  - SmartScreen 提示「Windows 已保护你的电脑」：点「更多信息」→「仍要运行」。
-  - 若系统开着 **Smart App Control**（设置 → 隐私和安全性 → Windows 安全中心 → 应用和浏览器控制），未签名安装包会被直接拦下、且没有「仍要运行」可点：先在 Smart App Control 设置里关掉它，再安装或更新（关掉是单向的，要重置系统才能重新开启）。
+## 使用边界
 
-**1.1.0 里程碑**（把 1.0.22 起的改动一起送达）：
+- 本地与混合模式会改写 Cursor 的代理配置，切换模式需要重启 Cursor；官方模式不写配置，也不产生调用记录。
+- 本地模式只认识模型库里的模型，不在库里的会被明确拒绝，不会静默走官方。
+- Devin 默认关闭，只监听 `127.0.0.1`；改动端口后需重启应用并重新应用宿主补丁。
+- 本产品与 [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok) 使用不同的数据目录、标识与更新渠道。
 
-- **压窗（上下文压缩）重做**：压完不再只剩一条摘要，而是保留「短硬状态摘要 + 最近几轮原文」，原文按完整轮次逐字保留，合计约占窗口 20%，所以压完还能接着改同一个文件、不丢刚验证过的约束。
-- **压窗兜底**：上游若仍以「超出窗口」拒绝，会自动改用「只留摘要」再发一次（旧版发出去的形状）——**最坏情况与旧版一致**，不会让这一轮失败；摘要调用失败时写入一条说明并保留近轮原文，不再贴被截断的 JSON。
-- **DeepSeek 等 OpenAI Chat 的 400**（1.0.22）：历史里「只有推理、没有正文也没有工具调用」的助手轮、以及空的 Parts 正文，组装请求时不再发出。
-- 触发时机（窗口用满 90%，或上游返回超限错误）、短会话 `/summarize`、没有配置窗口的模型，行为都与旧版一致；老会话无需处理，升级后可直接续用。[1.1.0 发布说明](https://github.com/haxsd/haxsd-byok/releases/tag/haxsd-byok-v1.1.0)
+## 反馈与许可
 
-## 使用边界与数据
+遇到问题先看 [故障排查](./docs/troubleshooting.md)，再提 [Issue](https://github.com/haxsd/haxsd-byok/issues)。请提供版本与出错步骤，不要上传 API Key、CA 私钥或整个数据库。
 
-- 本地与混合模式期间保持应用运行，这两种模式会改写 Cursor 的代理配置；进出「官方」模式都需要重启 Cursor。官方模式不写配置、不注入账号，也不产生调用记录与压窗。
-- 「Cursor」页显示当前模式、客户端实际登录的账号与官方模型目录的抓取状态（失败原因会写在那里，例如 401 表示需要重新登录）。
-- 压窗（上下文压缩）只作用于由本机模型回答的请求；官方模型的上下文由 Cursor 自己管理。
-- 本地模式只认识模型库里的模型；不在库里的模型会被明确拒绝，不会静默走官方。
-- Devin 默认关闭，仅监听 `127.0.0.1`，默认端口为 `43110/43111/43112`。修改端口后需重启应用并重新应用宿主补丁。
-- Devin 候选路由由用户手动切换，失败时不会自动换路由。宿主补丁只接受可识别版本，客户端升级后需重新检查。
-- 默认数据目录为 `%USERPROFILE%\.haxsd-byok-devin-v3`，含数据库、证书与运行数据。API Key 保存在本地数据库中，备份也应按敏感文件保管。
-- 请求与响应详情、闲置会话运行状态有保留期限，累计用量统计保留。[数据保留规则](./docs/user-guide.md#记录与数据保留)
-- 本产品与 [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok) 使用不同的数据、标识与更新渠道。
-
-## 开发与反馈
-
-结构、构建、验证范围和发布步骤见 [开发指南](./docs/development.md)；协议与验证证据见 [Devin 集成说明](./docs/devin-integration.md)。
-
-遇到问题先看 [故障排查](./docs/troubleshooting.md)，再提交 [Issue](https://github.com/haxsd/haxsd-byok/issues)。提供版本、出错步骤和脱敏错误信息，不要上传 API Key、CA 私钥或整个数据库。
-
-## 致谢与许可
-
-基于 [leookun/cursor-byok](https://github.com/leookun/cursor-byok)，沿用 [MIT 许可证](./LICENSE)。感谢上游作者与贡献者。本产品加入独立发布与更新、Devin 接入、分时估算和界面调整，并移除广告入口。上游文档可作背景参考，使用本产品请以这里的指南与应用内教程为准。
+基于 [leookun/cursor-byok](https://github.com/leookun/cursor-byok)，沿用 [MIT 许可证](./LICENSE)。
