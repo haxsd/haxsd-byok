@@ -6,6 +6,8 @@
 
 ```text
 apps/desktop/
+├─ plugins/             # Vite 本地化转换及 Monaco 消毒器依赖解析
+├─ tests/               # 前端行为与实际打包路径回归
 ├─ src/                 # React 界面、API 调用、状态与教程
 └─ src-tauri/           # 桌面启动、托盘、更新、服务生命周期
 server/
@@ -26,7 +28,7 @@ crates/semble-core/     # 代码索引与搜索
 
 ## 构建与验证
 
-需要 Node.js 22 或更新的兼容版本、Rust stable 及 [Tauri 平台依赖](https://v2.tauri.app/start/prerequisites/)。Windows 正式构建使用 MSVC 与 WebView2。
+需要 Node.js 22.12 或更新的兼容版本、Rust stable 及 [Tauri 平台依赖](https://v2.tauri.app/start/prerequisites/)。Windows 正式构建使用 MSVC 与 WebView2。
 
 ```bash
 npm --prefix apps/desktop ci
@@ -37,7 +39,9 @@ cargo test --workspace --all-targets
 npm --prefix apps/desktop run tauri:build -- --bundles nsis
 ```
 
-本机 Windows 桌面单元测试存在加载器问题，见 [调查记录](./troubleshooting.md)。该环境可运行 `cargo test --locked --workspace --exclude haxsd-byok-desktop`，结合桌面构建、实际启动与平台 CI；这不代表桌面单元测试已经运行。Windows CI 桌面测试由 `RUN_DESKTOP_UNIT_TESTS` 控制。
+Windows 正式构建和本地测试均使用 MSVC 工具链；Windows CI 默认执行桌面单元测试。GNU 工具链出现原生依赖链接或加载器错误时，应区分环境问题与代码失败，不能以排除桌面后的检查代替桌面验证。
+
+Monaco 当前版本内置一份 DOMPurify 源码。两个 Vite 配置通过 `plugins/monaco-dompurify-plugin.ts` 将该内部导入统一解析到项目锁定的 DOMPurify；开发模式将 Monaco（含子路径导入）排除在依赖预打包外，并处理导入路径上的版本查询参数，避免绕过解析规则。仅更新 npm override 不会替换内置源码。`npm run test` 会检查开发配置与版本化导入，并实际构建 Monaco 消毒入口检查版本。升级 Monaco 或 DOMPurify 时，同步核对这条解析路径与测试。
 
 Windows 检出保持 LF，避免 CRLF 改变提示词前缀。可设置 `git config core.autocrlf false` 与 `git config core.eol lf`；不要为了改行尾覆盖工作区修改。
 

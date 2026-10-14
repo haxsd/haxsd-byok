@@ -118,13 +118,9 @@ jobs:
       - name: Run platform Clippy
         run: cargo clippy --package haxsd-byok-desktop --all-targets -- -D warnings
 
-      # The developer's Windows GNU toolchain cannot load this test binary
-      # (`0xc0000139`); that was traced to the local MCF runtime rather than to
-      # the code, because the same binary runs here on MSVC. This step is the
-      # gate that keeps the desktop unit tests covered, and it stays skippable so
-      # a red job always means a regression instead of a missing variable.
+      # Windows exercises the shipped native authorization and lifecycle code.
       - name: Run the desktop unit tests on MSVC
-        if: matrix.os == 'windows-latest' && vars.RUN_DESKTOP_UNIT_TESTS == 'true'
+        if: matrix.os == 'windows-latest'
         run: cargo test --package haxsd-byok-desktop --lib
 
   records-guard:

@@ -122,14 +122,15 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 （CI 运行 `35567454874`，`Desktop Rust (windows-latest)` 的
 「Run the desktop unit tests on MSVC」步骤。）
 
-所以不需要为它换本地工具链：CI 已经用 MSVC 覆盖了这个测试，工作流里那一步就是门禁，
-默认由仓库变量 `RUN_DESKTOP_UNIT_TESTS=true` 打开。
+Windows 桌面单元测试现已在 CI 中默认执行，不再依赖仓库变量启用。检查具体版本时仍应核对该步骤实际执行结果，不能把编译检查或被跳过的测试视为通过。
 
 ### 处理
 
-- 质量闸门用 `cargo test --workspace --exclude haxsd-byok-desktop`；`cargo fmt`、
-  `cargo clippy --workspace --all-targets -- -D warnings`、`cargo check` 均不受影响。
-- 桌面侧改动靠 `cargo check -p haxsd-byok-desktop` 与 `npm --prefix apps/desktop run check`
-  覆盖，二者都通过；这个测试二进制的实际运行由 CI 的 MSVC 步骤负责。
-- 本机若想自己跑一遍，需要换 MSVC 目标工具链（`stable-x86_64-pc-windows-msvc`），
-  它不依赖 MCF 运行时；但既然 CI 已覆盖，这只是可选。
+- Windows 开发与验证使用 MSVC 工具链及对应的 Visual Studio Build Tools。已经安装该工具链时，可显式运行：
+
+```powershell
+cargo +stable-x86_64-pc-windows-msvc test --locked --workspace --all-targets
+```
+
+- GNU 环境的原生依赖错误应单独定位；排除桌面后的测试只能证明被执行的部分，不能代替桌面测试。
+- 前端验证运行 `npm --prefix apps/desktop run check`，包含类型检查、行为测试与生产构建。
