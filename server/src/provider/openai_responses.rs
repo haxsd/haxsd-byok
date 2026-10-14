@@ -69,9 +69,10 @@ impl Provider for OpenAiResponsesProvider {
         let outbound = self.outbound.clone();
         let config = self.config.clone();
         let recorder = self.recorder.clone();
+        let owner = replay_owner(&config.request_url, &invocation.request.model.model_id);
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
-            let input = responses_input(&request.history)?;
+            let input = responses_input(&request.history, &owner)?;
             let mut body = json!({
                 "model": request.model.model_id, "input": input, "stream": true,
                 "instructions": request.prompt.instructions,
@@ -232,7 +233,10 @@ impl Provider for OpenAiResponsesProvider {
                             yield ModelEvent::ProviderReplayState(
                                 crate::model::ProviderReplayState {
                                     provider_kind: "openai_responses".into(),
-                                    value: json!({"items": std::mem::take(&mut reasoning_items)}),
+                                    value: json!({
+                                        "items": std::mem::take(&mut reasoning_items),
+                                        "owner": owner.clone(),
+                                    }),
                                 },
                             );
                         }
@@ -261,7 +265,10 @@ impl Provider for OpenAiResponsesProvider {
                 if !reasoning_items.is_empty() {
                     yield ModelEvent::ProviderReplayState(crate::model::ProviderReplayState {
                         provider_kind: "openai_responses".into(),
-                        value: json!({"items": std::mem::take(&mut reasoning_items)}),
+                        value: json!({
+                            "items": std::mem::take(&mut reasoning_items),
+                            "owner": owner,
+                        }),
                     });
                 }
                 yield ModelEvent::Done(if saw_tool { FinishReason::ToolUse } else { FinishReason::Stop });
@@ -439,7 +446,20 @@ fn responses_tools(tools: &[ToolDefinition]) -> Value {
         .collect::<Vec<_>>())
 }
 
-fn responses_input(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
+/// 回放状态的归属：只有产出它的那套上游 + 那个模型才认这些推理密文。
+///
+/// 用 origin（scheme + 主机 + 端口）而不是完整 URL：路径微调不该让历史推理失效，
+/// 换主机（另一台同协议的服务）则必须失效——密文对生成它的上游有效，解不开就会让
+/// 上游以 `The encrypted content ... could not be verified` 拒掉整轮请求。
+fn replay_owner(request_url: &str, model_id: &str) -> Value {
+    let upstream = reqwest::Url::parse(request_url)
+        .ok()
+        .map(|url| url.origin().ascii_serialization())
+        .unwrap_or_else(|| request_url.to_owned());
+    json!({ "upstream": upstream, "model": model_id })
+}
+
+fn responses_input(messages: &[ProjectedMessage], owner: &Value) -> Result<Vec<Value>> {
     let mut input = Vec::new();
     for message in messages {
         match &message.content {
@@ -467,6 +487,15 @@ fn responses_input(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
                 if let Some(state) = replay_state
                     .as_ref()
                     .filter(|state| state.provider_kind == "openai_responses")
+                    .filter(|state| {
+                        let matches = state.value.get("owner") == Some(owner);
+                        if !matches {
+                            tracing::debug!(
+                                "dropping reasoning replay state: it belongs to another upstream or model"
+                            );
+                        }
+                        matches
+                    })
                 {
                     let items = state
                         .value
@@ -652,6 +681,76 @@ mod tests {
     }
 
     #[test]
+    fn replay_state_is_only_replayed_to_the_upstream_that_produced_it() {
+        let owner = json!({"upstream": "https://api.openai.com", "model": "gpt-5.1"});
+        let messages = [ProjectedMessage {
+            message_id: "assistant-1".into(),
+            role: Role::Assistant,
+            content: ProjectedContent::Assistant {
+                text: "done".into(),
+                thinking: String::new(),
+                replay_state: Some(ProviderReplayState {
+                    provider_kind: "openai_responses".into(),
+                    value: json!({
+                        "items": [{
+                            "type": "reasoning",
+                            "id": "item-1",
+                            "summary": [{"type": "summary_text", "text": "why"}],
+                            "content": [],
+                            "encrypted_content": "opaque"
+                        }],
+                        "owner": owner
+                    }),
+                }),
+                calls: Vec::new(),
+            },
+        }];
+
+        // 同一套上游 + 同一个模型：密文可用，照常回放。
+        let same = responses_input(&messages, &owner).unwrap();
+        assert!(
+            same.iter().any(|item| item["type"] == json!("reasoning")),
+            "{same:?}"
+        );
+
+        // 换了上游（另一台同协议的服务）：密文解不开，只保留正文，不回放推理项。
+        let elsewhere =
+            json!({"upstream": "https://api.deepseek.com", "model": "deepseek-reasoner"});
+        let moved = responses_input(&messages, &elsewhere).unwrap();
+        assert!(
+            !moved.iter().any(|item| item["type"] == json!("reasoning")),
+            "跨上游回放时推理项必须被丢掉：{moved:?}"
+        );
+        let moved_text = serde_json::to_string(&moved).unwrap();
+        assert!(
+            moved_text.contains("done"),
+            "正文必须照常带上：{moved_text}"
+        );
+
+        // 旧数据没有归属（本次改动之前写下的回放状态）：按不匹配处理，宁可少带推理。
+        let legacy = responses_input(
+            &[ProjectedMessage {
+                content: ProjectedContent::Assistant {
+                    text: "done".into(),
+                    thinking: String::new(),
+                    replay_state: Some(ProviderReplayState {
+                        provider_kind: "openai_responses".into(),
+                        value: json!({"items": [{"type": "reasoning", "id": "item-1"}]}),
+                    }),
+                    calls: Vec::new(),
+                },
+                ..messages[0].clone()
+            }],
+            &owner,
+        )
+        .unwrap();
+        assert!(
+            !legacy.iter().any(|item| item["type"] == json!("reasoning")),
+            "没有归属的回放状态必须被丢掉：{legacy:?}"
+        );
+    }
+
+    #[test]
     fn non_integral_length_keywords_are_left_alone() {
         let schema = json!({ "maxLength": 2.5 });
         assert_eq!(normalize_schema_integers(&schema), schema);
@@ -659,6 +758,7 @@ mod tests {
 
     #[test]
     fn reasoning_replay_projects_response_items_to_valid_input_items() {
+        let owner = json!({"upstream": "https://api.openai.com", "model": "gpt-5.1"});
         let messages = [ProjectedMessage {
             message_id: "assistant-1".into(),
             role: Role::Assistant,
@@ -676,7 +776,8 @@ mod tests {
                             "content": [],
                             "encrypted_content": "opaque",
                             "output_only": true
-                        }]
+                        }],
+                        "owner": owner
                     }),
                 }),
                 calls: Vec::new(),
@@ -684,7 +785,7 @@ mod tests {
         }];
 
         assert_eq!(
-            responses_input(&messages).unwrap(),
+            responses_input(&messages, &owner).unwrap(),
             vec![json!({
                 "type": "reasoning",
                 "id": "item-1",

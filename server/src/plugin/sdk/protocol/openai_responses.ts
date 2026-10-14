@@ -48,7 +48,33 @@ function contentParts(parts: LlmContentPart[], textType: "input_text" | "output_
   return content;
 }
 
-function replayItems(value: JsonValue): JsonValue[] {
+/**
+ * 回放状态的归属:只有产出它的那套上游 + 那个模型才认这些推理密文。
+ *
+ * 用 origin(scheme + 主机 + 端口):路径微调不该让历史推理失效,换主机(另一台同协议的
+ * 服务)则必须失效——密文对生成它的上游有效,解不开会让上游以
+ * `The encrypted content ... could not be verified` 拒掉整轮请求。
+ */
+export function replayOwner(url: string, model: string): JsonValue {
+  let upstream = url;
+  try {
+    upstream = new URL(url).origin;
+  } catch {
+    // 不是绝对 URL 时退回原样比较。
+  }
+  return { upstream, model } as JsonValue;
+}
+
+function sameOwner(stored: unknown, owner: JsonValue): boolean {
+  const source = record(stored);
+  const current = record(owner);
+  return source !== null && current !== null
+    && source.upstream === current.upstream
+    && source.model === current.model;
+}
+
+function replayItems(value: JsonValue, owner: JsonValue): JsonValue[] {
+  if (!sameOwner(record(value)?.owner, owner)) return [];
   const items = record(value)?.items;
   if (!Array.isArray(items)) {
     throw new Error("OpenAI Responses replay state is missing items");
@@ -68,10 +94,11 @@ function replayItems(value: JsonValue): JsonValue[] {
 
 export function buildResponsesBody(call: OpenAiResponsesCall): Record<string, JsonValue> {
   const input: JsonValue[] = [];
+  const owner = replayOwner(call.url, call.model);
   for (const message of call.request.messages) {
     if (message.role === "assistant") {
       if (message.replayState?.providerKind === REPLAY_KIND) {
-        input.push(...replayItems(message.replayState.value));
+        input.push(...replayItems(message.replayState.value, owner));
       }
       if (message.text) {
         input.push({
@@ -288,7 +315,11 @@ export async function streamOpenAiResponses(
   };
   const emitReplayState = () => {
     if (reasoningItems.length > 0) {
-      output.emit({ type: "replay-state", providerKind: REPLAY_KIND, value: { items: reasoningItems.slice() } });
+      output.emit({
+        type: "replay-state",
+        providerKind: REPLAY_KIND,
+        value: { items: reasoningItems.slice(), owner: replayOwner(call.url, call.model) },
+      });
       reasoningItems.length = 0;
     }
   };
