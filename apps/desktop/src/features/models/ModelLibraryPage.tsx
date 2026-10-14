@@ -270,17 +270,21 @@ export function ModelLibraryPage() {
     }
   }, [message]);
 
-  const list = offline && models.length === 0
-    ? <ServiceOfflineState />
-    : query && visibleModels.length === 0 && visiblePluginModels.length === 0
-    ? <EmptyState
-      icon={providerIcon}
-      title={t("没有匹配的模型")}
-      description={t("换个关键词，或清除搜索框。")}
-      actions={<button type="button" className={controls.secondary} onClick={() => setSearch("")}>{t("清除筛选")}</button>}
-    />
-    : <LegacyModelImport>{({ busy: importingLegacyModels, previewing, open }) =>
-      models.length === 0 && pluginModels.length === 0
+  const estimatedListViewport = grouping === "flat" ? Math.ceil(models.length / 3) * 210 + 260 : 420;
+
+  // 旧版模型配置的导入入口只有一个实例：页面动作区按钮和确认对话框都来自它。
+  // 模型库已经装了模型时这条入口同样可用——旧配置里常有几个只在旧版里存在的地址。
+  return <LegacyModelImport>{({ busy: importingLegacyModels, previewing, open }) => {
+    const list = offline && models.length === 0
+      ? <ServiceOfflineState />
+      : query && visibleModels.length === 0 && visiblePluginModels.length === 0
+      ? <EmptyState
+        icon={providerIcon}
+        title={t("没有匹配的模型")}
+        description={t("换个关键词，或清除搜索框。")}
+        actions={<button type="button" className={controls.secondary} onClick={() => setSearch("")}>{t("清除筛选")}</button>}
+      />
+      : models.length === 0 && pluginModels.length === 0
         ? <EmptyState
           icon={providerIcon}
           title={t("模型库还是空的")}
@@ -292,7 +296,6 @@ export function ModelLibraryPage() {
           ]}
           actions={<>
             <button type="button" className={controls.primary} disabled={cursorBusy || importingLegacyModels} onClick={openNew}>{t("添加模型")}</button>
-            <button type="button" className={controls.secondary} disabled={cursorBusy || importingLegacyModels} onClick={open}>{previewing ? t("读取中…") : t("导入旧版配置")}</button>
             <button type="button" className={controls.secondary} onClick={() => void navigate("/tutorial")}>{t("先看使用教程")}</button>
           </>}
         />
@@ -312,82 +315,83 @@ export function ModelLibraryPage() {
           onPluginSettings={() => void navigate("/plugins")}
           onReorder={reorderModels}
           onGroupSettings={openGroupSettings}
+        />;
+
+    const content = <div className={styles.page}>
+      <Card className={styles.modelToolbar}>
+        <SearchInput
+          className={styles.modelSearch}
+          value={search}
+          onValueChange={setSearch}
+          ariaLabel={t("搜索模型")}
+          placeholder={t("搜模型名称、ID 或地址…")}
         />
-    }</LegacyModelImport>;
-
-  const estimatedListViewport = grouping === "flat" ? Math.ceil(models.length / 3) * 210 + 260 : 420;
-
-  const content = <div className={styles.page}>
-    <Card className={styles.modelToolbar}>
-      <SearchInput
-        className={styles.modelSearch}
-        value={search}
-        onValueChange={setSearch}
-        ariaLabel={t("搜索模型")}
-        placeholder={t("搜模型名称、ID 或地址…")}
-      />
-      <Segmented
-        ariaLabel={t("模型分组方式")}
-        value={grouping}
-        options={[
-          { value: "flat", label: t("默认平铺") },
-          ...(canGroupByProvider ? [{ value: "provider" as CursorModelGrouping, label: t("按供应商") }] : []),
-          ...(canGroupByType ? [{ value: "type" as CursorModelGrouping, label: t("按类型") }] : []),
-        ]}
-        onChange={setGrouping}
-      />
-      <span className={toolbar.spacer} />
-      <button
-        type="button"
-        className={styles.batchTest}
-        disabled={cursorBusy || (!batchTesting && testingModelHashes.size > 0)}
-        onClick={() => void (batchTesting ? cancelAllModelTests() : testAllModels())}
-      >
-        <Icon icon={playIcon} size="1.05em" />
-        {batchTesting ? t("取消全部测试") : t("一键测试")}
-      </button>
-    </Card>
-    {models.length > 0 && <div className={toolbar.facts}>
-      <Fact label={t("模型")} value={String(models.length)} />
-      <Fact label={t("供应商")} value={String(providerGroups.length)} />
-      <Fact label={t("插件模型")} value={String(pluginModels.length)} />
-      <Fact label={t("测试通过")} value={String(testedOk)} tone={testedOk > 0 ? "ok" : "none"} />
-      <Fact label={t("测试失败")} value={String(testedFailed)} tone={testedFailed > 0 ? "bad" : "none"} />
-    </div>}
-    {list}
-  </div>;
-
-  return <>
-    <PageActions>
-      <button type="button" className={styles.addModel} disabled={cursorBusy} onClick={openNew}>
-        <Icon icon={addIcon} size="1.05em" />{t("添加模型")}
-      </button>
-    </PageActions>
-    <PageContent
-      title={<PageTitle
-        title={t("模型库")}
-        meta={t("Cursor 与 Devin 共用同一份模型配置")}
-      />}
-      sections={[{ key: "model-library", estimatedHeight: Math.max(360, estimatedListViewport), content }]}
-    />
-    <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting(editing, testingModelHashes) || (editing && modelTestResults.get(editing.model_hash))) ? <CursorModelTestResult state={editing ? modelTestResults.get(editing.model_hash) : undefined} testing={editorTesting(editing, testingModelHashes)} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting(editing, testingModelHashes)) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editing && editorTesting(editing, testingModelHashes) ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editing && editorTesting(editing, testingModelHashes) ? t("取消测试") : t("保存并测试")}</button>}>
-      {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} hasStoredKey={editing !== null} onChange={setDraft} onDiscover={discover} />}
-    </Modal>
-    <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
-      {settingsGroup && <div className={styles.editor}>
-        <FormField label={t("分组名称")} hint={t("应用于该分组下的全部模型，并作为模型选择器中的徽章标签；清空则恢复显示服务器域名。")}>
-          <TextInput placeholder={settingsGroup.key} value={groupNameDraft} onChange={(event) => setGroupNameDraft(event.target.value)} />
-        </FormField>
-        <FormField label={t("服务器地址")} hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
-          <TextInput placeholder={t("留空保持不变")} value={groupBaseUrlDraft} onChange={(event) => setGroupBaseUrlDraft(event.target.value)} />
-        </FormField>
-        <FormField label="API Key" hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
-          <SecretTextInput placeholder={t("留空保持不变")} autoComplete="off" value={groupApiKeyDraft} onChange={(event) => setGroupApiKeyDraft(event.target.value)} />
-        </FormField>
+        <Segmented
+          ariaLabel={t("模型分组方式")}
+          value={grouping}
+          options={[
+            { value: "flat", label: t("默认平铺") },
+            ...(canGroupByProvider ? [{ value: "provider" as CursorModelGrouping, label: t("按供应商") }] : []),
+            ...(canGroupByType ? [{ value: "type" as CursorModelGrouping, label: t("按类型") }] : []),
+          ]}
+          onChange={setGrouping}
+        />
+        <span className={toolbar.spacer} />
+        <button
+          type="button"
+          className={styles.batchTest}
+          disabled={cursorBusy || (!batchTesting && testingModelHashes.size > 0)}
+          onClick={() => void (batchTesting ? cancelAllModelTests() : testAllModels())}
+        >
+          <Icon icon={playIcon} size="1.05em" />
+          {batchTesting ? t("取消全部测试") : t("一键测试")}
+        </button>
+      </Card>
+      {models.length > 0 && <div className={toolbar.facts}>
+        <Fact label={t("模型")} value={String(models.length)} />
+        <Fact label={t("供应商")} value={String(providerGroups.length)} />
+        <Fact label={t("插件模型")} value={String(pluginModels.length)} />
+        <Fact label={t("测试通过")} value={String(testedOk)} tone={testedOk > 0 ? "ok" : "none"} />
+        <Fact label={t("测试失败")} value={String(testedFailed)} tone={testedFailed > 0 ? "bad" : "none"} />
       </div>}
-    </Modal>
-    <ConfirmDialog open={deleting !== null} title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void appStore.deleteModel(deleting.model_hash); setDeleting(null); }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
-  </>;
+      {list}
+    </div>;
+
+    return <>
+      <PageActions>
+        <button type="button" className={styles.importLegacy} disabled={cursorBusy || importingLegacyModels} onClick={open}>
+          {previewing ? t("读取中…") : t("导入旧版配置")}
+        </button>
+        <button type="button" className={styles.addModel} disabled={cursorBusy} onClick={openNew}>
+          <Icon icon={addIcon} size="1.05em" />{t("添加模型")}
+        </button>
+      </PageActions>
+      <PageContent
+        title={<PageTitle
+          title={t("模型库")}
+          meta={t("Cursor 与 Devin 共用同一份模型配置")}
+        />}
+        sections={[{ key: "model-library", estimatedHeight: Math.max(360, estimatedListViewport), content }]}
+      />
+      <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting(editing, testingModelHashes) || (editing && modelTestResults.get(editing.model_hash))) ? <CursorModelTestResult state={editing ? modelTestResults.get(editing.model_hash) : undefined} testing={editorTesting(editing, testingModelHashes)} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting(editing, testingModelHashes)) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editing && editorTesting(editing, testingModelHashes) ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editing && editorTesting(editing, testingModelHashes) ? t("取消测试") : t("保存并测试")}</button>}>
+        {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} hasStoredKey={editing !== null} onChange={setDraft} onDiscover={discover} />}
+      </Modal>
+      <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
+        {settingsGroup && <div className={styles.editor}>
+          <FormField label={t("分组名称")} hint={t("应用于该分组下的全部模型，并作为模型选择器中的徽章标签；清空则恢复显示服务器域名。")}>
+            <TextInput placeholder={settingsGroup.key} value={groupNameDraft} onChange={(event) => setGroupNameDraft(event.target.value)} />
+          </FormField>
+          <FormField label={t("服务器地址")} hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
+            <TextInput placeholder={t("留空保持不变")} value={groupBaseUrlDraft} onChange={(event) => setGroupBaseUrlDraft(event.target.value)} />
+          </FormField>
+          <FormField label="API Key" hint={t("修改后应用于该分组下的全部模型；留空保持各模型现有配置不变。")}>
+            <SecretTextInput placeholder={t("留空保持不变")} autoComplete="off" value={groupApiKeyDraft} onChange={(event) => setGroupApiKeyDraft(event.target.value)} />
+          </FormField>
+        </div>}
+      </Modal>
+      <ConfirmDialog open={deleting !== null} title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void appStore.deleteModel(deleting.model_hash); setDeleting(null); }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
+    </>;
+  }}</LegacyModelImport>;
 }
 
 function Fact({ label, value, tone = "none" }: { label: string; value: string; tone?: "none" | "ok" | "warn" | "bad" }) {

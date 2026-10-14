@@ -62,6 +62,19 @@
   gap: 6px;
 }
 
+/* 读取失败要留在卡片里：它解释的正是上面那两行的空值，重试按钮就在旁边。 */
+.error {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--oa-bad);
+  font-size: type.$font-size-xs;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 680px) {
   .row {
     align-items: stretch;

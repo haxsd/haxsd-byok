@@ -7,24 +7,34 @@ import { Select } from "../../shared/ui/Select";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import styles from "./TabSettingsCard.module.scss";
 
+/**
+ * TAB 补全的连接方式。
+ *
+ * 卡片永远展开：点「编辑」应该看到表单，而不是先展开一张折叠的卡片——折叠状态下
+ * 编辑出的草稿没有任何可见的落点。加载失败在卡内行内说明，重试就在旁边。
+ */
 export function TabSettingsCard({
   settings,
   draft,
   editing,
   saving,
+  error,
   onDraftChange,
   onEdit,
   onCancel,
   onSave,
+  onRetry,
 }: {
   settings: TabSettings | null;
   draft: TabSettings;
   editing: boolean;
   saving: boolean;
+  error: string | null;
   onDraftChange: (settings: TabSettings) => void;
   onEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
+  onRetry: () => void;
 }) {
   const modeLabel = (mode: TabMode) => {
     if (mode === "public") return t("使用公益服务");
@@ -41,10 +51,8 @@ export function TabSettingsCard({
   );
 
   return <TitledCard
-    title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{t("TAB 设置")}</span></div>}
+    title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{t("Tab 补全")}</span></div>}
     action={action}
-    collapsible
-    storageKey="settings-tab"
   >
     <div className={styles.content}>
       {editing ? <>
@@ -80,13 +88,17 @@ export function TabSettingsCard({
       </> : <>
         <div className={styles.row}>
           <strong>{t("TAB 选择")}</strong>
-          <span className={styles.value}>{settings ? modeLabel(settings.mode) : t("加载中…")}</span>
+          <span className={styles.value}>{settings ? modeLabel(settings.mode) : error ? t("读取失败") : t("加载中…")}</span>
         </div>
         {settings?.mode === "custom" && <div className={styles.row}>
           <strong>{t("TAB 服务地址")}</strong>
           <span className={styles.value}>{settings.address}</span>
         </div>}
       </>}
+      {error && <div className={styles.error} role="alert">
+        <span>{t("读取 TAB 设置失败：{error}", { error })}</span>
+        <Button size="small" onClick={onRetry}>{t("重试")}</Button>
+      </div>}
     </div>
   </TitledCard>;
 }

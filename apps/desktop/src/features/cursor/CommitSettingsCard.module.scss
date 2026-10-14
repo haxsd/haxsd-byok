@@ -51,6 +51,20 @@
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
+/* 读取失败留在卡片里，和上面那行的空值一起读。 */
+.error {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: var(--oa-space-3);
+  color: var(--oa-bad);
+  font-size: type.$font-size-xs;
+  overflow-wrap: anywhere;
+}
+
 .promptEditor {
   width: 100%;
   flex: 1;

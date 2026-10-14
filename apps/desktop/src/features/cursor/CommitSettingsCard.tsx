@@ -13,6 +13,12 @@ import controls from "../../shared/ui/Controls.module.scss";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 import styles from "./CommitSettingsCard.module.scss";
 
+/**
+ * 提交信息的生成模型与提示词。
+ *
+ * 卡片永远展开，读模式显示已保存的模型，编辑只改本地草稿；读取失败在卡内说明，
+ * 重试不必离开这一页。提示词编辑器仍然是独立弹窗：它要全高，不能挤在卡片里。
+ */
 export function CommitSettingsCard() {
   const { models, plugins } = useAppStore();
   const { locale } = useI18n();
@@ -21,6 +27,9 @@ export function CommitSettingsCard() {
   const [modelDraft, setModelDraft] = useState("");
   const [editing, setEditing] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  /** 递增即重新读取；失败后的「重试」不改任何草稿，只是再问一次服务端。 */
+  const [reloadToken, setReloadToken] = useState(0);
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [savingPrompt, setSavingPrompt] = useState(false);
@@ -41,15 +50,16 @@ export function CommitSettingsCard() {
         if (active) {
           setView(loaded);
           setModelDraft(loaded.model_id);
+          setLoadError(null);
         }
       } catch (cause) {
-        if (active) message.error(cause);
+        if (active) setLoadError(errorText(cause));
       }
     })();
     return () => {
       active = false;
     };
-  }, [locale, message]);
+  }, [locale, reloadToken]);
 
   const modelOptions = useMemo(() => {
     const options: ModelSelectOption[] = [{ value: "", label: t("直连"), group: "Cursor" }];
@@ -157,7 +167,7 @@ export function CommitSettingsCard() {
 
   const selectedModelLabel = modelOptions.find((option) => option.value === view?.model_id)?.label
     ?? view?.model_id
-    ?? t("加载中…");
+    ?? (loadError ? t("读取失败") : t("加载中…"));
   const action = editing ? (
     <div className={styles.actionGroup}>
       <Button size="small" disabled={savingModel} onClick={cancelModelEdit}>{t("取消")}</Button>
@@ -178,7 +188,7 @@ export function CommitSettingsCard() {
 
   return (
     <>
-      <TitledCard title={t("Commit 提交代码模型设置")} action={action} collapsible storageKey="settings-commit">
+      <TitledCard title={t("提交信息模型")} action={action}>
         <div className={styles.content}>
           <div className={styles.row}>
             <div className={styles.details}>
@@ -195,6 +205,10 @@ export function CommitSettingsCard() {
               />
             </div> : <span className={styles.value}>{selectedModelLabel}</span>}
           </div>
+          {loadError && <div className={styles.error} role="alert">
+            <span>{t("读取提交信息设置失败：{error}", { error: loadError })}</span>
+            <Button size="small" onClick={() => setReloadToken((current) => current + 1)}>{t("重试")}</Button>
+          </div>}
         </div>
       </TitledCard>
 
@@ -224,4 +238,8 @@ export function CommitSettingsCard() {
       </Modal>
     </>
   );
+}
+
+function errorText(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause);
 }

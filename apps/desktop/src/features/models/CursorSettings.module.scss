@@ -5,6 +5,14 @@
   gap: var(--oa-section-gap);
 }
 
+/* 接入与功能设置是同一页的两个分区：两个都挂着，只显示当前分区，草稿才不会丢。 */
+.section {
+  display: grid;
+  gap: var(--oa-section-gap);
+
+  &[hidden] { display: none; }
+}
+
 /* ---------- 模型库的工具条 ---------- */
 
 .modelToolbar {
@@ -20,8 +28,10 @@
   flex: 0 1 260px;
 }
 
-/* 批量测试不是主操作，但它是这个页面最常用的动作：所有模型的连通性一次问清。 */
+/* 批量测试不是主操作，但它是这个页面最常用的动作：所有模型的连通性一次问清。
+   导入旧版配置同理：它不是主操作，但模型库非空时也要能从页面动作区直接打开。 */
 .batchTest,
+.importLegacy,
 .addModel {
   display: inline-flex;
   align-items: center;
