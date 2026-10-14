@@ -157,11 +157,12 @@ pub struct ModelConfig {
 }
 
 impl ModelConfig {
-    /// 以这份配置为模板生成一份可写入的输入：只换显示名与排序，凭据原样沿用。
+    /// 以这份配置为模板生成一份可写入的输入：只换显示名与排序，其余字段（含凭据）原样沿用。
     ///
-    /// "复制模型"必须连凭据一起复制，而凭据不再回传前端，所以这个动作在服务端完成
-    /// （见 `Store::duplicate_model`）。
-    pub fn duplicate_input(&self, display_name: String, sort_order: i64) -> ModelConfigInput {
+    /// 两个用途：复制模型（凭据不随接口回传前端，复制只能在服务端做，见
+    /// `Store::duplicate_model`），以及还原一条已保存配置的内容指纹（去重只看
+    /// 内容，见 `model_fingerprint`）。
+    pub fn config_input(&self, display_name: String, sort_order: i64) -> ModelConfigInput {
         ModelConfigInput {
             sort_order,
             display_name,
@@ -317,7 +318,13 @@ pub fn normalize_model_input(input: &ModelConfigInput) -> Result<ModelConfigInpu
     Ok(normalized)
 }
 
-pub fn model_hash(input: &ModelConfigInput) -> Result<String> {
+/// 配置内容指纹：按配置内容算出，用于判断"同样的配置是否已经存在"（创建去重、旧配置导入跳过）。
+///
+/// 它**不是**模型身份。模型身份保存在 `model_configs.model_hash`，在创建时分配、
+/// 之后不随配置变化，Devin 绑定、提交消息设置与历史调用都按身份引用模型。
+/// 身份与指纹分开的原因：改了显示名或轮换凭据之后，已保存的引用必须继续有效，
+/// 而同一条"指纹曾是某模型身份"的配置要能作为新模型再建一份。
+pub fn model_fingerprint(input: &ModelConfigInput) -> Result<String> {
     let normalized = normalize_model_input(input)?;
     let request_url = resolve_request_url(
         normalized.model_type,

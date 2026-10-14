@@ -1,6 +1,6 @@
 //! Devin router settings and explicit host integration endpoints.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::{
@@ -57,8 +57,11 @@ pub struct HostPatchInput {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct HostRestoreInput {
-    pub receipt: PatchReceipt,
+    /// Omitted means "find the installation yourself".
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 /// A missing or blank path resolves the installation automatically, so the page
@@ -116,9 +119,32 @@ pub async fn host_apply(
     Ok(Json(host_patch::apply(&path, ports)?))
 }
 
+/// 恢复只用 apply 时落盘的原始收据：调用方（页面）拿不到、也不该拿收据，
+/// 进程重启后这一点尤其重要。收据缺失或被改动时拒绝并说明下一步。
 pub async fn host_restore(Json(input): Json<HostRestoreInput>) -> Result<Json<serde_json::Value>> {
-    host_patch::restore(&input.receipt)?;
+    let path = resolve_host_path(input.path.as_deref())?;
+    let status = host_status_module::status(&path)?;
+    let refusal = restore_refusal_message(&path, &status);
+    let receipt = status
+        .restore_receipt
+        .ok_or_else(|| Error::Config(refusal))?;
+    host_patch::restore(&receipt)?;
     Ok(Json(serde_json::json!({"restored": true})))
+}
+
+fn restore_refusal_message(path: &Path, status: &PatchStatus) -> String {
+    let hint = if status.patched {
+        format!(
+            "the clean file is kept at {}; restore it from there and apply again",
+            status.backup_path.display()
+        )
+    } else {
+        "nothing was patched through this app for it".into()
+    };
+    format!(
+        "no usable Devin host restore receipt for {} ({hint}); the file was left unchanged",
+        path.display()
+    )
 }
 
 /// A pasted path may be the host file itself or any directory of the installation.
@@ -149,6 +175,16 @@ fn explicit_path(value: &str) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn obsolete_restore_receipt_is_rejected_instead_of_selecting_another_host() {
+        assert!(
+            serde_json::from_value::<HostRestoreInput>(serde_json::json!({
+                "receipt": { "path": "D:/other-installation/extension.js" }
+            }))
+            .is_err()
+        );
+    }
 
     /// 安装目录是用户看得见、也最可能粘贴的东西；补上固定的相对路径比要求他
     /// 记住 `<install>\resources\app\...\extension.js` 更合理，文件路径本身也必须
@@ -185,5 +221,66 @@ mod tests {
     #[test]
     fn a_relative_path_is_refused() {
         assert!(explicit_path("Windsurf").is_err());
+    }
+
+    /// 恢复只凭宿主路径：页面持有的 apply 返回值在进程重启后就没了。
+    #[tokio::test]
+    async fn a_restore_request_needs_only_the_host_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = directory.path().join("extension.js");
+        std::fs::write(&host, host_patch::test_fixture::HOST_FILE).unwrap();
+        host_patch::apply(&host, host_patch::test_fixture::ports()).unwrap();
+
+        let input: HostRestoreInput =
+            serde_json::from_value(serde_json::json!({ "path": host.to_str().unwrap() }))
+                .expect("a restore request must be satisfiable with the host path alone");
+        let _ = host_restore(Json(input)).await.unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&host).unwrap(),
+            host_patch::test_fixture::HOST_FILE
+        );
+    }
+
+    /// 没有可用收据时拒绝恢复，并说明下一步，而不是从当前哈希猜造一份。
+    #[tokio::test]
+    async fn a_restore_request_without_a_usable_receipt_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = directory.path().join("extension.js");
+        std::fs::write(&host, host_patch::test_fixture::HOST_FILE).unwrap();
+
+        let input: HostRestoreInput =
+            serde_json::from_value(serde_json::json!({ "path": host.to_str().unwrap() })).unwrap();
+        let error = host_restore(Json(input)).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("receipt"),
+            "unexpected message: {error}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&host).unwrap(),
+            host_patch::test_fixture::HOST_FILE
+        );
+    }
+
+    /// 补丁之后被改过的宿主文件不能恢复，用户改动原样保留。
+    #[tokio::test]
+    async fn a_restore_request_refuses_a_host_file_changed_after_the_patch() {
+        let directory = tempfile::tempdir().unwrap();
+        let host = directory.path().join("extension.js");
+        std::fs::write(&host, host_patch::test_fixture::HOST_FILE).unwrap();
+        host_patch::apply(&host, host_patch::test_fixture::ports()).unwrap();
+        let edited = format!("{}// user edit\n", std::fs::read_to_string(&host).unwrap());
+        std::fs::write(&host, &edited).unwrap();
+
+        let input: HostRestoreInput =
+            serde_json::from_value(serde_json::json!({ "path": host.to_str().unwrap() })).unwrap();
+        let error = host_restore(Json(input)).await.unwrap_err();
+
+        assert!(
+            error.to_string().contains("receipt"),
+            "unexpected message: {error}"
+        );
+        assert_eq!(std::fs::read_to_string(&host).unwrap(), edited);
     }
 }

@@ -27,7 +27,7 @@ const DEFAULT_LOG_FILTER: &str = "haxsd_byok_desktop=info,cursor_server=info,tau
 /// 开发者模式下的过滤：自家两条线与本地代理都放开到 `debug`。
 ///
 /// 开关存在数据目录的 `dev-mode.json` 镜像里（数据库还没打开，只能读文件），
-/// 由设置页写、`store::set_desktop_settings` 落盘，改完重启生效。
+/// 由设置页写、`store::update_desktop_settings` 落盘，改完重启生效。
 const DEVELOPER_LOG_FILTER: &str = "haxsd_byok_desktop=debug,cursor_server=debug,hudsucker=debug,tauri_plugin_updater=info,hyper=warn,hyper_util=warn,rustls=warn,reqwest=warn,sqlx=warn";
 
 type BoxError = Box<dyn Error + Send + Sync>;

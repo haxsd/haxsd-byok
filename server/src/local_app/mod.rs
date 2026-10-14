@@ -18,7 +18,8 @@ use crate::{
     Error, Result,
 };
 
-use self::{ca::CaManager, proxy::ProxyRuntime};
+use self::proxy::ProxyRuntime;
+pub use ca::CaManager;
 
 pub use account::{AccountState, CursorAccount};
 pub use catalog_health::{CatalogHealth, CatalogHealthTracker};

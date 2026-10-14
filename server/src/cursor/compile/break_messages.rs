@@ -61,7 +61,7 @@ pub(crate) async fn compile_user_message_action(
         super::run::mode_from_proto(mode)?,
         user,
         action.request_context.as_ref().unwrap_or(&empty_context),
-        &action_context.join("\\n\\n"),
+        &action_context.join("\n\n"),
         compiler,
         blobs,
     )
@@ -410,5 +410,81 @@ impl Time {
             timestamp: format!("{} ({utc})", now.format("%A, %b %-d, %Y, %-I:%M %p")),
             today: now.format("%A %b %-d,\n%Y").to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{
+        cursor::{
+            prompting::PromptAssets,
+            services::observability::CursorTraceService,
+            transport::{OutputHub, TransportHandle},
+        },
+        store::Store,
+    };
+
+    #[tokio::test]
+    async fn runtime_user_context_preserves_paragraph_separators() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let traces = CursorTraceService::new(store.clone());
+        let (commands, _receiver) = tokio::sync::mpsc::channel(1);
+        let handle = TransportHandle::new(
+            "runtime-context".into(),
+            commands,
+            Arc::new(OutputHub::default()),
+            traces.recorder("runtime-context"),
+        );
+        let blobs = BlobSynchronizer::new("runtime-context".into(), store, handle);
+        let compiler = PromptCompiler::new(PromptAssets::embedded().unwrap());
+        let action = pb::UserMessageAction {
+            user_message: Some(pb::UserMessage {
+                message_id: "followup".into(),
+                text: "Continue the task.".into(),
+                mode: pb::AgentMode::Agent as i32,
+                subagent_system_reminder: Some("Third context paragraph.".into()),
+                ..Default::default()
+            }),
+            prepend_user_messages: vec![
+                pb::UserMessage {
+                    text: "First context paragraph.".into(),
+                    ..Default::default()
+                },
+                pb::UserMessage {
+                    text: "Second context paragraph.".into(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let message =
+            compile_user_message_action(&action, pb::AgentMode::Agent as i32, &compiler, &blobs)
+                .await
+                .unwrap();
+        let MessageContent::Parts { parts } = message.content else {
+            panic!("runtime message must contain text parts");
+        };
+        let text = parts
+            .iter()
+            .filter_map(|part| match part {
+                ContentPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert!(
+            text.contains(
+                "First context paragraph.\n\nSecond context paragraph.\n\nThird context paragraph."
+            ),
+            "{text}"
+        );
     }
 }

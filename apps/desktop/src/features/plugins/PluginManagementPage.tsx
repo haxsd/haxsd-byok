@@ -234,7 +234,6 @@ function PluginCard({ plugin, onOpen }: {
   onOpen: (pluginId: string, mode: "add" | "settings") => void;
 }) {
   const { locale } = useI18n();
-  const { ports } = useAppStore();
   const message = useMessage();
   const importInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -288,11 +287,9 @@ function PluginCard({ plugin, onOpen }: {
             label: t("批量导出"),
             onSelect: () =>
               void api.openExternalUrl(
-                api.pluginResourceExportUrl(
-                  ports.service_port,
-                  plugin.id,
-                  exportResource.type,
-                ),
+                // 导出地址与页面同源：已保存的服务端口是下次启动的期望值，
+                // 改完还没重启时它并不在监听。
+                api.pluginResourceExportUrl(plugin.id, exportResource.type),
               ),
           },
         ]

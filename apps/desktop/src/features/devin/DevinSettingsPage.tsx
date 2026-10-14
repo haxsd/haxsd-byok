@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DevinBindingKind, type DevinHostPatchReceipt, type DevinHostPatchStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
+import { api, type DevinBindingKind, type DevinHostPatchStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
 import { Combobox, Select } from "../../shared/ui/Select";
@@ -8,10 +8,10 @@ import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
 import { StatusHero } from "../../shared/ui/StatusHero";
-import type { PathStage } from "../../shared/ui/ConnectionPath";
 import { PageContent } from "../../shell/layout/PageContent";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
+import { devinConnectionView } from "./devinConnectionView";
 import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
@@ -100,7 +100,6 @@ export function DevinSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [hostPath, setHostPath] = useState(readHostPath);
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
-  const [hostReceipt, setHostReceipt] = useState<DevinHostPatchReceipt | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
   // Which mapping rows are showing their optional fields. Collapsed by default: the
   // page should read as two decisions per mapping, not as a form of five fields.
@@ -134,7 +133,8 @@ export function DevinSettingsPage() {
   }, [loading]);
 
   // 状态面板要回答"现在通没通"。端口是否在听只能由服务端回答：网关端口属于另一个源，
-  // 浏览器直接探测会被 CORS 拒绝，从而把健康的网关误报成"端口未监听"。
+  // 浏览器直接探测会被 CORS 拒绝，从而把健康的网关误报成"端口未监听"。监听状态跟着
+  // 已保存的开关走：草稿上的开关还没落库，不代表网关会跟着变。
   useEffect(() => {
     if (loading) return;
     let cancelled = false;
@@ -152,7 +152,7 @@ export function DevinSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [loading, settings.enabled]);
+  }, [loading, saved.enabled]);
 
   // 宿主路径不再要求用户填写：服务端自己找到安装位置，再回填到界面。
   //
@@ -241,8 +241,7 @@ export function DevinSettingsPage() {
   const applyHostPatch = async () => {
     try {
       setHostBusy(true);
-      const receipt = await api.applyDevinHostPatch(hostPath);
-      setHostReceipt(receipt);
+      await api.applyDevinHostPatch(hostPath);
       setHostStatus(await api.devinHostStatus(hostPath));
       message(t("Devin 宿主补丁已应用；重启 Devin 后生效"), { duration: 5_000 });
     } catch (cause) {
@@ -252,11 +251,10 @@ export function DevinSettingsPage() {
     }
   };
   const restoreHostPatch = async () => {
-    if (!hostReceipt) return;
+    if (!hostStatus?.restore_receipt) return;
     try {
       setHostBusy(true);
-      await api.restoreDevinHostPatch(hostReceipt);
-      setHostReceipt(null);
+      await api.restoreDevinHostPatch(hostStatus.path);
       setHostStatus(await api.devinHostStatus(hostPath));
       message(t("Devin 宿主文件已恢复"));
     } catch (cause) {
@@ -278,9 +276,16 @@ export function DevinSettingsPage() {
       setSaving(false);
     }
   };
-  const dirty = JSON.stringify(settings) !== JSON.stringify(saved);
-  const gatewayReady = settings.enabled && gatewayPortsUp === true;
-  const gatewaySummary = !settings.enabled ? t("未启用") : gatewayReady ? t("运行中") : gatewayPortsUp === null ? t("检查中…") : t("待重启");
+  // 接入状态只看已保存的配置与服务端报告的监听状态：草稿上的改动只让底部出现
+  // "有未保存的改动"，不能让状态面板声称某个开关已经生效。
+  const view = devinConnectionView({
+    draft: settings,
+    saved,
+    models,
+    hostStatus,
+    gatewayListening: gatewayPortsUp,
+    devinCalls,
+  });
 
   const modelOptions = models.map((model) => ({ value: model.model_hash, label: `${model.display_name} · ${model.model_hash.slice(0, 8)}` }));
   // 选择器显示 Devin 里的模型名，写回的仍是客户端随后会请求的标识。
@@ -290,112 +295,16 @@ export function DevinSettingsPage() {
     { value: "context_compression" as DevinBindingKind, label: t("上下文压缩") },
   ];
   const content = loading ? <div className={styles.loading}>{t("加载中…")}</div> : <div className={styles.page}>
-    {(() => {
-      const standard = settings.bindings.filter((binding) => binding.enabled && binding.kind !== "context_compression");
-      const compression = settings.bindings.filter((binding) => binding.enabled && binding.kind === "context_compression");
-      const activeBinding = standard[0] ?? null;
-      const activeHash = activeBinding
-        ? (activeBinding.active_route_id
-          ? activeBinding.routes.find((route) => route.route_id === activeBinding.active_route_id && route.enabled)?.model_hash ?? activeBinding.model_hash
-          : activeBinding.model_hash)
-        : "";
-      const activeModel = models.find((model) => model.model_hash === activeHash) ?? null;
-      const devinPatched = hostStatus?.patched ?? false;
-      const devinPointsHere = devinPatched && hostStatus?.ports?.api_port === settings.api_port;
-      const devinPatchedElsewhere = devinPatched && !devinPointsHere;
-      const gatewayLabel = !settings.enabled
-        ? t("已关闭")
-        : gatewayPortsUp === null
-          ? t("检查中…")
-          : gatewayPortsUp
-            ? t("运行中")
-            : t("已启用，端口未监听");
-      const gatewayTone = settings.enabled && gatewayPortsUp === true ? "ok" : settings.enabled ? "warn" : "idle";
-      const devinLabel = !settings.enabled
-        ? t("未知")
-        : devinPointsHere
-          ? t("已指向本机网关")
-          : devinPatchedElsewhere
-            ? t("已指向其他路由器")
-            : hostStatus?.clean
-              ? t("尚未接入")
-              : t("未知");
-      const devinTone = devinPointsHere ? "ok" : devinPatchedElsewhere || devinLabel === t("未知") ? "idle" : "warn";
-      const steps = [
-        {
-          key: "enable",
-          done: settings.enabled && gatewayPortsUp === true,
-          label: t("启用 Devin 网关"),
-          hint: settings.enabled
-            ? gatewayPortsUp === true
-              ? t("端口已就绪")
-              : t("已保存，重启应用后端口才会打开")
-            : t("打开上面的开关并保存"),
-        },
-        {
-          key: "bind",
-          done: standard.length > 0,
-          label: t("绑定一个模型"),
-          hint: standard.length > 0 ? t("已绑定 {count} 个", { count: standard.length }) : t("还没有映射"),
-        },
-        {
-          key: "connect",
-          done: devinPointsHere,
-          label: t("把 Devin 指到本机网关"),
-          hint: devinPointsHere ? t("已接入") : t("用下面的宿主接入完成"),
-        },
-        {
-          key: "verify",
-          done: (devinCalls ?? 0) > 0,
-          label: t("在 Devin 里跑一次对话"),
-          hint: devinCalls === null
-            ? t("无法读取调用记录")
-            : devinCalls > 0
-              ? t("已有 {count} 条 Devin 调用记录", { count: devinCalls })
-              : t("还没有 Devin 调用记录"),
-        },
-      ];
-      const stages: PathStage[] = [
-        {
-          key: "devin",
-          label: "Devin",
-          detail: devinLabel,
-          state: devinPointsHere ? "up" : devinTone === "warn" ? "down" : "unknown",
-        },
-        {
-          key: "gateway",
-          label: t("本机网关"),
-          // The ports are the useful detail only while it is listening; otherwise the
-          // reason it is not carries more information.
-          detail: gatewayTone === "ok"
-            ? `${settings.api_port} · ${settings.inference_port} · ${settings.local_api_port}`
-            : gatewayLabel,
-          state: gatewayTone === "ok" ? "up" : gatewayTone === "warn" ? "down" : "unknown",
-        },
-        {
-          key: "model",
-          label: t("模型库"),
-          detail: activeModel ? activeModel.display_name : standard.length ? t("模型已删除或哈希无效") : t("未绑定"),
-          state: activeModel ? "up" : standard.length ? "down" : "unknown",
-        },
-      ];
-      // Only what is still missing stays on screen. A checklist that keeps showing
-      // four ticks after everything works is noise on every later visit.
-      const outstanding = steps.filter((step) => !step.done);
-      const connected = stages.every((stage) => stage.state === "up");
-      return <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
-        <StatusHero
-          connected={connected}
-          title={connected ? t("已接通") : t("还差 {count} 步", { count: outstanding.length })}
-          description={connected
-            ? t("Devin 的请求正在走本机网关，由 {model} 回答。", { model: activeModel?.display_name ?? "" })
-            : outstanding[0]?.label ?? ""}
-          stages={stages}
-          steps={outstanding}
-          footnotes={<>{t("上下文压缩绑定")}：{compression.length ? t("已配置 {count} 个", { count: compression.length }) : t("未配置")}</>}
-        />
-      </TitledCard>;
-    })()}
+    <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
+      <StatusHero
+        connected={view.hero.connected}
+        title={view.hero.title}
+        description={view.hero.description}
+        stages={view.hero.stages}
+        steps={view.hero.steps}
+        footnotes={view.hero.footnotes}
+      />
+    </TitledCard>
     <TitledCard
       title={t("基础设置")}
       description={t("网关开关与模型映射")}
@@ -492,8 +401,8 @@ export function DevinSettingsPage() {
             : undefined}
       action={<div className={styles.hostActions}>
         <Button size="small" disabled={hostBusy} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("检查宿主")}</Button>
-        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !settings.enabled || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
-        <Button size="small" disabled={!hostReceipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
+        <Button size="small" variant="primary" disabled={!hostStatus?.clean || !saved.enabled || view.pendingChanges || hostBusy} onClick={() => void applyHostPatch()}>{t("应用补丁")}</Button>
+        <Button size="small" disabled={!hostStatus?.restore_receipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
       </div>}
     >
       {hostStatus
@@ -528,7 +437,7 @@ export function DevinSettingsPage() {
         </FormField>
       </div>
     </TitledCard>
-    {dirty && <div className={styles.saveBar}>
+    {view.pendingChanges && <div className={styles.saveBar}>
       <span>{t("有未保存的改动")}</span>
       <Button variant="primary" size="small" disabled={saving} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
     </div>}
@@ -536,7 +445,7 @@ export function DevinSettingsPage() {
   return <PageContent
     title={<PageTitle
       title="Devin"
-      status={<StatusPill tone={gatewayReady ? "ok" : settings.enabled ? "warn" : "idle"}>{gatewaySummary}</StatusPill>}
+      status={<StatusPill tone={view.summary.tone}>{view.summary.label}</StatusPill>}
       meta={t("把 Devin 的模型请求指到本机网关，由模型库回答")}
     />}
     sections={[{ key: "devin", estimatedHeight: 900, content }]}

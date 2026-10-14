@@ -39,7 +39,7 @@ impl CaManager {
         })
     }
 
-    fn cert_path(&self) -> PathBuf {
+    pub fn cert_path(&self) -> PathBuf {
         self.dir.join("ca.crt")
     }
     fn key_path(&self) -> PathBuf {

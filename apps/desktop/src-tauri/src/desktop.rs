@@ -59,46 +59,10 @@ fn open_log_directory(app: AppHandle) -> std::result::Result<(), String> {
 }
 
 #[tauri::command]
-fn open_terminal_with_command(command: String) -> tauri::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = command;
-        Command::new("open").args(["-a", "Terminal"]).status()?;
-        Ok(())
-    }
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", "cmd", "/K", &command])
-            .spawn()?;
-        Ok(())
-    }
-    #[cfg(target_os = "linux")]
-    {
-        const TERMINALS: &[(&str, &[&str])] = &[
-            ("x-terminal-emulator", &["-e"]),
-            ("gnome-terminal", &["--"]),
-            ("konsole", &["-e"]),
-            ("xfce4-terminal", &["--execute"]),
-            ("alacritty", &["-e"]),
-            ("kitty", &[]),
-        ];
-        let script = format!("{command}; exec bash");
-        for (terminal, separator) in TERMINALS {
-            let mut process = Command::new(terminal);
-            process.args(*separator);
-            process.arg("bash").arg("-c").arg(&script);
-            match process.spawn() {
-                Ok(_) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-                Err(error) => return Err(error.into()),
-            }
-        }
-        Err(tauri::Error::from(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "no supported terminal emulator found",
-        )))
-    }
+async fn open_cursor_ca_install_terminal() -> std::result::Result<(), String> {
+    tokio::task::spawn_blocking(crate::ca_install::open_install_terminal)
+        .await
+        .map_err(|error| format!("CA installation task failed: {error}"))?
 }
 
 #[derive(serde::Deserialize)]
@@ -246,7 +210,7 @@ pub fn run() -> ExitCode {
 
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
-            open_terminal_with_command,
+            open_cursor_ca_install_terminal,
             open_log_directory,
         ])
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {

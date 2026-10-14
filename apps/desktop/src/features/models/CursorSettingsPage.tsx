@@ -93,7 +93,7 @@ export function CursorSettingsPage() {
     if (appStore.getSnapshot().cursorHarness?.ca !== "ready") setWaitingForCaRefresh(false);
   };
   const openCaTerminal = () => {
-    if (caCommand) void api.openCursorCaInstallTerminal(caCommand).catch((cause) => message.error(cause));
+    if (caCommand) void api.openCursorCaInstallTerminal().catch((cause) => message.error(cause));
     setCaCommand(null);
     setWaitingForCaRefresh(true);
   };
@@ -317,7 +317,7 @@ export function CursorSettingsPage() {
               <button
                 type="button"
                 aria-label={t("在终端中安装")}
-                onClick={() => void api.openCursorCaInstallTerminal(cursorHarness.ca_install_command ?? "")
+                onClick={() => void api.openCursorCaInstallTerminal()
                   .catch((cause) => message.error(cause))}
               ><Icon icon={terminalIcon} size="1.05em" /></button>
             </TooltipTrigger>

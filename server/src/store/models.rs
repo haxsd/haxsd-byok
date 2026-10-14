@@ -4,11 +4,14 @@ use std::{collections::HashSet, str::FromStr};
 use sqlx::{Row, Sqlite, Transaction};
 
 use crate::{
-    model::{model_hash, normalize_model_input, ModelConfig, ModelConfigInput, ModelType},
+    model::{model_fingerprint, normalize_model_input, ModelConfig, ModelConfigInput, ModelType},
     Error, Result,
 };
 
 use super::{now_ms, Store};
+
+/// 两份配置内容相同：创建与编辑都拒绝落成重复配置。
+const DUPLICATE_CONFIGURATION: &str = "model configurations must be unique";
 
 const MODEL_COLUMNS: &str = r#"
     model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
@@ -46,61 +49,98 @@ impl Store {
         Ok(models.remove(0))
     }
 
+    /// 创建一批模型配置。身份（`model_hash`）在这里分配，之后不再随配置变化；
+    /// 去重按配置内容（`model_fingerprint`）判断，与身份无关。
     pub async fn create_models(&self, inputs: &[ModelConfigInput]) -> Result<Vec<ModelConfig>> {
         if inputs.is_empty() {
             return Err(Error::Config("at least one model is required".into()));
         }
-        let mut normalized = Vec::with_capacity(inputs.len());
-        let mut hashes = HashSet::with_capacity(inputs.len());
+        let mut normalized: Vec<(String, ModelConfigInput)> = Vec::with_capacity(inputs.len());
+        let mut batch = HashSet::with_capacity(inputs.len());
         for input in inputs {
             let input = normalize_model_input(input)?;
-            let hash = model_hash(&input)?;
-            if !hashes.insert(hash.clone()) {
-                return Err(Error::Config("model configurations must be unique".into()));
+            let fingerprint = model_fingerprint(&input)?;
+            if !batch.insert(fingerprint.clone()) {
+                return Err(Error::Config(DUPLICATE_CONFIGURATION.into()));
             }
-            normalized.push((hash, input));
+            normalized.push((fingerprint, input));
         }
         let now = now_ms();
         let _write = self.writes.lock().await;
+        let stored = self.stored_fingerprints(None).await?;
+        if normalized
+            .iter()
+            .any(|(fingerprint, _)| stored.contains(fingerprint))
+        {
+            return Err(Error::Config(DUPLICATE_CONFIGURATION.into()));
+        }
         let mut transaction = self.pool.begin().await?;
-        for (hash, input) in &normalized {
-            insert_model(&mut transaction, hash, input, now).await?;
+        let mut hashes = Vec::with_capacity(normalized.len());
+        for (_, input) in &normalized {
+            let hash = allocate_model_hash(&mut transaction).await?;
+            insert_model(&mut transaction, &hash, input, now).await?;
+            hashes.push(hash);
         }
         transaction.commit().await?;
 
-        let mut saved = Vec::with_capacity(normalized.len());
-        for (hash, _) in normalized {
+        let mut saved = Vec::with_capacity(hashes.len());
+        for hash in hashes {
             saved.push(self.model(&hash).await?.expect("inserted model must exist"));
         }
         Ok(saved)
     }
 
+    /// 旧配置导入：内容已经存在的配置跳过（批内与库内都比对内容指纹），返回新增条数。
     pub(super) async fn create_models_if_missing(
         &self,
         inputs: &[ModelConfigInput],
     ) -> Result<usize> {
-        let mut normalized = Vec::with_capacity(inputs.len());
-        let mut hashes = HashSet::with_capacity(inputs.len());
+        let mut normalized: Vec<(String, ModelConfigInput)> = Vec::with_capacity(inputs.len());
+        let mut batch = HashSet::with_capacity(inputs.len());
         for input in inputs {
             let input = normalize_model_input(input)?;
-            let hash = model_hash(&input)?;
-            if hashes.insert(hash.clone()) {
-                normalized.push((hash, input));
+            let fingerprint = model_fingerprint(&input)?;
+            if batch.insert(fingerprint.clone()) {
+                normalized.push((fingerprint, input));
             }
         }
         let now = now_ms();
         let _write = self.writes.lock().await;
+        let stored = self.stored_fingerprints(None).await?;
         let mut transaction = self.pool.begin().await?;
         let mut inserted = 0;
-        for (hash, input) in &normalized {
-            inserted += usize::from(
-                insert_model_with_conflict(&mut transaction, hash, input, now, true).await?,
-            );
+        for (fingerprint, input) in &normalized {
+            if stored.contains(fingerprint) {
+                continue;
+            }
+            let hash = allocate_model_hash(&mut transaction).await?;
+            insert_model(&mut transaction, &hash, input, now).await?;
+            inserted += 1;
         }
         transaction.commit().await?;
         Ok(inserted)
     }
 
+    /// 库里已保存配置的内容指纹；`exclude` 用于更新时排除正在编辑的那一行。
+    ///
+    /// 任何一行无法归一化都直接报错：去重集合必须完整，不能拿残缺集合当事实。
+    pub(super) async fn stored_fingerprints(
+        &self,
+        exclude: Option<&str>,
+    ) -> Result<HashSet<String>> {
+        let mut fingerprints = HashSet::new();
+        for model in self.models().await? {
+            if Some(model.model_hash.as_str()) == exclude {
+                continue;
+            }
+            let input = model.config_input(model.display_name.clone(), model.sort_order);
+            fingerprints.insert(model_fingerprint(&input)?);
+        }
+        Ok(fingerprints)
+    }
+
+    /// 更新一条模型配置。身份在创建时分配，这里不重算也不改写：Devin 绑定、
+    /// 提交消息设置与历史调用都按身份引用这条模型，改名或轮换凭据不影响它们。
     pub async fn update_model(
         &self,
         current_hash: &str,
@@ -116,19 +156,20 @@ impl Store {
             input.api_key = current.api_key.clone();
         }
         let input = normalize_model_input(&input)?;
-        let next_hash = model_hash(&input)?;
+        let fingerprint = model_fingerprint(&input)?;
         let now = now_ms();
         let _write = self.writes.lock().await;
-        let mut transaction = self.pool.begin().await?;
-        if next_hash != current.model_hash {
-            sqlx::query("UPDATE llm_calls SET model_hash = NULL WHERE model_hash = ?")
-                .bind(&current.model_hash)
-                .execute(&mut *transaction)
-                .await?;
+        if self
+            .stored_fingerprints(Some(current_hash))
+            .await?
+            .contains(&fingerprint)
+        {
+            return Err(Error::Config(DUPLICATE_CONFIGURATION.into()));
         }
+        let mut transaction = self.pool.begin().await?;
         let result = sqlx::query(
             r#"UPDATE model_configs SET
-                model_hash = ?, sort_order = ?, display_name = ?, group_name = ?, model_type = ?, base_url = ?,
+                sort_order = ?, display_name = ?, group_name = ?, model_type = ?, base_url = ?,
                 use_full_url = ?, api_key = ?, tooltip_data = ?, model_id = ?, reasoning_effort = ?,
                 openai_endpoint = ?, openai_extra_params_enabled = ?, openai_extra_params_json = ?,
                 custom_headers_enabled = ?, custom_headers_json = ?,
@@ -137,7 +178,6 @@ impl Store {
                 anthropic_thinking_effort = ?, thinking_budget_tokens = ?, updated_at_ms = ?
             WHERE model_hash = ?"#,
         )
-        .bind(&next_hash)
         .bind(input.sort_order)
         .bind(&input.display_name)
         .bind(&input.group_name)
@@ -169,7 +209,7 @@ impl Store {
         }
         transaction.commit().await?;
         Ok(self
-            .model(&next_hash)
+            .model(current_hash)
             .await?
             .expect("updated model must exist"))
     }
@@ -184,7 +224,7 @@ impl Store {
             sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM model_configs")
                 .fetch_one(&self.pool)
                 .await?;
-        self.create_model(&source.duplicate_input(display_name.to_string(), sort_order))
+        self.create_model(&source.config_input(display_name.to_string(), sort_order))
             .await
     }
 
@@ -243,24 +283,32 @@ impl Store {
     }
 }
 
+/// 分配模型身份：创建时随机分配，之后永久保留，不再按配置内容推导。
+///
+/// 8 字节十六进制与旧的内容哈希同形；对客户端与已保存的引用而言它只是不透明标识。
+/// 与已有行比对一次，避免极小概率的重复（同一事务里的插入也在这个查询里可见）。
+async fn allocate_model_hash(transaction: &mut Transaction<'_, Sqlite>) -> Result<String> {
+    for _ in 0..8 {
+        let hash = hex::encode(&uuid::Uuid::new_v4().as_bytes()[..8]);
+        let taken: Option<i64> =
+            sqlx::query_scalar("SELECT 1 FROM model_configs WHERE model_hash = ?")
+                .bind(&hash)
+                .fetch_optional(&mut **transaction)
+                .await?;
+        if taken.is_none() {
+            return Ok(hash);
+        }
+    }
+    Err(Error::Config("cannot allocate a model identity".into()))
+}
+
 async fn insert_model(
     transaction: &mut Transaction<'_, Sqlite>,
     hash: &str,
     input: &ModelConfigInput,
     now: i64,
 ) -> Result<()> {
-    insert_model_with_conflict(transaction, hash, input, now, false).await?;
-    Ok(())
-}
-
-async fn insert_model_with_conflict(
-    transaction: &mut Transaction<'_, Sqlite>,
-    hash: &str,
-    input: &ModelConfigInput,
-    now: i64,
-    ignore_existing: bool,
-) -> Result<bool> {
-    let mut statement = String::from(
+    sqlx::query(
         r#"INSERT INTO model_configs(
             model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
             model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
@@ -269,39 +317,35 @@ async fn insert_model_with_conflict(
             max_completion_tokens, anthropic_max_tokens, anthropic_thinking_effort,
             thinking_budget_tokens, created_at_ms, updated_at_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
-    );
-    if ignore_existing {
-        statement.push_str(" ON CONFLICT(model_hash) DO NOTHING");
-    }
-    let result = sqlx::query(&statement)
-        .bind(hash)
-        .bind(input.sort_order)
-        .bind(&input.display_name)
-        .bind(&input.group_name)
-        .bind(input.model_type.as_str())
-        .bind(&input.base_url)
-        .bind(input.use_full_url)
-        .bind(&input.api_key)
-        .bind(&input.tooltip_data)
-        .bind(&input.model_id)
-        .bind(&input.reasoning_effort)
-        .bind(&input.openai_endpoint)
-        .bind(input.openai_extra_params_enabled)
-        .bind(serde_json::to_string(&input.openai_extra_params)?)
-        .bind(input.custom_headers_enabled)
-        .bind(serde_json::to_string(&input.custom_headers)?)
-        .bind(input.anthropic_extra_params_enabled)
-        .bind(serde_json::to_string(&input.anthropic_extra_params)?)
-        .bind(input.context_window_tokens.map(to_i64).transpose()?)
-        .bind(input.max_completion_tokens.map(to_i64).transpose()?)
-        .bind(input.anthropic_max_tokens.map(to_i64).transpose()?)
-        .bind(&input.anthropic_thinking_effort)
-        .bind(input.thinking_budget_tokens.map(to_i64).transpose()?)
-        .bind(now)
-        .bind(now)
-        .execute(&mut **transaction)
-        .await?;
-    Ok(result.rows_affected() == 1)
+    )
+    .bind(hash)
+    .bind(input.sort_order)
+    .bind(&input.display_name)
+    .bind(&input.group_name)
+    .bind(input.model_type.as_str())
+    .bind(&input.base_url)
+    .bind(input.use_full_url)
+    .bind(&input.api_key)
+    .bind(&input.tooltip_data)
+    .bind(&input.model_id)
+    .bind(&input.reasoning_effort)
+    .bind(&input.openai_endpoint)
+    .bind(input.openai_extra_params_enabled)
+    .bind(serde_json::to_string(&input.openai_extra_params)?)
+    .bind(input.custom_headers_enabled)
+    .bind(serde_json::to_string(&input.custom_headers)?)
+    .bind(input.anthropic_extra_params_enabled)
+    .bind(serde_json::to_string(&input.anthropic_extra_params)?)
+    .bind(input.context_window_tokens.map(to_i64).transpose()?)
+    .bind(input.max_completion_tokens.map(to_i64).transpose()?)
+    .bind(input.anthropic_max_tokens.map(to_i64).transpose()?)
+    .bind(&input.anthropic_thinking_effort)
+    .bind(input.thinking_budget_tokens.map(to_i64).transpose()?)
+    .bind(now)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
@@ -357,6 +401,23 @@ fn to_i64(value: u64) -> Result<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        devin::{DevinModelBinding, DevinSettings},
+        model::{NewLlmCall, ProviderType},
+        store::CommitSettings,
+    };
+
+    /// 每个用例一份真实临时库:迁移、约束与写事务都按生产路径执行。
+    async fn test_store() -> (tempfile::TempDir, Store) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        (directory, store)
+    }
 
     fn model_input(group_name: Option<&str>) -> ModelConfigInput {
         ModelConfigInput {
@@ -479,5 +540,208 @@ mod tests {
         assert_eq!(copy.model_id, created.model_id);
         assert_eq!(copy.sort_order, created.sort_order + 1);
         assert_eq!(store.models().await.unwrap().len(), 2);
+    }
+
+    /// 模型身份在创建后不可变:改名、换地址/上游模型 ID、轮换凭据都不改写主键。
+    /// Devin 绑定、提交消息设置与历史调用都按这个标识保存引用,必须继续解析到同一行。
+    #[tokio::test]
+    async fn editing_a_model_keeps_its_identity_and_saved_references() {
+        let (_directory, store) = test_store().await;
+        let created = store.create_model(&model_input(None)).await.unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                bindings: vec![DevinModelBinding::new(
+                    "devin-model",
+                    created.model_hash.clone(),
+                )],
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_commit_settings(CommitSettings {
+                model_id: created.model_hash.clone(),
+                ..CommitSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .start_llm_call(&NewLlmCall {
+                call_id: "call-1".into(),
+                run_id: "run-1".into(),
+                conversation_id: "conversation-1".into(),
+                provider_call_index: 0,
+                model_hash: created.model_hash.clone(),
+                provider_type: ProviderType::OpenAiChat,
+                provider_url: "https://example.com".into(),
+                request_type: ProviderType::OpenAiChat,
+                request_url: "https://example.com/v1/chat/completions".into(),
+                model_id: "test-model".into(),
+                display_name: "Test Model".into(),
+                reasoning_effort: None,
+                fast: false,
+                message_count: 1,
+                tool_count: 0,
+                detailed: false,
+            })
+            .await
+            .unwrap();
+
+        let updated = store
+            .update_model(
+                &created.model_hash,
+                &ModelConfigInput {
+                    display_name: "Renamed Model".into(),
+                    base_url: "https://relay.example.com/v1/chat/completions".into(),
+                    model_id: "test-model-v2".into(),
+                    api_key: "rotated-key".into(),
+                    ..model_input(None)
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(updated.model_hash, created.model_hash);
+        assert_eq!(updated.display_name, "Renamed Model");
+        assert_eq!(updated.api_key, "rotated-key");
+        // 改的仍是同一行,不是新建。
+        assert_eq!(store.models().await.unwrap().len(), 1);
+        let stored = store
+            .model(&created.model_hash)
+            .await
+            .unwrap()
+            .expect("the original identity must keep resolving");
+        assert_eq!(stored.display_name, "Renamed Model");
+        assert_eq!(stored.model_id, "test-model-v2");
+        assert_eq!(stored.api_key, "rotated-key");
+
+        // Devin 与提交消息的已保存引用仍然可解析。
+        let devin = store.devin_settings().await.unwrap();
+        assert_eq!(devin.bindings[0].effective_model_hash(), created.model_hash);
+        let commit = store.commit_settings().await.unwrap();
+        assert_eq!(commit.model_id, created.model_hash);
+        assert!(store.model(&commit.model_id).await.unwrap().is_some());
+
+        // 历史调用没有被解除关联。
+        let call = store.llm_call("call-1").await.unwrap().unwrap();
+        assert_eq!(
+            call.model_hash.as_deref(),
+            Some(created.model_hash.as_str())
+        );
+    }
+
+    /// 编辑过的模型不再持有它最初的配置:用最初的配置再建一份必须是新模型,
+    /// 既不能因为"指纹曾是那条模型的身份"被判重复,也不能覆盖已编辑的那行。
+    #[tokio::test]
+    async fn recreating_the_original_configuration_after_an_edit_creates_a_new_model() {
+        let (_directory, store) = test_store().await;
+        let original = model_input(None);
+        let created = store.create_model(&original).await.unwrap();
+        let edited = store
+            .update_model(
+                &created.model_hash,
+                &ModelConfigInput {
+                    display_name: "Renamed Model".into(),
+                    api_key: "rotated-key".into(),
+                    ..original.clone()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(edited.model_hash, created.model_hash);
+
+        let recreated = store.create_model(&original).await.unwrap();
+
+        assert_ne!(recreated.model_hash, created.model_hash);
+        assert_eq!(recreated.display_name, "Test Model");
+        assert_eq!(recreated.api_key, "test-key");
+        assert_eq!(store.models().await.unwrap().len(), 2);
+        let edited_row = store.model(&created.model_hash).await.unwrap().unwrap();
+        assert_eq!(edited_row.display_name, "Renamed Model");
+        assert_eq!(edited_row.api_key, "rotated-key");
+    }
+
+    /// 去重按配置内容判断:库里已有同样配置时,再次创建同样的配置必须被拒绝
+    /// （配置类错误）,而不是落成第二份同样的模型。
+    #[tokio::test]
+    async fn creating_a_model_whose_configuration_already_exists_is_rejected() {
+        let (_directory, store) = test_store().await;
+        let created = store.create_model(&model_input(None)).await.unwrap();
+
+        let error = store.create_model(&model_input(None)).await.unwrap_err();
+
+        assert!(
+            matches!(error, Error::Config(_)),
+            "unexpected error: {error}"
+        );
+        let models = store.models().await.unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_hash, created.model_hash);
+    }
+
+    /// 同一批创建里出现两份相同配置同样被拒绝,不因身份改为分配制就落成两行。
+    #[tokio::test]
+    async fn creating_the_same_configuration_twice_in_one_batch_is_rejected() {
+        let (_directory, store) = test_store().await;
+
+        let error = store
+            .create_models(&[model_input(None), model_input(None)])
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, Error::Config(_)),
+            "unexpected error: {error}"
+        );
+        assert!(store.models().await.unwrap().is_empty());
+    }
+
+    /// 把一条模型编辑成另一条模型已有的配置必须被拒绝:身份不再随配置变化,
+    /// 否则库里会静默出现两份相同配置。
+    #[tokio::test]
+    async fn editing_a_model_into_another_models_configuration_is_rejected() {
+        let (_directory, store) = test_store().await;
+        let first = store.create_model(&model_input(None)).await.unwrap();
+        let second = store
+            .create_model(&ModelConfigInput {
+                display_name: "Second Model".into(),
+                ..model_input(None)
+            })
+            .await
+            .unwrap();
+
+        let error = store
+            .update_model(
+                &first.model_hash,
+                &ModelConfigInput {
+                    display_name: "Second Model".into(),
+                    ..model_input(None)
+                },
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, Error::Config(_)),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            store
+                .model(&first.model_hash)
+                .await
+                .unwrap()
+                .unwrap()
+                .display_name,
+            "Test Model"
+        );
+        assert_eq!(
+            store
+                .model(&second.model_hash)
+                .await
+                .unwrap()
+                .unwrap()
+                .display_name,
+            "Second Model"
+        );
     }
 }

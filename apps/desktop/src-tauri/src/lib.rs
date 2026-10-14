@@ -1,3 +1,4 @@
+mod ca_install;
 mod desktop;
 #[cfg(not(dev))]
 mod frontend;
