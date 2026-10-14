@@ -18,6 +18,7 @@ use crate::{
         },
         transport::{OrderedInbox, TransportHandle},
     },
+    model::ConversationId,
     run::{CommandResult, RunEngine, RunHandle, RunPhase},
 };
 
@@ -186,6 +187,16 @@ impl ConversationRuntime {
                                     .as_ref()
                                     .is_none_or(|run| run.phase() != RunPhase::Running)
                             });
+                        if current.is_some() && !turn_completed {
+                            // 断开发生在这一轮还在跑的时候：这才是"用户停止"。轮次已收尾
+                            // （或服务端自己收尾）的断开只是流被关掉，不计入停止，否则
+                            // 后台子代理的完成通知会被当成"停了就别打扰"而丢掉。
+                            if let Some(conversation_id) = handle.conversation_id() {
+                                registry
+                                    .mark_stopped(&ConversationId::new(conversation_id))
+                                    .await;
+                            }
+                        }
                         if current.is_some() {
                             // 子代理那条流被客户端断开（关掉子代理/点停止）：父会话也要收到
                             // 一条 aborted，否则它会一直等到超时。官方同样是 aborted 也通知。
@@ -670,6 +681,14 @@ fn spawn_run_request(
             return;
         }
 
+        // 客户端又在这个会话里开口了："用户停止过"的标记到此失效。放在编译之前是有意的——
+        // 等 run 建立起来再清，会把这段窗口里完成的子代理通知白白丢掉。
+        if let Some(conversation_id) = request.conversation_id.as_deref() {
+            registry
+                .clear_stopped(&ConversationId::new(conversation_id))
+                .await;
+        }
+
         let mut checkpoint = CheckpointBuilder::new(
             dependencies.store.clone(),
             blob_sync.clone(),
@@ -755,6 +774,16 @@ fn spawn_run_request(
                             })
                             .await;
                     }
+                    return;
+                }
+                CommandResult::Suppressed => {
+                    // 只有唤醒类投递（`deliver_wake`）会返回这个结果，而这里走的是
+                    // 客户端自己发来的完成通知：真走到这里说明投递口径被改过，别静默吞掉。
+                    tracing::warn!(
+                        conversation_id = %prepared.conversation_id,
+                        run_id = %prepared.run_id,
+                        "background completion suppressed on a path that should not suppress"
+                    );
                     return;
                 }
                 CommandResult::RunClosing => {

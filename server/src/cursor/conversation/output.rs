@@ -1018,7 +1018,7 @@ fn accept_tool_completion(
 ) -> Result<bool> {
     match delivery {
         CommandResult::Applied | CommandResult::Duplicate => Ok(true),
-        CommandResult::RunClosing | CommandResult::RunEnded => {
+        CommandResult::RunClosing | CommandResult::RunEnded | CommandResult::Suppressed => {
             tracing::warn!(
                 request_id,
                 run_id,

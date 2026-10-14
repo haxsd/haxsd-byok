@@ -135,7 +135,7 @@ pub(super) async fn subagent_finished(
         }
     };
     let result = registry
-        .deliver(
+        .deliver_wake(
             &parent_conversation,
             CompiledMessages {
                 event_id,

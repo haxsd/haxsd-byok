@@ -22,21 +22,26 @@ const PARENT_CONVERSATION: &str = "wakeup-parent-conversation";
 const CHILD_CONVERSATION: &str = "wakeup-child-conversation";
 const TASK_CALL: &str = "call-task";
 
+/// 「用户停止」那条用例自己的子代理身份：子代理完成通知的"已通知"集合是**进程级**的
+/// （`subagents.rs` 的静态集合），两个用例共用 id 会互相去重，所以这里各用一套。
+const STOPPED_TASK_CALL: &str = "call-stopped-task";
+const STOPPED_CHILD_CONVERSATION: &str = "stopped-child-conversation";
+
 /// 父轮第一轮：派一个后台子代理。
-fn task_call_events() -> Vec<ModelEvent> {
+fn task_call_events(call_id: &str) -> Vec<ModelEvent> {
     vec![
         ModelEvent::Start {
             model_call_id: "parent-call-1".into(),
         },
         ModelEvent::ToolCallStart {
             index: 0,
-            call_id: TASK_CALL.into(),
+            call_id: call_id.into(),
             name: "Task".into(),
         },
         ModelEvent::ToolCallArgumentsDelta {
             index: 0,
             delta: format!(
-                r#"{{"description":"Analyze game logic","prompt":"Inspect the game","run_in_background":true,"subagent_type":"generalPurpose","tool_call_id":"{TASK_CALL}"}}"#
+                r#"{{"description":"Analyze game logic","prompt":"Inspect the game","run_in_background":true,"subagent_type":"generalPurpose","tool_call_id":"{call_id}"}}"#
             ),
         },
         ModelEvent::ToolCallEnd { index: 0 },
@@ -94,7 +99,7 @@ fn run_request(
 }
 
 /// 后台子代理的 Task 结果：只回"已后台化"，最终答复由子代理会话自己跑。
-fn task_result(exec_id: u32) -> pb::AgentClientMessage {
+fn task_result(exec_id: u32, child_conversation: &str) -> pb::AgentClientMessage {
     pb::AgentClientMessage {
         message: Some(pb::agent_client_message::Message::ExecClientMessage(
             pb::ExecClientMessage {
@@ -102,7 +107,7 @@ fn task_result(exec_id: u32) -> pb::AgentClientMessage {
                 message: Some(pb::exec_client_message::Message::SubagentResult(
                     pb::SubagentResult {
                         result: Some(pb::subagent_result::Result::Success(pb::SubagentSuccess {
-                            agent_id: CHILD_CONVERSATION.into(),
+                            agent_id: child_conversation.into(),
                             background_reason: pb::SubagentBackgroundReason::AgentRequest as i32,
                             ..Default::default()
                         })),
@@ -145,7 +150,7 @@ async fn a_background_subagent_wakes_the_parent_turn() {
     let provider = fake_provider::FakeProvider::default();
     // 按会话分发，顺序才确定：父轮先派子代理、再说一句收尾话进入等待；
     // 子代理那一次挂住，等父轮真的停下来之后再放行；放行后父轮被唤醒续写。
-    provider.push_for(PARENT_CONVERSATION, task_call_events());
+    provider.push_for(PARENT_CONVERSATION, task_call_events(TASK_CALL));
     provider.push_for(PARENT_CONVERSATION, text_events("waiting for the subagent"));
     let finish_child = provider.push_gated_for(CHILD_CONVERSATION, text_events("child finished"));
     provider.push_for(PARENT_CONVERSATION, text_events("followed up"));
@@ -245,7 +250,7 @@ async fn a_background_subagent_wakes_the_parent_turn() {
                 parent
                     .command(TransportCommand::Append {
                         seqno: parent_seqno,
-                        message: Box::new(task_result(exec.id)),
+                        message: Box::new(task_result(exec.id, CHILD_CONVERSATION)),
                     })
                     .await
                     .unwrap();
@@ -388,3 +393,296 @@ async fn a_background_subagent_wakes_the_parent_turn() {
             && matches!(&message.content, MessageContent::Parts { parts } if !parts.is_empty())
     }));
 }
+
+/// 等某个 run 落到期望状态；超时就失败，避免用例挂死。
+async fn wait_for_run_status(
+    store: &cursor_server::store::Store,
+    request_id: &str,
+    expected: &str,
+) {
+    for _ in 0..400 {
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM runs WHERE cursor_request_id = ?")
+                .bind(request_id)
+                .fetch_optional(store.pool())
+                .await
+                .unwrap();
+        if status.as_deref() == Some(expected) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("run {request_id} 没有在超时内变成 {expected}");
+}
+
+/// 等父轮把 Task 调用的结果提交掉——只有提交过，服务端才认它是"后台子代理"，
+/// 才会在子代理完成时通知父会话（判据见 `Store::background_task`）。
+async fn wait_for_tool_call_completed(store: &cursor_server::store::Store, call_id: &str) {
+    for _ in 0..400 {
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM tool_round_calls WHERE call_id = ?")
+                .bind(call_id)
+                .fetch_optional(store.pool())
+                .await
+                .unwrap();
+        if status.as_deref() == Some("completed") {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("Task 调用 {call_id} 没有在超时内完成");
+}
+
+/// 等已经发出过这么多次模型调用。用来确认"挂住的那次调用已经在飞"，这样后面的
+/// 停止动作才真的是打断一轮活着的运行（否则那次调用会把后面重开时的脚本吃掉）。
+async fn wait_for_model_calls(provider: &fake_provider::FakeProvider, expected: usize) {
+    for _ in 0..400 {
+        if provider.requests().len() >= expected {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("模型调用数没有达到 {expected}");
+}
+
+/// 用户按停止之后，后台子代理跑完不再把已停止的会话拉起来。
+///
+/// 实测时序（本机 2026-10-14 17:47）：父轮派出后台子代理 → 用户按停止（客户端断开，
+/// 在跑的那一轮被取消，父子代理还在跑）→ 子代理随后完成。旧行为把完成通知排进
+/// pending，用户下次开口时会被当成这一轮的前置消息吃进去（带 follow-up 指令），于是
+/// "停了的会话又自己动起来"。这里断言：重新开口时，模型请求与落库历史里都不含那条完成通知。
+#[tokio::test]
+async fn a_stopped_conversation_is_not_woken_by_a_finished_subagent() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(PARENT_CONVERSATION, task_call_events(STOPPED_TASK_CALL));
+    // 父轮第二次调用挂住不放行：用户就是在"这一轮还活着"的时候按的停止。
+    provider.push_gated_for(PARENT_CONVERSATION, text_events("waiting for the subagent"));
+    let finish_child =
+        provider.push_gated_for(STOPPED_CHILD_CONVERSATION, text_events("child finished"));
+    provider.push_for(PARENT_CONVERSATION, text_events("resumed by the user"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let parent = registry.get_or_create("parent-request").await.unwrap();
+    let mut parent_output = parent.subscribe();
+    parent
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                PARENT_CONVERSATION,
+                "parent-request",
+                "parent-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+
+    // 驱动父轮直到它派出后台子代理：收到 exec 请求就起子代理那条流，并把"已后台化"
+    // 的结果回给父轮。子代理的流也要有人读，否则它堵在输出上永远收不了尾。
+    let mut parent_seqno = 1;
+    let mut child = None;
+    while child.is_none() {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), parent_output.recv())
+            .await
+            .expect("父轮没有派出后台子代理")
+            .expect("父轮的流提前关闭");
+        let Some(server) = frame_role(&frame) else {
+            panic!("父轮在派子代理之前就收尾了");
+        };
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await
+                    .unwrap();
+                parent_seqno += 1;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
+                let handle = registry.get_or_create("child-request").await.unwrap();
+                handle
+                    .set_parent(TransportParent {
+                        request_id: Some("parent-request".into()),
+                        tool_call_id: Some(STOPPED_TASK_CALL.into()),
+                    })
+                    .unwrap();
+                handle
+                    .command(TransportCommand::Append {
+                        seqno: 0,
+                        message: Box::new(run_request(
+                            STOPPED_CHILD_CONVERSATION,
+                            "child-request",
+                            "child-user",
+                            true,
+                        )),
+                    })
+                    .await
+                    .unwrap();
+                let child_handle = handle.clone();
+                let child_output = child_handle.subscribe();
+                tokio::spawn(async move {
+                    let mut child_output = child_output;
+                    let mut seqno = 1;
+                    while let Some(frame) = child_output.recv().await {
+                        let Some(server) = frame_role(&frame) else {
+                            break;
+                        };
+                        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                            server.message
+                        {
+                            let _ = child_handle
+                                .command(TransportCommand::Append {
+                                    seqno,
+                                    message: Box::new(kv_ack(kv.id)),
+                                })
+                                .await;
+                            seqno += 1;
+                        }
+                    }
+                });
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(task_result(exec.id, STOPPED_CHILD_CONVERSATION)),
+                    })
+                    .await
+                    .unwrap();
+                parent_seqno += 1;
+                child = Some(handle.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // 父轮的帧还得有人继续应答（KV 回执/后续 exec），否则它卡在 blob 同步上，
+    // 永远走不到"带着挂住的模型调用在跑"的状态。
+    tokio::spawn({
+        let parent = parent.clone();
+        let mut parent_output = parent_output;
+        let mut seqno = parent_seqno;
+        async move {
+            while let Some(frame) = parent_output.recv().await {
+                let Some(server) = frame_role(&frame) else {
+                    break;
+                };
+                if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message
+                {
+                    let _ = parent
+                        .command(TransportCommand::Append {
+                            seqno,
+                            message: Box::new(kv_ack(kv.id)),
+                        })
+                        .await;
+                    seqno += 1;
+                }
+            }
+        }
+    });
+
+    // 父轮把 Task 的结果提交掉之后，它才算派出了一个"后台子代理"；此时它已经带着
+    // 那次"挂住"的模型调用在跑。
+    wait_for_tool_call_completed(&store, STOPPED_TASK_CALL).await;
+    wait_for_model_calls(&provider, 3).await;
+
+    // 用户按停止：客户端断开，父轮那一轮被取消。
+    parent.command(TransportCommand::Disconnect).await.unwrap();
+    wait_for_run_status(&store, "parent-request", "cancelled").await;
+
+    // 子代理随后才跑完。
+    finish_child.notify_one();
+    wait_for_run_status(&store, "child-request", "completed").await;
+    // 完成通知的处理紧跟在子代理收尾之后；给它落地的时间，断言本身才是重点。
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // 用户重新开口：新的请求 id（Cursor 停止之后下一次是新的流）。
+    let resumed = registry.get_or_create("resumed-request").await.unwrap();
+    let mut resumed_output = resumed.subscribe();
+    resumed
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                PARENT_CONVERSATION,
+                "resumed-request",
+                "resumed-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut resumed_seqno = 1;
+    loop {
+        let frame =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), resumed_output.recv())
+                .await
+            {
+                Ok(Some(frame)) => frame,
+                Ok(None) => break,
+                Err(_) => panic!("重新开口的那一轮没有收尾"),
+            };
+        let Some(server) = frame_role(&frame) else {
+            break;
+        };
+        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+            resumed
+                .command(TransportCommand::Append {
+                    seqno: resumed_seqno,
+                    message: Box::new(kv_ack(kv.id)),
+                })
+                .await
+                .unwrap();
+            resumed_seqno += 1;
+        }
+    }
+
+    let history = serde_json::to_string(
+        &provider
+            .requests()
+            .last()
+            .expect("重新开口的那一轮没有问模型")
+            .history,
+    )
+    .unwrap();
+    assert!(
+        !history.contains("kind: subagent"),
+        "被停止的会话又被后台子代理的完成通知唤醒了：{history}"
+    );
+    let wake_marker = format!(
+        "background-completed:BACKGROUND_TASK_KIND_SUBAGENT:{STOPPED_CHILD_CONVERSATION}:{STOPPED_TASK_CALL}"
+    );
+    let messages = store
+        .load_current_messages(&cursor_server::model::ConversationId::new(
+            PARENT_CONVERSATION,
+        ))
+        .await
+        .unwrap();
+    assert!(
+        !messages
+            .iter()
+            .any(|message| message.runtime_event_id.as_deref() == Some(wake_marker.as_str())),
+        "被停止的会话的历史里仍然出现了后台子代理的完成通知"
+    );
+}
+
+// 边界说明：为什么这里没有"服务端已自行收尾之后客户端才断开"这条用例——
+// 引擎会在后台子代理跑完之前一直 hold 住父轮的运行（日志里每 5 秒一条
+// "parent turn is waiting for background subagent"），所以"父轮已收尾 + 子代理仍在跑"
+// 这个组合在真实流程里构造不出来，除非父轮以失败收尾。断开判据本身（只有"断开时这一轮
+// 还在跑"才记成用户停止）落在 runtime.rs 的 Disconnect 分支里，行为由上面两条用例
+// 从两侧夹住：活着的轮次被打断 → 不唤醒；轮次正常跑完 → 照旧唤醒。

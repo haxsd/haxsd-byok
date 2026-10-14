@@ -129,7 +129,9 @@ impl RunHandle {
             CommandResult::RunClosing => return CommandResult::RunClosing,
             CommandResult::RunEnded => return CommandResult::RunEnded,
             CommandResult::Applied => {}
-            CommandResult::Duplicate | CommandResult::StaleTarget => unreachable!(),
+            CommandResult::Duplicate | CommandResult::StaleTarget | CommandResult::Suppressed => {
+                unreachable!()
+            }
         }
         delivered.await.unwrap_or_else(|_| match self.phase() {
             RunPhase::Running => CommandResult::RunEnded,

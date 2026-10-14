@@ -10,6 +10,8 @@ pub enum CommandResult {
     Duplicate,
     RunClosing,
     RunEnded,
+    /// 这个会话是被用户停止（客户端断开）的：唤醒类消息直接丢弃，不再把它拉起来。
+    Suppressed,
     StaleTarget,
 }
 

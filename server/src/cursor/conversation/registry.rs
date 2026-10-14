@@ -1,6 +1,9 @@
 //! Maps conversation IDs to active conversation runtimes.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use tokio::sync::{mpsc, Mutex, Notify};
 
@@ -33,6 +36,12 @@ pub(crate) struct ConversationDependencies {
 struct RegistryInner {
     current: Mutex<HashMap<ConversationId, ActiveRun>>,
     pending: Mutex<HashMap<ConversationId, PendingMessages>>,
+    /// 用户按停止（客户端断开）结束过运行、此后还没有新运行的会话。
+    ///
+    /// 停止只取消在跑的那一轮，它派出去的后台子代理还在跑；子代理随后完成时，完成
+    /// 通知不能把已停止的会话重新拉起来（实测里"停了自己醒"就是这么来的）。新运行
+    /// 一开始就说明会话又被用户打开了，这一标记随之清掉。
+    stopped: Mutex<HashSet<ConversationId>>,
     changed: Notify,
     pub dependencies: ConversationDependencies,
 }
@@ -59,6 +68,7 @@ impl ConversationRegistry {
             inner: Arc::new(RegistryInner {
                 current: Mutex::new(HashMap::new()),
                 pending: Mutex::new(HashMap::new()),
+                stopped: Mutex::new(HashSet::new()),
                 changed: Notify::new(),
                 dependencies: ConversationDependencies {
                     store,
@@ -99,6 +109,40 @@ impl ConversationRegistry {
         if let Some(previous) = previous.filter(|previous| previous.run_id != run_id) {
             previous.handle.cancel();
         }
+    }
+
+    /// 用户按停止结束了这个会话的运行：记下来，好让后台子代理的完成通知不再把它唤醒。
+    ///
+    /// 只有"断开时这一轮还在跑"才调用（见 runtime 的断开分支）：断开本身不等于停止，
+    /// 轮次已收尾时的流断开不能被记成停止，否则合法的完成通知会被丢掉。
+    pub(crate) async fn mark_stopped(&self, conversation_id: &ConversationId) {
+        self.inner
+            .stopped
+            .lock()
+            .await
+            .insert(conversation_id.clone());
+    }
+
+    /// 客户端又在这个会话里开口了：停止标记失效，唤醒恢复。
+    pub(crate) async fn clear_stopped(&self, conversation_id: &ConversationId) {
+        self.inner.stopped.lock().await.remove(conversation_id);
+    }
+
+    /// 后台子代理的完成通知：用户明确停止过的会话不再被唤醒。
+    ///
+    /// 停止只取消在跑的那一轮，它派出去的后台子代理还在跑；子代理完成时若照旧投递，
+    /// 用户下次开口就会带着 follow-up 指令把它当成一轮的前置消息吃进去——实测里
+    /// "停了自己醒"就是这么来的。这里对这类会话直接丢弃：子代理的最终答复仍留在子会话
+    /// 历史里，客户端自己的完成通知负责把它带回父会话。
+    pub async fn deliver_wake(
+        &self,
+        conversation_id: &ConversationId,
+        compiled: CompiledMessages,
+    ) -> CommandResult {
+        if self.inner.stopped.lock().await.contains(conversation_id) {
+            return CommandResult::Suppressed;
+        }
+        self.deliver(conversation_id, compiled).await
     }
 
     pub async fn deliver(
