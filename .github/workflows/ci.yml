@@ -150,3 +150,17 @@ jobs:
             exit 1
           fi
           echo "公开仓库没有内部资料 ✓"
+
+      # 索引里的换行必须是 LF：prompt 与迁移是构建期按字节嵌入的（include_dir! /
+      # include_str! / sqlx::migrate!），CRLF 会改变提示词与迁移的字节，让本地构建
+      # 与 CI／发布产物不一致。
+      - name: 索引里不得出现 CRLF 行尾
+        run: |
+          set -euo pipefail
+          bad=$(git ls-files --eol | grep -E '^i/(crlf|mixed)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::以下文件在索引里是 CRLF（应为 LF）："
+            echo "$bad"
+            exit 1
+          fi
+          echo "索引行尾全是 LF ✓"

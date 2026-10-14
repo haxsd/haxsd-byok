@@ -14,7 +14,17 @@ pub(super) fn open_install_terminal() -> Result<(), String> {
             .ok_or_else(|| "Cannot locate the Windows system directory".to_string())?
             .join("System32");
         let request = windows_install_request(&system_directory, &ca.cert_path())?;
-        install_windows(request)
+        install_windows(request)?;
+        // 证书文件在用户可写目录里，而提权后的 certutil 是在授权之后才去读它：
+        // 装完回读存储确认在我们名下，避免"装上了，但不是这份"。
+        match ca.state().map_err(|error| error.to_string())? {
+            cursor_server::local_app::CaState::Ready => Ok(()),
+            _ => Err(
+                "Certificate installation finished, but the certificate is not in the system \
+                 trust store; it may have been replaced while the authorization prompt was open"
+                    .into(),
+            ),
+        }
     }
     #[cfg(target_os = "macos")]
     {
