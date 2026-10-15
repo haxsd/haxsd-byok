@@ -395,6 +395,7 @@ impl ControlService {
         }
         let call_id = format!("model-test-{}", uuid::Uuid::new_v4());
         let invocation = ModelInvocation {
+            client_source: crate::model::CallClient::Internal,
             call_id: call_id.clone(),
             run_id: call_id.clone(),
             conversation_id: call_id.clone(),
@@ -779,6 +780,7 @@ fn official_call(trace: CursorRunTraceSummary) -> CallSummary {
     let error = trace.error_message.clone();
     CallSummary {
         call: LlmCallSummary {
+            client_source: "cursor".into(),
             call_id: format!("cursor:{}", trace.request_id),
             run_id: trace.request_id.clone(),
             conversation_id: trace

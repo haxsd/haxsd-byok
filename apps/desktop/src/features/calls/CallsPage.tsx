@@ -25,6 +25,7 @@ export function CallsPage() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [route, setRoute] = useState<RouteFilter>("all");
   const [model, setModel] = useState("all");
+  const [client, setClient] = useState("all");
 
   useEffect(() => {
     let disposed = false;
@@ -58,6 +59,7 @@ export function CallsPage() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return calls.filter((call) => {
+      if (client !== "all" && call.client_source !== client) return false;
       if (status === "completed" && call.status !== "completed") return false;
       if (status === "failed" && call.status !== "failed" && call.status !== "error") return false;
       if (status === "other" && (call.status === "completed" || call.status === "failed" || call.status === "error")) return false;
@@ -68,7 +70,7 @@ export function CallsPage() {
       return [call.display_name, call.model_id, call.call_id, call.conversation_id, call.status]
         .some((field) => field.toLowerCase().includes(query));
     });
-  }, [calls, model, route, search, status]);
+  }, [calls, client, model, route, search, status]);
 
   const summary = useMemo(() => summarize(filtered), [filtered]);
   const filteredOut = filtered.length !== calls.length;
@@ -100,6 +102,11 @@ export function CallsPage() {
         ariaLabel={t("搜索调用")}
         placeholder={t("搜模型、调用 ID、会话 ID…")}
       />
+      <Select ariaLabel={t("客户端来源")} value={client} onChange={setClient} options={[
+        { value: "all", label: t("全部客户端") },
+        { value: "cursor", label: "Cursor" }, { value: "devin", label: "Devin" },
+        { value: "codex", label: "Codex" }, { value: "internal", label: t("内部调用") },
+      ]} />
       <Segmented
         ariaLabel={t("按状态筛选")}
         value={status}

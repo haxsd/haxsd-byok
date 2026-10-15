@@ -332,6 +332,7 @@ impl RunEngine {
                     format!("{}:{provider_call_index}:retry-{retries}", prepared.run_id)
                 };
                 let invocation = crate::model::ModelInvocation {
+                    client_source: crate::model::CallClient::Cursor,
                     call_id,
                     run_id: prepared.run_id.to_string(),
                     conversation_id: prepared.conversation_id.to_string(),
@@ -1058,6 +1059,7 @@ impl RunEngine {
         model.reasoning.enabled = false;
         model.reasoning.effort = None;
         let invocation = crate::model::ModelInvocation {
+            client_source: crate::model::CallClient::Cursor,
             call_id: format!("{}:{provider_call_index}", prepared.run_id),
             run_id: prepared.run_id.to_string(),
             conversation_id: prepared.conversation_id.to_string(),

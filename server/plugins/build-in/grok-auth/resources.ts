@@ -241,7 +241,8 @@ export async function refreshAccount(
     headers: accountHeaders(data),
   });
   if (response.status < 200 || response.status >= 300) {
-    if (response.status === 401 || response.status === 403) {
+    // 计费接口的 403 不证明推理令牌失效;报告查询失败但保留账号状态。
+    if (response.status === 401) {
       return {
         state: { status: "invalid", message: "Grok authorization expired; sign in again" },
       };
@@ -255,9 +256,13 @@ export async function refreshAccount(
     throw new Error("Grok usage lookup returned invalid JSON");
   }
   const quota = parseGrokUsage(body);
+  const state = quotaState(quota);
+  const rateLimited = resource.state.status === "cooling" &&
+    (resource.state.retryAtMs ?? 0) > Date.now() && !data.quota?.limitReached;
   return {
     privateData: { ...data, quota } as unknown as JsonValue,
-    state: quotaState(quota),
+    // 额度查询成功不代表限速窗口结束;真实积分恢复仍可解除额度冷却。
+    state: state.status === "ready" && rateLimited ? resource.state : state,
   };
 }
 

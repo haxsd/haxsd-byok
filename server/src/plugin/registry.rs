@@ -1202,9 +1202,12 @@ impl PluginRegistry {
         records
             .iter()
             .find(|record| record.state.is_ready(now))
-            .or_else(|| records.first())
             .cloned()
-            .ok_or_else(|| Error::Provider("no plugin resource is available".into()))
+            .ok_or_else(|| {
+                Error::Provider(
+                    "no plugin account is ready; wait for cooldown or sign in again".into(),
+                )
+            })
     }
 
     async fn find_record(
@@ -1371,4 +1374,120 @@ fn find_resource<'a>(
                 entry.manifest.id
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin::state::ResourceStateInput;
+
+    async fn fixture() -> (tempfile::TempDir, PluginRegistry) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let registry = PluginRegistry {
+            inner: Arc::new(RegistryInner {
+                store,
+                runtime: super::super::runtime::tests::runtime(directory.path()),
+                catalog: super::super::catalog::tests::catalog(directory.path()),
+                state: PluginStateStore::new(
+                    PluginDataStore::for_test(directory.path().join("data")).unwrap(),
+                ),
+                entries: RwLock::new(None),
+                workers: Mutex::new(HashMap::new()),
+                oauth_sessions: Mutex::new(HashMap::new()),
+            }),
+        };
+        (directory, registry)
+    }
+
+    fn resource(key: &str, state: ResourceStateInput) -> ResourceDraft {
+        ResourceDraft {
+            key: key.into(),
+            private_data: serde_json::json!({"accessToken": "fixture-only"}),
+            state: Some(state),
+        }
+    }
+
+    #[tokio::test]
+    async fn selection_never_reuses_invalid_or_cooling_accounts() {
+        let (_directory, registry) = fixture().await;
+        for state in [
+            ResourceStateInput::Invalid { message: None },
+            ResourceStateInput::Cooling {
+                retry_at_ms: Some(now_ms() + 60_000),
+                message: None,
+            },
+            ResourceStateInput::Cooling {
+                retry_at_ms: None,
+                message: None,
+            },
+        ] {
+            registry
+                .inner
+                .state
+                .upsert_resources("test", "account", vec![resource("first", state)])
+                .await
+                .unwrap();
+            assert!(
+                registry.select_resource("test", "account").await.is_err(),
+                "a blocked account must not receive another model call"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn selection_skips_blocked_accounts_and_recovers_expired_cooling() {
+        let (_directory, registry) = fixture().await;
+        registry
+            .inner
+            .state
+            .upsert_resources(
+                "test",
+                "account",
+                vec![
+                    resource("blocked", ResourceStateInput::Invalid { message: None }),
+                    resource("usable", ResourceStateInput::Ready),
+                ],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            registry
+                .select_resource("test", "account")
+                .await
+                .unwrap()
+                .key,
+            "usable"
+        );
+
+        registry
+            .inner
+            .state
+            .upsert_resources(
+                "test",
+                "account",
+                vec![resource(
+                    "blocked",
+                    ResourceStateInput::Cooling {
+                        retry_at_ms: Some(now_ms() - 1),
+                        message: None,
+                    },
+                )],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            registry
+                .select_resource("test", "account")
+                .await
+                .unwrap()
+                .key,
+            "blocked"
+        );
+    }
 }

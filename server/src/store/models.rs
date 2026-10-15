@@ -567,6 +567,7 @@ mod tests {
             .unwrap();
         store
             .start_llm_call(&NewLlmCall {
+                client_source: crate::model::CallClient::Internal,
                 call_id: "call-1".into(),
                 run_id: "run-1".into(),
                 conversation_id: "conversation-1".into(),

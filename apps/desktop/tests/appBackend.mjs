@@ -57,6 +57,7 @@ export function pluginRuntimeStatus() {
 export function llmCallFixture() {
   return {
     call_kind: "provider_llm",
+    client_source: "internal",
     route: "local_byok",
     call_id: "call-1",
     run_id: "run-1",
@@ -110,12 +111,14 @@ export function installAppBackend(overrides = {}) {
     pricing: defaultPricing(),
     cursorHarness: cursorHarnessStatus(),
     devinStatus: { enabled: false, listening: false, calls: 0 },
+    codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, home: "test-home", calls: 0, last_error: null },
     pluginRuntime: pluginRuntimeStatus(),
     plugins: [],
     desktop: { silent_start: false, show_dock_icon: true, developer_mode: false },
     ...overrides,
   };
 
+  backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body: state.codexStatus }));
   backend.route("GET", `${API_ROOT}/models`, () => ({ body: state.models }));
   backend.route("GET", `${API_ROOT}/llm-calls`, () => ({ body: state.calls }));
   backend.route("GET", `${API_ROOT}/overview`, () => ({ body: state.overview }));

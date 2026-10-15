@@ -6,7 +6,11 @@ export const REPLAY_KIND = "openai_chat";
 
 /** 上游返回非 2xx 时抛出,携带完整响应体供调用方分类。 */
 export class HttpError extends Error {
-  constructor(readonly status: number, readonly body: string) {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+    readonly headers: Record<string, string> = {},
+  ) {
     super(`HTTP ${status}: ${body}`);
   }
 }
@@ -213,7 +217,7 @@ export async function streamOpenAiChat(
     body: JSON.stringify(buildChatBody(call)),
   });
   if (response.status < 200 || response.status >= 300) {
-    throw new HttpError(response.status, await readBody(response.lines));
+    throw new HttpError(response.status, await readBody(response.lines), response.headers);
   }
 
   let textOpen = false;

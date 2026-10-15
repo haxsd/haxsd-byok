@@ -737,6 +737,7 @@ mod tests {
         let recorder = CallRecorder::start(
             store.clone(),
             NewLlmCall {
+                client_source: crate::model::CallClient::Internal,
                 call_id: call_id.into(),
                 run_id: "run".into(),
                 conversation_id: "conversation".into(),

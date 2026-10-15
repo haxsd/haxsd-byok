@@ -2,9 +2,9 @@
 
 # haxsd byok
 
-Run Cursor and Devin on model APIs you configure: a local model gateway with a model library, connection status and call records.
+Run Cursor, Devin and the Codex engine inside the ChatGPT client on model APIs you configure: a local model gateway with a model library, connection status and call records.
 
-[Download for Windows](https://github.com/haxsd/haxsd-byok/releases/latest) · [User guide](./docs/user-guide.md) · [Devin setup](./docs/devin-go-live.md) · [Troubleshooting](./docs/troubleshooting.md) · [中文](./README.md)
+[Download for Windows](https://github.com/haxsd/haxsd-byok/releases/latest) · [User guide](./docs/user-guide.md) · [Devin setup](./docs/devin-go-live.md) · [Codex setup](./docs/codex-go-live.md) · [Troubleshooting](./docs/troubleshooting.md) · [中文](./README.md)
 
 </div>
 
@@ -13,6 +13,7 @@ Run Cursor and Devin on model APIs you configure: a local model gateway with a m
 - **Model library**: base URL, API key and model ID; OpenAI Chat / Responses and Anthropic; built-in connection test.
 - **Cursor integration**: official, local or mixed model sources, with a local proxy, local CA and takeover status.
 - **Devin integration**: optional local gateway, model bindings and a host patch.
+- **Codex integration**: the local Codex engine inside the ChatGPT client keeps its tools, terminal, approvals, sandbox and task loop; only model inference is replaced, over Responses, Chat Completions or Anthropic.
 - **Call insights and value estimate**: success, latency and token usage, with an estimate from reference prices.
 - **Desktop app**: Chinese and English, multiple themes, tray, in-app tutorial and signed updates.
 
@@ -24,6 +25,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 2. On the **Models** page, add base URL, API key and model ID, pick the protocol, and use **Test** to confirm it works.
 3. For Cursor: initialize the local CA and trust it, then pick the model source on the **Cursor** page. **Enabling local or mixed mode stops a running Cursor, so save your work first**; choose **mixed** to keep official models available alongside yours.
 4. For Devin: set up model mappings, enable the gateway and save, restart the app, then follow [Devin setup](./docs/devin-go-live.md).
+5. For Codex: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
 
 Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs/user-guide.md).
 
@@ -38,6 +40,7 @@ Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs
 - Local and mixed modes rewrite Cursor's proxy configuration, so restart Cursor when you switch modes; official mode writes nothing and records nothing.
 - Local mode only knows the models in your library; anything else is refused instead of silently going official.
 - Devin is off by default and listens on `127.0.0.1` only; after changing ports, restart the app and re-apply the host patch.
+- The Codex integration is off by default and listens on `127.0.0.1` only; it rewrites the managed fields in that client's `config.toml` only when you click **Apply to Codex**, and restores them when you undo. Login, MCP, skills and approval settings are untouched.
 - This product keeps separate data, identifiers and update channels from [haxsd/cursor-byok](https://github.com/haxsd/cursor-byok).
 
 ## Support and license

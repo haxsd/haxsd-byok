@@ -93,7 +93,7 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
                 {formatRelativeTime(call.created_at_ms, locale)}
               </span>
               <span role="cell">
-                <span className={styles.route} data-route={call.route}>{call.route === "cursor_official" ? t("官方") : "BYOK"}</span>
+                <span className={styles.route} data-route={call.route}>{call.client_source === "codex" ? "Codex · BYOK" : call.client_source === "devin" ? "Devin · BYOK" : call.route === "cursor_official" ? t("官方") : "BYOK"}</span>
               </span>
               <span className={styles.number} role="cell">{formatDuration(call.duration_ms)}</span>
               <span className={styles.number} role="cell">{formatDuration(call.ttfb_ms)}</span>

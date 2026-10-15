@@ -16,6 +16,7 @@ import {
   parseGrokUsage,
   presentAccount,
   quotaState,
+  refreshAccount,
   RESOURCE_TYPE,
 } from "./resources.ts";
 
@@ -348,6 +349,159 @@ Deno.test("invoke streams incremental tool calls and reasoning replay state", as
     },
     { type: "done", reason: "tool-use" },
   ]);
+});
+
+Deno.test("temporary rate limits preserve credits and honor Retry-After", async () => {
+  const draft = await credentialDraft({
+    accessToken: jwt({ sub: "rate-limited" }),
+    refreshToken: null,
+    displayName: null,
+  });
+  const before = Date.now();
+  let calls = 0;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot(draft.privateData),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      stream: () => {
+        calls += 1;
+        return {
+          status: 429,
+          headers: { "retry-after": "120" },
+          lines: sse(['{"error":{"code":"rate_limit_exceeded","message":"Too many requests"}}']),
+        };
+      },
+    }),
+  );
+  assert(result.status === "resource-error");
+  assert(result.patch.state?.status === "cooling");
+  assert(result.patch.privateData === undefined, "rate limiting must not mark credits as exhausted");
+  const retryAt = result.patch.state.retryAtMs ?? 0;
+  assert(
+    retryAt >= before + 120_000 && retryAt <= Date.now() + 120_000,
+    "rate limiting must respect the server retry deadline",
+  );
+  assertEquals(calls, 1);
+});
+
+Deno.test("HTTP-date rate limits resume at the server deadline", async () => {
+  const draft = await credentialDraft({
+    accessToken: "fixture-only",
+    refreshToken: null,
+    displayName: null,
+  });
+  const deadline = Math.floor(Date.now() / 1000) * 1000 + 90_000;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot(draft.privateData),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      stream: () => ({
+        status: 429,
+        headers: { "Retry-After": new Date(deadline).toUTCString() },
+        lines: sse(['{"error":"rate_limit_exceeded"}']),
+      }),
+    }),
+  );
+  assert(result.status === "resource-error");
+  assert(result.patch.state?.status === "cooling");
+  assertEquals(result.patch.state.retryAtMs, deadline);
+});
+
+Deno.test("usage refresh cannot cancel an active rate-limit cooldown", async () => {
+  const draft = await credentialDraft({
+    accessToken: "fixture-only",
+    refreshToken: null,
+    displayName: null,
+  });
+  const resource = snapshot(draft.privateData);
+  resource.state = { status: "cooling", retryAtMs: Date.now() + 120_000, message: "Rate limited" };
+  const patch = await refreshAccount(
+    resource,
+    context({
+      fetch: () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ config: { creditUsagePercent: 34 } }),
+      }),
+    }),
+  );
+  assertEquals(patch.state, resource.state);
+});
+
+Deno.test("usage refresh releases exhausted credits when the server grants quota again", async () => {
+  const resource = snapshot({
+    accessToken: "fixture-only",
+    refreshToken: null,
+    displayName: "Fixture",
+    quota: parseGrokUsage({ config: { creditUsagePercent: 100 } }),
+  });
+  resource.state = { status: "cooling", retryAtMs: Date.now() + 120_000 };
+  const patch = await refreshAccount(
+    resource,
+    context({
+      fetch: () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ config: { creditUsagePercent: 34 } }),
+      }),
+    }),
+  );
+  assertEquals(patch.state, { status: "ready" });
+});
+
+Deno.test("billing permission errors do not invalidate inference authorization", async () => {
+  const resource = snapshot({
+    accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null,
+  });
+  let rejected = false;
+  try {
+    await refreshAccount(resource, context({
+      fetch: () => ({ status: 403, headers: {}, body: "Billing access is forbidden" }),
+    }));
+  } catch (error) {
+    rejected = true;
+    assert(String(error).includes("403"));
+  }
+  assert(rejected, "a billing-only failure must be reported without invalidating the account");
+});
+
+Deno.test("a forbidden model does not invalidate the entire Grok account", async () => {
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({ accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({ stream: () => ({
+      status: 403, headers: {}, lines: sse(['{"error":"model access is forbidden"}']),
+    }) }),
+  );
+  assertEquals(result.status, "request-error");
+});
+
+Deno.test("an unauthorized token still invalidates the Grok account", async () => {
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({ accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({ stream: () => ({
+      status: 401, headers: {}, lines: sse(['{"error":"token expired"}']),
+    }) }),
+  );
+  assert(result.status === "resource-error");
+  assertEquals(result.patch.state?.status, "invalid");
 });
 
 Deno.test("invoke maps quota failures to a cooling resource error", async () => {

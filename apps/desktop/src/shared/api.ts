@@ -174,6 +174,25 @@ export interface DevinSettings {
 }
 
 /** Reported by the server: the gateway ports belong to another origin, so the page cannot probe them. */
+export interface CodexSettings {
+  enabled: boolean;
+  port: number;
+  home: string;
+  model_hashes: string[];
+  default_model_hash: string | null;
+}
+
+export interface CodexStatus {
+  enabled: boolean;
+  listening: boolean;
+  port: number;
+  configured: boolean;
+  config_conflict: boolean;
+  home: string;
+  calls: number;
+  last_error: string | null;
+}
+
 export interface DevinStatus {
   enabled: boolean;
   listening: boolean;
@@ -542,6 +561,7 @@ export interface Overview {
 }
 
 export interface LlmCall {
+  client_source: "cursor" | "devin" | "codex" | "internal";
   call_kind: "provider_llm" | "cursor_official";
   route: "local_byok" | "cursor_official";
   call_id: string;
@@ -761,6 +781,11 @@ export const api = {
     return request<Overview>(`/overview${query ? `?${query}` : ""}`, { signal });
   },
   cursorHarness: (signal?: AbortSignal) => request<CursorHarnessStatus>("/harness/cursor/status", { signal }),
+  codexSettings: () => request<CodexSettings>("/codex/settings"),
+  setCodexSettings: (settings: CodexSettings) => request<CodexSettings>("/codex/settings", { method: "PUT", body: JSON.stringify(settings) }),
+  codexStatus: (signal?: AbortSignal) => request<CodexStatus>("/codex/status", { signal }),
+  applyCodex: () => request<CodexStatus>("/codex/apply", { method: "POST" }),
+  restoreCodex: () => request<CodexStatus>("/codex/restore", { method: "POST" }),
   devinSettings: () => request<DevinSettings>("/devin/settings"),
   devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }),
   setDevinSettings: (settings: DevinSettings) => request<DevinSettings>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }),

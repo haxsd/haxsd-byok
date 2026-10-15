@@ -1,6 +1,7 @@
 //! Exposes the local control API.
 mod app_info;
 mod calls;
+pub mod codex;
 mod devin;
 mod harness;
 mod models;
@@ -277,13 +278,38 @@ pub fn devin_status_router(service: ControlService, listening: DevinListening) -
 
 fn desktop_cors() -> CorsLayer {
     CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(|origin, _| local_origin(origin)))
+        .allow_origin(AllowOrigin::predicate(|origin, request| {
+            local_origin(origin) && same_service_origin(origin, request.headers.get(header::HOST))
+        }))
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([
             CONTENT_TYPE,
             header::ACCEPT_LANGUAGE,
             header::HeaderName::from_static("disable-ad-ids"),
         ])
+}
+
+/// 管理页面和 API 由同一 HTTP 服务提供;其它本地端口也不属于这个来源。
+fn same_service_origin(origin: &HeaderValue, host: Option<&HeaderValue>) -> bool {
+    let Some(host) = host.and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    let Some(origin) = origin
+        .to_str()
+        .ok()
+        .and_then(|value| Url::parse(value).ok())
+    else {
+        return false;
+    };
+    let Ok(service) = Url::parse(&format!("http://{host}")) else {
+        return false;
+    };
+    service.username().is_empty()
+        && service.password().is_none()
+        && service.path() == "/"
+        && service.query().is_none()
+        && service.fragment().is_none()
+        && origin.origin() == service.origin()
 }
 
 fn local_origin(origin: &HeaderValue) -> bool {
@@ -321,6 +347,83 @@ fn local_origin(origin: &HeaderValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn another_loopback_origin_cannot_read_credentials_from_this_service() {
+        let response = Router::new()
+            .route("/credentials", get(|| async { "fixture-only" }))
+            .layer(desktop_cors())
+            .oneshot(
+                Request::builder()
+                    .uri("/credentials")
+                    .header(header::HOST, "127.0.0.1:3000")
+                    .header(header::ORIGIN, "http://127.0.0.1:9999")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn current_origin_with_a_dynamic_port_keeps_management_access() {
+        let response = Router::new()
+            .route("/credentials", get(|| async { "fixture-only" }))
+            .layer(desktop_cors())
+            .oneshot(
+                Request::builder()
+                    .uri("/credentials")
+                    .header(header::HOST, "127.0.0.1:49234")
+                    .header(header::ORIGIN, "http://127.0.0.1:49234")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "http://127.0.0.1:49234"
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_origins_must_match_the_service_host_and_scheme() {
+        for (host, origin) in [
+            ("127.0.0.1:3000", "https://127.0.0.1:3000"),
+            ("127.0.0.1:3000", "http://localhost:3000"),
+            ("127.0.0.1:3000", "http://[::1]:3000"),
+            ("127.0.0.1:3000/path", "http://127.0.0.1:3000"),
+            ("user@127.0.0.1:3000", "http://127.0.0.1:3000"),
+            ("attacker.example:3000", "http://127.0.0.1:3000"),
+        ] {
+            let response = Router::new()
+                .route("/credentials", get(|| async { "fixture-only" }))
+                .layer(desktop_cors())
+                .oneshot(
+                    Request::builder()
+                        .uri("/credentials")
+                        .header(header::HOST, host)
+                        .header(header::ORIGIN, origin)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert!(
+                response
+                    .headers()
+                    .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                    .is_none(),
+                "unexpected permission for origin {origin} against host {host}"
+            );
+        }
+    }
 
     fn origin(value: &'static str) -> HeaderValue {
         HeaderValue::from_static(value)

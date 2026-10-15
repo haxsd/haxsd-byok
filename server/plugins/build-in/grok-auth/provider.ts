@@ -23,9 +23,8 @@ export function isQuotaError(error: string): boolean {
         message.includes("insufficient")));
 }
 
-/** HTTP 失败携带结构化状态码,429 一律按额度耗尽处理并冷却账号。 */
+/** 额度耗尽由响应体判断;普通 429 只表示短期限流。 */
 function isQuotaHttpError(error: HttpError): boolean {
-  if (error.status === 429) return true;
   const body = error.body.toLowerCase();
   return body.includes("insufficient_quota") ||
     body.includes("credits exhausted") ||
@@ -34,6 +33,26 @@ function isQuotaHttpError(error: HttpError): boolean {
     body.includes("spending-limit") ||
     body.includes("run out of credits") ||
     body.includes("quota_exceeded");
+}
+
+function rateLimitResult(error: HttpError): ProviderResult {
+  const now = Date.now();
+  const retryAfter = new Headers(error.headers).get("retry-after")?.trim();
+  const seconds = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+  const deadline = Number.isFinite(seconds)
+    ? now + seconds * 1000
+    : retryAfter ? Date.parse(retryAfter) : NaN;
+  return {
+    status: "resource-error",
+    message: error.message,
+    patch: {
+      state: {
+        status: "cooling",
+        retryAtMs: Number.isFinite(deadline) && deadline > now ? deadline : now + 60_000,
+        message: "Grok rate limit reached; wait before retrying",
+      },
+    },
+  };
 }
 
 function invalidResult(message: string, stateMessage: string): ProviderResult {
@@ -78,7 +97,8 @@ async function invoke(
     return { status: "completed" };
   } catch (error) {
     if (error instanceof HttpError) {
-      if ((error.status === 401 || error.status === 403) && !isQuotaHttpError(error)) {
+      // 403 可能只是模型权限或内容限制,不能据此停用整个账号。
+      if (error.status === 401 && !isQuotaHttpError(error)) {
         return invalidResult(error.message, "Grok authorization expired; sign in again");
       }
       if (isQuotaHttpError(error)) {
@@ -88,6 +108,7 @@ async function invoke(
           patch: quotaExhaustedPatch(data),
         };
       }
+      if (error.status === 429) return rateLimitResult(error);
       return { status: "request-error", message: error.message };
     }
     const message = error instanceof Error ? error.message : String(error);

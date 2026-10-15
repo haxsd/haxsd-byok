@@ -455,11 +455,90 @@ mod tests {
             .await
             .unwrap();
 
+            let client_source_column_exists: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(
+                    SELECT 1 FROM pragma_table_info('llm_calls')
+                    WHERE name = 'client_source'
+                 )",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
             assert_eq!(checksum_after, checksum_before);
-            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+            assert_eq!(versions, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
             assert_eq!(checkpoint_table_exists, 1);
             assert_eq!(argument_error_column_exists, 1);
+            assert_eq!(client_source_column_exists, 1);
         }
+    }
+
+    /// 迁移 0013 会给已有记录补来源：前缀可确认的按前缀补，能对上 runs 的算 Cursor，
+    /// 其余保持 internal——不能把无法确认的历史算成某个客户端。
+    #[tokio::test]
+    async fn client_source_backfill_attributes_only_what_history_can_prove() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let historical = migrator_with_line_endings(MigrationLineEndings::Lf);
+        let before_client_source = Migrator {
+            migrations: Cow::Owned(historical.iter().take(12).cloned().collect()),
+            ..Migrator::DEFAULT
+        };
+        before_client_source.run(&pool).await.unwrap();
+
+        sqlx::query("INSERT INTO conversations(conversation_id, updated_at_ms) VALUES ('c1', 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO conversation_checkpoints(conversation_id, state_digest, created_at_ms) VALUES ('c1', zeroblob(32), 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO runs(run_id, conversation_id, base_checkpoint_id, head_checkpoint_id, run_kind, status, created_at_ms, updated_at_ms) VALUES ('run-1', 'c1', 1, 1, 'agent', 'completed', 1, 1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (call_id, run_id) in [
+            ("devin:exec-1", "unknown"),
+            ("devin-call:2", "unknown"),
+            ("cursor-run:3", "run-1"),
+            ("commit-message-4", "unknown"),
+            ("mystery-call", "unknown"),
+        ] {
+            sqlx::query(
+                "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index, provider_type, provider_url,
+                    request_type, request_url, model_id, display_name, status, created_at_ms, message_count, tool_count, detailed)
+                 VALUES (?, ?, 'c1', 0, 'openai', 'https://example.com', 'openai', 'https://example.com/v1', 'm', 'M', 'completed', 1, 1, 0, 0)",
+            )
+            .bind(call_id)
+            .bind(run_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        run(&pool, Path::new("client-source-backfill.db"))
+            .await
+            .unwrap();
+
+        let sources: Vec<(String, String)> =
+            sqlx::query_as("SELECT call_id, client_source FROM llm_calls ORDER BY call_id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            sources,
+            vec![
+                ("commit-message-4".to_string(), "cursor".to_string()),
+                ("cursor-run:3".to_string(), "cursor".to_string()),
+                ("devin-call:2".to_string(), "devin".to_string()),
+                ("devin:exec-1".to_string(), "devin".to_string()),
+                ("mystery-call".to_string(), "internal".to_string()),
+            ]
+        );
     }
 
     #[test]

@@ -23,6 +23,8 @@ export const navOverviewIcon = stroke('<path d="M2.6 13.4h3.1l2.4-6.4 3.4 11.6 2
 export const navCallsIcon = stroke('<path d="M9 7h11M9 12h11M9 17h7"/><circle cx="4.7" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="17" r="1.5" fill="currentColor" stroke="none"/>');
 
 /** Devin: a hexagonal node, the module's mark. */
+export const navCodexIcon = stroke('<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>');
+
 export const navDevinIcon = stroke('<path d="M12 2.9l7.7 4.5v9.2L12 21.1l-7.7-4.5V7.4z"/>');
 
 /** Models: a stack, because the library is shared by both modules. */

@@ -143,6 +143,7 @@ pub fn to_invocation(
     model_spec.reasoning.effort = model.reasoning_effort.clone();
 
     Ok(crate::model::ModelInvocation {
+        client_source: crate::model::CallClient::Devin,
         call_id,
         run_id: if request.execution_id.is_empty() {
             "devin:anonymous".into()

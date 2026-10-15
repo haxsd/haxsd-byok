@@ -2,12 +2,13 @@
 use sqlx::Row;
 
 use crate::{
-    devin::{DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX},
     model::{LlmCallRequest, LlmCallResponseChunk, LlmCallSummary, NewLlmCall, Usage},
     Result,
 };
 
 use super::{now_ms, Store};
+
+const CALL_COLUMNS: &str = "client_source, call_id, run_id, conversation_id, provider_call_index, model_hash, provider_type, provider_url, request_type, request_url, model_id, display_name, reasoning_effort, fast, status, finish_reason, created_at_ms, request_started_at_ms, response_headers_at_ms, first_event_at_ms, first_text_at_ms, first_valid_response_at_ms, finished_at_ms, queue_ms, ttfb_ms, ttft_ms, ttfr_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, usage_json, message_count, tool_count, request_bytes, response_bytes, stream_event_count, http_status, error_kind, error_message, detailed";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ContextUsageAnchor {
@@ -73,8 +74,8 @@ impl Store {
                 call_id, run_id, conversation_id, provider_call_index, model_hash,
                 provider_type, provider_url, request_type, request_url, model_id, display_name,
                 reasoning_effort, fast, status,
-                created_at_ms, request_started_at_ms, queue_ms, message_count, tool_count, detailed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, 0, ?, ?, ?)"#,
+                created_at_ms, request_started_at_ms, queue_ms, message_count, tool_count, detailed, client_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, 0, ?, ?, ?, ?)"#,
         )
         .bind(&call.call_id)
         .bind(&call.run_id)
@@ -94,6 +95,7 @@ impl Store {
         .bind(call.message_count as i64)
         .bind(call.tool_count as i64)
         .bind(call.detailed)
+        .bind(call.client_source.as_str())
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -305,10 +307,12 @@ impl Store {
     }
 
     pub async fn llm_calls(&self, limit: i64) -> Result<Vec<LlmCallSummary>> {
-        let rows = sqlx::query("SELECT * FROM llm_calls ORDER BY created_at_ms DESC LIMIT ?")
-            .bind(limit.clamp(1, 500))
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(&format!(
+            "SELECT {CALL_COLUMNS} FROM llm_calls ORDER BY created_at_ms DESC LIMIT ?"
+        ))
+        .bind(limit.clamp(1, 500))
+        .fetch_all(&self.pool)
+        .await?;
         rows.into_iter().map(summary_from_row).collect()
     }
 
@@ -317,23 +321,22 @@ impl Store {
     /// the whole table keeps that answer stable once other traffic outgrows the
     /// newest page of calls.
     pub async fn devin_call_count(&self) -> Result<usize> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM llm_calls WHERE call_id LIKE ? OR call_id LIKE ?",
-        )
-        .bind(format!("{DEVIN_CALL_ID_PREFIX}%"))
-        .bind(format!("{DEVIN_EXECUTION_ID_PREFIX}%"))
-        .fetch_one(&self.pool)
-        .await?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM llm_calls WHERE client_source = 'devin'")
+                .fetch_one(&self.pool)
+                .await?;
         Ok(usize::try_from(count).unwrap_or(usize::MAX))
     }
 
     pub async fn llm_call(&self, call_id: &str) -> Result<Option<LlmCallSummary>> {
-        sqlx::query("SELECT * FROM llm_calls WHERE call_id = ?")
-            .bind(call_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(summary_from_row)
-            .transpose()
+        sqlx::query(&format!(
+            "SELECT {CALL_COLUMNS} FROM llm_calls WHERE call_id = ?"
+        ))
+        .bind(call_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(summary_from_row)
+        .transpose()
     }
 
     pub async fn llm_call_request(&self, call_id: &str) -> Result<Option<LlmCallRequest>> {
@@ -378,6 +381,7 @@ fn as_i64(value: Option<u64>) -> Option<i64> {
 fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
     let usage = row.try_get::<Option<String>, _>("usage_json")?;
     Ok(LlmCallSummary {
+        client_source: row.try_get("client_source")?,
         call_id: row.try_get("call_id")?,
         run_id: row.try_get("run_id")?,
         conversation_id: row.try_get("conversation_id")?,
@@ -429,10 +433,12 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::devin::{DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX};
     use crate::model::ProviderType;
 
     fn new_call(call_id: &str) -> NewLlmCall {
         NewLlmCall {
+            client_source: crate::model::CallClient::Internal,
             call_id: call_id.into(),
             run_id: format!("run-{call_id}"),
             conversation_id: "conversation".into(),
@@ -469,7 +475,13 @@ mod tests {
             format!("{DEVIN_EXECUTION_ID_PREFIX}exec-1"),
             "cursor-run:1".into(),
         ] {
-            store.start_llm_call(&new_call(&call_id)).await.unwrap();
+            let mut call = new_call(&call_id);
+            call.client_source = if call_id == "cursor-run:1" {
+                crate::model::CallClient::Cursor
+            } else {
+                crate::model::CallClient::Devin
+            };
+            store.start_llm_call(&call).await.unwrap();
         }
         for index in 0..250 {
             let call_id = format!("cursor-call:{index}");
@@ -492,6 +504,7 @@ mod tests {
         let plugin_model = "plugin:dev.example/codex/gpt-test";
         store
             .start_llm_call(&NewLlmCall {
+                client_source: crate::model::CallClient::Internal,
                 call_id: "plugin-call".into(),
                 run_id: "run".into(),
                 conversation_id: "conversation".into(),
@@ -540,6 +553,7 @@ mod tests {
         ] {
             store
                 .start_llm_call(&NewLlmCall {
+                    client_source: crate::model::CallClient::Internal,
                     call_id: call_id.into(),
                     run_id: format!("run-{call_id}"),
                     conversation_id: "conversation".into(),

@@ -8,13 +8,14 @@ import controls from "../shared/ui/Controls.module.scss";
 import { Icon } from "../shared/ui/Icon";
 import { StatusPill } from "../shared/ui/StatusPill";
 import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
-import { navCallsIcon, navDevinIcon, navModelsIcon, navOverviewIcon, navPluginsIcon, navSettingsIcon, navTutorialIcon } from "../shared/ui/navIcons";
+import { navCallsIcon, navCodexIcon, navDevinIcon, navModelsIcon, navOverviewIcon, navPluginsIcon, navSettingsIcon, navTutorialIcon } from "../shared/ui/navIcons";
 import { refreshIcon, searchIcon } from "../shared/ui/icons";
 import { appStore, useAppStore } from "../shared/store/appStore";
 import { useAvailableUpdate } from "../features/settings/startupUpdateCheck";
 import styles from "./AppLayout.module.scss";
 import { CommandPalette } from "./CommandPalette";
 import { cursorEntryStatus, devinEntryStatus, localServiceStatus } from "./connectionStatus";
+import { codexConnectionView } from "../features/codex/codexConnectionView";
 import { OfflineBanner } from "./OfflineBanner";
 import { PageActionsTarget } from "./PageActions";
 import { PageErrorBoundary } from "./PageErrorBoundary";
@@ -23,12 +24,12 @@ type MenuItem =
   | { kind: "page"; path: string; label: string; icon: IconifyIcon | string }
   | { kind: "group"; label: string };
 
-const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor", "/harness/devin", "/plugins", "/tutorial"];
+const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor", "/harness/devin", "/harness/codex", "/plugins", "/tutorial"];
 /** 教程从「外部文档」变成产品内页面后，这个键表示「打开过」，不再表示「读过外部网页」。 */
 const tutorialReadStorageKey = "haxsd-byok:tutorial-read";
 
 export function AppLayout() {
-  const { busy, cursorHarness, devinStatus, models, offline } = useAppStore();
+  const { busy, cursorHarness, devinStatus, codexStatus, models, offline } = useAppStore();
   const availableUpdate = useAvailableUpdate();
   const location = useLocation();
   const navigate = useNavigate();
@@ -65,6 +66,7 @@ export function AppLayout() {
   const menuStatus = (path: string) => {
     if (path === "/harness/cursor") return cursorEntryStatus(cursorHarness);
     if (path === "/harness/devin") return devinEntryStatus(devinStatus);
+    if (path === "/harness/codex") return codexConnectionView(codexStatus);
     return null;
   };
   // 全局那一颗只说一件事：本地管理服务能不能连上。
@@ -78,6 +80,7 @@ export function AppLayout() {
     { kind: "group", label: t("接入模块") },
     { kind: "page", path: "/harness/cursor", label: "Cursor", icon: cursorIconUrl },
     { kind: "page", path: "/harness/devin", label: "Devin", icon: navDevinIcon },
+    { kind: "page", path: "/harness/codex", label: "Codex", icon: navCodexIcon },
     { kind: "group", label: t("共享") },
     { kind: "page", path: "/models", label: t("模型"), icon: navModelsIcon },
     { kind: "group", label: t("设置") },

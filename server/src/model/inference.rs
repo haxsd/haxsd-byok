@@ -20,6 +20,7 @@ pub struct ModelRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ModelInvocation {
+    pub client_source: super::CallClient,
     pub call_id: String,
     pub run_id: String,
     pub conversation_id: String,

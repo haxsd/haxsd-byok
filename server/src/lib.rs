@@ -1,6 +1,7 @@
 //! Server library root; exposes the application, API, runtime, persistence, and integration layers.
 pub mod api;
 pub mod app;
+pub mod codex;
 pub mod config;
 pub mod control;
 pub mod cursor;

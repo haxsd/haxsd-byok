@@ -29,6 +29,7 @@ export function CallFacts({ call }: { call: LlmCall }) {
     ["Created At", `${call.created_at_ms} · ${new Date(call.created_at_ms).toLocaleString()}`],
   ] : [];
   const timing: Array<[string, string]> = developerMode ? [
+    [t("客户端来源"), call.client_source],
     ["TTFB", formatDuration(call.ttfb_ms)],
     ["TTFR", formatDuration(call.ttfr_ms)],
     ["TTFT", formatDuration(call.ttft_ms)],
@@ -36,6 +37,7 @@ export function CallFacts({ call }: { call: LlmCall }) {
     ["HTTP", call.http_status === null ? "-" : String(call.http_status)],
     ["Finish Reason", call.finish_reason ?? "-"],
   ] : [
+    [t("客户端来源"), call.client_source],
     [t("总耗时"), formatDuration(call.duration_ms)],
   ];
   const usage: Array<[string, string]> = [

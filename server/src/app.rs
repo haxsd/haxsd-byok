@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     api,
+    codex::CodexGateway,
     config::{Config, ConsoleSource},
     control,
     cursor::{
@@ -29,6 +30,7 @@ pub struct App {
     store: Store,
     clients: crate::network::NetworkClients,
     devin_gateway: DevinGateway,
+    codex_gateway: CodexGateway,
     /// 这份数据目录的进程互斥锁，随 `App` 活到进程结束。
     _instance: crate::instance::InstanceLock,
 }
@@ -65,6 +67,12 @@ impl App {
             config.provider_request_timeout,
             config.provider_stream_idle_timeout,
         ));
+        let codex_gateway = CodexGateway::with_timeouts(
+            store.clone(),
+            clients.clone(),
+            config.provider_request_timeout,
+            config.provider_stream_idle_timeout,
+        );
         let devin_gateway = DevinGateway::new(store.clone(), provider.clone(), clients.clone());
         let registry = TransportRegistry::with_plugins(
             store.clone(),
@@ -85,6 +93,7 @@ impl App {
         let mut router = api::router(registry.clone(), clients.clone(), harness.clone())?;
         // The status endpoint needs both the control service and the gateway's
         // own listening flag, so it is merged here rather than inside either one.
+        router = router.merge(control::codex::router(codex_gateway.clone(), store.clone()));
         router = router.merge(control::devin_status_router(
             control.clone(),
             devin_gateway.listening(),
@@ -105,6 +114,7 @@ impl App {
             store,
             clients,
             devin_gateway,
+            codex_gateway,
             config,
             _instance: instance,
         })
@@ -159,6 +169,10 @@ impl App {
         let harness = self.harness;
         let clients = self.clients;
         let devin_gateway = self.devin_gateway;
+        let codex_gateway = self.codex_gateway;
+        if let Err(error) = codex_gateway.start().await {
+            tracing::error!(%error, "Codex gateway could not start; other integrations remain active");
+        }
         let graceful = shutdown.clone();
         let server = axum::serve(listener, self.router)
             .with_graceful_shutdown(async move {
@@ -195,7 +209,7 @@ impl App {
         };
         tokio::pin!(maintenance);
 
-        let result = tokio::select! {
+        let result = async { tokio::select! {
             () = &mut maintenance => Ok(()),
             result = &mut server => {
                 if let Err(error) = harness.disable().await {
@@ -217,7 +231,10 @@ impl App {
                 }
                 Ok(())
             }
-        };
+        } }.await;
+        if let Err(error) = codex_gateway.shutdown().await {
+            tracing::warn!(%error, "Codex gateway cleanup failed");
+        }
         gateway_task.abort();
         let _ = gateway_task.await;
         proxy_watch.abort();

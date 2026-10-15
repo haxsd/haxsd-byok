@@ -99,6 +99,25 @@ mod usage {
 }
 pub use usage::*;
 
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CallClient {
+    Cursor,
+    Devin,
+    Codex,
+    Internal,
+}
+impl CallClient {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cursor => "cursor",
+            Self::Devin => "devin",
+            Self::Codex => "codex",
+            Self::Internal => "internal",
+        }
+    }
+}
+
 mod llm_call {
     use serde::Serialize;
 
@@ -106,6 +125,7 @@ mod llm_call {
 
     #[derive(Clone, Debug)]
     pub struct NewLlmCall {
+        pub client_source: super::CallClient,
         pub call_id: String,
         pub run_id: String,
         pub conversation_id: String,
@@ -126,6 +146,7 @@ mod llm_call {
 
     #[derive(Clone, Debug, Serialize)]
     pub struct LlmCallSummary {
+        pub client_source: String,
         pub call_id: String,
         pub run_id: String,
         pub conversation_id: String,

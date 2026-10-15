@@ -227,3 +227,12 @@ impl PluginRuntime {
         status.error = None;
     }
 }
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+
+    pub(in crate::plugin) fn runtime(root: &std::path::Path) -> PluginRuntime {
+        PluginRuntime::new(root.join("runtime")).unwrap()
+    }
+}

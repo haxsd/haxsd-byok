@@ -1,5 +1,7 @@
 import type {
   CallDetail,
+  CodexSettings,
+  CodexStatus,
   CursorHarnessStatus,
   CursorMode,
   DesktopSettings,
@@ -44,6 +46,7 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
   const failed = index === 7 || index === 19;
   return {
     call_kind: "provider_llm",
+    client_source: "internal",
     route: "local_byok",
     call_id: `mock-call-${String(index + 1).padStart(3, "0")}`,
     run_id: `mock-run-${Math.floor(index / 3) + 1}`,
@@ -94,6 +97,13 @@ let harnessStatus: CursorHarnessStatus = {
   account: { state: "official", email: "developer@example.com" },
   catalog: { last_success_ms: 1_700_000_000_000, last_failure_ms: null, last_failure: null },
 };
+
+let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };
+let codexConfigured = false;
+function codexStatus(): CodexStatus {
+  return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
+    configured: codexConfigured, config_conflict: false, home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
+}
 
 let devinSettings: DevinSettings = {
   enabled: false,
@@ -180,6 +190,19 @@ export function installDemoApi() {
       };
       return json(harnessStatus);
     }
+    if (path === "/codex/status") return json(codexStatus());
+    if (path === "/codex/settings" && method === "GET") return json(codexSettings);
+    if (path === "/codex/settings" && method === "PUT") {
+      if (codexConfigured) return json({ error: { message: "Restore Codex configuration before editing" } }, 409);
+      codexSettings = body as CodexSettings;
+      return json(codexSettings);
+    }
+    if (path === "/codex/apply" && method === "POST") {
+      if (!codexSettings.enabled || !codexSettings.default_model_hash) return json({ error: { message: "Enable Codex and select a model first" } }, 400);
+      codexConfigured = true;
+      return json(codexStatus());
+    }
+    if (path === "/codex/restore" && method === "POST") { codexConfigured = false; return json(codexStatus()); }
     if (path === "/devin/settings" && method === "GET") return json(devinSettings);
     if (path === "/devin/settings") {
       devinSettings = body as DevinSettings;

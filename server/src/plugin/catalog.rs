@@ -332,8 +332,17 @@ fn icon_data_url(directory: &Path, relative: &str) -> Result<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
+
+    pub(in crate::plugin) fn catalog(root: &Path) -> PluginCatalog {
+        PluginCatalog {
+            roots: vec![root.join("installed")],
+            definition_loader: PluginDefinitionLoader::for_test(root).unwrap(),
+            app_version: "1.4.2".into(),
+        }
+    }
+
     #[test]
     fn repository_examples_have_valid_static_manifests() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in");

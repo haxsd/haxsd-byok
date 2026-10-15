@@ -81,6 +81,12 @@ Cursor 与 Devin 是并列模块，只用 Cursor 时无需开启 Devin。完整�
 
 顺序：模型库 → Devin 映射与网关 → 保存并重启应用 → 宿主检查与补丁 → 重启 Devin → 对话验证。
 
+## 接入 ChatGPT 客户端中的 Codex
+
+「Codex」页通过本机网关替换本地编程任务的模型推理，保留原版 Codex 的工具、终端、审批、沙箱和任务循环。支持共享模型库中的 Responses、Chat Completions 与 Anthropic API 模型。
+
+顺序：模型库（填写真实上下文窗口）→ Codex 选择模型并保存 → 应用配置 → 客户端新建编程会话 → 修改文件和执行检查 → 查看 Codex 调用记录。完整说明见 [Codex 手册](./codex-go-live.md)。普通 ChatGPT 云端聊天不属于此接入范围。
+
 ## 调用与价值估算
 
 「调用」页显示结果、耗时和 Token。详情记录受系统设置影响，并非永久保存。

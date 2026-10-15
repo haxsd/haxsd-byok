@@ -1,6 +1,7 @@
 //! Exposes the local persistence interface.
 mod cas;
 mod checkpoints;
+mod codex;
 mod conversations;
 mod cursor_traces;
 mod input_anchors;

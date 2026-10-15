@@ -18,6 +18,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 19,
+          "column": 23
+        },
+        {
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 128,
           "column": 28
@@ -57,7 +62,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 127,
+          "line": 134,
           "column": 42
         }
       ]
@@ -174,6 +179,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 55,
+          "column": 36
+        },
+        {
           "file": "features/devin/devinConnectionView.ts",
           "line": 159,
           "column": 14
@@ -245,6 +255,18 @@
         }
       ]
     },
+    "04ff75c0da24a339": {
+      "source": "接入设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 61,
+          "column": 76
+        }
+      ]
+    },
     "051836569928a9f9": {
       "source": "编辑",
       "kind": "text",
@@ -306,7 +328,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 108,
+          "line": 115,
           "column": 40
         },
         {
@@ -427,7 +449,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 115,
+          "line": 122,
           "column": 20
         }
       ]
@@ -549,7 +571,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 118,
+          "line": 125,
           "column": 34
         }
       ]
@@ -597,7 +619,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 107,
+          "line": 114,
           "column": 34
         }
       ]
@@ -700,7 +722,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 64,
+          "line": 66,
           "column": 62
         },
         {
@@ -746,12 +768,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 55,
+          "line": 57,
           "column": 62
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 56,
+          "line": 58,
           "column": 42
         }
       ]
@@ -839,6 +861,23 @@
         }
       ]
     },
+    "0e76c225f413f762": {
+      "source": "启用 Codex 网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 18,
+          "column": 46
+        },
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 18,
+          "column": 85
+        }
+      ]
+    },
     "0e7ca32fa816aed4": {
       "source": "搜插件名称或作者…",
       "kind": "text",
@@ -894,7 +933,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 101,
+          "line": 103,
           "column": 22
         }
       ]
@@ -1060,7 +1099,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 66,
+          "line": 68,
           "column": 51
         }
       ]
@@ -1091,6 +1130,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 166,
           "column": 322
+        }
+      ]
+    },
+    "155306a64c2a1976": {
+      "source": "自动检测配置目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 25,
+          "column": 97
         }
       ]
     },
@@ -1147,6 +1198,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 390,
           "column": 76
+        }
+      ]
+    },
+    "1691ac200fb6c3f3": {
+      "source": "选择 Codex 默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 23,
+          "column": 68
         }
       ]
     },
@@ -1587,8 +1650,20 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 44,
+          "line": 46,
           "column": 6
+        }
+      ]
+    },
+    "1e2933c6b813322a": {
+      "source": "默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 23,
+          "column": 23
         }
       ]
     },
@@ -1597,6 +1672,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 55,
+          "column": 80
+        },
         {
           "file": "features/devin/devinConnectionView.ts",
           "line": 103,
@@ -1990,13 +2070,25 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 109,
+          "line": 116,
           "column": 37
         },
         {
           "file": "shared/utils/callStatus.ts",
           "line": 26,
           "column": 27
+        }
+      ]
+    },
+    "2847e3c7411f33c2": {
+      "source": "自配模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 56,
+          "column": 34
         }
       ]
     },
@@ -2228,7 +2320,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 56,
+          "line": 58,
           "column": 6
         }
       ]
@@ -2360,7 +2452,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 59,
+          "line": 61,
           "column": 47
         }
       ]
@@ -2379,6 +2471,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 355,
           "column": 56
+        }
+      ]
+    },
+    "3072ec79731cce3e": {
+      "source": "撤销接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 48,
+          "column": 91
         }
       ]
     },
@@ -2534,6 +2638,18 @@
         }
       ]
     },
+    "33fa8b3c56f9f863": {
+      "source": "Codex 设置已保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 40,
+          "column": 53
+        }
+      ]
+    },
     "34632f53e1fdc8dc": {
       "source": "只用模型库里的模型：官方模型不进列表，不在库里的模型会被明确拒绝；没有账号时本应用补一个本地账号。",
       "kind": "text",
@@ -2551,6 +2667,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 58,
+          "column": 51
+        },
         {
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 141,
@@ -2897,7 +3018,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 87,
+          "line": 89,
           "column": 22
         }
       ]
@@ -3078,6 +3199,18 @@
         }
       ]
     },
+    "3c5b08eca1ded407": {
+      "source": "应用到 Codex",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 47,
+          "column": 147
+        }
+      ]
+    },
     "3c94b4c75940c178": {
       "source": "输入 Token",
       "kind": "text",
@@ -3085,7 +3218,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 42,
+          "line": 44,
           "column": 6
         }
       ]
@@ -3309,6 +3442,23 @@
         }
       ]
     },
+    "40e03cb5580bfb0f": {
+      "source": "网关不可用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 8,
+          "column": 99
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 10,
+          "column": 77
+        }
+      ]
+    },
     "40fae00b7c6d8ac0": {
       "source": "常规",
       "kind": "text",
@@ -3389,7 +3539,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 100,
+          "line": 102,
           "column": 20
         }
       ]
@@ -3418,12 +3568,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 35,
+          "line": 36,
           "column": 6
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 39,
+          "line": 41,
           "column": 6
         }
       ]
@@ -3495,6 +3645,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 7,
+          "column": 80
+        },
         {
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 246,
@@ -3678,7 +3833,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 86,
+          "line": 88,
           "column": 22
         }
       ]
@@ -3728,7 +3883,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 136,
+          "line": 143,
           "column": 15
         },
         {
@@ -3743,6 +3898,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 62,
+          "column": 140
+        },
         {
           "file": "features/cursor/CommitSettingsCard.tsx",
           "line": 170,
@@ -3991,12 +4151,12 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 121,
+          "line": 142,
           "column": 34
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 125,
+          "line": 146,
           "column": 27
         }
       ]
@@ -4008,8 +4168,22 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 88,
+          "line": 90,
           "column": 22
+        }
+      ]
+    },
+    "4d25c6e326a482b0": {
+      "source": "已记录 {count} 次 Codex 调用",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 59,
+          "column": 18
         }
       ]
     },
@@ -4032,7 +4206,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 63,
+          "line": 84,
           "column": 29
         }
       ]
@@ -4088,7 +4262,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 182,
+          "line": 185,
           "column": 17
         }
       ]
@@ -4142,6 +4316,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 258,
           "column": 41
+        }
+      ]
+    },
+    "4e622561f7b95b87": {
+      "source": "从共享模型库选择",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 56,
+          "column": 53
         }
       ]
     },
@@ -4280,7 +4466,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 183,
+          "line": 186,
           "column": 22
         }
       ]
@@ -4366,6 +4552,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 12,
+          "column": 52
+        },
         {
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 232,
@@ -4460,7 +4651,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 182,
+          "line": 185,
           "column": 50
         }
       ]
@@ -4619,6 +4810,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 355,
           "column": 35
+        }
+      ]
+    },
+    "577ff6a2d90f0524": {
+      "source": "尚未应用配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 54,
+          "column": 90
         }
       ]
     },
@@ -4821,7 +5024,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 135,
+          "line": 142,
           "column": 15
         }
       ]
@@ -4939,7 +5142,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 45,
+          "line": 47,
           "column": 6
         },
         {
@@ -5078,7 +5281,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 52,
+          "line": 54,
           "column": 6
         }
       ]
@@ -5232,8 +5435,20 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 801,
+          "line": 826,
           "column": 43
+        }
+      ]
+    },
+    "64b57fc91f15040a": {
+      "source": "内部调用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallsPage.tsx",
+          "line": 108,
+          "column": 73
         }
       ]
     },
@@ -5321,17 +5536,17 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 85,
+          "line": 87,
           "column": 22
         },
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 148,
+          "line": 155,
           "column": 30
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 59,
+          "line": 79,
           "column": 44
         },
         {
@@ -5380,7 +5595,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 53,
+          "line": 55,
           "column": 6
         }
       ]
@@ -5462,7 +5677,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 67,
+          "line": 88,
           "column": 47
         },
         {
@@ -5514,6 +5729,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 62,
+          "column": 128
+        },
+        {
           "file": "features/cursor/CommitSettingsCard.tsx",
           "line": 170,
           "column": 21
@@ -5552,7 +5772,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 183,
+          "line": 186,
           "column": 40
         }
       ]
@@ -5620,7 +5840,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 133,
+          "line": 140,
           "column": 13
         }
       ]
@@ -5765,7 +5985,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 92,
+          "line": 94,
           "column": 10
         }
       ]
@@ -5870,7 +6090,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 60,
+          "line": 80,
           "column": 29
         }
       ]
@@ -5918,12 +6138,12 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 360,
+          "line": 364,
           "column": 23
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 367,
+          "line": 371,
           "column": 25
         }
       ]
@@ -5937,6 +6157,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 296,
           "column": 66
+        }
+      ]
+    },
+    "767d38bc5b6d3701": {
+      "source": "Codex 接管状态",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shared/store/appStore.ts",
+          "line": 187,
+          "column": 29
         }
       ]
     },
@@ -6010,6 +6242,18 @@
         }
       ]
     },
+    "785799b8490dd771": {
+      "source": "保留原版 Codex 的工具、终端、审批、沙箱和任务循环，只替换模型推理。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 52,
+          "column": 22
+        }
+      ]
+    },
     "7879f5b08c5cb92f": {
       "source": "缓存写入估算：{cost}",
       "kind": "template",
@@ -6079,7 +6323,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 796,
+          "line": 821,
           "column": 43
         }
       ]
@@ -6147,7 +6391,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 115,
+          "line": 136,
           "column": 80
         }
       ]
@@ -6236,7 +6480,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 182,
+          "line": 185,
           "column": 28
         }
       ]
@@ -6400,13 +6644,25 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 628,
+          "line": 648,
           "column": 11
         },
         {
           "file": "shell/OfflineBanner.tsx",
           "line": 40,
           "column": 16
+        }
+      ]
+    },
+    "815175fab3810d54": {
+      "source": "共享模型库中的 API 模型。请先为每个模型填写真实上下文窗口。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 19,
+          "column": 40
         }
       ]
     },
@@ -6470,6 +6726,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 160,
           "column": 49
+        }
+      ]
+    },
+    "82bcf3725336d7e6": {
+      "source": "未监听",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 55,
+          "column": 91
         }
       ]
     },
@@ -6802,6 +7070,18 @@
         }
       ]
     },
+    "8a78946a7c3d7d9d": {
+      "source": "切换模型或端口前先撤销接管，再保存并重新应用。配置冲突时保留外部修改，不强制覆盖。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 67,
+          "column": 13
+        }
+      ]
+    },
     "8a8542f6964852dc": {
       "source": "下一页",
       "kind": "text",
@@ -6918,6 +7198,18 @@
         }
       ]
     },
+    "8f5eba7686e0cf20": {
+      "source": "撤销接管后才能修改设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 17,
+          "column": 44
+        }
+      ]
+    },
     "8f6f8d979c981ced": {
       "source": "已复制",
       "kind": "text",
@@ -7003,6 +7295,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 464,
           "column": 87
+        }
+      ]
+    },
+    "90b646875d28d852": {
+      "source": "配置已应用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 54,
+          "column": 77
         }
       ]
     },
@@ -7123,6 +7427,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 404,
           "column": 170
+        }
+      ]
+    },
+    "92fcae1cb14bc3d5": {
+      "source": "Codex 配置已应用，请重新打开 Codex 或新建会话",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 42,
+          "column": 76
         }
       ]
     },
@@ -7272,7 +7588,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 207,
+          "line": 211,
           "column": 21
         }
       ]
@@ -7344,7 +7660,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 46,
+          "line": 48,
           "column": 6
         }
       ]
@@ -7416,7 +7732,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 641,
+          "line": 661,
           "column": 11
         }
       ]
@@ -7445,6 +7761,18 @@
         }
       ]
     },
+    "9b74cba09bcf3582": {
+      "source": "配置目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 58,
+          "column": 18
+        }
+      ]
+    },
     "9b9bc9cd7c76406f": {
       "source": "打开授权网页",
       "kind": "text",
@@ -7464,12 +7792,12 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 110,
+          "line": 131,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 111,
+          "line": 132,
           "column": 50
         }
       ]
@@ -7493,7 +7821,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 54,
+          "line": 56,
           "column": 6
         },
         {
@@ -7583,7 +7911,7 @@
         },
         {
           "file": "shared/store/appStore.ts",
-          "line": 182,
+          "line": 185,
           "column": 7
         },
         {
@@ -7736,7 +8064,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 43,
+          "line": 45,
           "column": 6
         }
       ]
@@ -7827,7 +8155,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 184,
+          "line": 187,
           "column": 18
         }
       ]
@@ -7890,6 +8218,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 46,
+          "column": 90
+        },
         {
           "file": "features/cursor/CommitSettingsCard.tsx",
           "line": 175,
@@ -8040,6 +8373,18 @@
         }
       ]
     },
+    "a4ce65f7f54488cf": {
+      "source": "上下文压缩由 Codex 在本地发起；官方托管搜索、远程压缩和实时语音不包含在此接入中。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 66,
+          "column": 13
+        }
+      ]
+    },
     "a4d222236dc1003d": {
       "source": "取消测试失败：{error}",
       "kind": "template",
@@ -8098,7 +8443,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 149,
+          "line": 156,
           "column": 9
         }
       ]
@@ -8486,7 +8831,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 47,
+          "line": 49,
           "column": 27
         }
       ]
@@ -8512,6 +8857,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 87,
           "column": 15
+        }
+      ]
+    },
+    "adfb41c974dd2878": {
+      "source": "Codex 配置已恢复",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 43,
+          "column": 80
         }
       ]
     },
@@ -8549,12 +8906,12 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 147,
+          "line": 168,
           "column": 60
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 147,
+          "line": 168,
           "column": 121
         }
       ]
@@ -8825,6 +9182,18 @@
         }
       ]
     },
+    "b35a6ac54516f0c9": {
+      "source": "选择 Codex 可用模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 20,
+          "column": 43
+        }
+      ]
+    },
     "b43029515f91b23b": {
       "source": "清单只跟随所选客户端，另一个客户端不计入进度。",
       "kind": "text",
@@ -8844,7 +9213,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 50,
+          "line": 52,
           "column": 6
         }
       ]
@@ -8906,12 +9275,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 55,
+          "line": 57,
           "column": 53
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 56,
+          "line": 58,
           "column": 33
         }
       ]
@@ -8925,6 +9294,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 292,
           "column": 22
+        }
+      ]
+    },
+    "b59c77baa8ebe251": {
+      "source": "使用边界",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 64,
+          "column": 76
         }
       ]
     },
@@ -9224,7 +9605,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 60,
+          "line": 62,
           "column": 23
         }
       ]
@@ -9335,7 +9716,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 812,
+          "line": 837,
           "column": 43
         }
       ]
@@ -10018,7 +10399,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 64,
+          "line": 85,
           "column": 45
         },
         {
@@ -10246,6 +10627,18 @@
         }
       ]
     },
+    "cff176559b36d437": {
+      "source": "留空使用 CODEX_HOME 或用户目录下的 .codex。只在点击应用时修改 config.toml。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 24,
+          "column": 46
+        }
+      ]
+    },
     "cff5e55f1c79f52c": {
       "source": "每日用量",
       "kind": "text",
@@ -10267,6 +10660,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 412,
           "column": 26
+        }
+      ]
+    },
+    "d0e365935279bd16": {
+      "source": "待应用配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 11,
+          "column": 81
         }
       ]
     },
@@ -10329,7 +10734,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 150,
+          "line": 157,
           "column": 9
         }
       ]
@@ -10353,7 +10758,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 110,
+          "line": 117,
           "column": 36
         }
       ]
@@ -10396,6 +10801,23 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 287,
           "column": 20
+        }
+      ]
+    },
+    "d34804363fc14b37": {
+      "source": "Codex 网关端口",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 27,
+          "column": 23
+        },
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 27,
+          "column": 63
         }
       ]
     },
@@ -10585,12 +11007,12 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 132,
+          "line": 153,
           "column": 32
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 136,
+          "line": 157,
           "column": 25
         }
       ]
@@ -10738,7 +11160,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 90,
+          "line": 111,
           "column": 54
         }
       ]
@@ -10866,7 +11288,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 127,
+          "line": 148,
           "column": 57
         }
       ]
@@ -10983,6 +11405,28 @@
           "file": "features/models/CursorGates.tsx",
           "line": 36,
           "column": 11
+        }
+      ]
+    },
+    "dd1398ce0f6f6fe4": {
+      "source": "客户端来源",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 32,
+          "column": 6
+        },
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 40,
+          "column": 6
+        },
+        {
+          "file": "features/calls/CallsPage.tsx",
+          "line": 105,
+          "column": 26
         }
       ]
     },
@@ -11157,7 +11601,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 65,
+          "line": 86,
           "column": 29
         }
       ]
@@ -11186,7 +11630,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 104,
+          "line": 111,
           "column": 20
         }
       ]
@@ -11222,7 +11666,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 62,
+          "line": 64,
           "column": 46
         }
       ]
@@ -11274,6 +11718,18 @@
           "file": "features/models/CursorModelTestResult.tsx",
           "line": 34,
           "column": 7
+        }
+      ]
+    },
+    "e11093e7dc6ef3b3": {
+      "source": "全部客户端",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallsPage.tsx",
+          "line": 106,
+          "column": 32
         }
       ]
     },
@@ -11471,7 +11927,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 109,
+          "line": 130,
           "column": 56
         }
       ]
@@ -11495,7 +11951,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 184,
+          "line": 187,
           "column": 7
         }
       ]
@@ -11598,13 +12054,13 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 120,
+          "line": 127,
           "column": 39
         },
         {
           "file": "features/calls/CallTable.tsx",
           "line": 96,
-          "column": 108
+          "column": 208
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -11806,7 +12262,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 182,
+          "line": 185,
           "column": 39
         }
       ]
@@ -11847,7 +12303,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 51,
+          "line": 53,
           "column": 6
         }
       ]
@@ -11913,7 +12369,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 61,
+          "line": 63,
           "column": 23
         }
       ]
@@ -12150,6 +12606,18 @@
         }
       ]
     },
+    "f417ae717e5cc9d0": {
+      "source": "支持 Responses、Chat Completions 和 Anthropic API 模型。工具仍由 Codex 执行，不会改动登录、MCP、技能或审批设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 65,
+          "column": 13
+        }
+      ]
+    },
     "f4a00802f64e51fd": {
       "source": "按模型筛选",
       "kind": "text",
@@ -12157,7 +12625,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 125,
+          "line": 132,
           "column": 20
         }
       ]
@@ -12239,7 +12707,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 183,
+          "line": 186,
           "column": 57
         }
       ]
@@ -12340,7 +12808,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 66,
+          "line": 87,
           "column": 46
         },
         {
@@ -12401,7 +12869,7 @@
       "refs": [
         {
           "file": "shell/AppLayout.tsx",
-          "line": 114,
+          "line": 135,
           "column": 32
         }
       ]
@@ -12411,6 +12879,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 9,
+          "column": 74
+        },
         {
           "file": "features/devin/devinConnectionView.ts",
           "line": 111,
@@ -12737,7 +13210,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 183,
+          "line": 186,
           "column": 7
         }
       ]
@@ -12771,13 +13244,30 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 58,
+          "line": 78,
           "column": 39
         },
         {
           "file": "shell/CommandPalette.tsx",
           "line": 73,
           "column": 53
+        }
+      ]
+    },
+    "febc38697981b701": {
+      "source": "Codex 配置目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 24,
+          "column": 23
+        },
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 25,
+          "column": 30
         }
       ]
     },
@@ -12793,7 +13283,7 @@
         },
         {
           "file": "shell/AppLayout.tsx",
-          "line": 68,
+          "line": 89,
           "column": 47
         },
         {

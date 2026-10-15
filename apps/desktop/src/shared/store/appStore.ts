@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, ServiceUnreachableError, type ModelTokenPricing, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, ServiceUnreachableError, type ModelTokenPricing, type CodexStatus, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
 
 /** Missing rules are unpriced; no supplier's rates become a global default. */
@@ -22,6 +22,7 @@ export type AppSnapshot = {
   cursorHarness: CursorHarnessStatus | null;
   /** Gateway state for the Devin module, refreshed with everything else. */
   devinStatus: DevinStatus | null;
+  codexStatus: CodexStatus | null;
   cursorBusy: boolean;
   pluginRuntime: PluginRuntimeStatus | null;
   plugins: PluginDescriptor[];
@@ -60,6 +61,7 @@ let snapshot: AppSnapshot = {
   theme: savedTheme(),
   cursorHarness: null,
   devinStatus: null,
+  codexStatus: null,
   cursorBusy: false,
   pluginRuntime: null,
   plugins: [],
@@ -169,6 +171,7 @@ export const appStore = {
       api.pluginRuntime(signal),
       api.plugins(signal),
       api.desktopSettings(signal),
+      api.codexStatus(signal),
     ]);
     // 已经有更新的一批在跑：这一批整批丢弃，busy 交给新的一批收尾。
     // 若是变更操作只作废、没有新开刷新（refreshController 已清空），这里要自己把 busy 清掉，
@@ -181,9 +184,9 @@ export const appStore = {
     const labels = [
       t("模型库"), t("调用记录"), t("概览统计"), t("调用观测"), t("端口设置"),
       t("Token 定价"), t("Cursor 接管状态"), t("Devin 网关状态"), t("插件运行时"),
-      t("插件列表"), t("应用设置"),
+      t("插件列表"), t("应用设置"), t("Codex 接管状态"),
     ];
-    const [models, calls, overview, observability, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins, desktop] = results;
+    const [models, calls, overview, observability, ports, pricing, cursorHarness, devinStatus, pluginRuntime, plugins, desktop, codexStatus] = results;
     const patch: Partial<AppSnapshot> = {};
     if (models.status === "fulfilled") patch.models = models.value;
     if (calls.status === "fulfilled") patch.calls = calls.value;
@@ -193,6 +196,7 @@ export const appStore = {
     if (pricing.status === "fulfilled" && !writtenSince("pricing")) patch.pricing = pricing.value;
     if (cursorHarness.status === "fulfilled") patch.cursorHarness = cursorHarness.value;
     if (devinStatus.status === "fulfilled") patch.devinStatus = devinStatus.value;
+    if (codexStatus.status === "fulfilled") patch.codexStatus = codexStatus.value;
     if (pluginRuntime.status === "fulfilled") patch.pluginRuntime = pluginRuntime.value;
     if (plugins.status === "fulfilled") patch.plugins = plugins.value;
     if (desktop.status === "fulfilled" && !writtenSince("developerMode")) patch.developerMode = desktop.value.developer_mode;

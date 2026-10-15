@@ -206,6 +206,7 @@ async fn start_recorder(
     CallRecorder::start(
         store.clone(),
         NewLlmCall {
+            client_source: invocation.client_source,
             call_id: invocation.call_id.clone(),
             run_id: invocation.run_id.clone(),
             conversation_id: invocation.conversation_id.clone(),
