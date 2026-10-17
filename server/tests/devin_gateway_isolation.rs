@@ -46,7 +46,10 @@ fn free_ports() -> (u16, u16, u16) {
 
 /// Serializes port acquisition across the tests in this file: two tests that
 /// each release three ports can otherwise be handed the same ones.
-static STARTUP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+///
+/// `tokio::sync::Mutex`，不是 `std::sync::Mutex`：锁在 `Gateway::start` 里跨着好几个
+/// `await`（设置落库、等 `/health` 应答），标准库的守卫不能跨 await 持有。
+static STARTUP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 const START_ATTEMPTS: usize = 5;
 
@@ -68,9 +71,7 @@ impl Gateway {
         provider: Arc<dyn Provider>,
         configure: impl Fn(DevinSettings) -> DevinSettings,
     ) -> Self {
-        let _guard = STARTUP_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = STARTUP_LOCK.lock().await;
         for attempt in 1..=START_ATTEMPTS {
             let ports = free_ports();
             store

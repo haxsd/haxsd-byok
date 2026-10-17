@@ -137,6 +137,20 @@ impl OverflowEpisode {
     }
 }
 
+/// `auto_compact` 的输入。
+///
+/// 这些值来自不同生命周期（准备好的轮次、压缩基准、流端口、取消令牌），打包成结构体只是
+/// 为了不让调用点排七个位置参数；就绪后立刻解构成局部变量，函数体不必到处写 `request.`。
+struct CompactionRequest<'a> {
+    prepared: &'a PreparedRun,
+    checkpoint: crate::model::CheckpointId,
+    messages: &'a [CanonicalMessage],
+    client: &'a mut RunPort,
+    cancellation: &'a CancellationToken,
+    retention: super::compaction::Retention,
+    accounted_tool_results: &'a HashSet<String>,
+}
+
 impl RunEngine {
     pub fn new(store: Store, provider: Arc<dyn Provider>) -> Self {
         Self {
@@ -438,15 +452,15 @@ impl RunEngine {
                     return (client_failure(), usage);
                 }
                 match self
-                    .auto_compact(
+                    .auto_compact(CompactionRequest {
                         prepared,
                         checkpoint,
-                        &messages,
-                        client,
+                        messages: &messages,
+                        client: &mut *client,
                         cancellation,
-                        super::compaction::Retention::Window,
-                        &accounted_tool_results,
-                    )
+                        retention: super::compaction::Retention::Window,
+                        accounted_tool_results: &accounted_tool_results,
+                    })
                     .await
                 {
                     Ok((next_checkpoint, compaction_usage)) => {
@@ -684,15 +698,15 @@ impl RunEngine {
                                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                                 };
                             match self
-                                .auto_compact(
+                                .auto_compact(CompactionRequest {
                                     prepared,
                                     checkpoint,
-                                    &messages,
-                                    client,
+                                    messages: &messages,
+                                    client: &mut *client,
                                     cancellation,
                                     retention,
-                                    &accounted_tool_results,
-                                )
+                                    accounted_tool_results: &accounted_tool_results,
+                                })
                                 .await
                             {
                                 Ok((next_checkpoint, compaction_usage)) => {
@@ -1309,14 +1323,17 @@ impl RunEngine {
 
     async fn auto_compact(
         &self,
-        prepared: &PreparedRun,
-        checkpoint: crate::model::CheckpointId,
-        messages: &[CanonicalMessage],
-        client: &mut RunPort,
-        cancellation: &CancellationToken,
-        retention: super::compaction::Retention,
-        accounted_tool_results: &HashSet<String>,
+        request: CompactionRequest<'_>,
     ) -> std::result::Result<(crate::model::CheckpointId, Option<Usage>), RunOutcome> {
+        let CompactionRequest {
+            prepared,
+            checkpoint,
+            messages,
+            client,
+            cancellation,
+            retention,
+            accounted_tool_results,
+        } = request;
         let current_ids = prepared
             .initial_messages
             .iter()

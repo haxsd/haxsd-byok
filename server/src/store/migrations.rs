@@ -179,7 +179,7 @@ pub(super) async fn run(pool: &SqlitePool, database_path: &Path) -> Result<()> {
             ignore_missing: true,
             ..Migrator::DEFAULT
         };
-        run_stage(&stage, stage_timeout(&migration), prefix.run(pool)).await?;
+        run_stage(&stage, stage_timeout(migration), prefix.run(pool)).await?;
         log_database_files(database_path);
         log_sqlite_state(pool).await?;
     }

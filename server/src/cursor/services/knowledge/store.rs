@@ -20,9 +20,12 @@ pub const LOCAL_ID_PREFIX: &str = "local-";
 /// `.md` 重读一遍、重新解析 meta.json。提到进程级之后,只有"目录指纹变了"才真的读内容
 /// (用户手改、别的进程写入、增删文件都会让指纹变);指纹本身仍然每轮算一次,它只是
 /// `read_dir` + 每个文件的 mtime/长度,不读正文。与 plugin catalog 的进程级缓存同一套路。
-static CACHE: OnceLock<Mutex<HashMap<PathBuf, (String, Vec<RuleRecord>)>>> = OnceLock::new();
+/// 规则目录 → (目录指纹, 规则表)。
+type RuleCache = HashMap<PathBuf, (String, Vec<RuleRecord>)>;
 
-fn cache() -> &'static Mutex<HashMap<PathBuf, (String, Vec<RuleRecord>)>> {
+static CACHE: OnceLock<Mutex<RuleCache>> = OnceLock::new();
+
+fn cache() -> &'static Mutex<RuleCache> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 

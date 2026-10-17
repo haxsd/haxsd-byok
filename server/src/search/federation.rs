@@ -22,8 +22,10 @@ const MAX_RESULTS: usize = 15;
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const CACHE_ENTRIES: usize = 16;
 
-static RESULTS: OnceLock<parking_lot::Mutex<HashMap<String, (Instant, Vec<SearchHit>)>>> =
-    OnceLock::new();
+/// 查询 → (写入时刻, 结果)。
+type ResultCache = HashMap<String, (Instant, Vec<SearchHit>)>;
+
+static RESULTS: OnceLock<parking_lot::Mutex<ResultCache>> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct WebSearch {

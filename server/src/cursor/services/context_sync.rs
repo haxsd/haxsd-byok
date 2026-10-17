@@ -25,7 +25,7 @@ const CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
 /// （里面有 sqlx / io 的错误），所以失败只能带文本，等待者拿到 `Error::Protocol`。
 #[derive(Clone)]
 enum LoadOutcome {
-    Context(pb::RequestContext),
+    Context(Box<pb::RequestContext>),
     Failed(String),
 }
 
@@ -198,7 +198,7 @@ impl RequestContextSynchronizer {
             None => Err("Cursor returned no request context result".to_string()),
         };
         let outcome = match result {
-            Ok(context) => LoadOutcome::Context(context),
+            Ok(context) => LoadOutcome::Context(Box::new(context)),
             Err(message) => LoadOutcome::Failed(message),
         };
         let _ = in_flight.result.send(Some(outcome));
@@ -286,7 +286,7 @@ async fn wait_for_context(
     loop {
         if let Some(outcome) = receiver.borrow_and_update().clone() {
             return match outcome {
-                LoadOutcome::Context(context) => Ok(context),
+                LoadOutcome::Context(context) => Ok(*context),
                 LoadOutcome::Failed(message) => Err(Error::Protocol(message)),
             };
         }

@@ -99,10 +99,9 @@ async fn read_request_head_within(
     socket: &mut tokio::net::TcpStream,
     limit: std::time::Duration,
 ) -> String {
-    match tokio::time::timeout(limit, read_request(socket)).await {
-        Ok(head) => head,
-        Err(_) => String::new(),
-    }
+    tokio::time::timeout(limit, read_request(socket))
+        .await
+        .unwrap_or_default()
 }
 
 async fn read_request(socket: &mut tokio::net::TcpStream) -> String {

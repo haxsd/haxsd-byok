@@ -634,7 +634,7 @@ mod tests {
     /// 读状态补齐时只记日志——状态快照是用户查明原因的唯一入口，不能整个失败。
     #[test]
     fn only_the_users_choice_makes_an_account_failure_fatal() {
-        assert!(!TakeoverRequest::STATUS_REFRESH.account_failure_is_fatal);
+        const _: () = assert!(!TakeoverRequest::STATUS_REFRESH.account_failure_is_fatal);
         assert!(TakeoverRequest::user_choice(false).account_failure_is_fatal);
         assert!(TakeoverRequest::user_choice(true).account_failure_is_fatal);
     }

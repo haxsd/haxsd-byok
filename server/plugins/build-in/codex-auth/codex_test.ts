@@ -421,7 +421,10 @@ Deno.test("reasoning replay projects response items to valid input items", () =>
     thinking: "",
     replayState: {
       providerKind: "openai_responses",
+      // 回放状态带归属：推理密文只对产出它的上游 origin + 模型有效（见 SDK 的
+      // replayOwner/sameOwner），所以用例必须写真实形状的 owner，否则投影结果为空。
       value: {
+        owner: { upstream: "https://example.com", model: "gpt-test" },
         items: [{
           type: "reasoning",
           id: "item-1",
@@ -448,6 +451,16 @@ Deno.test("reasoning replay projects response items to valid input items", () =>
     content: [],
     encrypted_content: "opaque",
   }]);
+
+  // 归属不匹配（换上游或换模型）时必须整段丢弃：把密文发给别的上游会被
+  // `encrypted content could not be verified` 拒掉整轮请求。
+  for (const [url, model] of [
+    ["https://other.example.com/responses", "gpt-test"],
+    ["https://example.com/responses", "gpt-other"],
+  ] as const) {
+    const dropped = buildResponsesBody({ url, model, request: replayRequest });
+    assertEquals(dropped.input, []);
+  }
 });
 
 Deno.test("invoke streams incremental tool calls and replays reasoning items", async () => {
@@ -489,7 +502,11 @@ Deno.test("invoke streams incremental tool calls and replays reasoning items", a
     {
       type: "replay-state",
       providerKind: "openai_responses",
-      value: { items: [{ type: "reasoning", encrypted_content: "opaque" }] },
+      // 回放状态按（上游 origin, 模型）归属，插件发出的形状必须带上 owner。
+      value: {
+        items: [{ type: "reasoning", encrypted_content: "opaque" }],
+        owner: { upstream: "https://chatgpt.com", model: "gpt-test" },
+      },
     },
     { type: "done", reason: "tool-use" },
   ]);

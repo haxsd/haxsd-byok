@@ -205,20 +205,28 @@ jobs:
       # 每个内置插件自带 deno.json（import map 指到 src/plugin/sdk），所以 `deno test` 直接
       # 在插件目录里跑：不给任何 --allow-* 权限，用例必须完全离线（导入图由
       # `plugin::catalog::tests::built_in_plugin_imports_resolve_within_the_repository` 守着）。
-      # "0 个用例"也要算失败：`deno test` 找不到用例时是绿的，那正是这条门禁要防的假绿。
+      # 一个插件失败也继续跑完其余的：首次真跑时 codex-auth 的用例没过，而 grok-auth 因为提前
+      # 退出根本没被执行——一次 CI 应该给出全貌。"0 个用例"也要算失败：`deno test` 找不到用例
+      # 时是绿的，那正是这条门禁要防的假绿。
       - name: Run the built-in plugin suites
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          failed=0
           for plugin in server/plugins/build-in/*/; do
             echo "::group::deno test $plugin"
-            output=$(cd "$plugin" && deno test --no-lock)
+            if output=$(cd "$plugin" && deno test --no-lock); then
+              status=0
+            else
+              status=$?
+            fi
             echo "$output"
             echo "::endgroup::"
-            if ! grep -qE '[0-9]+ passed' <<<"$output"; then
-              echo "::error::$plugin 的 deno test 没有跑出任何用例"
-              exit 1
+            if [ "$status" -ne 0 ] || ! grep -qE '[1-9][0-9]* passed' <<<"$output"; then
+              echo "::error::$plugin 的 deno test 失败（exit=$status，或用例数为 0）"
+              failed=1
             fi
           done
+          exit "$failed"
 
       # 真的起一次 worker 求值内置插件的定义：这条用例需要 pin 住的运行时，本机默认
       # `#[ignore]`（不写成没有运行时也绿的假用例），所以在装好运行时的这里用 --ignored 跑。

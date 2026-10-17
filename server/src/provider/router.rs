@@ -70,7 +70,19 @@ impl Provider for ProviderRouter {
                     if let Some(tokens) = plan.model.max_output_tokens {
                         routed.request.model.max_output_tokens.get_or_insert(tokens);
                     }
-                    let recorder = start_recorder(&store, &invocation, routed.request.model.reasoning.effort.as_deref(), &selected, &plan.model.display_name, ProviderType::Plugin, &plan.request_url, &plan.model.model_id).await?;
+                    let recorder = start_recorder(
+                        &store,
+                        RecordedCall {
+                            invocation: &invocation,
+                            reasoning_effort: routed.request.model.reasoning.effort.as_deref(),
+                            model_hash: &selected,
+                            display_name: &plan.model.display_name,
+                            provider_type: ProviderType::Plugin,
+                            request_url: &plan.request_url,
+                            model_id: &plan.model.model_id,
+                        },
+                    )
+                    .await?;
                     let guard = recorder.cancel_on_drop();
                     let provider: Arc<dyn Provider> = Arc::new(NormalizedProvider::new(Arc::new(PluginModelProvider {
                         registry: plugins.clone(),
@@ -89,7 +101,19 @@ impl Provider for ProviderRouter {
                             &invocation.conversation_id,
                         );
                     routed.request.model.model_id = model.model_id.clone();
-                    let recorder = start_recorder(&store, &invocation, routed.request.model.reasoning.effort.as_deref(), &model.model_hash, &model.display_name, provider_type, &request_url, &model.model_id).await?;
+                    let recorder = start_recorder(
+                        &store,
+                        RecordedCall {
+                            invocation: &invocation,
+                            reasoning_effort: routed.request.model.reasoning.effort.as_deref(),
+                            model_hash: &model.model_hash,
+                            display_name: &model.display_name,
+                            provider_type,
+                            request_url: &request_url,
+                            model_id: &model.model_id,
+                        },
+                    )
+                    .await?;
                     let guard = recorder.cancel_on_drop();
                     let config = ProviderConfig {
                         kind: provider_kind(provider_type),
@@ -200,16 +224,30 @@ fn event_name(event: &super::ModelEvent) -> &'static str {
 /// `reasoning_effort` 由调用方传**生效值**（`configure` 之后 `routed` 上的强度），不是
 /// `invocation` 里的入参：调用方没表态时 `configure` 会补模型配置的强度（Anthropic 默认
 /// xhigh），记入参会让界面显示"没填"，而上游实际收到的是 xhigh。
-async fn start_recorder(
-    store: &Store,
-    invocation: &ModelInvocation,
-    reasoning_effort: Option<&str>,
-    model_hash: &str,
-    display_name: &str,
+/// 一条调用记录的身份与生效参数。
+///
+/// 七个字段来自不同的来源（调用、模型配置、路由结果），打包成参数只是为了不让
+/// `start_recorder` 排七个位置参数——它们是同一次记录的全部输入，逐个传递容易错位。
+struct RecordedCall<'a> {
+    invocation: &'a ModelInvocation,
+    reasoning_effort: Option<&'a str>,
+    model_hash: &'a str,
+    display_name: &'a str,
     provider_type: ProviderType,
-    request_url: &str,
-    model_id: &str,
-) -> Result<CallRecorder> {
+    request_url: &'a str,
+    model_id: &'a str,
+}
+
+async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRecorder> {
+    let RecordedCall {
+        invocation,
+        reasoning_effort,
+        model_hash,
+        display_name,
+        provider_type,
+        request_url,
+        model_id,
+    } = call;
     CallRecorder::start(
         store.clone(),
         NewLlmCall {
@@ -459,13 +497,15 @@ mod tests {
         ] {
             start_recorder(
                 &store,
-                &invocation(call_id, persisted, tail),
-                None,
-                "hash",
-                "Anchor Model",
-                ProviderType::OpenAiChat,
-                "https://example.com/v1/chat/completions",
-                "anchor-model",
+                RecordedCall {
+                    invocation: &invocation(call_id, persisted, tail),
+                    reasoning_effort: None,
+                    model_hash: "hash",
+                    display_name: "Anchor Model",
+                    provider_type: ProviderType::OpenAiChat,
+                    request_url: "https://example.com/v1/chat/completions",
+                    model_id: "anchor-model",
+                },
             )
             .await
             .unwrap();
@@ -521,13 +561,15 @@ mod tests {
 
         start_recorder(
             &store,
-            &invocation,
-            configured.reasoning.effort.as_deref(),
-            "hash",
-            "Effort Model",
-            ProviderType::Anthropic,
-            "https://example.com/v1/messages",
-            "effort-model",
+            RecordedCall {
+                invocation: &invocation,
+                reasoning_effort: configured.reasoning.effort.as_deref(),
+                model_hash: "hash",
+                display_name: "Effort Model",
+                provider_type: ProviderType::Anthropic,
+                request_url: "https://example.com/v1/messages",
+                model_id: "effort-model",
+            },
         )
         .await
         .unwrap();

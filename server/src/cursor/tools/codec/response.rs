@@ -279,7 +279,7 @@ async fn complete(
 /// 致命协议错误会让整轮失败,而这条事件本身没有任何非法之处。
 async fn take(id: u32, pending: &CursorToolRuntime) -> Option<PendingExec> {
     match pending.take_exec_unless_interrupted(id).await {
-        ExecTake::Taken(entry) => Some(entry),
+        ExecTake::Taken(entry) => Some(*entry),
         ExecTake::Interrupted => None,
         ExecTake::Missing => {
             tracing::warn!(

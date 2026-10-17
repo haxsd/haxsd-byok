@@ -104,7 +104,6 @@ impl InvocationState {
 struct HostContext {
     plugin_id: String,
     network_hosts: Arc<HashSet<String>>,
-    store: Store,
     invocations: Arc<Mutex<HashMap<String, Arc<InvocationState>>>>,
     streams: Arc<Mutex<HashMap<String, StreamLines>>>,
     /// 连续超时计数：worker 回结果时清零，`invoke` 超时时累加。
@@ -195,7 +194,6 @@ impl PluginWorker {
                             .map(|host| host.to_ascii_lowercase())
                             .collect(),
                     ),
-                    store: store.clone(),
                     invocations: Arc::new(Mutex::new(HashMap::new())),
                     streams: Arc::new(Mutex::new(HashMap::new())),
                     timeouts: Arc::new(TimeoutTracker::default()),
@@ -967,7 +965,6 @@ mod tests {
         HostContext {
             plugin_id: "test".into(),
             network_hosts: Arc::new(HashSet::from(["example.com".into()])),
-            store,
             invocations,
             streams: Arc::new(Mutex::new(HashMap::new())),
             timeouts: Arc::new(TimeoutTracker::default()),
@@ -1071,10 +1068,9 @@ mod tests {
         assert!(!summary.detailed);
     }
 
-    fn invocation() -> (
-        Arc<Mutex<HashMap<String, Arc<InvocationState>>>>,
-        CancellationToken,
-    ) {
+    type Invocations = Arc<Mutex<HashMap<String, Arc<InvocationState>>>>;
+
+    fn invocation() -> (Invocations, CancellationToken) {
         let invocations = Arc::new(Mutex::new(HashMap::new()));
         let cancellation = CancellationToken::new();
         (invocations, cancellation)

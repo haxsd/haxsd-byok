@@ -130,7 +130,7 @@ pub(crate) struct PendingInteraction {
 /// `take_exec_unless_interrupted` 的三种结果。调用方对 `Interrupted`/`Missing` 都按"忽略
 /// 这个终态事件"处理,不再制造致命协议错误。
 pub(crate) enum ExecTake {
-    Taken(PendingExec),
+    Taken(Box<PendingExec>),
     Interrupted,
     Missing,
 }
@@ -301,7 +301,7 @@ impl CursorToolRuntime {
                 let call_id = pending.call.call_id.clone();
                 drop(entries);
                 self.completed.lock().await.insert(id, call_id);
-                ExecTake::Taken(pending)
+                ExecTake::Taken(Box::new(pending))
             }
             None => ExecTake::Missing,
         }

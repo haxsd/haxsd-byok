@@ -215,7 +215,7 @@ pub(crate) mod testing {
 
     pub(crate) fn finish_of(events: &[ModelEvent]) -> Option<FinishReason> {
         events.iter().find_map(|event| match event {
-            ModelEvent::Done(finish) => Some(finish.clone()),
+            ModelEvent::Done(finish) => Some(*finish),
             _ => None,
         })
     }

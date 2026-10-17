@@ -203,7 +203,7 @@ async fn run_sse_handler(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request, super::MAX_REQUEST_BODY).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let request: agent::BidiRequestId = connect::decode_unary(&body)?;
     let route = registry.wait_route(&request.request_id).await?;
@@ -243,7 +243,7 @@ async fn bidi_handler(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request, super::MAX_REQUEST_BODY).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
     let decoded = bidi::decode(&request)?;
@@ -422,7 +422,7 @@ fn trace_outcome(
 async fn buffered(
     request: Request<Body>,
     limit: usize,
-) -> Result<(axum::http::request::Parts, Bytes), Response<Body>> {
+) -> Result<(axum::http::request::Parts, Bytes), Box<Response<Body>>> {
     let (parts, body) = request.into_parts();
     match super::read_request_body(body, limit).await {
         Ok(body) => Ok((parts, body)),
@@ -434,11 +434,11 @@ async fn buffered(
                 limit,
                 "rejecting a Cursor request whose body could not be read"
             );
-            Err(if status == StatusCode::PAYLOAD_TOO_LARGE {
+            Err(Box::new(if status == StatusCode::PAYLOAD_TOO_LARGE {
                 super::body_too_large_response(limit)
             } else {
                 (status, "cannot read request body").into_response()
-            })
+            }))
         }
     }
 }
