@@ -255,20 +255,29 @@ fn stale_root_removal(cert_path: PathBuf) -> Result<String> {
             "sudo security delete-certificate -Z {fingerprint} /Library/Keychains/System.keychain"
         ),
         "windows" => format!("certutil -delstore Root {fingerprint}"),
-        _ => {
-            // 三个候选目录都可能留着一份（换过发行版、装过两次）：只删"当前那一个"，
-            // 剩下的仍然受信。
-            let mut commands = linux_installed_anchors()
-                .into_iter()
-                .map(|path| format!("sudo rm '{}'", path.display()))
-                .collect::<Vec<_>>();
-            if commands.is_empty() {
-                commands.push(format!("sudo rm '{}'", linux_anchor_file().display()));
-            }
-            commands.push(format!("sudo {}", linux_refresh_command()));
-            commands.join(" && ")
-        }
+        _ => linux_stale_root_removal(&fingerprint),
     })
+}
+
+/// Linux 的删除提示：文件式信任库只能按**路径**删，所以命令里没有证书名；指纹作为注释
+/// 追加在后面（复制执行不受影响），用户在多份锚点/多台机器之间才能确认自己删掉的确实是
+/// 受信的那一份。
+///
+/// 单独抽出来是因为平台分支在 CI 的 Linux runner 上才会走到：抽成纯函数之后，任何平台都能
+/// 用用例钉住"Linux 提示必须带指纹"这条（旧实现把 `fingerprint` 算出来后在 `_` 分支里丢了，
+/// macOS/Windows 都带、只有 Linux 不带，本机 Windows 跑全量永远发现不了）。
+fn linux_stale_root_removal(fingerprint: &str) -> String {
+    // 三个候选目录都可能留着一份（换过发行版、装过两次）：只删"当前那一个"，
+    // 剩下的仍然受信。
+    let mut commands = linux_installed_anchors()
+        .into_iter()
+        .map(|path| format!("sudo rm '{}'", path.display()))
+        .collect::<Vec<_>>();
+    if commands.is_empty() {
+        commands.push(format!("sudo rm '{}'", linux_anchor_file().display()));
+    }
+    commands.push(format!("sudo {}", linux_refresh_command()));
+    format!("{} # sha1 {fingerprint}", commands.join(" && "))
 }
 
 fn fingerprint(cert: &str) -> Result<String> {
@@ -441,6 +450,27 @@ mod tests {
         let hint = stale_root_removal(manager.cert_path()).unwrap();
 
         assert!(hint.contains(&fingerprint(&cert).unwrap()), "{hint}");
+    }
+
+    /// Linux 分支的提示必须带指纹。
+    ///
+    /// 平台分支只有在 Linux 上才走到，而"本机是 Windows/macOS"的开发者跑全量永远发现不了
+    /// 这条（CI 的 Linux runner 上就是这么红的）：旧实现把 `fingerprint` 算出来之后，在
+    /// `_` 分支里只拼了 rm + 刷新命令，指纹被丢掉。检查 `stale_root_removal` 的启发式在这里
+    /// 用不了，所以直接钉住抽出来的纯函数。
+    #[test]
+    fn the_linux_stale_root_hint_carries_the_fingerprint() {
+        let hint = linux_stale_root_removal("0123456789ABCDEF0123456789ABCDEF01234567");
+
+        assert!(
+            hint.contains("0123456789ABCDEF0123456789ABCDEF01234567"),
+            "Linux 提示必须能识别出要删的是哪一份证书: {hint}"
+        );
+        assert!(hint.contains("sudo rm '"), "提示里要有删除命令: {hint}");
+        assert!(
+            hint.contains("update-ca-"),
+            "提示里要有刷新信任库的命令: {hint}"
+        );
     }
 
     /// CA 私钥从存在的那一刻起就必须是私有权限（unix）。
