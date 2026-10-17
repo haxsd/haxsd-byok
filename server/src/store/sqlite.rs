@@ -14,6 +14,12 @@ use super::{migrations, writer::WriteCoordinator};
 pub struct Store {
     pub(crate) pool: SqlitePool,
     pub(crate) writes: WriteCoordinator,
+    /// 后台清理统计数据任务的进度（见 `storage::start_clear_statistics_storage`）。
+    pub(crate) clear: std::sync::Arc<super::storage::ClearState>,
+    /// Devin 设置的解析缓存（见 `settings::DevinSettingsCache`）：网关每请求读一次设置，
+    /// 不该每次都重新解析 JSON。`Arc` 是必须的——`Store` 会按值克隆，克隆体必须共享同一份
+    /// 缓存与同一个版本号。
+    pub(crate) devin_settings_cache: std::sync::Arc<super::settings::DevinSettingsCache>,
 }
 
 impl Store {
@@ -37,6 +43,10 @@ impl Store {
         Ok(Self {
             pool,
             writes: WriteCoordinator::default(),
+            clear: std::sync::Arc::new(super::storage::ClearState::default()),
+            devin_settings_cache: std::sync::Arc::new(
+                super::settings::DevinSettingsCache::default(),
+            ),
         })
     }
 

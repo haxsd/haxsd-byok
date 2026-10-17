@@ -58,7 +58,7 @@ pub(crate) fn subagent_completion(
 pub(crate) fn project(
     action: &pb::BackgroundTaskCompletionAction,
     mode: i32,
-) -> Result<Projection> {
+) -> Result<Option<Projection>> {
     if action.completions.is_empty() {
         return Err(reject(
             action,
@@ -152,12 +152,16 @@ pub(crate) fn project(
         }
     }
 
-    let (first, _) = completions.values().next().ok_or_else(|| {
-        reject(
-            action,
-            "background task notification contains no finished task",
-        )
-    })?;
+    // 整批都是进度/改派通知：这一批没有可写进历史的完成事件。客户端把信息性通知与
+    // 真正的完成通知**分批**发时就会走到这里；过去这里报协议错误，于是整个 run 被判
+    // 失败，用户看到报错而不是"这条通知被忽略"。返回 None 让调用方忽略这一批。
+    let Some((first, _)) = completions.values().next() else {
+        tracing::debug!(
+            completions = action.completions.len(),
+            "background task notification contains no finished task; ignoring the batch"
+        );
+        return Ok(None);
+    };
     tracing::info!(
         completions = completions.len(),
         tasks = %completions.keys().cloned().collect::<Vec<_>>().join(" "),
@@ -171,7 +175,7 @@ pub(crate) fn project(
         (true, true) => format!("{SHELL_FOLLOW_UP}\n\n{FOLLOW_UP}"),
         (false, false) => unreachable!(),
     };
-    Ok(Projection {
+    Ok(Some(Projection {
         context: completions
             .values()
             .map(|(_, context)| context.as_str())
@@ -193,7 +197,7 @@ pub(crate) fn project(
             }),
             ..Default::default()
         },
-    })
+    }))
 }
 
 /// 拒绝一条后台完成通知时，把"这条通知里到底有什么"写进日志：每条 completion 的
@@ -321,7 +325,9 @@ mod tests {
             Some("child result"),
             pb::BackgroundTaskStatus::Success,
         );
-        let projection = project(&action, pb::AgentMode::Agent as i32).unwrap();
+        let projection = project(&action, pb::AgentMode::Agent as i32)
+            .unwrap()
+            .expect("server-side wakeup completes a task");
         assert!(projection.context.contains("kind: subagent"));
         assert!(projection.context.contains("agent_id: child-id"));
         assert!(projection.context.contains("child result"));
@@ -346,5 +352,45 @@ mod tests {
         assert!(text.contains("kind: subagent"));
         assert!(text.contains("child result"));
         assert!(text.contains(FOLLOW_UP));
+    }
+
+    /// 只有进度/改派通知的批次没有可投影的完成事件：返回 None 让调用方忽略，
+    /// 而不是报协议错误把整轮 run 判死。
+    #[test]
+    fn a_batch_without_a_finished_task_is_ignored() {
+        let mut action = subagent_completion(
+            "child-id",
+            "task-call",
+            "研究多智能体模式",
+            None,
+            pb::BackgroundTaskStatus::Success,
+        );
+        action.completions[0].reason = pb::BackgroundTaskCompletionReason::TaskProgress as i32;
+
+        assert!(project(&action, pb::AgentMode::Agent as i32)
+            .unwrap()
+            .is_none());
+    }
+
+    /// 同一批里既有进度通知又有真正的完成通知：投影只看完成的那条。
+    #[test]
+    fn progress_notifications_ride_along_with_a_finished_task() {
+        let mut action = subagent_completion(
+            "child-id",
+            "task-call",
+            "研究多智能体模式",
+            Some("child result"),
+            pb::BackgroundTaskStatus::Success,
+        );
+        let mut progress = action.completions[0].clone();
+        progress.reason = pb::BackgroundTaskCompletionReason::TaskProgress as i32;
+        progress.tool_call_id = Some("progress-call".into());
+        action.completions.push(progress);
+
+        let projection = project(&action, pb::AgentMode::Agent as i32)
+            .unwrap()
+            .expect("one finished task is enough");
+        assert!(projection.context.contains("tool_call_id: task-call"));
+        assert!(!projection.context.contains("progress-call"));
     }
 }

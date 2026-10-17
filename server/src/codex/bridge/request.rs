@@ -1,10 +1,19 @@
 //! Responses 请求 → 上游 Chat/Anthropic 请求：完整历史、工具声明、tool_choice、并行、图像与推理回放。
 //!
-//! 无法表达的语义（远端存储、跨请求引用、hosted 工具、远端压缩、未知密文）一律明确报错，
-//! 不做静默降级。少数为了兼容严格上游的必要动作（未配对工具回合、孤儿工具结果）在下面逐处说明。
+//! 无法表达的语义（远端存储、跨请求引用、hosted 工具、远端压缩）一律明确报错，不做静默降级。
+//! 少数为了兼容严格上游的必要动作（未配对工具回合、孤儿工具结果）在下面逐处说明；不属于本
+//! 模型/协议的推理密文则降级成"没有可回放状态"（见 `replay::decode`），不拖着整轮一起失败。
 use super::{replay, tools::ToolMap, BridgeRequest, UpstreamFormat};
 use crate::{Error, Result};
 use serde_json::{json, Map, Value};
+
+/// Anthropic 的 `max_tokens` 是必填字段，模型没配输出上限时总得给一个值。
+///
+/// 与 provider 路径共用同一个口径（`provider/anthropic.rs` 的
+/// `DEFAULT_MAX_OUTPUT_TOKENS`）：取在役 Anthropic 模型都接受的最小公共上限，而不是按
+/// 最大的模型取值——400 不可重试，用户只会看到"max_tokens 超限"，联想不到"模型里留空了"。
+/// 它只是必填字段的兜底，不是上限：客户端自己给了值就听客户端的。
+const DEFAULT_ANTHROPIC_MAX_TOKENS: u64 = 4_096;
 
 pub fn translate_request(
     source: &Value,
@@ -12,14 +21,14 @@ pub fn translate_request(
     model: &str,
     max_tokens: u64,
 ) -> Result<BridgeRequest> {
-    translate_request_owned(source, format, model, max_tokens, model)
+    translate_request_owned(source, format, model, Some(max_tokens), model)
 }
 
 pub(crate) fn translate_request_owned(
     source: &Value,
     format: UpstreamFormat,
     model: &str,
-    max_tokens: u64,
+    configured_max_tokens: Option<u64>,
     owner: &str,
 ) -> Result<BridgeRequest> {
     let source = source
@@ -29,17 +38,28 @@ pub(crate) fn translate_request_owned(
     let tools = ToolMap::parse(source.get("tools"))?;
     let items = input_items(source)?;
     validate_tool_history(&items)?;
-    // 客户端可以要求更小的输出上限，但不能超过模型配置。
-    let max_tokens = match source.get("max_output_tokens").and_then(Value::as_u64) {
-        Some(client) => client.min(max_tokens),
-        None => max_tokens,
+    // 客户端可以要求更小的输出上限，但不能超过模型配置；模型没配上限时，客户端的
+    // 要求原样发出——以前这里凭空按 4096 夹取，配置留空的模型连客户端更大的请求
+    // 都被压低，长回答在 4096 处被截断，而目录里没有任何地方说过这个上限。
+    let max_tokens = match (
+        source.get("max_output_tokens").and_then(Value::as_u64),
+        configured_max_tokens,
+    ) {
+        (Some(client), Some(limit)) => Some(client.min(limit)),
+        (Some(client), None) => Some(client),
+        (None, limit) => limit,
     }
-    .max(1);
+    .map(|value| value.max(1));
     let body = match format {
         UpstreamFormat::Chat => chat_body(source, &items, model, max_tokens, &tools, owner)?,
-        UpstreamFormat::Anthropic => {
-            anthropic_body(source, &items, model, max_tokens, &tools, owner)?
-        }
+        UpstreamFormat::Anthropic => anthropic_body(
+            source,
+            &items,
+            model,
+            max_tokens.unwrap_or(DEFAULT_ANTHROPIC_MAX_TOKENS),
+            &tools,
+            owner,
+        )?,
     };
     Ok(BridgeRequest { body, tools })
 }
@@ -120,8 +140,6 @@ struct Call {
 #[derive(Default)]
 struct Turn {
     text: Option<String>,
-    /// Anthropic 的签名 thinking 块，按回放顺序排在正文之前。
-    thinking: Vec<Value>,
     reasoning_text: Option<String>,
     calls: Vec<Call>,
     results: Vec<(String, Value)>,
@@ -211,7 +229,7 @@ fn chat_body(
     source: &Map<String, Value>,
     items: &[Value],
     model: &str,
-    max_tokens: u64,
+    max_tokens: Option<u64>,
     tools: &ToolMap,
     owner: &str,
 ) -> Result<Value> {
@@ -284,8 +302,12 @@ fn chat_body(
         "messages": messages,
         "stream": true,
         "stream_options": {"include_usage": true},
-        "max_tokens": max_tokens,
     });
+    // 模型没配输出上限、客户端也没要求时干脆不写：交给上游自己的默认值，
+    // 这才和"留空使用默认值"的说法一致。
+    if let Some(max_tokens) = max_tokens {
+        body["max_tokens"] = json!(max_tokens);
+    }
     let definitions = tools.definitions(false);
     if !definitions.is_empty() {
         body["tools"] = json!(definitions);
@@ -490,6 +512,10 @@ fn anthropic_body(
     Ok(body)
 }
 
+/// 把累积的一个回合写进 Anthropic 消息序列。
+///
+/// 签名 thinking 的唯一来源是 `pending_thinking`：解析历史时它就直接记在那里，回合结构
+/// 里没有第二份。
 fn flush_anthropic(
     messages: &mut Vec<Value>,
     turn: &mut Turn,
@@ -498,12 +524,8 @@ fn flush_anthropic(
     let calls = std::mem::take(&mut turn.calls);
     let results = std::mem::take(&mut turn.results);
     let text = turn.text.take();
-    let mut thinking = std::mem::take(&mut turn.thinking);
     if !calls.is_empty() {
-        if thinking.is_empty() {
-            thinking = std::mem::take(pending_thinking);
-        }
-        let mut blocks = thinking;
+        let mut blocks = std::mem::take(pending_thinking);
         if let Some(text) = text {
             blocks.push(json!({"type": "text", "text": text}));
         }
@@ -520,11 +542,7 @@ fn flush_anthropic(
         }).collect::<Result<Vec<Value>>>()?;
         push_anthropic(messages, "user", result_blocks);
     } else if let Some(text) = text {
-        let mut blocks = if thinking.is_empty() {
-            std::mem::take(pending_thinking)
-        } else {
-            thinking
-        };
+        let mut blocks = std::mem::take(pending_thinking);
         blocks.push(json!({"type": "text", "text": text}));
         push_anthropic(messages, "assistant", blocks);
     }
@@ -686,8 +704,8 @@ fn trailing_turn_supports_thinking(messages: &Value) -> bool {
 
 // ===================== 推理回放 =====================
 
-fn chat_reasoning_text(item: &Value, model: &str) -> Result<Option<String>> {
-    match replay::decode(item, UpstreamFormat::Chat, model)? {
+fn chat_reasoning_text(item: &Value, owner: &str) -> Result<Option<String>> {
+    match replay::decode(item, UpstreamFormat::Chat, owner)? {
         Some(Value::String(text)) => Ok((!text.trim().is_empty()).then(|| text.trim().to_string())),
         Some(other) => Err(Error::Protocol(format!(
             "Codex chat reasoning state must be text, got {other}"
@@ -697,8 +715,8 @@ fn chat_reasoning_text(item: &Value, model: &str) -> Result<Option<String>> {
     }
 }
 
-fn anthropic_thinking_blocks(item: &Value, model: &str) -> Result<Vec<Value>> {
-    match replay::decode(item, UpstreamFormat::Anthropic, model)? {
+fn anthropic_thinking_blocks(item: &Value, owner: &str) -> Result<Vec<Value>> {
+    match replay::decode(item, UpstreamFormat::Anthropic, owner)? {
         Some(Value::Array(blocks)) => Ok(blocks),
         Some(other) => Err(Error::Protocol(format!(
             "Codex Anthropic reasoning state must be a list of thinking blocks, got {other}"
@@ -877,4 +895,84 @@ fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str> {
         .map(str::trim)
         .filter(|text| !text.is_empty())
         .ok_or_else(|| Error::Protocol(format!("Codex item is missing {key}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 模型没配输出上限时上游请求正文里的 `max_tokens`：Chat 缺省就是不写这个字段，
+    /// Anthropic 是必填字段，用与 provider 路径同一个兜底。
+    fn mapped(format: UpstreamFormat, source: Value, configured: Option<u64>) -> Value {
+        translate_request_owned(&source, format, "vendor-model", configured, "owner")
+            .unwrap()
+            .body
+    }
+
+    #[test]
+    fn an_unconfigured_output_limit_does_not_cap_the_clients_request() {
+        let source = json!({"input": "go", "max_output_tokens": 128_000});
+        assert_eq!(
+            mapped(UpstreamFormat::Chat, source.clone(), None)["max_tokens"],
+            json!(128_000),
+            "模型里留空时客户端更大的要求必须原样发出，不能被凭空造的 4096 压低"
+        );
+        assert_eq!(
+            mapped(UpstreamFormat::Anthropic, source, None)["max_tokens"],
+            json!(128_000)
+        );
+    }
+
+    #[test]
+    fn an_unconfigured_chat_limit_is_omitted_and_the_anthropic_one_falls_back() {
+        let source = json!({"input": "go"});
+        let chat = mapped(UpstreamFormat::Chat, source.clone(), None);
+        assert!(
+            chat.get("max_tokens").is_none(),
+            "留空就是交给上游默认值，不该自己造一个上限：{chat}"
+        );
+        // Anthropic 的 max_tokens 必填：给最小的公共上限，而不是按最大的模型取值。
+        assert_eq!(
+            mapped(UpstreamFormat::Anthropic, source, None)["max_tokens"],
+            json!(DEFAULT_ANTHROPIC_MAX_TOKENS)
+        );
+    }
+
+    #[test]
+    fn a_configured_output_limit_still_caps_the_clients_request() {
+        let source = json!({"input": "go", "max_output_tokens": 128_000});
+        assert_eq!(
+            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_tokens"],
+            json!(8_192)
+        );
+        assert_eq!(
+            mapped(UpstreamFormat::Anthropic, source, Some(8_192))["max_tokens"],
+            json!(8_192)
+        );
+    }
+
+    #[test]
+    fn a_configured_output_limit_is_used_when_the_client_asks_for_nothing() {
+        let source = json!({"input": "go"});
+        assert_eq!(
+            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_tokens"],
+            json!(8_192)
+        );
+        assert_eq!(
+            mapped(UpstreamFormat::Anthropic, source, Some(8_192))["max_tokens"],
+            json!(8_192)
+        );
+    }
+
+    /// 公开入口的语义不变：调用方给的就是"模型配置里的输出上限"。
+    #[test]
+    fn the_public_entry_point_treats_its_argument_as_the_configured_limit() {
+        let source = json!({"input": "go", "max_output_tokens": 128_000});
+        assert_eq!(
+            translate_request(&source, UpstreamFormat::Chat, "vendor-model", 4_096)
+                .unwrap()
+                .body["max_tokens"],
+            json!(4_096)
+        );
+    }
 }

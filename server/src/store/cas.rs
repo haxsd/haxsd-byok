@@ -7,6 +7,11 @@ use crate::{Error, Result};
 
 use super::{now_ms, Store};
 
+/// 读路径续期 `last_used_at_ms` 的最小间隔。比它更近的读不再写库：读一个内容块
+/// 不等于要把它钉住，无根窗口本身就是"最近一小时"（见 `retention::UNROOTED_BLOB_MS`），
+/// 一小时写一次已经足够让还在被读的内容块活过每一趟回收。
+const BLOB_TOUCH_WINDOW_MS: i64 = 60 * 60 * 1000;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BlobId([u8; 32]);
 
@@ -79,40 +84,120 @@ impl Store {
         Ok(())
     }
 
+    /// 读一个内容块，顺便把它从无根窗口里救回来（见 `retention::UNROOTED_BLOB_MS`）。
+    ///
+    /// 读路径不进写锁：续期前先按行里的 `last_used_at_ms` 判断这次读是否真的会把窗口
+    /// 推后，只有需要推后才进写锁执行那条带同样判据的 UPDATE。水化一条历史会话会按
+    /// 消息逐个调这里，过去每读一个内容块就要拿一次进程级写锁并写一条语句。
+    /// 用行里的时间戳判据（而不是进程内的去抖表）让"读得多"自然收敛到"每个内容块
+    /// 一小时最多写一次"，也不用为进程寿命维护第二份状态。
     pub async fn get_blob(&self, blob_id: &BlobId) -> Result<Option<Vec<u8>>> {
+        let row = sqlx::query("SELECT data, last_used_at_ms FROM blobs WHERE blob_id = ?")
+            .bind(blob_id.as_bytes().as_slice())
+            .fetch_optional(&self.pool)
+            .await?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let data: Vec<u8> = row.get(0);
+        let last_used_at_ms: i64 = row.get(1);
+        if last_used_at_ms < now_ms() - BLOB_TOUCH_WINDOW_MS {
+            self.touch_blob(blob_id).await?;
+        }
+        Ok(Some(data))
+    }
+
+    /// 把 `last_used_at_ms` 推到当前时间。判据与 [`Self::get_blob`] 里读到的一致，
+    /// 所以并发读同一个内容块时重复的那几次是无害的空写。
+    async fn touch_blob(&self, blob_id: &BlobId) -> Result<()> {
         let _write = self.writes.lock().await;
         sqlx::query(
             "UPDATE blobs SET last_used_at_ms = ? WHERE blob_id = ? AND last_used_at_ms < ?",
         )
         .bind(now_ms())
         .bind(blob_id.as_bytes().as_slice())
-        .bind(now_ms() - 60 * 60 * 1000)
+        .bind(now_ms() - BLOB_TOUCH_WINDOW_MS)
         .execute(&self.pool)
         .await?;
-        Ok(sqlx::query("SELECT data FROM blobs WHERE blob_id = ?")
-            .bind(blob_id.as_bytes().as_slice())
-            .fetch_optional(&self.pool)
-            .await?
-            .map(|row| row.get(0)))
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    async fn temp_store() -> (tempfile::TempDir, Store) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        (directory, store)
     }
 
-    pub async fn blob_closure(&self, roots: &[BlobId]) -> Result<Vec<BlobId>> {
-        let mut seen = std::collections::HashSet::new();
-        let mut stack = roots.to_vec();
-        while let Some(id) = stack.pop() {
-            if !seen.insert(id.clone()) {
-                continue;
-            }
-            let rows = sqlx::query("SELECT child_blob_id FROM blob_edges WHERE parent_blob_id = ?")
-                .bind(id.as_bytes().as_slice())
-                .fetch_all(&self.pool)
-                .await?;
-            for row in rows {
-                stack.push(BlobId::from_bytes(row.get::<Vec<u8>, _>(0).as_slice())?);
-            }
-        }
-        let mut closure: Vec<_> = seen.into_iter().collect();
-        closure.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-        Ok(closure)
+    /// 读一个刚写过的内容块不碰写锁。
+    ///
+    /// 水化一条历史会话会按消息逐个读内容块；拿锁的那一版把每个读都排到维护事务和
+    /// Cursor 落库后面（见 `retention::prune_inactive_storage` 的写锁范围）。这里把写锁
+    /// 先占住，再读一个窗口内的内容块：拿锁的实现会一直等下不去。
+    #[tokio::test]
+    async fn reading_a_fresh_blob_never_waits_for_the_write_coordinator() {
+        let (_directory, store) = temp_store().await;
+        let blob = store.put_blob(b"fresh", &[]).await.unwrap();
+        let maintenance = store.writes.lock().await;
+        let read = tokio::time::timeout(Duration::from_millis(250), store.get_blob(&blob)).await;
+        drop(maintenance);
+        assert!(read.is_ok(), "读取仍在续期窗口内的内容块不该等写锁");
+        assert_eq!(read.unwrap().unwrap().unwrap(), b"fresh");
+    }
+
+    /// 读过窗口的内容块会把无根窗口推后（否则被取代的版本会在窗口结束时被回收），
+    /// 但同一小时里的第二次读不再写库——"读"不等于"每读一次写一条 UPDATE"。
+    #[tokio::test]
+    async fn reading_an_expired_blob_renews_it_once_per_window() {
+        let (_directory, store) = temp_store().await;
+        let blob = store.put_blob(b"old", &[]).await.unwrap();
+        sqlx::query("UPDATE blobs SET last_used_at_ms = 1")
+            .execute(store.pool())
+            .await
+            .unwrap();
+
+        assert_eq!(store.get_blob(&blob).await.unwrap().unwrap(), b"old");
+        let renewed: i64 =
+            sqlx::query_scalar("SELECT last_used_at_ms FROM blobs WHERE blob_id = ?")
+                .bind(blob.as_bytes().as_slice())
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert!(
+            renewed > now_ms() - BLOB_TOUCH_WINDOW_MS,
+            "读过期的内容块必须把它的窗口推到当前时间"
+        );
+
+        let inside_window = now_ms() - BLOB_TOUCH_WINDOW_MS / 2;
+        sqlx::query("UPDATE blobs SET last_used_at_ms = ?")
+            .bind(inside_window)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        let maintenance = store.writes.lock().await;
+        let read = tokio::time::timeout(Duration::from_millis(250), store.get_blob(&blob)).await;
+        drop(maintenance);
+        assert!(read.is_ok(), "窗口内的重复读不该再写库");
+        let untouched: i64 =
+            sqlx::query_scalar("SELECT last_used_at_ms FROM blobs WHERE blob_id = ?")
+                .bind(blob.as_bytes().as_slice())
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            untouched, inside_window,
+            "窗口内的读不改写 last_used_at_ms，也不该拿写锁"
+        );
     }
 }

@@ -8,10 +8,11 @@ use std::{
 };
 
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::{cursor::protocol::proto::agent::v1 as pb, model::ToolCall, Error, Result};
 
-use super::edit::EditWrite;
+use super::{edit::EditWrite, tool_call_result::gate};
 
 #[derive(Clone, Default)]
 pub struct CursorToolRuntime {
@@ -20,6 +21,10 @@ pub struct CursorToolRuntime {
     interactions: Arc<Mutex<HashMap<u32, PendingInteraction>>>,
     completed: Arc<Mutex<HashMap<u32, String>>>,
     interrupted: Arc<Mutex<HashSet<u32>>>,
+    /// 审批之后启动的搜索/抓取任务:它们不在 `execs` 里(`take_interaction` 已经把交互条目
+    /// 摘掉了),但"停止/断连/换轮次"必须一样能中断它们。同步锁是为了让 guard 在 Drop 里
+    /// 就能摘除条目。
+    detached: Arc<parking_lot::Mutex<HashMap<String, CancellationToken>>>,
 }
 
 pub(crate) struct PendingExec {
@@ -47,6 +52,10 @@ pub struct ExecContext {
     pub allow_subagents: bool,
     pub subagents_disabled: bool,
     pub terminals_folder: String,
+    /// 客户端给出的 workspace 根(通常只有一个)。Semble 的本地 `repo` 参数只允许落在
+    /// 这里面:服务端进程以用户全权限读盘,少了这条边界,一个没有审批的工具就能索引并
+    /// 外发任意本地目录(见 `search::search_provider` 的 `check_repository`)。
+    pub workspace_paths: Vec<String>,
     pub admin_command_denylist: Vec<String>,
     pub mcp_routes: HashMap<(String, String), McpRoute>,
 }
@@ -118,6 +127,34 @@ pub(crate) struct PendingInteraction {
     pub started_at_ms: u64,
 }
 
+/// `take_exec_unless_interrupted` 的三种结果。调用方对 `Interrupted`/`Missing` 都按"忽略
+/// 这个终态事件"处理,不再制造致命协议错误。
+pub(crate) enum ExecTake {
+    Taken(PendingExec),
+    Interrupted,
+    Missing,
+}
+
+/// 审批之后启动的搜索/抓取任务的登记凭据:任务结束(含被 abort/panic)时摘除登记,
+/// map 不会随会话增长;Drop 用同步锁,所以在任何上下文里都能摘。
+pub(crate) struct DetachedCancellation {
+    runtime: CursorToolRuntime,
+    call_id: String,
+    token: CancellationToken,
+}
+
+impl DetachedCancellation {
+    pub(crate) fn token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+}
+
+impl Drop for DetachedCancellation {
+    fn drop(&mut self) {
+        self.runtime.detached.lock().remove(&self.call_id);
+    }
+}
+
 impl CursorToolRuntime {
     pub(crate) fn next_run(&self) -> Self {
         Self {
@@ -126,6 +163,8 @@ impl CursorToolRuntime {
             interactions: Arc::new(Mutex::new(HashMap::new())),
             completed: Arc::new(Mutex::new(HashMap::new())),
             interrupted: self.interrupted.clone(),
+            // 与 interrupted 一样跨轮次共享:旧轮次的搜索/抓取也要能被新轮次的停止路径中断。
+            detached: self.detached.clone(),
         }
     }
 
@@ -221,7 +260,7 @@ impl CursorToolRuntime {
         let Some(entry) = entries.get_mut(&id) else {
             return false;
         };
-        entry.stdout.push_str(data);
+        append_bounded(&mut entry.stdout, "Shell stdout", data);
         true
     }
 
@@ -230,7 +269,7 @@ impl CursorToolRuntime {
         let Some(entry) = entries.get_mut(&id) else {
             return false;
         };
-        entry.stderr.push_str(data);
+        append_bounded(&mut entry.stderr, "Shell stderr", data);
         true
     }
 
@@ -243,6 +282,51 @@ impl CursorToolRuntime {
                 .insert(id, pending.call.call_id.clone());
         }
         pending
+    }
+
+    /// 一次加锁完成"已打断?"与"取走 exec"两件事。
+    ///
+    /// `is_interrupted` 与 `take_exec` 原本是两次独立加锁,中间还有 await 让出点:用户插话
+    /// 正好落在中间时,客户端推来的终态事件会走到 `take_exec` 拿到 None,而调用方把它当成
+    /// 致命协议错误(`unknown terminal Exec id`),整轮随之失败 —— 尽管"打断后到达的终态
+    /// 事件一律忽略"才是这里的设计意图(见 `codec/response.rs` 与 `stream_closed`)。
+    pub(crate) async fn take_exec_unless_interrupted(&self, id: u32) -> ExecTake {
+        let mut entries = self.execs.lock().await;
+        if self.interrupted.lock().await.contains(&id) {
+            entries.remove(&id);
+            return ExecTake::Interrupted;
+        }
+        match entries.remove(&id) {
+            Some(pending) => {
+                let call_id = pending.call.call_id.clone();
+                drop(entries);
+                self.completed.lock().await.insert(id, call_id);
+                ExecTake::Taken(pending)
+            }
+            None => ExecTake::Missing,
+        }
+    }
+
+    /// 登记一个审批之后启动的搜索/抓取任务,返回的 guard 在任务结束时摘除条目。
+    pub(crate) fn track_detached(&self, call_id: &str) -> DetachedCancellation {
+        let token = CancellationToken::new();
+        self.detached
+            .lock()
+            .insert(call_id.to_owned(), token.clone());
+        DetachedCancellation {
+            runtime: self.clone(),
+            call_id: call_id.to_owned(),
+            token,
+        }
+    }
+
+    fn cancel_detached(&self) {
+        let mut detached = self.detached.lock();
+        let tokens = detached.drain().map(|(_, token)| token).collect::<Vec<_>>();
+        drop(detached);
+        for token in tokens {
+            token.cancel();
+        }
     }
 
     pub(crate) async fn take_interaction(&self, id: u32) -> Option<PendingInteraction> {
@@ -277,6 +361,7 @@ impl CursorToolRuntime {
     }
 
     pub async fn drain_running(&self) -> Vec<u32> {
+        self.cancel_detached();
         let mut entries = self.execs.lock().await;
         let mut ids = entries.drain().map(|(id, _)| id).collect::<Vec<_>>();
         ids.sort_unstable();
@@ -287,6 +372,7 @@ impl CursorToolRuntime {
     }
 
     pub async fn interrupt_for_run_replacement(&self) -> Vec<u32> {
+        self.cancel_detached();
         let mut execs = self.execs.lock().await;
         let mut abort_ids = execs.keys().copied().collect::<Vec<_>>();
         let mut interrupted_ids = abort_ids.clone();
@@ -305,6 +391,9 @@ impl CursorToolRuntime {
     }
 
     pub async fn interrupt_for_message(&self) -> Vec<u32> {
+        // 审批之后的抓取/搜索没有交互条目可以清,只能靠取消令牌停下:用户插话意味着这一轮
+        // 的工具结果已经不要了,让它们在后台继续跑(最坏是 Semble 的整仓索引)没有意义。
+        self.cancel_detached();
         let (abort_ids, interrupted_ids) = {
             let mut entries = self.execs.lock().await;
             let mut abort_ids = Vec::new();
@@ -364,4 +453,129 @@ pub(crate) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+/// 流式输出边到边收口:上限与 gate 的 `SHELL_STREAM_LIMIT` 是同一个数,不会出现
+/// "服务端留一档、模型只看另一档"的两套数字。服务端不该把内存上界交给客户端字段
+/// (`file_output_threshold_bytes`)决定,所以超出后立刻留头尾并标注省略;结果长度正好
+/// 落在上限内,后面的 gate 再截一次就是空操作。
+fn append_bounded(target: &mut String, name: &str, data: &str) {
+    target.push_str(data);
+    if target.len() <= gate::SHELL_STREAM_LIMIT {
+        return;
+    }
+    let bounded = gate::truncate_edges(name, target, gate::SHELL_STREAM_LIMIT);
+    *target = bounded;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 累积必须有上界:客户端是否遵守 40 000 字节的输出阈值,不该决定服务端内存。
+    #[test]
+    fn streamed_shell_output_is_capped_while_it_accumulates() {
+        let mut stdout = String::new();
+        for _ in 0..64 {
+            append_bounded(&mut stdout, "Shell stdout", &"x".repeat(4096));
+        }
+
+        assert!(
+            stdout.len() <= gate::SHELL_STREAM_LIMIT,
+            "累积不得超过上限: {} 字节",
+            stdout.len()
+        );
+        assert!(stdout.contains("truncated"), "超限要留下标注: {stdout}");
+
+        // 内容已经在上限内,后面的 gate 不会再截一次(否则会出现两条标注)。
+        assert_eq!(
+            gate::truncate_edges("Shell stdout", &stdout, gate::SHELL_STREAM_LIMIT),
+            stdout
+        );
+    }
+
+    /// 截断必须落在 UTF-8 边界上:命令输出里中英文混排很常见。
+    #[test]
+    fn truncation_never_splits_a_character() {
+        let mut stdout = String::new();
+        for _ in 0..2000 {
+            append_bounded(&mut stdout, "Shell stdout", "中文输出 mixed 🚀 ");
+        }
+
+        assert!(stdout.len() <= gate::SHELL_STREAM_LIMIT);
+        assert!(stdout.starts_with("中文输出"));
+        assert!(stdout.contains("truncated"));
+    }
+
+    fn call(call_id: &str) -> ToolCall {
+        ToolCall {
+            index: 0,
+            call_id: call_id.into(),
+            model_call_id: format!("model-{call_id}"),
+            name: "WebFetch".into(),
+            arguments_text: String::new(),
+            arguments: serde_json::json!({"url": "https://example.com"}),
+            argument_error: None,
+        }
+    }
+
+    /// 用户插话与终态事件抢时序时,终态事件必须被判为"已打断"而不是"未知 id":
+    /// 后者以前会变成致命协议错误,整轮跟着失败。
+    #[tokio::test]
+    async fn a_terminal_event_that_races_an_interrupt_is_not_reported_as_unknown() {
+        let runtime = CursorToolRuntime::default();
+        let id = runtime
+            .reserve_exec(&call("c1"), &ExecContext::default())
+            .await
+            .unwrap();
+
+        // 用户插话:把 exec 移出 execs 并记入 interrupted —— 正是"检查之后才落地"的结果。
+        runtime.interrupt_for_message().await;
+        assert!(runtime.is_interrupted(id).await);
+
+        match runtime.take_exec_unless_interrupted(id).await {
+            ExecTake::Interrupted => {}
+            ExecTake::Taken(_) => panic!("被摘除的 exec 不该还能取到"),
+            ExecTake::Missing => panic!("已打断的 id 不能被当成未知 id"),
+        }
+    }
+
+    /// 完全没有登记过的 id 仍然只算"忽略",不再让整轮失败。
+    #[tokio::test]
+    async fn an_unregistered_terminal_event_is_missing_rather_than_fatal() {
+        let runtime = CursorToolRuntime::default();
+        assert!(matches!(
+            runtime.take_exec_unless_interrupted(7).await,
+            ExecTake::Missing
+        ));
+    }
+
+    /// 审批之后启动的搜索/抓取必须随"停止/断连"一起被取消:它们不在 execs 里。
+    #[tokio::test]
+    async fn detached_search_work_is_cancelled_with_the_run() {
+        let runtime = CursorToolRuntime::default();
+        let guard = runtime.track_detached("fetch-call");
+        let token = guard.token();
+        assert!(!token.is_cancelled());
+
+        runtime.drain_running().await;
+
+        assert!(token.is_cancelled(), "断连时抓取任务必须被取消");
+        drop(guard);
+        assert!(runtime.detached.lock().is_empty(), "登记要随任务结束摘除");
+    }
+
+    /// 用户插话同样要停掉审批之后的抓取(以前这条路径只清 interactions)。
+    #[tokio::test]
+    async fn a_user_message_cancels_detached_search_work() {
+        let runtime = CursorToolRuntime::default();
+        // guard 必须活到插话之后:它的生命周期就是这次登记的存活期(实际由任务持有)。
+        let guard = runtime.track_detached("search-call");
+        let token = guard.token();
+
+        runtime.interrupt_for_message().await;
+
+        assert!(token.is_cancelled());
+        drop(guard);
+    }
 }

@@ -56,3 +56,13 @@ export function visibleSettingsSections(sections: SettingsSection[], selected: s
     items: section.items.filter(item => matchesWords(`${section.label} ${item.label} ${item.keywords}`, words)),
   })).filter(section => section.items.length > 0);
 }
+
+/**
+ * 当前真正显示出来的设置项。
+ *
+ * 取数的卡片用这个集合决定要不要发请求：分区/搜索没显示它时不取数，但卡片仍然挂载
+ * （草稿、编辑态、折叠状态都不丢）。
+ */
+export function visibleSettingsItems(sections: SettingsSection[], selected: string | null, query: string): Set<SettingsItemId> {
+  return new Set(visibleSettingsSections(sections, selected, query).flatMap(section => section.items.map(item => item.id)));
+}

@@ -39,9 +39,43 @@ impl PluginDataStore {
         let path = self.path(plugin_id, key)?;
         let lock = self.lock(plugin_id);
         let _guard = lock.lock().await;
-        match tokio::fs::read(&path).await {
+        self.read_locked(&path).await
+    }
+
+    /// 在一个临界区内完成"读 → 改 → 写"，闭包返回 (要写入的值, 调用方要的结果)。
+    ///
+    /// 读与写各自加锁是不够的：同一插件的两个并发更新会读到同一份快照、各自整份写回，
+    /// 后写的把先写的盖掉（丢更新）。宿主本来就并发调用插件（多个资源同时刷新、控制面
+    /// 同时操作），所以读改写必须共用同一把插件锁。闭包是同步的：锁只在这一个临界区里，
+    /// 任何 await 都在锁外。
+    pub async fn modify<T, F>(&self, plugin_id: &str, key: &str, apply: F) -> Result<T>
+    where
+        F: FnOnce(serde_json::Value) -> Result<(serde_json::Value, T)> + Send,
+    {
+        let path = self.path(plugin_id, key)?;
+        let lock = self.lock(plugin_id);
+        let _guard = lock.lock().await;
+        let current = self.read_locked(&path).await?;
+        let (next, output) = apply(current)?;
+        self.write_locked(&path, key, &next)
+            .await
+            // 带上具体路径,Windows 上的拒绝访问才能定位到是哪一步。
+            .map_err(|error| {
+                Error::Config(format!(
+                    "plugin data write failed at {}: {error}",
+                    path.display()
+                ))
+            })?;
+        Ok(output)
+    }
+
+    async fn read_locked(&self, path: &Path) -> Result<serde_json::Value> {
+        match tokio::fs::read(path).await {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                // "没配过"与"读不到"在调用方看来都是空,但后者需要留一条诊断线索:
+                // 数据文件被删/被搬走时,日志里至少能看到是哪个文件不见了。
+                tracing::debug!(path = %path.display(), "plugin data file is missing");
                 Ok(serde_json::Value::Null)
             }
             Err(error) => Err(Error::Config(format!(
@@ -51,7 +85,10 @@ impl PluginDataStore {
         }
     }
 
-    pub async fn update(
+    /// 直接覆盖一个键，不做读取。生产路径都走 [`Self::modify`]（读改写必须在同一个
+    /// 临界区里）；这里留给数据层自己的用例做前置状态与失败路径。
+    #[cfg(test)]
+    pub(super) async fn update(
         &self,
         plugin_id: &str,
         key: &str,
@@ -160,13 +197,10 @@ fn write_once(
         .map_err(|error| ("sync temporary file", error))?;
     drop(file);
     let _ = set_file_permissions(temporary);
-    // Windows 的 rename 不覆盖已存在文件,先删除旧文件。
-    #[cfg(windows)]
-    match std::fs::remove_file(target) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(("remove previous file", error)),
-    }
+    // 直接改名覆盖:两边的 rename 都能替换已存在的文件(Rust 在 Windows 上用
+    // MoveFileExW + MOVEFILE_REPLACE_EXISTING)。先删除再改名会留一个"旧文件已删、
+    // 新文件还没就位"的窗口,此时崩溃或改名失败就永久丢掉旧值——而这里存的是
+    // 插件的账号 token 与模型目录。共享冲突仍由外层的 transient 重试兜住。
     std::fs::rename(temporary, target).map_err(|error| ("replace target file", error))?;
     let _ = set_file_permissions(target);
     Ok(())
@@ -294,5 +328,114 @@ mod tests {
         );
         store.clear("com.example").await.unwrap();
         assert!(store.read("com.example", "state").await.unwrap().is_null());
+    }
+
+    /// 回归:替换失败时不得动旧值,也不得留下临时文件。
+    /// 旧实现先在 Windows 上删除目标文件再改名,失败即永久丢凭据。
+    #[tokio::test]
+    async fn a_failed_replace_keeps_the_target_and_leaves_no_temporary() {
+        let root = tempfile::tempdir().unwrap();
+        let store = PluginDataStore::new(root.path().join("data")).unwrap();
+        store
+            .update(
+                "com.example",
+                "state",
+                &serde_json::json!({"token":"first"}),
+            )
+            .await
+            .unwrap();
+        let directory = root.path().join("data").join("com.example");
+        let target = directory.join("state.json");
+        // 用同名目录占住目标路径,让改名这一步必然失败。
+        std::fs::remove_file(&target).unwrap();
+        std::fs::create_dir(&target).unwrap();
+
+        let failed = store
+            .update(
+                "com.example",
+                "state",
+                &serde_json::json!({"token":"second"}),
+            )
+            .await;
+        assert!(failed.is_err(), "目标被占住时必须报错,不能静默成功");
+        assert!(target.is_dir(), "失败路径不得删除或覆盖占位目录");
+        let leftovers: Vec<_> = std::fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(
+            leftovers,
+            vec![std::ffi::OsString::from("state.json")],
+            "失败后只应剩下目标本身,临时文件必须清理"
+        );
+    }
+
+    /// 真故障注入：替换过程中目标文件**不能有一刻不存在**。
+    ///
+    /// 上面那条同名目录占位的用例证明不了这一点——旧实现（先 `remove_file(target)` 再
+    /// `rename`）在那种注入下会因为 `remove_file` 先失败而照样通过。真正的窗口是"旧文件已删、
+    /// 新文件还没就位"的瞬间：此刻崩溃就是永久丢失，而并发读的人会直接看到 NotFound。
+    /// 所以这里让一个读者从头到尾轮询同一个文件，同时连续替换 150 次：只要有一次读到
+    /// NotFound，就说明替换不是原子的。
+    #[tokio::test]
+    async fn a_replacement_never_lets_the_target_disappear() {
+        let root = tempfile::tempdir().unwrap();
+        let store = PluginDataStore::new(root.path().join("data")).unwrap();
+        store
+            .update(
+                "com.example",
+                "state",
+                &serde_json::json!({"token":"first"}),
+            )
+            .await
+            .unwrap();
+        let target = root
+            .path()
+            .join("data")
+            .join("com.example")
+            .join("state.json");
+
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let missing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let reader = {
+            use std::sync::atomic::Ordering;
+            let target = target.clone();
+            let seen = seen.clone();
+            let missing = missing.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                while !stop.load(Ordering::Relaxed) {
+                    match std::fs::read(&target) {
+                        Ok(_) => {
+                            seen.fetch_add(1, Ordering::Relaxed);
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            missing.store(true, Ordering::Relaxed);
+                            return;
+                        }
+                        Err(_) => {}
+                    }
+                }
+            })
+        };
+
+        for round in 0..150 {
+            store
+                .update("com.example", "state", &serde_json::json!({"token": round}))
+                .await
+                .unwrap();
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        reader.join().unwrap();
+
+        assert!(
+            !missing.load(std::sync::atomic::Ordering::Relaxed),
+            "替换过程中目标文件消失过：这正是旧实现丢凭据的窗口"
+        );
+        assert!(
+            seen.load(std::sync::atomic::Ordering::Relaxed) > 10,
+            "读者必须真的读到过文件，否则这条用例什么也没证明"
+        );
     }
 }

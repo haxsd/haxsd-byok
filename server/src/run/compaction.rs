@@ -286,6 +286,20 @@ pub(super) fn retained_tail(
         return Ok(Vec::new());
     }
     let starts = turn_starts(compactable);
+    // 首轮 + 单轮内累计超预算时,compactable 里只有本轮的助手/工具消息:本轮那条 user 在
+    // current_ids 里(partition 按 initial_messages 过滤),工具轮的助手/工具消息都算不上
+    // 轮起点。这时直接返回空会让模型丢掉刚刚读到的全部内容,只能回头重读——和 retained_tail
+    // 存在的理由相反。用第一条可保留的消息当锚点整段按预算保留:它正是本轮第一个工具轮的
+    // 助手半条,从它开始不会把工具轮切成两半。
+    let starts = if starts.is_empty() {
+        compactable
+            .iter()
+            .position(|message| !dropped_from_tail(message))
+            .into_iter()
+            .collect()
+    } else {
+        starts
+    };
     let Some(&newest) = starts.last() else {
         return Ok(Vec::new());
     };
@@ -746,6 +760,27 @@ mod tests {
         retention_budget(prepared, &[], &prepared.initial_messages)
             .unwrap()
             .expect("a windowed model has a retention budget")
+    }
+
+    /// 首轮单 run 内触发压缩时,compactable 里没有 user 轮起点,尾部不能因此为空。
+    /// 空尾部会把这一轮读到的文件内容整段丢掉,模型只能回头重读(甚至再次触发压缩)。
+    #[test]
+    fn a_turn_without_a_user_start_still_retains_its_tool_history() {
+        let mut prepared = prepared(200_000);
+        prepared.initial_messages = vec![canonical_user("runtime:current", "do it")];
+        let history: Vec<CanonicalMessage> = (0..200)
+            .map(|index| canonical_assistant(&format!("a{index}"), &"y".repeat(2_000)))
+            .collect();
+        assert!(
+            projected_tokens(&history).unwrap() > budget(&prepared).soft,
+            "这条用例要越过 soft 预算,否则走的是短会话刻意重置那条早返回"
+        );
+
+        let tail = retained_tail(&history, budget(&prepared)).unwrap();
+
+        assert_eq!(tail.len(), history.len(), "首轮的工具历史必须被保留");
+        assert_eq!(tail[0].message_id, "a0");
+        assert_eq!(tail.last().unwrap().message_id, "a199");
     }
 
     #[test]

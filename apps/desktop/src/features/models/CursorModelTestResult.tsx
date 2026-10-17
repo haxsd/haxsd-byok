@@ -7,7 +7,8 @@ import styles from "./CursorModelTestResult.module.scss";
 export type CursorModelTestState =
   | { status: "success"; result: ModelConnectivityResult }
   | { status: "error"; error: string }
-  | { status: "cancelled" };
+  /** `reason` 是取消的原因（服务端超时上限等）：摘要仍是"已取消"，原因进详情/提示。 */
+  | { status: "cancelled"; reason?: string | null };
 
 export function CursorModelTestResult({ state, testing = false, compact = false }: {
   state?: CursorModelTestState;
@@ -24,9 +25,18 @@ export function CursorModelTestResult({ state, testing = false, compact = false 
     return compact ? null : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{t("未测试")}</span></div>;
   }
   if (state.status === "cancelled") {
-    return compact
-      ? <span className={`${styles.compact} ${styles.idle}`}>{t("测试已取消")}</span>
-      : <div className={`${styles.root} ${styles.idle}`}><span className={styles.summary}>{t("测试已取消")}</span></div>;
+    // 结论是"已取消"（超时也在这里收尾，见 modelTestOutcome.ts）：原因放在详情/提示里，
+    // 摘要不写"超时"——那听起来像还在跑。
+    const detail = state.reason ? t("已取消：{reason}", { reason: state.reason }) : t("测试已取消");
+    if (compact) {
+      return <TooltipTrigger label={detail}>
+        <span className={`${styles.compact} ${styles.idle}`}>{t("测试已取消")}{state.reason && <Icon icon={informationOutlineIcon} size="1em" />}</span>
+      </TooltipTrigger>;
+    }
+    return <div className={`${styles.root} ${styles.idle}`}>
+      <span className={styles.summary}>{t("测试已取消")}</span>
+      {state.reason && <TooltipTrigger label={detail}><button type="button" className={styles.details}>{t("查看详情")}<Icon icon={informationOutlineIcon} size="1.1em" /></button></TooltipTrigger>}
+    </div>;
   }
 
   const success = state.status === "success";
@@ -34,7 +44,7 @@ export function CursorModelTestResult({ state, testing = false, compact = false 
     ? t("速度：{speed} tokens/s", { speed: formatSpeed(state.result.tokens_per_second) })
     : t("错误：{error}", { error: state.error });
   const detail = success
-    ? t("速度 {speed} tokens/s · 首字 {firstText} ms · 总耗时 {duration} ms · 输出 {tokens} tokens{estimated} · 返回：{output}", {
+    ? t("速度 {speed} tokens/s · 首字延迟 {firstText} ms · 总耗时 {duration} ms · 输出 {tokens} tokens{estimated} · 返回：{output}", {
       speed: formatSpeed(state.result.tokens_per_second),
       firstText: state.result.first_valid_response_ms ?? "--",
       duration: state.result.duration_ms,

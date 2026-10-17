@@ -20,7 +20,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    network::NetworkClients,
+    network::{NetworkClients, OutboundClient},
     provider::{ModelEvent, Provider},
     store::Store,
     Error, Result,
@@ -37,20 +37,75 @@ use super::{
 
 const TOKEN_HEADER: &str = "x-devin-router-token";
 
-/// Tracks whether the gateway is currently accepting requests. The management UI
-/// must ask the server instead of probing the ports from the browser: those ports
-/// serve a different origin and answer no CORS request, so a browser probe would
-/// report a healthy gateway as unreachable.
+/// The three loopback ports a running gateway holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DevinBoundPorts {
+    pub api: u16,
+    pub inference: u16,
+    pub local_api: u16,
+}
+
+impl DevinBoundPorts {
+    pub fn contains(&self, port: u16) -> bool {
+        port == self.api || port == self.inference || port == self.local_api
+    }
+}
+
+/// 应用宿主补丁前的准入检查：补丁把客户端指向 `127.0.0.1:<设置里那三个端口>`，而
+/// 网关只在启动时绑一次端口。写下去之前必须确认它真的在这三个端口上监听，否则客户端
+/// 从下一个请求起全部打到没人应答的端口，界面却只显示"已保存、等重启"。
+///
+/// `bound` 来自 `DevinListening::bound_ports()`（control 侧持有同一个句柄）。
+pub fn ensure_host_ports_listening(
+    ports: crate::devin::host_patch::DevinPorts,
+    bound: Option<DevinBoundPorts>,
+) -> Result<()> {
+    let Some(bound) = bound else {
+        return Err(Error::Config(
+            "the Devin gateway is not listening yet; enable it and restart haxsd byok so it binds \
+             the configured ports before patching the host file"
+                .into(),
+        ));
+    };
+    if bound.api != ports.api_port
+        || bound.inference != ports.inference_port
+        || bound.local_api != ports.local_api_port
+    {
+        return Err(Error::Config(format!(
+            "the Devin gateway is listening on {} / {} / {}, not on the configured {} / {} / {}; \
+             restart haxsd byok so it binds the saved ports before patching the host file",
+            bound.api,
+            bound.inference,
+            bound.local_api,
+            ports.api_port,
+            ports.inference_port,
+            ports.local_api_port
+        )));
+    }
+    Ok(())
+}
+
+/// Tracks whether the gateway is currently accepting requests, and on which ports.
+/// The management UI must ask the server instead of probing the ports from the
+/// browser: those ports serve a different origin and answer no CORS request, so a
+/// browser probe would report a healthy gateway as unreachable. Saving Devin
+/// settings also reads the bound ports: a port this process already holds is ours,
+/// not a conflict, and must not be reported as one.
 #[derive(Clone, Default)]
-pub struct DevinListening(Arc<std::sync::atomic::AtomicBool>);
+pub struct DevinListening(Arc<parking_lot::RwLock<Option<DevinBoundPorts>>>);
 
 impl DevinListening {
     pub fn is_listening(&self) -> bool {
-        self.0.load(std::sync::atomic::Ordering::SeqCst)
+        self.bound_ports().is_some()
     }
 
-    fn set(&self, listening: bool) {
-        self.0.store(listening, std::sync::atomic::Ordering::SeqCst);
+    /// The ports the gateway holds right now; `None` while it is not serving.
+    pub fn bound_ports(&self) -> Option<DevinBoundPorts> {
+        *self.0.read()
+    }
+
+    fn set(&self, ports: Option<DevinBoundPorts>) {
+        *self.0.write() = ports;
     }
 }
 
@@ -129,15 +184,20 @@ impl DevinGateway {
         let local = axum::serve(local_listener, router).into_future();
         tokio::pin!(api, inference, local);
         // The ports are bound, so from here on the management API must report them
-        // as open until this task returns for any reason.
-        self.listening.set(true);
+        // as open — and a settings save must recognize them as this process's own —
+        // until this task returns for any reason.
+        self.listening.set(Some(DevinBoundPorts {
+            api: settings.api_port,
+            inference: settings.inference_port,
+            local_api: settings.local_api_port,
+        }));
         let result = tokio::select! {
             result = &mut api => result.map_err(Error::Io),
             result = &mut inference => result.map_err(Error::Io),
             result = &mut local => result.map_err(Error::Io),
             _ = shutdown.cancelled() => Ok(()),
         };
-        self.listening.set(false);
+        self.listening.set(None);
         result
     }
 
@@ -200,8 +260,24 @@ async fn handle_request(
     // Sign-in, account state, registration and everything else the client needs
     // from its own service travels upstream untouched. Only model traffic is
     // answered here, which is what makes a real account usable behind this
-    // gateway at all.
-    if !matches!(method, "GetChatMessage" | "GetCliModelConfigs") {
+    // gateway at all. `AssignModel` belongs to that model traffic: it hands the
+    // client the session token this gateway issues for a mapped model UID.
+    if !matches!(
+        method,
+        "GetChatMessage" | "GetCliModelConfigs" | "AssignModel"
+    ) {
+        return forward_upstream(&state, &settings, parts, body).await;
+    }
+    let candidates = settings
+        .bindings
+        .iter()
+        .filter(|binding| binding.enabled)
+        .map(|binding| binding.model_uid.clone())
+        .collect::<HashSet<_>>();
+    // 一条启用绑定都没有时目录不是我们的东西：本地目录会是空的，而客户端只认这
+    // 一份 RPC 的结果，空目录会把它原本的官方模型列表整个顶掉。这时把请求交给
+    // 上游，与其它非模型流量同一条路径——"只答我们拥有的那部分"才是这里的取舍。
+    if method == "GetCliModelConfigs" && candidates.is_empty() {
         return forward_upstream(&state, &settings, parts, body).await;
     }
 
@@ -214,28 +290,26 @@ async fn handle_request(
         Ok(body) => body,
         Err(error) => return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, error.to_string()),
     };
-    let payload = match wire::unwrap_request(&body, content_encoding) {
-        Ok(payload) => payload,
+    // 响应封装照请求本身体判定，而"请求是不是 Connect 信封"只有解码后才知道：请求体
+    // 可能是 gzip 的，拿压缩字节去嗅探必然误判，客户端会拿到裸 proto 响应。
+    let unwrapped = match wire::unwrap_request(&body, content_encoding) {
+        Ok(unwrapped) => unwrapped,
         Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
+    let enveloped = unwrapped.enveloped;
+    let payload = unwrapped.payload;
 
-    let candidates = settings
-        .bindings
-        .iter()
-        .filter(|binding| binding.enabled)
-        .map(|binding| binding.model_uid.clone())
-        .collect::<HashSet<_>>();
     if method == "GetCliModelConfigs" {
         let gateway_url = format!("http://127.0.0.1:{}", settings.local_api_port);
-        let catalog = match catalog::model_configs_payload(&settings, &gateway_url)
-            .and_then(|catalog| catalog::rewrite_model_configs(&catalog, &settings, &gateway_url))
-        {
+        // 目录完全由本地绑定生成：参考实现那套"改写官方目录"的路径在本地目录上是
+        // no-op（`catalog` 只提供 `model_configs_payload`），要真正改写就得先取上游目录。
+        let catalog = match catalog::model_configs_payload(&settings, &gateway_url) {
             Ok(catalog) => catalog,
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
         };
-        return protocol_success_response(&body, &catalog);
+        return protocol_success_response(enveloped, &catalog);
     }
 
     let reference =
@@ -273,7 +347,7 @@ async fn handle_request(
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
         };
-        return protocol_success_response(&body, &response);
+        return protocol_success_response(enveloped, &response);
     }
 
     let request = match parse_chat_request(&payload) {
@@ -299,7 +373,11 @@ async fn handle_request(
         Ok(None) => {
             return protocol_error(
                 StatusCode::BAD_REQUEST,
-                format!("cursor-byok model hash not found: {model_hash}"),
+                format!(
+                    "the model bound to Devin model {} is no longer in the model library; \
+                     re-select it on the Devin page",
+                    binding.model_uid
+                ),
             )
         }
         Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
@@ -380,6 +458,12 @@ fn authorized(headers: &HeaderMap, configured: &str) -> bool {
 /// unchanged, so the client keeps talking to its own service for everything the
 /// gateway does not own. Hop-by-hop headers are dropped; the rest travels as-is
 /// because the service authenticates on them.
+///
+/// The client comes from `OutboundClient::devin` rather than the plain cache: this
+/// hop is long-lived, so a system proxy that stops listening (Clash restarting its
+/// core) would otherwise keep failing until the app restarts. A connection failure
+/// rebuilds the client from the current settings and retries once, exactly like the
+/// provider and Cursor-passthrough paths.
 async fn forward_upstream(
     state: &GatewayState,
     settings: &DevinSettings,
@@ -393,8 +477,10 @@ async fn forward_upstream(
         .map(|value| value.as_str())
         .unwrap_or("/");
     let target = format!("{base}{path}");
+    let method = reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
+        .unwrap_or(reqwest::Method::POST);
 
-    let upstream = match state.clients.devin_client().await {
+    let outbound = match OutboundClient::devin(state.clients.clone()).await {
         Ok(client) => client,
         Err(error) => {
             return protocol_error(
@@ -403,31 +489,54 @@ async fn forward_upstream(
             )
         }
     };
-    let mut outgoing = upstream.request(
-        reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
-            .unwrap_or(reqwest::Method::POST),
-        &target,
-    );
-    for (name, value) in parts.headers.iter() {
-        if matches!(
-            name.as_str(),
-            "host" | "connection" | "content-length" | "transfer-encoding" | "accept-encoding"
-        ) {
-            continue;
-        }
-        outgoing = outgoing.header(name.as_str(), value.as_bytes());
-    }
     let bytes = match to_bytes(body, MAX_BODY_SIZE + 5).await {
         Ok(bytes) => bytes,
         Err(error) => return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, error.to_string()),
     };
-    let response = match outgoing.body(bytes).send().await {
+    // 本地网关凭据绝不能跟着透传请求离开本机：`x-devin-router-token` 是我们自己的头，
+    // 而客户端也可能把同一个令牌放进 `Authorization: Bearer`（`authorized()` 两种都收）。
+    // 其余头部保持原样转发——登录/账号/遥测请求会带上游需要、而我们不知道的头。
+    let local_bearer = format!("Bearer {}", settings.auth_token);
+    let local_token_configured = !settings.auth_token.is_empty();
+    // 重建一次就够：重试仍失败说明不是出网路由的问题，照旧上报。
+    let send = |client: &reqwest::Client| {
+        let mut outgoing = client.request(method.clone(), &target);
+        for (name, value) in parts.headers.iter() {
+            if matches!(
+                name.as_str(),
+                "host" | "connection" | "content-length" | "transfer-encoding" | "accept-encoding"
+            ) || name.as_str() == TOKEN_HEADER
+            {
+                continue;
+            }
+            if local_token_configured
+                && name == header::AUTHORIZATION
+                && value.as_bytes() == local_bearer.as_bytes()
+            {
+                continue;
+            }
+            outgoing = outgoing.header(name.as_str(), value.as_bytes());
+        }
+        outgoing.body(bytes.clone())
+    };
+    let response = match send(outbound.client()).send().await {
         Ok(response) => response,
         Err(error) => {
-            return protocol_error(
-                StatusCode::BAD_GATEWAY,
-                format!("Devin upstream request failed: {error}"),
-            )
+            let Some(client) = outbound.rebuild_after(&error).await else {
+                return protocol_error(
+                    StatusCode::BAD_GATEWAY,
+                    format!("Devin upstream request failed: {error}"),
+                );
+            };
+            match send(&client).send().await {
+                Ok(response) => response,
+                Err(error) => {
+                    return protocol_error(
+                        StatusCode::BAD_GATEWAY,
+                        format!("Devin upstream request failed: {error}"),
+                    )
+                }
+            }
         }
     };
 
@@ -475,8 +584,12 @@ fn protocol_error(status: StatusCode, message: impl Into<String>) -> Response<Bo
     connect_error_response(status, code, message)
 }
 
-fn protocol_success_response(request_body: &[u8], payload: &[u8]) -> Response<Body> {
-    let (body, content_type) = if wire::is_connect_envelope(request_body) {
+/// 成功响应：请求是 Connect 信封就按信封回，否则回裸 proto。
+///
+/// `enveloped` 来自**解码后**的请求体（`wire::unwrap_request`），不是原始字节：原始
+/// 字节可能是 gzip 的，嗅探会失败。
+fn protocol_success_response(enveloped: bool, payload: &[u8]) -> Response<Body> {
+    let (body, content_type) = if enveloped {
         let mut body =
             wire::frame(payload, false).unwrap_or_else(|error| stream_error(error).to_vec());
         body.extend_from_slice(&wire::end_frame(None));
@@ -690,5 +803,415 @@ mod tests {
             "/exa.api_server_pb.ApiServerService/GetCurrentUser"
         );
         assert_eq!(seen[0].1, "login-body|Bearer account-token");
+    }
+
+    /// 本地网关令牌是"只在本机使用"的凭据：透传到厂商上游的请求既不能带
+    /// `x-devin-router-token`，也不能把 `Authorization: Bearer <本地令牌>` 复制过去，
+    /// 而其余头部（上游登录/账号流程要用的）必须照旧转发。
+    #[tokio::test]
+    async fn the_local_gateway_token_never_reaches_upstream() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let received: Arc<parking_lot::Mutex<Vec<(String, String)>>> = Arc::default();
+        let seen = received.clone();
+        let upstream = Router::new().fallback(any(move |request: Request<Body>| {
+            let seen = seen.clone();
+            async move {
+                let (parts, _body) = request.into_parts();
+                seen.lock().extend(
+                    parts
+                        .headers
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.as_str().to_owned(),
+                                value.to_str().unwrap_or_default().to_owned(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/proto")
+                    .body(Body::from(b"upstream-answer".to_vec()))
+                    .unwrap()
+            }
+        }));
+        let upstream_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = upstream_listener.local_addr().unwrap().port();
+        tokio::spawn(axum::serve(upstream_listener, upstream).into_future());
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                auth_token: "local-secret".into(),
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let provider: Arc<dyn Provider> = Arc::new(IdleProvider);
+        let clients = NetworkClients::new(store.clone());
+        let state = GatewayState {
+            store,
+            provider,
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients,
+        };
+
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCurrentUser")
+                    .header(TOKEN_HEADER, "local-secret")
+                    .header(header::AUTHORIZATION, "Bearer local-secret")
+                    .header("x-windsurf-client", "keep-me")
+                    .body(Body::from("login-body"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = response.status();
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(&body[..], b"upstream-answer");
+        let seen = received.lock().clone();
+        assert!(!seen.is_empty(), "上游必须收到这次透传");
+        for (name, value) in &seen {
+            assert_ne!(name, TOKEN_HEADER, "本地令牌头被转发到上游");
+            assert!(
+                !(name == "authorization" && value.contains("local-secret")),
+                "本地令牌经 Authorization 泄漏到上游"
+            );
+        }
+        assert!(
+            seen.iter().any(|(name, _)| name == "x-windsurf-client"),
+            "非本地凭据的头部必须照旧转发: {seen:?}"
+        );
+    }
+
+    /// 目录请求带 gzip 时，响应封装必须按**解码后**的请求体判定：以前拿压缩字节嗅探
+    /// Connect 信封，客户端会收到裸 proto（`application/proto`），整条目录链路就断了。
+    #[tokio::test]
+    async fn a_gzipped_connect_request_still_gets_a_framed_response() {
+        use axum::body::to_bytes as read_body;
+        use std::io::Write;
+        use tower::ServiceExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: "http://127.0.0.1:1".into(),
+                bindings: vec![DevinModelBinding {
+                    enabled: true,
+                    ..DevinModelBinding::new("devin-sonnet", "model-hash")
+                }],
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store.clone());
+        let state = GatewayState {
+            store,
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients,
+        };
+
+        // 一个 Connect 信封里的目录请求，整体再 gzip 一遍。
+        let framed = wire::frame(b"catalog-request", false).unwrap();
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(&framed).unwrap();
+        let gzipped = encoder.finish().unwrap();
+        // 正是旧实现的失败点：压缩后的字节看起来不像信封。
+        assert!(
+            !wire::is_connect_envelope(&gzipped),
+            "压缩字节本来就嗅探不出来"
+        );
+
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCliModelConfigs")
+                    .header(header::CONTENT_TYPE, "application/connect+proto")
+                    .header(header::CONTENT_ENCODING, "gzip")
+                    .body(Body::from(gzipped))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/connect+proto"),
+            "gzip 的 Connect 请求必须收到封装响应"
+        );
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(body[0], 0, "响应第一帧是未压缩的数据帧");
+        let declared = u32::from_be_bytes([body[1], body[2], body[3], body[4]]) as usize;
+        let end = &body[5 + declared..];
+        assert_eq!(end[0], 2, "数据帧之后是结束帧");
+        assert_eq!(
+            u32::from_be_bytes([end[1], end[2], end[3], end[4]]) as usize,
+            end.len() - 5
+        );
+    }
+
+    /// 一个只会回固定字节的上游桩，外加它收到的请求数。
+    async fn answering_upstream() -> (u16, Arc<std::sync::atomic::AtomicUsize>) {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = requests.clone();
+        let upstream = Router::new().fallback(any(move |_request: Request<Body>| {
+            let counted = counted.clone();
+            async move {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/proto")
+                    .body(Body::from(b"upstream-answer".to_vec()))
+                    .unwrap()
+            }
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(axum::serve(listener, upstream).into_future());
+        (port, requests)
+    }
+
+    /// 宿主补丁只能写在网关真正监听的端口上：网关没在监听，或监听的端口与设置不一致，
+    /// 都必须拒绝——否则客户端从下一个请求开始全部打空，界面却只显示"已保存、等重启"。
+    #[test]
+    fn host_patching_requires_the_gateway_to_listen_on_the_same_ports() {
+        let ports = crate::devin::host_patch::DevinPorts {
+            api_port: 43_110,
+            inference_port: 43_111,
+            local_api_port: 43_112,
+        };
+        ensure_host_ports_listening(
+            ports,
+            Some(DevinBoundPorts {
+                api: 43_110,
+                inference: 43_111,
+                local_api: 43_112,
+            }),
+        )
+        .unwrap();
+
+        let not_listening = ensure_host_ports_listening(ports, None)
+            .unwrap_err()
+            .to_string();
+        assert!(not_listening.contains("not listening"), "{not_listening}");
+        for bound in [
+            DevinBoundPorts {
+                api: 43_120,
+                inference: 43_111,
+                local_api: 43_112,
+            },
+            DevinBoundPorts {
+                api: 43_110,
+                inference: 43_121,
+                local_api: 43_112,
+            },
+            DevinBoundPorts {
+                api: 43_110,
+                inference: 43_111,
+                local_api: 43_122,
+            },
+        ] {
+            let error = ensure_host_ports_listening(ports, Some(bound))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("listening on") && error.contains("restart haxsd byok"),
+                "端口漂移时必须说清实际绑定与保存的端口: {error}"
+            );
+        }
+    }
+
+    /// 一条启用绑定都没有时，本地目录会是空的，而客户端只认这份 RPC 的结果：
+    /// 空目录会把整份官方模型列表顶掉。这时请求必须转给上游——只答我们拥有的那部分。
+    #[tokio::test]
+    async fn an_empty_binding_table_forwards_the_model_catalog_upstream() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let (upstream_port, requests) = answering_upstream().await;
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store.clone());
+        let state = GatewayState {
+            store,
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients,
+        };
+
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCliModelConfigs")
+                    .body(Body::from("catalog-request"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(
+            &body[..],
+            b"upstream-answer",
+            "零绑定时的模型目录必须来自上游，而不是本地那份空目录"
+        );
+        assert_eq!(
+            requests.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "上游必须真的收到这次目录请求"
+        );
+    }
+
+    /// 出网路由变了（用户中途关掉代理，或系统代理那一跳没人监听）时，第一次连接
+    /// 失败要按当前配置重建客户端再试一次，而不是把这一轮直接判死。
+    #[tokio::test]
+    async fn a_forwarded_request_is_retried_once_after_the_outbound_route_changes() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let (upstream_port, requests) = answering_upstream().await;
+        // 一个确定没人监听的代理端口：先占住再放掉。
+        let dead_proxy = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            format!("http://{}", listener.local_addr().unwrap())
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Custom,
+                address: dead_proxy,
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store.clone());
+        // 先让缓存里留下那份"指向死代理"的客户端：这就是系统代理那一跳刚断掉时
+        // 进程手里的东西。
+        clients.devin_client().await.unwrap();
+        // 路由已经变了（用户改成直连），但缓存还没被任何保存路径清掉。
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store,
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients,
+        };
+
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCurrentUser")
+                    .body(Body::from("login-body"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(
+            &body[..],
+            b"upstream-answer",
+            "第一次连接失败后必须按新配置重试一次"
+        );
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 }

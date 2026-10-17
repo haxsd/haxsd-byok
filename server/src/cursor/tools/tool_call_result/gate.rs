@@ -6,7 +6,7 @@ use crate::{cursor::protocol::proto::agent::v1 as pb, model::limit_tool_result_t
 const KIB: usize = 1024;
 const READ_CONTENT_LIMIT: usize = 64 * KIB;
 const READ_BINARY_LIMIT: usize = 32 * KIB;
-const SHELL_STREAM_LIMIT: usize = 16 * KIB;
+pub(crate) const SHELL_STREAM_LIMIT: usize = 16 * KIB;
 const SHELL_INTERLEAVED_LIMIT: usize = 32 * KIB;
 const GREP_CONTENT_LIMIT: usize = 32 * KIB;
 const GREP_MATCH_LIMIT: usize = 2 * KIB;
@@ -34,6 +34,30 @@ pub(super) fn tool_completion(
 ) {
     use pb::tool_call::Tool;
 
+    // 体积上限只认判别后的 pb 变体,不认模型写的原始名字。
+    //
+    // `tool_name` 是模型给的字符串,而派发、审批续跑、交互查询编码都按"去掉非字母数字再
+    // 小写"的归一化名判定,所以 `webfetch`/`web_fetch`/`Web-Fetch` 这类拼写会一路执行到这里。
+    // 上限表用的是 `WebFetch` 这种规范字面量,按原始名字精确匹配就等于给别名开后门:模型
+    // 可见文本不再被裁剪(不可信网页正文整段进上下文)。变体是判别后的结果,别名问题从构造
+    // 上消失;只有 `EditToolCall`/`McpToolCall` 两个变体内部还要按归一化名细分(见下)。
+    let replay_name = match tool {
+        Tool::ShellToolCall(_) => "Shell",
+        Tool::ReadToolCall(_) => "Read",
+        Tool::GrepToolCall(_) => "Grep",
+        Tool::GlobToolCall(_) => "Glob",
+        Tool::WebFetchToolCall(_) => "WebFetch",
+        Tool::WebSearchToolCall(_) => "WebSearch",
+        Tool::GenerateImageToolCall(_) => "GenerateImage",
+        Tool::ReadMcpResourceToolCall(_) => "FetchMcpResource",
+        Tool::ListMcpResourcesToolCall(_) => "ListMcpResources",
+        Tool::GetMcpToolsToolCall(_) => "GetMcpTools",
+        Tool::EditToolCall(_) => edit_replay_name(tool_name),
+        Tool::McpToolCall(_) => mcp_replay_name(tool_name),
+        // 其余变体在上限表里没有条目 —— 与按名字查表"未命中即不裁剪"一致。
+        _ => "",
+    };
+
     match tool {
         Tool::ShellToolCall(tool) => gate_shell(tool),
         Tool::GrepToolCall(tool) => gate_grep(tool),
@@ -49,7 +73,44 @@ pub(super) fn tool_completion(
         Tool::GenerateImageToolCall(tool) => gate_generate_image(tool),
         _ => {}
     }
-    *content = limit_tool_result_text(tool_name, content);
+    *content = limit_tool_result_text(replay_name, content);
+}
+
+/// `EditToolCall` 覆盖 write/strreplace/editnotebook 三个名字,上限表却按名字分两档
+/// (补丁式编辑 4 KiB、整文件编辑 32 KiB),所以这里仍要看名字——但只看归一化后的名字。
+fn edit_replay_name(tool_name: &str) -> &'static str {
+    match normalized(tool_name).as_str() {
+        "patchedit" => "PatchEdit",
+        "patcheditlines" => "PatchEditLines",
+        "patcheditspan" => "PatchEditSpan",
+        "strreplace" => "StrReplace",
+        "editnotebook" => "EditNotebook",
+        "edit" => "Edit",
+        _ => "Write",
+    }
+}
+
+/// Semble 的结果也走 MCP 卡片,所以 `McpToolCall` 对应上限表里的多个条目(都是 32 KiB);
+/// 认出具体名字只是让截断文案里出现的是用户认识的那个工具。动态 MCP 工具与兼容占位卡片
+/// 的名字不在表里,保持"不裁剪"的原行为。
+fn mcp_replay_name(tool_name: &str) -> &'static str {
+    match normalized(tool_name).as_str() {
+        "semblesearch" => "SembleSearch",
+        "semblefindrelated" => "SembleFindRelated",
+        "callmcptool" => "CallMcpTool",
+        "fetchmcpresource" | "readmcpresource" => "FetchMcpResource",
+        "listmcpresources" => "ListMcpResources",
+        "getmcptools" => "GetMcpTools",
+        _ => "",
+    }
+}
+
+fn normalized(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 pub(super) fn exec_message(message: &mut pb::exec_client_message::Message) {
@@ -343,8 +404,10 @@ fn gate_edit(tool_name: &str, tool: &mut pb::EditToolCall) {
     else {
         return;
     };
-    let limit = match tool_name.trim() {
-        "PatchEdit" | "PatchEditLines" | "PatchEditSpan" | "StrReplace" => PATCH_EDIT_RESULT_LIMIT,
+    // 与 replay 上限同一套归一化判定,否则别名拼写会出现"pb 卡片按 32 KiB 截、模型可见文本
+    // 按 4 KiB 截"的第三种边界。
+    let limit = match normalized(tool_name).as_str() {
+        "patchedit" | "patcheditlines" | "patcheditspan" | "strreplace" => PATCH_EDIT_RESULT_LIMIT,
         _ => EDIT_RESULT_LIMIT,
     };
     if let Some(diff) = success.diff_string.as_mut() {
@@ -688,7 +751,7 @@ fn truncated_prefix_with_notice(
     }
 }
 
-fn truncate_edges(tool_name: &str, content: &str, limit: usize) -> String {
+pub(crate) fn truncate_edges(tool_name: &str, content: &str, limit: usize) -> String {
     if content.len() <= limit {
         return content.to_string();
     }
@@ -893,5 +956,82 @@ mod tests {
                  showing 200 of 250 resources]"
             )
         );
+    }
+
+    /// 派发按归一化名判定,别名拼写会一路执行到体积闸门;闸门必须给出同一个上限,
+    /// 否则模型可见文本不受裁剪——WebFetch 的正文最多 5 MiB,Semble 结果是整份 JSON。
+    #[test]
+    fn an_aliased_tool_name_still_gets_the_canonical_result_limit() {
+        let markdown = "x".repeat(64 * KIB);
+        for name in ["WebFetch", "webfetch", "web_fetch", "Web-Fetch"] {
+            let mut tool = pb::tool_call::Tool::WebFetchToolCall(pb::WebFetchToolCall {
+                args: None,
+                result: Some(pb::WebFetchResult {
+                    result: Some(pb::web_fetch_result::Result::Success(pb::WebFetchSuccess {
+                        url: "https://example.com".into(),
+                        markdown: markdown.clone(),
+                        output_location: None,
+                    })),
+                }),
+            });
+            let mut content = format!("<system_reminder>downloaded</system_reminder>\n{markdown}");
+            tool_completion(name, &mut tool, &mut content);
+
+            assert!(
+                content.len() <= WEB_FETCH_LIMIT,
+                "{name} 的模型可见文本没有被裁剪: {} 字节",
+                content.len()
+            );
+            assert!(
+                content.contains("[truncated: WebFetch"),
+                "{name}: {content}"
+            );
+        }
+    }
+
+    /// Semble 走 MCP 卡片;别名拼写下结果同样要落到 32 KiB。
+    #[test]
+    fn an_aliased_semble_name_is_bounded_like_the_canonical_one() {
+        let payload = serde_json::json!({"chunks": ["y".repeat(64 * KIB)]});
+        for name in ["SembleSearch", "semblesearch", "Semble_Search"] {
+            let mut tool = pb::tool_call::Tool::McpToolCall(pb::McpToolCall::default());
+            let mut content = serde_json::to_string_pretty(&payload).unwrap();
+            tool_completion(name, &mut tool, &mut content);
+
+            assert!(
+                content.len() <= MCP_TEXT_LIMIT,
+                "{name} 的结果没有被裁剪: {} 字节",
+                content.len()
+            );
+        }
+    }
+
+    /// 补丁式编辑的 4 KiB 档位同样按归一化名判定,不能只改上限表那一半。
+    #[test]
+    fn an_aliased_patch_edit_keeps_the_patch_limit() {
+        let diff = "+".to_string() + &"z".repeat(16 * KIB);
+        for name in ["StrReplace", "strreplace", "str_replace"] {
+            let mut tool = pb::EditToolCall {
+                args: None,
+                result: Some(pb::EditResult {
+                    result: Some(pb::edit_result::Result::Success(pb::EditSuccess {
+                        diff_string: Some(diff.clone()),
+                        ..Default::default()
+                    })),
+                }),
+            };
+            gate_edit(name, &mut tool);
+            let Some(pb::edit_result::Result::Success(success)) = tool
+                .result
+                .as_ref()
+                .and_then(|result| result.result.as_ref())
+            else {
+                panic!("expected EditSuccess")
+            };
+            assert!(
+                success.diff_string.as_deref().unwrap_or_default().len() <= PATCH_EDIT_RESULT_LIMIT,
+                "{name} 的 diff 没有走 4 KiB 档"
+            );
+        }
     }
 }

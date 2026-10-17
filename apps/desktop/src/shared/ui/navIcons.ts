@@ -22,12 +22,16 @@ export const navOverviewIcon = stroke('<path d="M2.6 13.4h3.1l2.4-6.4 3.4 11.6 2
 /** Calls: a log, three rows with a bullet each. */
 export const navCallsIcon = stroke('<path d="M9 7h11M9 12h11M9 17h7"/><circle cx="4.7" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="17" r="1.5" fill="currentColor" stroke="none"/>');
 
-/** Devin: a hexagonal node, the module's mark. */
-export const navCodexIcon = stroke('<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>');
+/** 接入：三个客户端共用的入口图标——一个插头，表示「把客户端接到本机网关」。 */
+export const navHarnessIcon = stroke('<path d="M9 3.2v4.4M15 3.2v4.4"/><path d="M6.2 7.6h11.6v2.6a5.8 5.8 0 0 1-5.8 5.8 5.8 5.8 0 0 1-5.8-5.8z"/><path d="M12 16v4.8"/>');
 
+/** Devin: a hexagonal node, the module's mark. */
 export const navDevinIcon = stroke('<path d="M12 2.9l7.7 4.5v9.2L12 21.1l-7.7-4.5V7.4z"/>');
 
-/** Models: a stack, because the library is shared by both modules. */
+/** Codex: 一对代码尖括号，表示它接的是编程客户端的模型通道。 */
+export const navCodexIcon = stroke('<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>');
+
+/** Models: a stack, because the library is shared by every client module. */
 export const navModelsIcon = stroke('<path d="M4.6 6.7c0-1.6 3.3-2.9 7.4-2.9s7.4 1.3 7.4 2.9-3.3 2.9-7.4 2.9-7.4-1.3-7.4-2.9z"/><path d="M4.6 6.7v10.6c0 1.6 3.3 2.9 7.4 2.9s7.4-1.3 7.4-2.9V6.7"/><path d="M4.6 12c0 1.6 3.3 2.9 7.4 2.9s7.4-1.3 7.4-2.9"/>');
 
 /** Plugins: a chip with its pins. */

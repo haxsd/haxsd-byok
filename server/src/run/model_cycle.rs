@@ -28,6 +28,10 @@ pub struct ModelCycleFailure {
     pub failure: RunFailure,
     pub partial_text: String,
     pub partial_reasoning: String,
+    /// 上游给的回放状态（思考签名等）。只有"已经生成了一段、但这一轮没能正常结束"
+    /// 的失败才有意义：engine 把半段回答落成 assistant 消息时要连它一起带上，
+    /// 否则下一轮请求会把没有签名的思考块发给上游。
+    pub replay_state: Option<ProviderReplayState>,
     pub usage: Option<Usage>,
     pub retryable: bool,
 }
@@ -303,12 +307,20 @@ pub async fn consume_model_cycle(
         .map(|tool| tool.call)
         .collect::<Vec<_>>();
     if finish_reason == FinishReason::Length {
-        return Err(terminal_failure(
-            RunFailure::Provider("model stopped before completing the response".into()),
+        // 只报到"撞了长度上限"这一层，不在这里决定压缩还是失败：`max_tokens` 与
+        // `model_context_window_exceeded` 在 provider 层已经归一成同一个原因，
+        // 分流要用 provider 报的用量（见 engine 的 exhausted_context_window）。
+        //
+        // 半段回答与它的回放状态一起交出去：engine 按默认口径把它落成 assistant
+        // 消息（用户看到的就是这半段），缺了回放状态下一轮就会丢掉思考签名。
+        let mut truncated = terminal_failure(
+            RunFailure::Truncated("model stopped before completing the response".into()),
             text,
             reasoning,
             usage,
-        ));
+        );
+        truncated.replay_state = replay_state;
+        return Err(truncated);
     }
     let has_tool_calls = !calls.is_empty();
     if matches!(finish_reason, FinishReason::ToolUse) != has_tool_calls {
@@ -377,12 +389,16 @@ fn failure(
         RunFailure::Protocol(_) => true,
         RunFailure::Provider(message) if is_rejected_request(message) => false,
         RunFailure::Provider(_) => true,
+        // 长度上限只由 `terminal_failure` 构造；真走到这里也不该重试：重试拿到的是
+        // 同一份 prompt，只会把同一个截断再演一遍。
+        RunFailure::Truncated(_) => false,
         RunFailure::Store(_) | RunFailure::Client(_) => false,
     };
     Box::new(ModelCycleFailure {
         failure,
         partial_text,
         partial_reasoning,
+        replay_state: None,
         usage,
         retryable,
     })
@@ -413,6 +429,7 @@ fn terminal_failure(
         failure,
         partial_text,
         partial_reasoning,
+        replay_state: None,
         usage,
         retryable: false,
     })

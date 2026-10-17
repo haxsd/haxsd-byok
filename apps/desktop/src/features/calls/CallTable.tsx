@@ -18,7 +18,26 @@ import styles from "./CallTable.module.scss";
 
 type SortKey = "created_at" | "duration" | "tokens";
 
-export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (call: LlmCall) => void }) {
+/**
+ * 空列表的两种说法。
+ *
+ * 「一条记录都还没有」和「筛出来是空的」在界面上长得一样，但下一步动作完全不同：
+ * 前者要先去发起一次对话，后者要清掉筛选条件。首屏恰好是前一种，而当时显示的是后者
+ * 的说法——让第一次打开应用的人去做一件不存在的事。
+ */
+export function callListEmptyCopy(noCallsYet: boolean) {
+  return noCallsYet
+    ? {
+      title: t("还没有调用记录"),
+      description: t("还没有调用记录。接好模型后，这里会实时出现每一次调用。"),
+    }
+    : {
+      title: t("没有符合条件的调用"),
+      description: t("清掉筛选条件再试，或先在 Cursor / Devin / Codex 里发起一次对话。"),
+    };
+}
+
+export function CallTable({ calls, noCallsYet = false, onDetails }: { calls: LlmCall[]; noCallsYet?: boolean; onDetails: (call: LlmCall) => void }) {
   const { locale } = useI18n();
   const palette = chartPalette();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -40,17 +59,21 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
     ? { key, descending: !current.descending }
     : { key, descending: true });
 
-  if (calls.length === 0) return <EmptyState
-    icon={activityIcon}
-    title={t("没有符合条件的调用")}
-    description={t("清掉筛选条件再试，或先在 Cursor / Devin 里发起一次对话。")}
-  />;
+  // 一条记录都没有，和"被筛掉了"是两回事：第一种情况下让人去清筛选条件，是把用户
+  // 支到一件不存在的事上（首屏就是这个状态）。
+  if (calls.length === 0) {
+    const copy = callListEmptyCopy(noCallsYet);
+    return <EmptyState icon={activityIcon} title={copy.title} description={copy.description} />;
+  }
 
   return <div className={styles.root}>
     <ScrollableContent
       className={styles.viewport}
       contentClassName={styles.tableContent}
       scrollbarInsetTop="var(--app-content-top)"
+      /* 列宽在 880px（应用最小窗口）下已经放得下；窗口比这更窄时，横向滚动条
+         接管——没有它，最右侧的详情按钮会被静默裁掉、够不到（实测 98px）。 */
+      horizontal
     >
       <div className={styles.table} role="table" aria-label={t("调用记录")}>
         <div className={styles.head} role="row">
@@ -89,7 +112,7 @@ export function CallTable({ calls, onDetails }: { calls: LlmCall[]; onDetails: (
                 <span className={styles.modelName} title={call.display_name}>{call.display_name || call.model_id}</span>
                 <span className={styles.modelId} title={call.model_id}>{call.model_id}</span>
               </span>
-              <span className={styles.time} role="cell" title={new Date(call.created_at_ms).toLocaleString()}>
+              <span className={styles.time} role="cell" title={Number.isFinite(call.created_at_ms) ? new Date(call.created_at_ms).toLocaleString() : "-"}>
                 {formatRelativeTime(call.created_at_ms, locale)}
               </span>
               <span role="cell">

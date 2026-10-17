@@ -13,9 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     asset::{RuntimeAsset, DENO_VERSION},
-    installation,
+    installation::{self, InstallFailure},
 };
-use crate::{config, store::Store, Error, Result};
+use crate::{config, store::Store, Result};
 
 #[derive(Clone)]
 pub struct PluginRuntime {
@@ -62,11 +62,11 @@ pub struct PluginRuntimeStatus {
 }
 
 impl PluginRuntimeStatus {
-    fn uninitialized(asset: RuntimeAsset) -> Self {
+    fn uninitialized(asset: &RuntimeAsset) -> Self {
         Self::new(PluginRuntimeState::Uninitialized, Some(asset))
     }
 
-    fn ready(asset: RuntimeAsset) -> Self {
+    fn ready(asset: &RuntimeAsset) -> Self {
         Self::new(PluginRuntimeState::Ready, Some(asset))
     }
 
@@ -86,7 +86,7 @@ impl PluginRuntimeStatus {
         }
     }
 
-    fn new(state: PluginRuntimeState, asset: Option<RuntimeAsset>) -> Self {
+    fn new(state: PluginRuntimeState, asset: Option<&RuntimeAsset>) -> Self {
         Self {
             state,
             version: DENO_VERSION.into(),
@@ -97,6 +97,20 @@ impl PluginRuntimeStatus {
             error: None,
         }
     }
+
+    /// 初始化失败的终态：`error` 是给用户看的真实原因（见 `InstallFailure`），
+    /// 不再是笼统的"初始化失败"。
+    async fn failed(store: &Store, asset: &RuntimeAsset, failure: &InstallFailure) -> Self {
+        let message = failure.status_message(store).await;
+        tracing::error!(
+            reason = %message,
+            target = asset.target,
+            "plugin runtime initialization failed"
+        );
+        let mut status = Self::new(PluginRuntimeState::Failed, Some(asset));
+        status.error = Some(message);
+        status
+    }
 }
 
 impl PluginRuntime {
@@ -105,14 +119,18 @@ impl PluginRuntime {
     }
 
     fn new(root: PathBuf) -> Result<Self> {
+        Self::with_asset(root, RuntimeAsset::current())
+    }
+
+    /// 装配一个面向 `asset` 的运行时；`None` 表示当前平台没有可用的 Deno 归档。
+    fn with_asset(root: PathBuf, asset: Option<RuntimeAsset>) -> Result<Self> {
         std::fs::create_dir_all(&root)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
         }
-        let asset = RuntimeAsset::current();
-        let status = match asset {
+        let status = match &asset {
             Some(asset) if installation::runtime_complete(&root, asset) => {
                 PluginRuntimeStatus::ready(asset)
             }
@@ -133,7 +151,7 @@ impl PluginRuntime {
     pub fn status(&self) -> PluginRuntimeStatus {
         let mut status = self.inner.status.write();
         if status.state == PluginRuntimeState::Ready {
-            if let Some(asset) = self.inner.asset {
+            if let Some(asset) = self.inner.asset.as_ref() {
                 if !installation::runtime_complete(&self.inner.root, asset) {
                     *status = PluginRuntimeStatus::uninitialized(asset);
                 }
@@ -143,7 +161,7 @@ impl PluginRuntime {
     }
 
     pub fn executable(&self) -> Option<PathBuf> {
-        let asset = self.inner.asset?;
+        let asset = self.inner.asset.as_ref()?;
         if self.status().state != PluginRuntimeState::Ready {
             return None;
         }
@@ -151,11 +169,11 @@ impl PluginRuntime {
     }
 
     pub fn initialize(&self, store: Store) -> PluginRuntimeStatus {
-        let Some(asset) = self.inner.asset else {
+        let Some(asset) = self.inner.asset.clone() else {
             return self.status();
         };
-        if installation::runtime_complete(&self.inner.root, asset) {
-            let ready = PluginRuntimeStatus::ready(asset);
+        if installation::runtime_complete(&self.inner.root, &asset) {
+            let ready = PluginRuntimeStatus::ready(&asset);
             *self.inner.status.write() = ready.clone();
             return ready;
         }
@@ -169,7 +187,7 @@ impl PluginRuntime {
         }
 
         let mut initializing =
-            PluginRuntimeStatus::new(PluginRuntimeState::Initializing, Some(asset));
+            PluginRuntimeStatus::new(PluginRuntimeState::Initializing, Some(&asset));
         initializing.phase = Some(PluginRuntimePhase::Checking);
         *self.inner.status.write() = initializing.clone();
 
@@ -180,7 +198,7 @@ impl PluginRuntime {
             let result = installation::install(
                 &runtime.inner.root,
                 &store,
-                asset,
+                asset.clone(),
                 cancellation,
                 |phase, downloaded, total| {
                     runtime.update_progress(phase, downloaded, total);
@@ -188,15 +206,12 @@ impl PluginRuntime {
             )
             .await;
             let status = match result {
-                Ok(()) => PluginRuntimeStatus::ready(asset),
-                Err(Error::Cancelled) => PluginRuntimeStatus::uninitialized(asset),
-                Err(error) => {
-                    tracing::error!(%error, target = asset.target, "plugin runtime initialization failed");
-                    let mut failed =
-                        PluginRuntimeStatus::new(PluginRuntimeState::Failed, Some(asset));
-                    failed.error = Some("plugin runtime initialization failed".into());
-                    failed
+                Ok(()) => PluginRuntimeStatus::ready(&asset),
+                // 取消不是失败：断点留着，状态回到未初始化，用户下次点了就接着下。
+                Err(failure) if failure.is_cancelled() => {
+                    PluginRuntimeStatus::uninitialized(&asset)
                 }
+                Err(failure) => PluginRuntimeStatus::failed(&store, &asset, &failure).await,
             };
             *runtime.inner.status.write() = status;
             runtime.inner.cancellation.lock().take();
@@ -230,9 +245,16 @@ impl PluginRuntime {
 
 #[cfg(test)]
 pub(super) mod tests {
+    use std::path::Path;
+
     use super::*;
 
-    pub(in crate::plugin) fn runtime(root: &std::path::Path) -> PluginRuntime {
+    pub(in crate::plugin) fn runtime(root: &Path) -> PluginRuntime {
         PluginRuntime::new(root.join("runtime")).unwrap()
+    }
+
+    /// 面向一个给定 asset 的运行时：测试用假的下载地址与摘要走完整条初始化路径。
+    pub(in crate::plugin) fn runtime_with(root: &Path, asset: RuntimeAsset) -> PluginRuntime {
+        PluginRuntime::with_asset(root.join("runtime"), Some(asset)).unwrap()
     }
 }

@@ -21,15 +21,21 @@ function required(options, name) {
   return value;
 }
 
-export function normalizeTauriUpdate(manifest, release, repository, version) {
+export function normalizeTauriUpdate(
+  manifest,
+  release,
+  repository,
+  version,
+  tag = `v${version}`,
+) {
   if (manifest.version !== version) {
     throw new Error(
       `updater manifest version ${manifest.version ?? "is missing"}; expected ${version}`,
     );
   }
-  if (release.tag_name !== `v${version}`) {
+  if (release.tag_name !== tag) {
     throw new Error(
-      `GitHub release tag ${release.tag_name ?? "is missing"}; expected v${version}`,
+      `GitHub release tag ${release.tag_name ?? "is missing"}; expected ${tag}`,
     );
   }
   if (!manifest.platforms || typeof manifest.platforms !== "object") {
@@ -40,7 +46,7 @@ export function normalizeTauriUpdate(manifest, release, repository, version) {
   const publicAssetUrls = new Set();
   for (const asset of release.assets ?? []) {
     if (!asset?.id || !asset?.name) continue;
-    const publicUrl = `https://github.com/${repository}/releases/download/v${version}/${encodeURIComponent(asset.name)}`;
+    const publicUrl = `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(asset.name)}`;
     assetsBySourceUrl.set(
       `https://api.github.com/repos/${repository}/releases/assets/${asset.id}`,
       publicUrl,
@@ -71,12 +77,18 @@ async function main() {
   const releasePath = resolve(required(options, "release"));
   const repository = required(options, "repository");
   const version = required(options, "version").replace(/^v/, "");
+  // 标签前缀由调用方给：本仓库发布标签是 `haxsd-byok-v<版本>`，而上游遗留的默认
+  // 形态是 `v<版本>`。不给就按上游形态，保持脚本本身与仓库无关。
+  const tag = options.get("tag")?.trim() || `v${version}`;
 
   if (!/^[^/\s]+\/[^/\s]+$/.test(repository)) {
     throw new Error(`invalid GitHub repository: ${repository}`);
   }
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`invalid semantic version: ${version}`);
+  }
+  if (!/^[^/\s]+$/.test(tag)) {
+    throw new Error(`invalid release tag: ${tag}`);
   }
 
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -86,6 +98,7 @@ async function main() {
     release,
     repository,
     version,
+    tag,
   );
   await writeFile(manifestPath, `${JSON.stringify(normalized, null, 2)}\n`);
 }

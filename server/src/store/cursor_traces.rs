@@ -82,6 +82,7 @@ impl Store {
             source,
             &blob_id,
             &metadata_json,
+            as_i64(data.len()),
         )
         .await?;
         sqlx::query(
@@ -116,6 +117,7 @@ impl Store {
             source,
             &blob_id,
             &metadata_json,
+            as_i64(data.len()),
         )
         .await?;
         tx.commit().await?;
@@ -133,6 +135,14 @@ impl Store {
         let metadata_json = serde_json::to_string(metadata)?;
         let _write = self.writes.lock().await;
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        // 这条路径的内容块本来就在库里（不是这次写的），正文大小只能查出来：它进的是
+        // 附件正文的估算（见 `statistics_storage`），缺了会让估算凭空变小。
+        let byte_count: i64 =
+            sqlx::query_scalar("SELECT COALESCE(LENGTH(data), 0) FROM blobs WHERE blob_id = ?")
+                .bind(blob_id.as_bytes().as_slice())
+                .fetch_optional(&mut *tx)
+                .await?
+                .unwrap_or(0);
         Self::link_cursor_trace_artifact_tx(
             &mut tx,
             request_id,
@@ -140,6 +150,7 @@ impl Store {
             source,
             blob_id,
             &metadata_json,
+            byte_count,
         )
         .await?;
         tx.commit().await?;
@@ -153,6 +164,7 @@ impl Store {
         source: &str,
         blob_id: &BlobId,
         metadata_json: &str,
+        byte_count: i64,
     ) -> Result<()> {
         let next: i64 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(seq), -1) + 1
@@ -163,8 +175,8 @@ impl Store {
         .await?;
         sqlx::query(
             "INSERT INTO cursor_run_trace_artifacts(
-                request_id, seq, artifact_type, source, blob_id, metadata_json, created_at_ms
-             ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                request_id, seq, artifact_type, source, blob_id, metadata_json, byte_count, created_at_ms
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(request_id)
         .bind(next)
@@ -172,6 +184,7 @@ impl Store {
         .bind(source)
         .bind(blob_id.as_bytes().as_slice())
         .bind(metadata_json)
+        .bind(byte_count)
         .bind(now_ms())
         .execute(&mut **tx)
         .await?;
@@ -232,6 +245,7 @@ impl Store {
                 &chunk.source,
                 &blob_id,
                 &metadata_json,
+                as_i64(chunk.data.len()),
             )
             .await?;
         }
@@ -273,20 +287,24 @@ impl Store {
     }
 
     pub async fn cursor_trace(&self, request_id: &str) -> Result<Option<CursorRunTraceSummary>> {
-        sqlx::query("SELECT * FROM cursor_run_traces WHERE request_id = ?")
-            .bind(request_id)
-            .fetch_optional(&self.pool)
-            .await?
-            .map(trace_from_row)
-            .transpose()
+        sqlx::query(&format!(
+            "SELECT {} FROM cursor_run_traces WHERE request_id = ?",
+            TRACE_COLUMNS
+        ))
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .map(trace_from_row)
+        .transpose()
     }
 
     pub async fn official_cursor_traces(&self, limit: i64) -> Result<Vec<CursorRunTraceSummary>> {
-        let rows = sqlx::query(
-            "SELECT * FROM cursor_run_traces
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM cursor_run_traces
              WHERE route = 'cursor_official'
              ORDER BY received_at_ms DESC LIMIT ?",
-        )
+            TRACE_COLUMNS
+        ))
         .bind(limit.clamp(1, 500))
         .fetch_all(&self.pool)
         .await?;
@@ -321,6 +339,15 @@ impl Store {
             .collect()
     }
 }
+
+/// `trace_from_row` 要读的列，写成一处供两条查询共用。
+///
+/// `SELECT *` 与 `database-schema` 技能的约定相反（表结构变化时会悄悄改变取回的列，
+/// 读列名的地方出错要等到运行期才发现）。这里显式列清单就是 `trace_from_row` 的输入契约：
+/// 少写一列它会在 `try_get` 上立刻报错。
+const TRACE_COLUMNS: &str = "request_id, conversation_id, route, model_id, status, request_bytes,
+     response_bytes, response_event_count, http_status, received_at_ms, first_response_at_ms,
+     finished_at_ms, error_message";
 
 fn trace_from_row(row: sqlx::sqlite::SqliteRow) -> Result<CursorRunTraceSummary> {
     Ok(CursorRunTraceSummary {

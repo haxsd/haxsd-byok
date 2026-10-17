@@ -1,6 +1,6 @@
 {
   "name": "haxsd-byok-desktop",
-  "version": "1.5.0-beta.1",
+  "version": "1.5.0",
   "description": "haxsd byok desktop management application",
   "type": "module",
   "engines": {
@@ -14,7 +14,7 @@
     "i18n:scan": "cross-env STATIC_I18N_SCAN=true vite build",
     "build": "vite build",
     "build:demo": "npm run typecheck && npm run typecheck:node && vite build --config vite.demo.config.ts",
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test --test-concurrency=4 tests/*.test.mjs ../../.github/scripts/generate-portable-update.test.mjs ../../.github/scripts/normalize-tauri-update.test.mjs",
     "check": "npm run typecheck && npm run typecheck:node && npm run test && npm run build",
     "dev:web": "concurrently --kill-others --success first --names server,web \"cross-env CURSOR_CONSOLE_PROXY=http://127.0.0.1:1420 cargo run --manifest-path ../../server/Cargo.toml --bin cursor-server\" \"wait-on http-get://127.0.0.1:3000/__byok-api__/healthz && vite\"",
     "serve": "vite preview",

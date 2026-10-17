@@ -25,6 +25,7 @@ use crate::{
             runtime::CursorToolRuntime,
             stream::ToolCallStream,
             tool_call_result::{ToolCompletion, ToolResultReceiver},
+            turn_steps::{self, TurnSteps},
             ToolBatchState, ToolDispatcher,
         },
     },
@@ -43,7 +44,6 @@ pub struct ConversationOutput {
     context: CursorRunContext,
     core: RunSession,
     run: RunHandle,
-    registry: ConversationRegistry,
     tools: ToolDispatcher,
     results: ToolResultReceiver,
     checkpoint: CheckpointBuilder,
@@ -53,7 +53,39 @@ pub struct ConversationOutput {
     blob_sync: BlobSynchronizer,
     injection_ids: HashSet<String>,
     pending_injections: HashMap<String, PendingInjection>,
+    deliveries: mpsc::UnboundedSender<InjectionDelivery>,
     superseded: CancellationToken,
+    /// 当前 turn 已提交的 step 数,工具轮用它算 `UpdateCurrentStep` 的 `message_index`。
+    ///
+    /// 未知时装载一次历史数出来(`06/P3-5`:原来每个工具轮都整份装载,长会话里每轮一次)。
+    turn_steps: TurnSteps,
+}
+
+/// 一条待投递的注入/插话消息。
+struct InjectionDelivery {
+    conversation_id: ConversationId,
+    compiled: CompiledMessages,
+}
+
+/// 注入投递的串行队列：**入队顺序 = 投递顺序**。
+///
+/// 投递不能就地 `await`：`RunHandle::submit_messages` 要等核心把这批消息提交完，而核心
+/// 的提交又要等 output 主循环完成 checkpoint 屏障——在循环里等会死锁。所以投递留在主
+/// 循环之外，但必须由**同一个消费任务**逐条发：过去每条注入各 `tokio::spawn` 一个任务，
+/// 多线程 runtime 上谁先 `commands.send` 由调度决定，两条注入的落库顺序就可能与用户输入
+/// 顺序相反（顺序还会被写进 checkpoint 长期保留）。
+fn spawn_injection_deliveries(
+    registry: ConversationRegistry,
+) -> mpsc::UnboundedSender<InjectionDelivery> {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<InjectionDelivery>();
+    tokio::spawn(async move {
+        while let Some(delivery) = receiver.recv().await {
+            let _ = registry
+                .deliver(&delivery.conversation_id, delivery.compiled)
+                .await;
+        }
+    });
+    sender
 }
 
 struct PendingInjection {
@@ -90,13 +122,13 @@ impl ConversationOutput {
         registry: ConversationRegistry,
         runtime: ConversationOutputDependencies,
     ) -> Self {
+        let deliveries = spawn_injection_deliveries(registry.clone());
         Self {
             handle,
             store,
             context,
             core,
             run,
-            registry,
             tools: runtime.tools,
             results: runtime.results,
             checkpoint: runtime.checkpoint,
@@ -106,7 +138,9 @@ impl ConversationOutput {
             blob_sync: runtime.blob_sync,
             injection_ids: HashSet::new(),
             pending_injections: HashMap::new(),
+            deliveries,
             superseded: runtime.superseded,
+            turn_steps: TurnSteps::Unknown,
         }
     }
 
@@ -141,6 +175,24 @@ impl ConversationOutput {
             }
         }
         result
+    }
+
+    /// 当前 turn 已提交的 step 数(工具轮算 `message_index` 的基础值)。
+    ///
+    /// 历史形状变过(新 turn / 压缩 / 插话,见 `TurnSteps::invalidate`)时装载一次历史数出来
+    /// 并记住,其余时候工具轮只往前累加 —— 原来每个工具轮都整份装载(`06/P3-5`)。
+    /// 拿不准就重新数,绝不猜:装载也只是每 turn 一次。
+    async fn current_turn_steps(&mut self) -> Result<usize> {
+        if let Some(steps) = self.turn_steps.known() {
+            return Ok(steps);
+        }
+        let messages = self
+            .store
+            .load_current_messages(&ConversationId::new(&self.context.exec.conversation_id))
+            .await?;
+        let steps = turn_steps::turn_step_count(&messages);
+        self.turn_steps.remember(steps);
+        Ok(steps)
     }
 
     async fn run_inner(&mut self) -> Result<RunFinish> {
@@ -426,6 +478,22 @@ impl ConversationOutput {
                         round_id,
                         calls: round_calls,
                     } => {
+                        // 本轮的起点 = 当前 turn 已提交的 step 数。这一轮的 assistant 消息会在
+                        // 工具结果提交时进入历史(一个调用一条),所以派出之后基础值就往前推进一步,
+                        // 下一轮直接用它 —— 不必再装载整段历史(`06/P3-5`)。
+                        //
+                        // 贡献取自库里这一轮(一条 `tool_rounds` 记录,不是历史):恢复出来的轮没有
+                        // 本地 delta,只有库里有它的 text/thinking,用本地变量会少算。
+                        let turn_steps = self.current_turn_steps().await?;
+                        match self.store.tool_round(&round_id).await? {
+                            Some(round) => self.turn_steps.advance(
+                                &round.assistant.thinking,
+                                &round.assistant.text,
+                                round.calls.len(),
+                            ),
+                            // 查不到这一轮(理论上不会发生):不猜,下一次工具轮重新按历史数。
+                            None => self.turn_steps.invalidate(),
+                        }
                         // `completed` exists so that replaying ExecuteToolRound for a round
                         // does not dispatch a call this round already committed. Tool call ids
                         // are only unique *within* a round -- the schema says as much with
@@ -435,6 +503,11 @@ impl ConversationOutput {
                         if completed_round.as_ref() != Some(&round_id) {
                             completed.clear();
                             completed_round = Some(round_id.clone());
+                            // 同样的理由适用于"被打断的调用":call_id 只在轮内唯一,上一轮
+                            // 被插话打断后留下的 id 会让这一轮同名调用的结果被丢弃,而
+                            // tool_round 会一直等它(那条等待没有超时)。迟到的结果由
+                            // runtime 按 exec id 丢弃(tools/mod.rs、codec/response.rs)。
+                            interrupted_tool_calls.clear();
                         }
                         active_round = Some(round_id.clone());
                         active_tool_calls = round_calls
@@ -459,16 +532,10 @@ impl ConversationOutput {
                                 &round_calls,
                                 ToolBatchState {
                                     completed: &completed,
-                                    started: &HashSet::new(),
                                     response_text: &response_text,
                                     response_thinking: &response_thinking,
                                 },
-                                &self
-                                    .store
-                                    .load_current_messages(&crate::model::ConversationId::new(
-                                        &self.context.exec.conversation_id,
-                                    ))
-                                    .await?,
+                                turn_steps,
                                 &self.context.dynamic_tools,
                                 &self.context.exec,
                             )
@@ -487,6 +554,17 @@ impl ConversationOutput {
                         streams.clear();
                     }
                     RunEvent::MessagesCommitted(state) => {
+                        // 历史形状变了:新 turn 的初始消息、压缩(历史被摘要重写)、以及插话
+                        // (插话消息是 user 消息,会把 `turn_step_count` 的起点推到它之后)。
+                        // 这三种情况把 step 计数打回未知,下一次工具轮按新历史重新数。
+                        if matches!(
+                            &state.cause,
+                            CommitCause::InitialMessages
+                                | CommitCause::Compaction { .. }
+                                | CommitCause::RuntimeEvent { .. }
+                        ) {
+                            self.turn_steps.invalidate();
+                        }
                         if matches!(&state.cause, CommitCause::RuntimeEvent { .. }) {
                             response_text.clear();
                             response_thinking.clear();
@@ -753,9 +831,16 @@ impl ConversationOutput {
                                     }
                                     return Ok(RunFinish::TurnCompleted);
                                 }
-                                let checkpoints = final_checkpoint.take().ok_or_else(|| {
-                                    Error::Protocol("Completed without final state".into())
-                                })?;
+                                // 没有终态提交的 Completed 只有一种来源：这一轮没有新消息
+                                // （重复投递的后台完成通知，引擎只推了一次 settled 提交就
+                                // 收尾）。那时收尾状态已经推过——它就是客户端此刻手上的
+                                // 状态——缺的只是终态帧。过去这里报 "Completed without
+                                // final state"，于是库里记 completed、客户端收到错误
+                                // EndStream：同一轮在两个地方说法相反。
+                                let Some(checkpoints) = final_checkpoint.take() else {
+                                    self.handle.emit(&events::turn_ended(turn_usage))?;
+                                    return Ok(RunFinish::TurnCompleted);
+                                };
                                 self.handle.emit(&events::turn_ended(turn_usage))?;
                                 self.checkpoint
                                     .publish(&self.handle, &checkpoints.staged)
@@ -955,20 +1040,16 @@ impl ConversationOutput {
             .runtime_event_id
             .clone()
             .ok_or_else(|| Error::Protocol("runtime message has no event identity".into()))?;
-        let registry = self.registry.clone();
-        let conversation_id = ConversationId::new(&self.context.exec.conversation_id);
-        tokio::spawn(async move {
-            let _ = registry
-                .deliver(
-                    &conversation_id,
-                    CompiledMessages {
-                        event_id,
-                        target_run_id: None,
-                        messages: vec![message],
-                        delivery: MessageDelivery::BreakMessages,
-                    },
-                )
-                .await;
+        // 只入队：投递由 `spawn_injection_deliveries` 那一个消费任务按入队顺序发出，
+        // 在这里等它会把 output 主循环和核心的提交互锁住（见该函数的注释）。
+        let _ = self.deliveries.send(InjectionDelivery {
+            conversation_id: ConversationId::new(&self.context.exec.conversation_id),
+            compiled: CompiledMessages {
+                event_id,
+                target_run_id: None,
+                messages: vec![message],
+                delivery: MessageDelivery::BreakMessages,
+            },
         });
         Ok(())
     }
@@ -1004,9 +1085,26 @@ enum Input {
 fn cursor_error(failure: RunFailure) -> Error {
     match failure {
         RunFailure::Protocol(message) => Error::Protocol(message),
-        RunFailure::Provider(message) => Error::Provider(message),
+        RunFailure::Provider(message) | RunFailure::Truncated(message) => Error::Provider(message),
         RunFailure::Store(message) => Error::Store(message),
         RunFailure::Client(message) => Error::Protocol(message),
+    }
+}
+
+/// 回给客户端的短摘要：只取服务端自己拼的那一段，上游正文不进客户端弹窗。
+///
+/// `Error::Provider` 的形状是 `<label> <status>: <body>`（见 `provider::provider_event_error`
+/// 与各家 provider 的 HTTP 错误拼装），冒号前是本地拼的标签与状态码；冒号后是上游
+/// SSE/JSON 里的原文，属于外部可控文本。`Error::Http` 整条文本来自 reqwest（含请求
+/// URL），没有可信前缀可用，直接给一句固定的。上游原文仍然留在本地：`tracing`、失败现场
+/// 诊断，以及 run 落库的 failure summary（桌面端"查看详情"读的就是它）。
+fn client_error_summary(error: &Error) -> String {
+    match error {
+        Error::Provider(message) => match message.split_once(": ") {
+            Some((head, _)) if !head.is_empty() => head.to_string(),
+            _ => "the provider rejected the request".into(),
+        },
+        _ => "the provider request could not be completed".into(),
     }
 }
 
@@ -1051,12 +1149,20 @@ pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<(
     };
     let stream_error = match error {
         Error::Provider(_) | Error::Http(_) => {
+            // 弹窗里只放服务端自己拼的短摘要：正文是上游可控文本，而 Cursor 会把这个
+            // 字段按 markdown 渲染——字段名本身就是约束（"只给我手写的可信 markdown"），
+            // 过去却对最不可信的一类文本置了 true，等于授权上游在错误提示里塞命令链接。
+            let summary = client_error_summary(error);
+            tracing::error!(
+                %error,
+                "provider request failed; the client receives the server-side summary only"
+            );
             let detail = ai::ErrorDetails {
                 error: ai::error_details::Error::ProviderError as i32,
                 details: Some(ai::CustomErrorDetails {
                     title: "Provider Error".into(),
-                    detail: error.to_string(),
-                    allow_command_links_potentially_unsafe_please_only_use_for_handwritten_trusted_markdown: Some(true),
+                    detail: summary.clone(),
+                    allow_command_links_potentially_unsafe_please_only_use_for_handwritten_trusted_markdown: Some(false),
                     is_retryable: Some(true),
                     show_request_id: Some(true),
                     should_show_immediate_error: Some(false),
@@ -1065,7 +1171,7 @@ pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<(
             };
             ConnectStreamError {
                 code: ConnectCode::Unavailable,
-                message: error.to_string(),
+                message: summary,
                 details: vec![ConnectErrorDetail {
                     type_name: "aiserver.v1.ErrorDetails".into(),
                     value: STANDARD_NO_PAD.encode(detail.encode_to_vec()),
@@ -1107,8 +1213,126 @@ fn checkpoint_context_tokens(checkpoint: &pb::ConversationStateStructure) -> Opt
 
 #[cfg(test)]
 mod tests {
-    use super::{accept_tool_completion, checkpoint_context_tokens};
+    use super::{accept_tool_completion, checkpoint_context_tokens, client_error_summary};
     use crate::{cursor::protocol::proto::agent::v1 as pb, run::CommandResult, Error};
+
+    /// 客户端可见的错误文本只能是服务端自己拼的那一段；上游正文（可能带 markdown 与
+    /// 命令链接）不进弹窗。
+    #[test]
+    fn provider_errors_reach_the_client_as_a_server_side_summary() {
+        let upstream = Error::Provider(
+            "Anthropic 400 Bad Request: {\"error\":{\"message\":\"[run this](command:rm -rf /)\"}}"
+                .into(),
+        );
+        assert_eq!(
+            client_error_summary(&upstream),
+            "Anthropic 400 Bad Request",
+            "冒号前是本地拼的标签与状态码，冒号后是上游原文"
+        );
+        assert_eq!(
+            client_error_summary(&Error::Provider("nothing local to keep".into())),
+            "the provider rejected the request",
+            "没有本地前缀可留时用固定文案，而不是把上游原文当摘要"
+        );
+    }
+
+    /// 注入投递必须按入队顺序发出。
+    ///
+    /// 观察点用"没有活跃 run 的会话"：`deliver` 把消息按到达顺序推进 `pending`，
+    /// `take_pending` 按顺序取回。每条注入各 spawn 一个任务的写法在多项时顺序由调度
+    /// 决定，队列写法是同一个消费任务逐条发。
+    #[tokio::test]
+    async fn injections_are_delivered_in_the_order_they_were_accepted() {
+        use crate::{
+            cursor::prompting::{PromptAssets, PromptCompiler},
+            model::{CanonicalMessage, ConversationId, Origin, Role},
+            provider::{Provider, ProviderStream},
+            search::WebCache,
+            store::Store,
+        };
+        use std::{path::Path, sync::Arc, time::Duration};
+        use tokio_util::sync::CancellationToken;
+
+        struct NoProvider;
+
+        impl Provider for NoProvider {
+            fn stream(
+                &self,
+                _invocation: crate::model::ModelInvocation,
+                _cancellation: CancellationToken,
+            ) -> ProviderStream {
+                Box::pin(tokio_stream::empty())
+            }
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let assets = PromptAssets::load(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("prompt/cursor")
+                .as_path(),
+        )
+        .unwrap();
+        let registry = super::ConversationRegistry::new(
+            store,
+            Arc::new(NoProvider),
+            PromptCompiler::new(assets),
+            WebCache::at(directory.path().join("web")).unwrap(),
+            None,
+        );
+        let deliveries = super::spawn_injection_deliveries(registry.clone());
+        let conversation_id = ConversationId::new("ordered-conversation");
+        for index in 0..4 {
+            deliveries
+                .send(super::InjectionDelivery {
+                    conversation_id: conversation_id.clone(),
+                    compiled: super::CompiledMessages {
+                        event_id: format!("inject-context:{index}"),
+                        target_run_id: None,
+                        messages: vec![CanonicalMessage::text(
+                            format!("message-{index}"),
+                            Role::User,
+                            Origin::Runtime,
+                            "hello",
+                        )],
+                        delivery: super::MessageDelivery::BreakMessages,
+                    },
+                })
+                .unwrap();
+        }
+
+        let mut delivered = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while delivered.len() < 4 {
+            delivered.extend(
+                registry
+                    .take_pending(&conversation_id)
+                    .await
+                    .into_iter()
+                    .map(|pending| pending.event_id),
+            );
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "注入没有在期限内投递完：{delivered:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        assert_eq!(
+            delivered,
+            [
+                "inject-context:0",
+                "inject-context:1",
+                "inject-context:2",
+                "inject-context:3"
+            ]
+        );
+    }
 
     #[test]
     fn compacted_checkpoint_replaces_the_in_memory_context_usage() {

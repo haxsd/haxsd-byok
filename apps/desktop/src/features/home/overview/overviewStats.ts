@@ -6,7 +6,6 @@
  * 这些都需要把同一份分桶数据按不同口径再算一遍，所以集中在这里，页面只负责画。
  */
 import type {
-  LlmCall,
   OverviewTokenUsageBucket,
   TokenUsageGranularity,
 } from "../../../shared/api";
@@ -58,17 +57,15 @@ export function bucketStart(epochMs: number, granularity: TokenUsageGranularity)
   return at.getTime();
 }
 
-/** 把调用记录按同一组分桶计数，用来给「调用次数」画趋势。 */
-export function callsPerBucket(series: OverviewTokenUsageBucket[], calls: LlmCall[], granularity: TokenUsageGranularity): number[] {
-  if (series.length === 0) return [];
-  const index = new Map<number, number>();
-  series.forEach((bucket, position) => index.set(bucket.bucket_start_ms, position));
-  const counts = new Array<number>(series.length).fill(0);
-  for (const call of calls) {
-    const position = index.get(bucketStart(call.created_at_ms, granularity));
-    if (position !== undefined) counts[position] += 1;
-  }
-  return counts;
+/**
+ * 每个分桶里的调用次数，用来给「调用次数」画趋势。
+ *
+ * 数的是分桶自带的模型明细，不是 `calls` 明细：调用列表只返回服务端截断后的最新一批，
+ * 拿它按时间戳归桶时，范围一长就会漏掉窗口外的调用，而且调用页每 2 秒刷新一次明细，
+ * 同一个区间的趋势还会跟着那个窗口自己变。
+ */
+export function callsPerBucket(series: OverviewTokenUsageBucket[]): number[] {
+  return series.map((bucket) => bucket.models.reduce((count, model) => count + model.llm_calls, 0));
 }
 
 export type ModelUsageRow = {
@@ -82,23 +79,25 @@ export type ModelUsageRow = {
 };
 
 /**
- * 按模型汇总范围内的调用。
+ * 按模型汇总范围内的用量。
  *
- * 用调用记录而不是模型库：模型库只知道哪些模型配置好了，回答不了「谁在干活」。
+ * 用分桶自带的模型明细（服务端按整段范围聚合，已带上模型身份），而不是 `calls` 明细：
+ * 调用列表只返回最新一批，用它算"这段时间里每个模型承担了多少"会漏掉窗口外的调用。
+ * 没有配价时这条是「模型用量」卡的数据源；配了价则用估价那边同样的分桶明细。
  */
-export function modelUsage(series: OverviewTokenUsageBucket[], calls: LlmCall[], granularity: TokenUsageGranularity): ModelUsageRow[] {
-  const range = new Set(series.map((bucket) => bucket.bucket_start_ms));
+export function modelUsage(series: OverviewTokenUsageBucket[]): ModelUsageRow[] {
   const rows = new Map<string, { label: string; tokens: number; calls: number }>();
   let total = 0;
-  for (const call of calls) {
-    if (series.length > 0 && !range.has(bucketStart(call.created_at_ms, granularity))) continue;
-    const key = call.model_hash ?? call.model_id;
-    const tokens = call.total_tokens ?? (call.input_tokens ?? 0) + (call.output_tokens ?? 0);
-    const row = rows.get(key) ?? { label: call.display_name || call.model_id, tokens: 0, calls: 0 };
-    row.tokens += tokens;
-    row.calls += 1;
-    rows.set(key, row);
-    total += tokens;
+  for (const bucket of series) {
+    for (const model of bucket.models) {
+      const key = model.model_hash ?? model.model_id;
+      const tokens = model.input_tokens + model.cache_read_tokens + model.cache_write_tokens + model.output_tokens;
+      const row = rows.get(key) ?? { label: model.display_name || model.model_id, tokens: 0, calls: 0 };
+      row.tokens += tokens;
+      row.calls += model.llm_calls;
+      rows.set(key, row);
+      total += tokens;
+    }
   }
   return [...rows.entries()]
     .map(([key, row]) => ({ key, ...row, share: total > 0 ? row.tokens / total : 0 }))

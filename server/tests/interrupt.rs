@@ -980,6 +980,82 @@ async fn injected_user_context_aborts_pending_tools_and_ignores_late_results() {
     assert!(interrupted < injected);
 }
 
+/// 回归:被打断的 call_id 只在轮内有效。上一轮的打断不能让这一轮同名调用的结果
+/// 被丢弃——那样 tool_round 会一直等一个永远不会被接受的结果(那条等待没有超时)。
+#[tokio::test]
+async fn a_later_round_may_reuse_an_interrupted_call_id() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(tool_response("call-1", "Read", "{\"path\":\"/tmp/a\"}"));
+    // 上游不给调用 id 时引擎按序号合成 call-0/call-1…,跨轮同名是常态。
+    provider.push(tool_response("call-1", "Read", "{\"path\":\"/tmp/b\"}"));
+    provider.push(text_response("done"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry
+        .get_or_create("interrupt-reuse-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "interrupt-reuse-request",
+                "interrupt-reuse-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let interrupted_exec = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(runtime_injection_for(
+                "reuse-injection",
+                "interrupt-reuse-request",
+            )),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    // 注入打断第一轮;模型重启后第二轮又请求同一个 call_id,但拿到新的 exec id。
+    let reused_exec = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    assert_ne!(
+        interrupted_exec, reused_exec,
+        "第二轮必须是一次新的 exec,才能区分迟到结果与新结果"
+    );
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(read_success(reused_exec)),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    drain_successfully(&handle, &mut output, &mut append_seqno).await;
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "第二轮的工具结果必须被接受并触发第三次模型调用,否则这一轮永远等不到结果"
+    );
+}
+
 #[tokio::test]
 async fn injected_user_context_detaches_subagents_without_cancelling_them() {
     let (_directory, store) = fixtures::temp_store().await;
@@ -1689,7 +1765,7 @@ fn tool_response(call_id: &str, name: &str, arguments: &str) -> Vec<ModelEvent> 
 
 async fn wait_for_exec(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut tokio::sync::mpsc::Receiver<Bytes>,
     append_seqno: &mut i64,
     tool: &str,
 ) -> u32 {
@@ -1717,7 +1793,7 @@ async fn wait_for_exec(
 
 async fn drain_successfully(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut tokio::sync::mpsc::Receiver<Bytes>,
     append_seqno: &mut i64,
 ) {
     loop {
@@ -1813,7 +1889,7 @@ async fn run_to_end(
 
 async fn wait_for_turn_ended(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut tokio::sync::mpsc::Receiver<Bytes>,
     append_seqno: &mut i64,
 ) {
     loop {
@@ -1841,7 +1917,7 @@ async fn wait_for_turn_ended(
 
 async fn assert_transport_remains_open(
     handle: &cursor_server::cursor::TransportHandle,
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<Bytes>,
+    output: &mut tokio::sync::mpsc::Receiver<Bytes>,
     append_seqno: &mut i64,
 ) {
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(100);

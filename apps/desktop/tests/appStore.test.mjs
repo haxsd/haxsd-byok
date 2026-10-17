@@ -172,3 +172,57 @@ test("a failed save keeps the refresh that was already reading and clears its bu
   assert.equal(snapshot.busy, false);
   assert.deepEqual(state.desktop, { silent_start: false, show_dock_icon: true, developer_mode: false });
 });
+
+test("a rejected delete restores the authoritative model list", async () => {
+  const { backend, state } = installAppBackend();
+  state.models = [modelFixture("hash-1"), modelFixture("hash-2")];
+  backend.route("DELETE", `${API_ROOT}/models/hash-1`, () => ({ status: 500, body: { message: "cannot delete" } }));
+
+  const appStore = await loadAppStore();
+  await appStore.refresh();
+  assert.equal(appStore.getSnapshot().models.length, 2, "the fixture starts with two models");
+
+  await appStore.deleteModel("hash-1");
+
+  const snapshot = appStore.getSnapshot();
+  assert.deepEqual(
+    snapshot.models.map((model) => model.model_hash),
+    ["hash-1", "hash-2"],
+    "the optimistic removal must not survive a rejected delete",
+  );
+  assert.equal(snapshot.error, "cannot delete", "the reason must still be shown");
+});
+
+test("when the delete fails and the list cannot be re-read the optimistic removal is undone locally", async () => {
+  const { backend, state } = installAppBackend();
+  state.models = [modelFixture("hash-1"), modelFixture("hash-2")];
+  backend.route("DELETE", `${API_ROOT}/models/hash-1`, () => ({ status: 503, body: { message: "gateway down" } }));
+
+  const appStore = await loadAppStore();
+  await appStore.refresh();
+  // The list read fails only from now on: the rollback cannot rely on the server.
+  backend.route("GET", `${API_ROOT}/models`, () => ({ status: 500, body: { message: "cannot list" } }));
+
+  await appStore.deleteModel("hash-1");
+
+  const snapshot = appStore.getSnapshot();
+  assert.deepEqual(
+    snapshot.models.map((model) => model.model_hash),
+    ["hash-1", "hash-2"],
+    "with no authoritative answer the UI must fall back to the list it had before the delete",
+  );
+  assert.equal(snapshot.error, "gateway down", "the delete failure is what the user needs to read");
+  assert.equal(snapshot.busy, false);
+});
+
+function modelFixture(modelHash) {
+  return {
+    model_hash: modelHash,
+    sort_order: Number(modelHash.slice(-1)),
+    display_name: `Model ${modelHash}`,
+    model_id: "gpt-5",
+    type: "openai",
+    base_url: "https://api.example.com",
+    group_name: null,
+  };
+}

@@ -51,10 +51,16 @@ export function installBrowserDoubles({ origin = "http://127.0.0.1:3100" } = {})
     getItem: (key) => (storage.has(key) ? storage.get(key) : null),
     setItem: (key, value) => storage.set(key, String(value)),
     removeItem: (key) => storage.delete(key),
+    // 浏览器里可以按序号枚举键；迁移折叠状态要用到（见 uiPreferences.ts）。
+    get length() { return storage.size; },
+    key: (index) => [...storage.keys()][index] ?? null,
   };
   globalThis.window = {
     location,
     localStorage,
+    // 启动路径会挂语言变化监听（i18n/store.ts）：替身里给个空实现，省得每个用例自己补。
+    addEventListener: () => {},
+    removeEventListener: () => {},
     __TAURI_INTERNALS__: {
       invoke: async (command, args) => {
         tauriInvocations.push({ command, args });

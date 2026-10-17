@@ -155,6 +155,143 @@ async fn configured_gateway(
     (directory, store, gateway, model.model_hash)
 }
 
+/// 已发布目录的路径：客户端读的就是 config.toml 里的这个指针。
+fn published_catalog_path(home: &std::path::Path) -> std::path::PathBuf {
+    let doc = std::fs::read_to_string(home.join("config.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    std::path::PathBuf::from(doc["model_catalog_json"].as_str().unwrap())
+}
+
+/// 断言发布目录里该 slug 记的就是当前模型的路由指纹。
+async fn assert_catalog_is_current(
+    store: &cursor_server::store::Store,
+    home: &std::path::Path,
+    id: &str,
+) {
+    let model = store.model(id).await.unwrap().unwrap();
+    let current = cursor_server::codex::catalog::build_catalog(std::slice::from_ref(&model))
+        .unwrap()["models"][0]["haxsd_byok_routing_fingerprint"]
+        .clone();
+    let published: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(published_catalog_path(home)).unwrap()).unwrap();
+    let entry = published["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["slug"] == id)
+        .unwrap_or_else(|| panic!("the published catalog has no {id}: {published}"));
+    assert_eq!(entry["haxsd_byok_routing_fingerprint"], current);
+}
+
+/// 模型在模型库里被编辑之后目录会过期：请求继续服务（而不是 409），并把目录
+/// 刷新成当前配置，客户端下一次会话会读到新目录。
+#[tokio::test]
+async fn a_model_edited_after_apply_republishes_the_catalog_instead_of_failing() {
+    use axum::{routing::post, Json, Router};
+    use serde_json::{json, Value};
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+    let captured = seen.clone();
+    let router = Router::new().route(
+        "/upstream",
+        post(move |Json(body): Json<Value>| {
+            let captured = captured.clone();
+            async move {
+                captured.lock().await.push(body);
+                Json(
+                    json!({"id":"resp_vendor","object":"response","status":"completed","output":[],
+                    "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}),
+                )
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upstream", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("responses", url).await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    let home = std::path::PathBuf::from(&store.codex_settings().await.unwrap().home);
+    let before = published_catalog_path(&home);
+    // 用户在模型库里把思考强度改成 high：路由指纹随之变化，目录从此过期。
+    sqlx::query("UPDATE model_configs SET reasoning_effort = 'high' WHERE model_hash = ?")
+        .bind(&id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", store.codex_token().await.unwrap()),
+                )
+                .body(Body::from(
+                    json!({"model":id,"stream":false,"input":"go"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let _ = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    assert_eq!(seen.lock().await.len(), 1, "请求没有到达桩上游");
+    let after = published_catalog_path(&home);
+    assert_ne!(before, after, "目录指针没有换到新文件");
+    assert!(!before.exists(), "上一份目录文件没有被删掉");
+    assert_catalog_is_current(&store, &home, &id).await;
+    // 目录刷新后配置仍算已应用：客户端读到的还是我们发布的路由。
+    assert!(gateway.status().await.unwrap().configured);
+    gateway.shutdown().await.unwrap();
+    task.abort();
+}
+
+/// 目录被外部改过（文件名哈希与实际内容不匹配）不是“模型被编辑”：不能自愈，
+/// 这次请求仍然被拒绝。
+#[tokio::test]
+async fn an_externally_tampered_catalog_is_still_rejected() {
+    let (_dir, store, gateway, id) =
+        configured_gateway("responses", "http://127.0.0.1:1/responses".into()).await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    let home = std::path::PathBuf::from(&store.codex_settings().await.unwrap().home);
+    std::fs::write(published_catalog_path(&home), "[]").unwrap();
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", store.codex_token().await.unwrap()),
+                )
+                .body(Body::from(
+                    serde_json::json!({"model":id,"stream":false,"input":"go"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert!(store.llm_calls(10).await.unwrap().is_empty());
+    gateway.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn native_responses_preserve_custom_items_and_inject_only_vendor_credentials() {
     use axum::{routing::post, Json, Router};
@@ -379,10 +516,84 @@ async fn configuration_conflict_does_not_overwrite_a_model_catalog_or_start_list
     gateway.shutdown().await.unwrap();
 }
 
+/// 用户在 Codex 自己的界面里切联网搜索（客户端写 `web_search = "live"`）：这不是路由
+/// 冲突，应用照旧生效、撤销也仍然可用。状态 JSON 给出 `restorable` 和逐字段的
+/// `conflicts`，界面据此说明"哪一项被改成了什么"，而不是把两个按钮都锁死。
 #[tokio::test]
-async fn changing_an_applied_model_cannot_silently_switch_codex_upstreams() {
-    let (_dir, store, gateway, id) =
+async fn a_client_web_search_switch_keeps_the_route_applied_and_restorable() {
+    let (dir, store, gateway, _) =
         configured_gateway("responses", "http://127.0.0.1:1/responses".into()).await;
+    let home = dir.path().join("codex-home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.toml"), "web_search = \"live\"\n").unwrap();
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    // 客户端自己的开关被写回 live，就像用户在 Codex 界面里点了一下。
+    let path = home.join("config.toml");
+    let applied = std::fs::read_to_string(&path).unwrap();
+    assert!(applied.contains("web_search = \"disabled\""), "{applied}");
+    std::fs::write(
+        &path,
+        applied.replace("web_search = \"disabled\"", "web_search = \"live\""),
+    )
+    .unwrap();
+    let status = gateway.status().await.unwrap();
+    assert!(status.configured && !status.config_conflict, "{status:?}");
+    assert!(status.restorable, "{status:?}");
+    let json = serde_json::to_value(&status).unwrap();
+    assert_eq!(json["restorable"], serde_json::json!(true), "{json}");
+    assert_eq!(
+        json["conflicts"],
+        serde_json::json!([{"key": "web_search", "applied": "\"disabled\"", "current": "\"live\""}]),
+        "{json}"
+    );
+    // 撤销仍然可用：受管字段回到接管前，客户端写下的 live 也在其中。
+    let restored = gateway.restore().await.unwrap();
+    assert!(
+        !restored.configured && !restored.config_conflict && !restored.restorable,
+        "{restored:?}"
+    );
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("web_search = \"live\""), "{text}");
+    assert!(!text.contains("haxsd-byok"), "{text}");
+    gateway.shutdown().await.unwrap();
+}
+
+/// 模型在应用之后被编辑（这里改 model_id）时，请求照常服务：网关按模型库里的
+/// 当前配置转发，同时把发布目录刷新成这份配置，客户端下一次会话会看到它，所以
+/// 切换不是静默的。旧语义是直接 409（"restore, reapply and start a new
+/// conversation"）：目录是写给客户端的快照，让它过期的代价不该是整条链路不可用。
+#[tokio::test]
+async fn changing_an_applied_model_serves_the_turn_and_refreshes_the_published_catalog() {
+    use axum::{routing::post, Json, Router};
+    use serde_json::{json, Value};
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+    let captured = seen.clone();
+    let router = Router::new().route(
+        "/upstream",
+        post(move |Json(body): Json<Value>| {
+            let captured = captured.clone();
+            async move {
+                captured.lock().await.push(body);
+                Json(
+                    json!({"id":"resp_vendor","object":"response","status":"completed","output":[],
+                    "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}),
+                )
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upstream", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("responses", url).await;
     let mut settings = store.codex_settings().await.unwrap();
     settings.port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -391,6 +602,8 @@ async fn changing_an_applied_model_cannot_silently_switch_codex_upstreams() {
         .port();
     store.set_codex_settings(settings).await.unwrap();
     assert!(gateway.apply().await.unwrap().configured);
+    let home = std::path::PathBuf::from(&store.codex_settings().await.unwrap().home);
+    let before = published_catalog_path(&home);
     sqlx::query("UPDATE model_configs SET model_id = ? WHERE model_hash = ?")
         .bind("changed-upstream")
         .bind(&id)
@@ -404,15 +617,22 @@ async fn changing_an_applied_model_cannot_silently_switch_codex_upstreams() {
             Request::post("/v1/responses")
                 .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(
-                    serde_json::json!({"model":id,"input":"go","stream":false}).to_string(),
+                    serde_json::json!({"model":id,"stream":false,"input":"go"}).to_string(),
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::CONFLICT);
-    assert!(store.llm_calls(10).await.unwrap().is_empty());
+    assert_eq!(response.status(), StatusCode::OK);
+    // 请求走的是模型库里的当前配置，而不是目录里记的那份。
+    assert_eq!(seen.lock().await[0]["model"], "changed-upstream");
+    assert_ne!(before, published_catalog_path(&home), "目录没有刷新");
+    assert!(!before.exists(), "上一份目录文件没有被删掉");
+    assert_catalog_is_current(&store, &home, &id).await;
+    // 这次切换不静默：调用有记录，客户端下次会话读到的目录也已经是新路由。
+    assert_eq!(store.llm_calls(10).await.unwrap().len(), 1);
     gateway.shutdown().await.unwrap();
+    task.abort();
 }
 
 #[tokio::test]
@@ -553,6 +773,126 @@ async fn native_stream_requests_reject_json_instead_of_returning_a_false_success
 }
 
 #[tokio::test]
+async fn a_gateway_failure_before_any_content_is_retried_on_the_codex_passthrough() {
+    use axum::{response::IntoResponse, routing::post, Json, Router};
+    use serde_json::{json, Value};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let attempts = std::sync::Arc::new(AtomicUsize::new(0));
+    let counted = attempts.clone();
+    let router = Router::new().route(
+        "/upstream",
+        post(move || {
+            let counted = counted.clone();
+            async move {
+                if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+                    return (StatusCode::BAD_GATEWAY, "gateway is down").into_response();
+                }
+                Json(
+                    json!({"id":"resp_vendor","object":"response","status":"completed","output":[],
+                    "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}),
+                )
+                .into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upstream", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("responses", url).await;
+    let body = json!({"model":id,"stream":false,"input":[{"role":"user","content":"go"}]});
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", store.codex_token().await.unwrap()),
+                )
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let output: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+            .unwrap();
+    assert_eq!(output["id"], "resp_vendor");
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        2,
+        "第一次 502 之后必须再发一次"
+    );
+    // 重试是同一个调用内部的第二次尝试：记录仍然只有一条，状态码是最新的那次。
+    let calls = store.llm_calls(10).await.unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].status, "completed");
+    assert_eq!(calls[0].http_status, Some(200));
+    task.abort();
+}
+
+#[tokio::test]
+async fn a_persistent_gateway_failure_names_the_upstream_and_the_retry_count() {
+    use axum::{response::IntoResponse, routing::post, Router};
+    use serde_json::{json, Value};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let attempts = std::sync::Arc::new(AtomicUsize::new(0));
+    let counted = attempts.clone();
+    let router = Router::new().route(
+        "/upstream",
+        post(move || {
+            let counted = counted.clone();
+            async move {
+                counted.fetch_add(1, Ordering::SeqCst);
+                (StatusCode::BAD_GATEWAY, "gateway is down").into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upstream", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("responses", url).await;
+    let body = json!({"model":id,"stream":false,"input":[{"role":"user","content":"go"}]});
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", store.codex_token().await.unwrap()),
+                )
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let output: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+            .unwrap();
+    // 界面要能一眼看出这是来源网关的、试过几次的失败。
+    assert_eq!(
+        output["error"]["message"],
+        "upstream HTTP 502 Bad Gateway (after 2 retries): gateway is down"
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 3, "首次 + 两次重试");
+    let calls = store.llm_calls(10).await.unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].status, "error");
+    assert_eq!(calls[0].http_status, Some(502));
+    let recorded = calls[0].error_message.clone().unwrap_or_default();
+    assert!(
+        recorded.contains("upstream HTTP 502 Bad Gateway (after 2 retries): gateway is down"),
+        "unexpected recorded error: {recorded}"
+    );
+    task.abort();
+}
+
+#[tokio::test]
 #[ignore = "需要通过 HAXSD_BYOK_CODEX_TEST_BINARY 指定现有桌面客户端的内置引擎"]
 async fn installed_desktop_engine_edits_a_file_runs_a_command_and_continues() {
     use axum::{routing::post, Json, Router};
@@ -623,6 +963,15 @@ async fn installed_desktop_engine_edits_a_file_runs_a_command_and_continues() {
             axum::serve(listener, app).await.unwrap();
         });
         let (_dir, store, gateway, model) = configured_gateway(&protocol, url).await;
+        // 只有模型配置了思考强度，目录才会宣告档位；配一档让真实引擎读到的
+        // 目录带着非空的 supported_reasoning_levels，形状由引擎自己验收。
+        sqlx::query(
+            "UPDATE model_configs SET reasoning_effort = 'high', anthropic_thinking_effort = 'high' WHERE model_hash = ?",
+        )
+        .bind(&model)
+        .execute(store.pool())
+        .await
+        .unwrap();
         let engine_directory = tempfile::tempdir_in(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"),
         )
@@ -693,13 +1042,27 @@ async fn installed_desktop_engine_edits_a_file_runs_a_command_and_continues() {
                     "{protocol} RPC error: {event}"
                 );
                 if request["id"] == 2 {
-                    assert!(
-                        event["result"]["data"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .any(|entry| entry["id"] == model || entry["model"] == model),
-                        "desktop did not load the applied model catalog: {event}"
+                    // 目录条目就是引擎真正接受的那一份：档位形状（对象数组）、
+                    // 默认档位和五个可选值都在这里被引擎自己读出来。
+                    let loaded = event["result"]["data"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|entry| entry["id"] == model || entry["model"] == model)
+                        .unwrap_or_else(|| {
+                            panic!("desktop did not load the applied model catalog: {event}")
+                        });
+                    assert_eq!(loaded["defaultReasoningEffort"], "high", "{event}");
+                    let efforts = loaded["supportedReasoningEfforts"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter_map(|level| level["reasoningEffort"].as_str())
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        efforts,
+                        ["low", "medium", "high", "xhigh", "max"],
+                        "{event}"
                     );
                 }
                 if request["id"] == 3 {
@@ -832,4 +1195,432 @@ fn invalid_settings_cannot_enable_an_unroutable_gateway() {
     settings.model_hashes.pop();
     settings.port = 0;
     assert!(settings.validate().is_err());
+}
+
+/// 只认 low…max 的上游：客户端界面里的占位强度必须被网关摘掉，而不是原样转出去 400。
+#[tokio::test]
+async fn a_vendor_that_rejects_an_unknown_thinking_level_still_serves_the_turn() {
+    use axum::{response::IntoResponse, routing::post, Json, Router};
+    use serde_json::{json, Value};
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+    let captured = seen.clone();
+    let router = Router::new().route(
+        "/upstream",
+        post(move |Json(body): Json<Value>| {
+            let captured = captured.clone();
+            async move {
+                let effort = body
+                    .pointer("/reasoning/effort")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                captured.lock().await.push(body);
+                if effort.as_deref().is_some_and(|effort| {
+                    !matches!(effort, "low" | "medium" | "high" | "xhigh" | "max")
+                }) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error":{"message":format!("unsupported reasoning effort {effort:?}")}})),
+                    )
+                        .into_response();
+                }
+                Json(json!({"id":"resp_vendor","object":"response","status":"completed","output":[],
+                    "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}))
+                .into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/upstream", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("responses", url).await;
+    let token = store.codex_token().await.unwrap();
+    let send = |body: Value| {
+        let gateway = gateway.clone();
+        let token = token.clone();
+        async move {
+            gateway
+                .router()
+                .oneshot(
+                    Request::post("/v1/responses")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::from(body.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let placeholder = send(json!({"model":id,"stream":false,"input":"go",
+        "reasoning":{"effort":"none"}}))
+    .await;
+    assert_eq!(placeholder.status(), StatusCode::OK);
+    let effort = send(json!({"model":id,"stream":false,"input":"go",
+        "reasoning":{"effort":"low"}}))
+    .await;
+    assert_eq!(effort.status(), StatusCode::OK);
+    sqlx::query("UPDATE model_configs SET reasoning_effort = 'high' WHERE model_hash = ?")
+        .bind(&id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let configured = send(json!({"model":id,"stream":false,"input":"go",
+        "reasoning":{"effort":"none"}}))
+    .await;
+    assert_eq!(configured.status(), StatusCode::OK);
+    let seen = seen.lock().await;
+    assert_eq!(seen.len(), 3);
+    assert!(seen[0].get("reasoning").is_none(), "{}", seen[0]);
+    assert_eq!(seen[1]["reasoning"]["effort"], "low");
+    assert_eq!(seen[2]["reasoning"]["effort"], "high");
+    assert_eq!(store.llm_calls(10).await.unwrap().len(), 3);
+    drop(seen);
+    task.abort();
+}
+
+/// 真实引擎验收：客户端切换模型（此前每个请求 409）与客户端写的思考强度占位值
+/// （此前上游 400）都不再中断任务。
+async fn two_model_gateway(
+    upstream_url: String,
+) -> (
+    tempfile::TempDir,
+    cursor_server::store::Store,
+    CodexGateway,
+    String,
+    String,
+) {
+    use cursor_server::model::{ModelConfigInput, ModelType};
+    let (directory, store) = fixtures::temp_store().await;
+    let mut hashes = Vec::new();
+    for model_id in ["vendor-model-a", "vendor-model-b"] {
+        let model = store
+            .create_model(&ModelConfigInput {
+                sort_order: 0,
+                display_name: "Codex test model".into(),
+                group_name: None,
+                model_type: ModelType::OpenAi,
+                base_url: upstream_url.clone(),
+                use_full_url: true,
+                api_key: "vendor-secret".into(),
+                tooltip_data: "Codex integration test".into(),
+                model_id: model_id.into(),
+                reasoning_effort: None,
+                openai_endpoint: "/v1/responses".into(),
+                openai_extra_params_enabled: false,
+                openai_extra_params: serde_json::json!({}),
+                custom_headers_enabled: false,
+                custom_headers: serde_json::json!({}),
+                anthropic_extra_params_enabled: false,
+                anthropic_extra_params: serde_json::json!({}),
+                context_window_tokens: Some(32768),
+                max_completion_tokens: Some(4096),
+                anthropic_max_tokens: Some(4096),
+                anthropic_thinking_effort: None,
+                thinking_budget_tokens: None,
+            })
+            .await
+            .unwrap();
+        hashes.push(model.model_hash);
+    }
+    store
+        .set_codex_settings(CodexSettings {
+            enabled: true,
+            model_hashes: hashes.clone(),
+            default_model_hash: Some(hashes[0].clone()),
+            home: directory.path().join("codex-home").display().to_string(),
+            ..CodexSettings::default()
+        })
+        .await
+        .unwrap();
+    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+    (
+        directory,
+        store,
+        gateway,
+        hashes[0].clone(),
+        hashes[1].clone(),
+    )
+}
+
+#[tokio::test]
+#[ignore = "需要通过 HAXSD_BYOK_CODEX_TEST_BINARY 指定现有桌面客户端的内置引擎"]
+async fn the_real_engine_survives_a_client_model_switch_and_a_placeholder_thinking_level() {
+    use axum::{response::IntoResponse, routing::post, Json, Router};
+    use serde_json::{json, Value};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let binary = std::env::var_os("HAXSD_BYOK_CODEX_TEST_BINARY")
+        .expect("set the installed desktop engine path");
+    // 上游像只认 low…max 的真实模型：别的强度直接 400，并记录实际收到的正文。
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+    let captured = seen.clone();
+    let app = Router::new().route(
+        "/inference",
+        post(move |Json(body): Json<Value>| {
+            let captured = captured.clone();
+            async move {
+                let effort = body
+                    .pointer("/reasoning/effort")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                eprintln!(
+                    "upstream request: model={} reasoning.effort={:?}",
+                    body["model"], effort
+                );
+                captured.lock().await.push(body);
+                if effort.as_deref().is_some_and(|effort| {
+                    !matches!(effort, "low" | "medium" | "high" | "xhigh" | "max")
+                }) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error":{"type":"invalid_request_error",
+                            "message":format!("unsupported reasoning effort {effort:?}")}})),
+                    )
+                        .into_response();
+                }
+                let item = json!({"id":"msg_final","type":"message","role":"assistant",
+                    "status":"completed","content":[{"type":"output_text","text":"done","annotations":[]}]});
+                let text = [
+                    json!({"type":"response.created","response":{"id":"resp_1","status":"in_progress","output":[]}}),
+                    json!({"type":"response.output_item.done","output_index":0,"item":item}),
+                    json!({"type":"response.completed","response":{"id":"resp_1","status":"completed",
+                        "output":[item],"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}),
+                ]
+                .iter()
+                .map(|chunk| format!("data: {chunk}\n\n"))
+                .collect::<String>();
+                ([("content-type", "text/event-stream")], text).into_response()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/inference", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let (_directory, store, gateway, first, second) = two_model_gateway(url).await;
+    let mut settings = store.codex_settings().await.unwrap();
+    let home = std::path::PathBuf::from(&settings.home);
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings.clone()).await.unwrap();
+    gateway.apply().await.unwrap();
+    // 客户端在它自己的界面里换模型并改思考强度：就是重写这两行。
+    let path = home.join("config.toml");
+    let applied = std::fs::read_to_string(&path).unwrap();
+    let switched = applied
+        .replace(
+            &format!("model = \"{first}\""),
+            &format!("model = \"{second}\""),
+        )
+        .replace(
+            "model_auto_compact_token_limit",
+            "model_reasoning_effort = \"none\"\nmodel_auto_compact_token_limit",
+        );
+    assert_ne!(switched, applied);
+    std::fs::write(&path, &switched).unwrap();
+    let status = cursor_server::codex::config::inspect(&home).unwrap();
+    eprintln!(
+        "after the client switch: applied={} conflict={} message={}",
+        status.applied, status.conflict, status.message
+    );
+    // 直接量错误码：此前每次请求都是 409 configuration error。
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let direct = client
+        .post(format!("http://127.0.0.1:{}/v1/responses", settings.port))
+        .header(
+            "authorization",
+            format!("Bearer {}", store.codex_token().await.unwrap()),
+        )
+        .json(&json!({"model":second,"stream":false,"store":false,
+            "input":[{"role":"user","content":"hello"}],"reasoning":{"effort":"none"}}))
+        .send()
+        .await
+        .unwrap();
+    eprintln!(
+        "gateway answered HTTP {} after the client switch",
+        direct.status()
+    );
+    assert!(status.applied && !status.conflict, "{}", status.message);
+    assert!(!gateway.status().await.unwrap().config_conflict);
+    assert_eq!(direct.status(), StatusCode::OK);
+    let engine_directory =
+        tempfile::tempdir_in(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"))
+            .unwrap();
+    let workspace = engine_directory.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let mut child = tokio::process::Command::new(&binary)
+        .args(["app-server", "--stdio", "--strict-config"])
+        .env("CODEX_HOME", &settings.home)
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
+        .current_dir(&workspace)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let stderr_task = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("desktop engine: {line}");
+        }
+    });
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let requests = [
+        json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"haxsd-byok-test","version":"1"},"capabilities":{"experimentalApi":true}}}),
+        json!({"id":2,"method":"model/list","params":{}}),
+        json!({"id":3,"method":"thread/start","params":{"cwd":workspace,"model":second,"approvalPolicy":"never","sandbox":"read-only","ephemeral":true,"config":{"windows.sandbox":"unelevated"}}}),
+    ];
+    let mut thread = None;
+    for request in requests {
+        stdin
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap();
+        stdin.flush().await.unwrap();
+        loop {
+            let line = tokio::time::timeout(std::time::Duration::from_secs(30), stdout.next_line())
+                .await
+                .expect("desktop RPC timed out")
+                .unwrap()
+                .expect("desktop engine terminated");
+            let event: Value = serde_json::from_str(&line).unwrap();
+            if event["id"] != request["id"] {
+                continue;
+            }
+            assert!(event.get("error").is_none(), "RPC error: {event}");
+            if request["id"] == 2 {
+                assert!(
+                    event["result"]["data"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|entry| entry["id"] == second),
+                    "desktop did not load the applied catalog: {event}"
+                );
+            }
+            if request["id"] == 3 {
+                thread = event
+                    .pointer("/result/thread/id")
+                    .and_then(Value::as_str)
+                    .map(String::from);
+            }
+            break;
+        }
+        if request["id"] == 1 {
+            stdin
+                .write_all(b"{\"method\":\"initialized\"}\n")
+                .await
+                .unwrap();
+            stdin.flush().await.unwrap();
+        }
+    }
+    let request = json!({"id":4,"method":"turn/start","params":{"threadId":thread.unwrap(),
+        "input":[{"type":"text","text":"Reply with the single word done."}]}});
+    stdin
+        .write_all(format!("{request}\n").as_bytes())
+        .await
+        .unwrap();
+    stdin.flush().await.unwrap();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(180);
+    loop {
+        let line = tokio::time::timeout_at(deadline, stdout.next_line())
+            .await
+            .expect("the switched route never completed a turn")
+            .unwrap()
+            .expect("desktop engine terminated");
+        let event: Value = serde_json::from_str(&line).unwrap();
+        assert!(event.get("error").is_none(), "RPC error: {event}");
+        if event["method"] == "turn/completed" {
+            assert_eq!(event["params"]["turn"]["status"], "completed", "{event}");
+            break;
+        }
+    }
+    // 对照：客户端把强度设成上游认识的档位时，它确实会进入上游请求；这样上面
+    // 观察到的“没有 effort”才能说明是网关摘掉了占位值，而不是客户端从不发送强度。
+    let control = json!({"id":5,"method":"thread/start","params":{"cwd":workspace,"model":second,
+        "approvalPolicy":"never","sandbox":"read-only","ephemeral":true,
+        "config":{"windows.sandbox":"unelevated","model_reasoning_effort":"low"}}});
+    stdin
+        .write_all(format!("{control}\n").as_bytes())
+        .await
+        .unwrap();
+    stdin.flush().await.unwrap();
+    let control_thread = loop {
+        let line = tokio::time::timeout(std::time::Duration::from_secs(30), stdout.next_line())
+            .await
+            .expect("desktop RPC timed out")
+            .unwrap()
+            .expect("desktop engine terminated");
+        let event: Value = serde_json::from_str(&line).unwrap();
+        if event["id"] != 5 {
+            continue;
+        }
+        assert!(event.get("error").is_none(), "RPC error: {event}");
+        break event
+            .pointer("/result/thread/id")
+            .and_then(Value::as_str)
+            .map(String::from);
+    };
+    let control_turn = json!({"id":6,"method":"turn/start","params":{
+        "threadId":control_thread.unwrap(),
+        "input":[{"type":"text","text":"Reply with the single word done."}]}});
+    stdin
+        .write_all(format!("{control_turn}\n").as_bytes())
+        .await
+        .unwrap();
+    stdin.flush().await.unwrap();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(180);
+    loop {
+        let line = tokio::time::timeout_at(deadline, stdout.next_line())
+            .await
+            .expect("the control turn never completed")
+            .unwrap()
+            .expect("desktop engine terminated");
+        let event: Value = serde_json::from_str(&line).unwrap();
+        assert!(event.get("error").is_none(), "RPC error: {event}");
+        if event["method"] == "turn/completed" {
+            assert_eq!(event["params"]["turn"]["status"], "completed", "{event}");
+            break;
+        }
+    }
+    let requests = seen.lock().await;
+    assert!(
+        requests
+            .iter()
+            .any(|body| body["model"] == "vendor-model-b"),
+        "the switched model never reached the upstream: {requests:?}"
+    );
+    let efforts = requests
+        .iter()
+        .filter_map(|body| body.pointer("/reasoning/effort").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    eprintln!("upstream saw reasoning efforts: {efforts:?}");
+    assert!(
+        !efforts
+            .iter()
+            .any(|effort| matches!(*effort, "none" | "off" | "disabled")),
+        "a placeholder effort reached the vendor: {efforts:?}"
+    );
+    assert_eq!(store.llm_calls(10).await.unwrap().len(), requests.len());
+    drop(requests);
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    stderr_task.abort();
+    let _ = stderr_task.await;
+    gateway.shutdown().await.unwrap();
+    server.abort();
+    drop(gateway);
+    drop(store);
+    drop(engine_directory);
+    eprintln!("client model switch and placeholder effort verified");
+    // 被强杀的引擎进程在 Windows 上可能让运行时收尾的阻塞 join 一直等下去。
+    std::process::exit(0);
 }

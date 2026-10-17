@@ -431,6 +431,9 @@ async fn drive_completion(
             .unwrap();
         let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
         if flags & connect::END_STREAM_FLAG != 0 {
+            // 收尾帧的**语义**：`{}` 是"正常结束"，任何别的载荷都是服务端在报错。
+            // 只断言 END_STREAM_FLAG 会让错误收尾一路绿灯（审计 04/P3-6 指出的缺口）。
+            assert_eq!(payload.as_ref(), b"{}", "后台完成这一轮要以正常收尾帧结束");
             break;
         }
         let server = pb::AgentServerMessage::decode(payload).unwrap();

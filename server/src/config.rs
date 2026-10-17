@@ -11,6 +11,8 @@ const DATABASE_FILE_NAME: &str = "haxsd-byok.db";
 const DEV_MODE_FILE_NAME: &str = "dev-mode.json";
 const DATA_DIR_ENV_NAME: &str = "HAXSD_BYOK_DATA_DIR";
 const DATABASE_URL_ENV_NAME: &str = "HAXSD_BYOK_DATABASE_URL";
+/// 显式允许监听非回环地址的开关（默认关闭）。见 `check_listen_addr`。
+const ALLOW_REMOTE_LISTEN_ENV_NAME: &str = "HAXSD_BYOK_ALLOW_REMOTE_LISTEN";
 const V0049_DATA_DIR_NAME: &str = ".cursor-local-assistant-v2";
 const V0049_CONFIG_FILE_NAME: &str = "config.yaml";
 const DEFAULT_PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(60 * 60);
@@ -105,7 +107,6 @@ pub struct ProviderConfig {
     pub custom_headers: reqwest::header::HeaderMap,
     pub max_output_tokens: Option<u64>,
     pub request_timeout: Duration,
-    pub allowed_body_fields: Option<std::collections::HashSet<String>>,
 }
 
 #[derive(Clone)]
@@ -126,12 +127,51 @@ pub enum ConsoleSource {
     Proxy(url::Url),
 }
 
+/// 本机网关默认只服务本机：非回环监听地址必须显式打开开关，否则拒绝启动。
+///
+/// 网关后面是 Cursor 的接管配置、模型目录、账号信息与调用详情，而 Cursor 侧路由表本身没有
+/// 独立的鉴权层（`api/cursor/handlers.rs`）。绑到 `0.0.0.0` 或某个具体网卡地址之后，同一网段
+/// 的任何主机都能改写我们的接管配置、读调用详情、用已配置的 provider key 发请求——所以默认
+/// 拒绝。报错里直接给出开关名、取值与后果，用户不必去翻文档；环境变量填了别的值时也停在
+/// 拒绝这一侧（拼错 `1` 只会启动失败，不会静默外放）。
+fn check_listen_addr(listen_addr: SocketAddr) -> Result<()> {
+    check_listen_addr_with(listen_addr, allow_remote_listen())
+}
+
+/// 判据本体：与进程环境解耦，用例直接传开关取值（不去改环境变量，保证全量并行下稳定）。
+fn check_listen_addr_with(listen_addr: SocketAddr, allow_remote: bool) -> Result<()> {
+    if listen_addr.ip().is_loopback() || allow_remote {
+        return Ok(());
+    }
+    Err(Error::Config(format!(
+        "refusing to listen on {listen_addr}: the local gateway is loopback-only by default and \
+         its Cursor routes have no separate authentication, so any host on the network could read \
+         call details and rewrite the Cursor takeover configuration; set \
+         {ALLOW_REMOTE_LISTEN_ENV_NAME}=1 only if you really need remote access"
+    )))
+}
+
+/// 开关是否被显式打开：只有 `1` / `true` / `yes`（不分大小写、忽略首尾空白）算打开。
+fn allow_remote_listen() -> bool {
+    switch_value_allows_remote(env::var(ALLOW_REMOTE_LISTEN_ENV_NAME).ok().as_deref())
+}
+
+fn switch_value_allows_remote(value: Option<&str>) -> bool {
+    value.is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes"
+        )
+    })
+}
+
 impl Config {
     pub fn from_env() -> Result<Self> {
         let listen_addr = env::var("CURSOR_LISTEN_ADDR")
             .unwrap_or_else(|_| "127.0.0.1:3000".into())
             .parse()
             .map_err(|error| Error::Config(format!("invalid CURSOR_LISTEN_ADDR: {error}")))?;
+        check_listen_addr(listen_addr)?;
         let request_timeout = match env::var("CURSOR_PROVIDER_TIMEOUT_SECONDS") {
             Ok(value) => Duration::from_secs(value.parse().map_err(|error| {
                 Error::Config(format!("invalid CURSOR_PROVIDER_TIMEOUT_SECONDS: {error}"))
@@ -248,5 +288,99 @@ mod tests {
         assert!(database_url_for_dir(temp.path())
             .unwrap()
             .ends_with("haxsd-byok.db"));
+    }
+
+    fn addr(value: &str) -> SocketAddr {
+        value.parse().unwrap()
+    }
+
+    /// 三态：回环放行、非回环默认拒绝、显式开关放行。
+    #[test]
+    fn a_non_loopback_listen_address_needs_an_explicit_switch() {
+        // 回环（IPv4/IPv6）永远放行：默认形态就是它。
+        for allowed in ["127.0.0.1:3000", "127.0.0.1:0", "[::1]:3000"] {
+            assert!(
+                check_listen_addr_with(addr(allowed), false).is_ok(),
+                "{allowed} 是回环地址，必须放行"
+            );
+        }
+
+        // 非回环默认拒绝，而且报错要能照做：带上开关名与后果。
+        for refused in [
+            "0.0.0.0:3000",
+            "[::]:3000",
+            "192.168.1.5:3000",
+            "10.0.0.7:3000",
+        ] {
+            let error = check_listen_addr_with(addr(refused), false)
+                .expect_err(&format!("{refused} 默认必须被拒绝"))
+                .to_string();
+            assert!(error.contains(refused), "{error}");
+            assert!(error.contains(ALLOW_REMOTE_LISTEN_ENV_NAME), "{error}");
+            assert!(error.contains("=1"), "{error}");
+            assert!(error.contains("loopback-only"), "{error}");
+        }
+
+        // 显式开关打开之后放行。
+        for allowed in ["0.0.0.0:3000", "192.168.1.5:3000"] {
+            assert!(
+                check_listen_addr_with(addr(allowed), true).is_ok(),
+                "显式打开开关后 {allowed} 必须放行"
+            );
+        }
+    }
+
+    /// 开关的取值解析：只有明确的肯定值算打开，其它一律按关闭（拼错不会静默外放）。
+    #[test]
+    fn the_remote_listen_switch_only_accepts_an_explicit_yes() {
+        assert!(switch_value_allows_remote(Some("1")));
+        assert!(switch_value_allows_remote(Some("true")));
+        assert!(switch_value_allows_remote(Some(" TRUE ")));
+        assert!(switch_value_allows_remote(Some("yes")));
+
+        assert!(!switch_value_allows_remote(None));
+        assert!(!switch_value_allows_remote(Some("")));
+        assert!(!switch_value_allows_remote(Some("0")));
+        assert!(!switch_value_allows_remote(Some("false")));
+        assert!(!switch_value_allows_remote(Some("on")));
+    }
+
+    /// 部署面回归：镜像绑的是 `0.0.0.0`，必须同时显式打开开关，否则容器一启动就退出。
+    ///
+    /// 这条用例钉的是"拒绝非回环监听"与本仓唯一一份容器配置之间的一致性——两边各改各的，
+    /// 就会出现"本地全绿、镜像起不来"的回归（这一批正是这么发现的）。
+    #[test]
+    fn the_container_image_opts_into_remote_listen() {
+        let dockerfile = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../Dockerfile"),
+        )
+        .expect("read the repository Dockerfile");
+        // 取出设置监听地址的那一段 ENV（多行续行）：开关必须与它在同一段里。
+        let lines = dockerfile.lines().collect::<Vec<_>>();
+        let start = lines
+            .iter()
+            .position(|line| line.starts_with("ENV ") && line.contains("CURSOR_LISTEN_ADDR"))
+            .expect("容器要设置监听地址");
+        let mut block = String::new();
+        for line in &lines[start..] {
+            block.push_str(line);
+            block.push('\n');
+            if !line.trim_end().ends_with('\\') {
+                break;
+            }
+        }
+        assert!(
+            block.contains("0.0.0.0") || block.contains("[::]"),
+            "这条断言是为非回环监听准备的: {block}"
+        );
+        assert!(
+            block.contains(&format!("{ALLOW_REMOTE_LISTEN_ENV_NAME}=1")),
+            "绑非回环地址就必须在同一段 ENV 里显式打开开关，否则镜像启动即退出: {block}"
+        );
+        // 注释要说明为什么容器可以开这个开关（容器网络命名空间即信任边界）。
+        assert!(
+            dockerfile.contains("信任边界"),
+            "Dockerfile 要写明为什么容器需要这个开关"
+        );
     }
 }

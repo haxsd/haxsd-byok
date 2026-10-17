@@ -585,6 +585,95 @@ async fn provider_overflow_refusal_compacts_and_retries_once() {
 }
 
 #[tokio::test]
+async fn a_length_stop_that_filled_the_window_compacts_and_retries() {
+    // `FinishReason::Length` 有两个来源：输出预算打满（`max_tokens`）与窗口在生成
+    // 中途打满（`model_context_window_exceeded`）。provider 层把两者归一成同一个
+    // `Length`，过去 run 层一律当终态失败——于是窗口打满的那一轮硬失败、不压缩，
+    // 下一次请求带着同一份超限 prompt 再来一遍。这里钉住：用量说明 prompt 已经吃满
+    // 预算时，要回到溢出压缩阶梯。
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("length-overflow-model", Some(100_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response("first answer", 4_000, 12));
+    provider.push(vec![
+        ModelEvent::Start {
+            model_call_id: "call-truncated".into(),
+        },
+        ModelEvent::TextStart,
+        ModelEvent::TextDelta("half an answer".into()),
+        ModelEvent::TextEnd,
+        ModelEvent::Usage(Usage {
+            input_tokens: Some(99_500),
+            context_input_tokens: Some(99_500),
+            output_tokens: Some(30_000),
+            total_tokens: Some(129_500),
+            ..Default::default()
+        }),
+        ModelEvent::Done(FinishReason::Length),
+    ]);
+    provider.push(text_response("durable summary", 3_000, 20));
+    provider.push(text_response("answer after compaction", 500, 20));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let first = run(
+        &registry,
+        "length-first",
+        user_request(
+            "length-conversation",
+            "length-user-1",
+            "start",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "length-second",
+        user_request(
+            "length-conversation",
+            "length-user-2",
+            "continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+
+    assert_eq!(second.summary_started, 1, "撞窗口要回到压缩阶梯");
+    assert_eq!(second.summary_completed, 1);
+    assert_eq!(second.turn_ended, 1, "压缩后的重试必须正常收尾");
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        4,
+        "第一轮的调用 + 被截断的调用 + 摘要调用 + 压缩后的重试"
+    );
+    assert!(requests[2].prompt.tools.is_empty(), "摘要调用不带工具");
+    assert!(
+        requests[3].history.iter().any(
+            |message| matches!(&message.content, ProjectedContent::Parts(parts)
+                if matches!(parts.as_slice(), [ContentPart::Text { text }]
+                    if text.contains("durable summary")))
+        ),
+        "重试要带着摘要"
+    );
+}
+
+#[tokio::test]
 async fn assistant_terminated_history_is_sent_with_a_user_tail() {
     // Cursor can resume a conversation whose committed history already ends
     // with the assistant. Anthropic refuses that as a prefill, so the run
@@ -1011,6 +1100,135 @@ async fn failed_summary_slot_states_the_compaction_and_keeps_the_turns() {
             .unwrap_or_default()
             .contains("NOISE-ALPHA")),
         "history the failed summary dropped stays dropped"
+    );
+}
+
+/// 压缩把状态结构重置到压缩后的基线。
+///
+/// 客户端带上来的 `file_states` / `file_states_v2` 描述的是**已经被摘要掉的**那段历史
+/// （blob 里存的是压缩前的文件内容），原样写回去，Cursor 侧会按这份基线把文件显示成压缩前
+/// 的样子（审计 05/P2-1）。这条同时钉住另一半：请求带来的状态结构必须被 builder 接管
+/// （`adopt` 是一次移动，不再整份克隆）——没有接管的话，未压缩那一轮的 checkpoint 就会
+/// 直接丢掉文件状态。
+#[tokio::test]
+async fn a_compaction_resets_the_file_state_baseline() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("baseline-model", Some(1_000_000)))
+        .await
+        .unwrap();
+
+    // 一轮正常提交（不压缩）：基线原样带过去。
+    let quiet = fake_provider::FakeProvider::default();
+    quiet.push(text_response("first answer", 4_000, 12));
+    quiet.push(text_response("second answer", 4_100, 12));
+    let quiet_registry = registry(store.clone(), &quiet);
+    let first = run(
+        &quiet_registry,
+        "baseline-quiet-1",
+        user_request(
+            "baseline-quiet-conversation",
+            "baseline-quiet-user-1",
+            "start",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let mut state = first.checkpoints.last().cloned().unwrap();
+    inject_file_states(&mut state);
+    let second = run(
+        &quiet_registry,
+        "baseline-quiet-2",
+        user_request(
+            "baseline-quiet-conversation",
+            "baseline-quiet-user-2",
+            "continue",
+            &model.model_hash,
+            Some(state),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 0);
+    let settled = second.checkpoints.last().unwrap();
+    assert!(
+        settled.file_states_v2.contains_key("src/lib.rs"),
+        "没有压缩时,请求带来的文件状态必须原样带回去"
+    );
+    assert!(
+        settled.file_states.contains_key("src/lib.rs"),
+        "旧版 file_states 同样要带上"
+    );
+
+    // 同一份基线遇到压缩：压缩之后的 checkpoint 必须清空，压缩之前的保持不动。
+    let compacting = fake_provider::FakeProvider::default();
+    compacting.push(text_response("first answer", 4_000, 12));
+    compacting.push_error(cursor_server::Error::Provider(
+        "Anthropic 400 Bad Request: {\"type\":\"error\",\"error\":{\"type\":\
+         \"invalid_request_error\",\"message\":\"prompt is too long: 1002148 tokens > \
+         1000000 maximum\"}}"
+            .into(),
+    ));
+    compacting.push(text_response("durable summary", 3_000, 20));
+    compacting.push(text_response("answer after compaction", 500, 20));
+    let compacting_registry = registry(store.clone(), &compacting);
+    let first = run(
+        &compacting_registry,
+        "baseline-compact-1",
+        user_request(
+            "baseline-compact-conversation",
+            "baseline-compact-user-1",
+            "start",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let mut state = first.checkpoints.last().cloned().unwrap();
+    inject_file_states(&mut state);
+    let second = run(
+        &compacting_registry,
+        "baseline-compact-2",
+        user_request(
+            "baseline-compact-conversation",
+            "baseline-compact-user-2",
+            "continue",
+            &model.model_hash,
+            Some(state),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 1);
+    for checkpoint in second
+        .checkpoints
+        .iter()
+        .filter(|state| state.summary.is_none())
+    {
+        assert!(
+            checkpoint.file_states_v2.contains_key("src/lib.rs"),
+            "压缩之前推给客户端的状态仍然带着文件状态"
+        );
+    }
+    let compacted = second
+        .checkpoints
+        .iter()
+        .find(|state| state.summary.is_some())
+        .expect("压缩之后的 checkpoint");
+    assert!(
+        compacted.file_states_v2.is_empty() && compacted.file_states.is_empty(),
+        "压缩后的基线里不能残留压缩前的文件状态"
+    );
+}
+
+/// 给状态结构塞一份"压缩前的文件状态"（值只是 32 字节 blob id，测试不读内容）。
+fn inject_file_states(state: &mut pb::ConversationStateStructure) {
+    state.file_states.insert("src/lib.rs".into(), vec![7u8; 32]);
+    state.file_states_v2.insert(
+        "src/lib.rs".into(),
+        pb::FileStateStructure {
+            content: Some(vec![9u8; 32]),
+            initial_content: None,
+        },
     );
 }
 

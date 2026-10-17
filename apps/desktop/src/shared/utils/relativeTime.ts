@@ -12,6 +12,8 @@ const DAY = 24 * HOUR;
  * instead of turning into "23 天前".
  */
 export function formatRelativeTime(epochMs: number, locale: Locale, now = Date.now()) {
+  // 时间戳缺失（旧记录、字段改名）时给一句"没有"，而不是 "NaN 秒前" 这种读不通的字。
+  if (!Number.isFinite(epochMs)) return "-";
   const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   const delta = epochMs - now;
   const magnitude = Math.abs(delta);

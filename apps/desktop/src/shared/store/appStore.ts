@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { api, ServiceUnreachableError, type ModelTokenPricing, type CodexStatus, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
-import { applyTheme, defaultThemeId, isThemeId, type ThemeId } from "../theme/theme";
+import { applyTheme, defaultThemeId, type ThemeId } from "../theme/theme";
+import { saveUiPreferences } from "./uiPreferences";
 
 /** Missing rules are unpriced; no supplier's rates become a global default. */
 export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = { models: {} };
@@ -28,11 +29,13 @@ export type AppSnapshot = {
   plugins: PluginDescriptor[];
 };
 
-const savedTheme = (): ThemeId => {
-  const saved = localStorage.getItem("haxsd-byok.theme");
-  return isThemeId(saved) ? saved : defaultThemeId;
-};
-
+/**
+ * 主题不再从 `localStorage` 读。
+ *
+ * 那份值绑在管理端口 origin 上：端口一变（产品明说的行为）就再也读不到，主题悄悄回到默认。
+ * 现在服务端是唯一权威（`uiPreferences.ts`），启动时异步读回来再 `applyThemePreference`；
+ * 在那之前先用默认主题渲染。
+ */
 let snapshot: AppSnapshot = {
   models: [],
   calls: [],
@@ -58,7 +61,7 @@ let snapshot: AppSnapshot = {
   busy: false,
   error: null,
   offline: false,
-  theme: savedTheme(),
+  theme: defaultThemeId,
   cursorHarness: null,
   devinStatus: null,
   codexStatus: null,
@@ -147,8 +150,11 @@ export const appStore = {
    * 十一个接口分别落库：一个次要接口（比如插件运行时）失败时，其余数据照常更新，
    * 只有失败项保留旧值。以前整批走 `Promise.all`，任一接口抛错就把已经拿到的数据
    * 全部丢掉，界面上表现为"数据停在刚才"。
+   *
+   * 返回这一批有没有把模型列表写进快照（`false` = 模型接口失败，或这一批已被更新的
+   * 一批取代）。乐观改动的回滚要用它判断"权威数据到底拿没拿到"。
    */
-  async refresh() {
+  async refresh(): Promise<boolean> {
     const generation = ++refreshGeneration;
     // 这一批请求读到的设置字段：提交时和写入代际比对，避免把刚保存的值盖回去。
     const settingsWritesAtStart = { ...settingsWrites };
@@ -178,7 +184,7 @@ export const appStore = {
     // 否则界面会一直转圈。
     if (generation !== refreshGeneration) {
       if (refreshController === null) update({ busy: false });
-      return;
+      return false;
     }
     if (refreshController === controller) refreshController = null;
     const labels = [
@@ -212,14 +218,26 @@ export const appStore = {
     }
     update(patch);
     update({ busy: false });
+    return patch.models !== undefined;
   },
 
   async deleteModel(modelHash: string) {
+    const previous = snapshot.models;
     await perform(async () => {
       // 变更前先作废在途刷新，并乐观移除，界面立刻反映删除。
       invalidateRefresh();
-      update({ models: snapshot.models.filter((model) => model.model_hash !== modelHash) });
-      await api.deleteModel(modelHash);
+      update({ models: previous.filter((model) => model.model_hash !== modelHash) });
+      try {
+        await api.deleteModel(modelHash);
+      } catch (cause) {
+        // 删除没落库（4xx/5xx、服务不可达，或超时但服务端其实已经删了）：先拉一次权威
+        // 数据来定谁对，而不是把乐观结果当结论留在界面上。
+        const refreshed = await appStore.refresh();
+        // 连模型列表都没取到（或这一批已被取代）时才退回删除前的数组：宁可多显示一条
+        // 服务端已删的模型，也不能让界面继续声称那条模型不存在。
+        if (!refreshed) update({ models: previous });
+        throw cause;
+      }
       await appStore.refresh();
     });
   },
@@ -397,6 +415,20 @@ export const appStore = {
     }
   },
 
+  /**
+   * 只重读 Cursor 接管状态。
+   *
+   * 等 CA 装好时每 2 秒问一次，整批 `refresh()` 会顺带把另外十一个接口各拉一遍；等待
+   * 期间要看的只有这一个字段，所以给它一条单独的窄通道。
+   */
+  async refreshCursorHarness() {
+    try {
+      update({ cursorHarness: await api.cursorHarness() });
+    } catch {
+      // 轮询失败不写全局 error：下一拍还会再问，弹一条只活两秒的红条反而像出事了。
+    }
+  },
+
   async openCallDetails(callId: string) {
     await perform(() => api.openCallDetails(callId));
   },
@@ -462,12 +494,41 @@ export const appStore = {
     }
   },
   selectTheme(theme: ThemeId) {
-    localStorage.setItem("haxsd-byok.theme", theme);
     applyTheme(theme);
     update({ theme });
+    // 落到服务端（不再写 localStorage：那份值绑在管理端口 origin 上，端口一变就丢）。
+    // 写失败要说出来：否则用户下次启动发现主题变回去了，却不知道为什么。
+    void saveUiPreferences({ theme }).then((saved) => {
+      if (!saved) update({ error: t("主题没能保存到服务端：下次启动会回到默认主题。") });
+    });
   },
 };
 
+/** 启动时采用服务端记下的主题：只应用，不写回（那是自己写给自己的 PUT）。 */
+export function applyThemePreference(theme: ThemeId) {
+  applyTheme(theme);
+  update({ theme });
+}
+
+/**
+ * 订阅整个快照。
+ *
+ * `update()` 一次写入会通知所有订阅者，所以任何一处写入都会让所有**活跃**订阅者重渲染
+ * （隐藏的 keep-alive 页面会被 React 19 的 `<Activity mode="hidden">` 卸掉订阅，不受影响）。
+ * 只需要一两个字段的组件用下面的 `useAppStoreSelector`，别为了省事订阅整份快照。
+ */
 export function useAppStore() {
-  return useSyncExternalStore(appStore.subscribe, appStore.getSnapshot);
+  return useSyncExternalStore(appStore.subscribe, appStore.getSnapshot, appStore.getSnapshot);
+}
+
+/**
+ * 只订阅快照里的一小块。
+ *
+ * `useSyncExternalStore` 用 `Object.is` 比较每次读到的值，值没变就不会重渲染——于是
+ * 「这次写入动的是别的字段」不再惊动这些组件。**选择器必须返回原始值，或快照里本来就有的
+ * 引用**（`snapshot.calls` 这种数组可以，`{calls: snapshot.calls}` 这种新对象不行：
+ * 每次调用都是新引用，等于没省，还会让 React 报"getSnapshot 应该被缓存"）。
+ */
+export function useAppStoreSelector<T>(selector: (snapshot: AppSnapshot) => T): T {
+  return useSyncExternalStore(appStore.subscribe, () => selector(appStore.getSnapshot()), () => selector(appStore.getSnapshot()));
 }

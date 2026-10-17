@@ -22,8 +22,12 @@ pub fn requested_model(request: &pb::AgentRunRequest) -> Result<ModelSpec> {
                 .map(|model| model.display_name.clone())
                 .filter(|name| !name.is_empty()),
             reasoning: ReasoningSpec {
-                enabled: details.is_some_and(|model| model.thinking_details.is_some()),
+                // 只有 Cursor 明确点名要思考时才表态：两者都没有是"没指定"，
+                // 交给模型配置兜底（Anthropic 的默认强度就在那里）。
+                enabled: (details.is_some_and(|model| model.thinking_details.is_some()))
+                    .then_some(true),
                 effort: None,
+                thinking_budget_tokens: None,
             },
             latency: ModelLatency::Standard,
             max_output_tokens: None,
@@ -86,9 +90,12 @@ fn from_requested(
             .map(|model| model.display_name.clone())
             .filter(|name| !name.is_empty()),
         reasoning: ReasoningSpec {
-            enabled: model.max_mode
-                || details.is_some_and(|model| model.thinking_details.is_some()),
+            // `max_mode` / `thinking_details` 都没有时是"没指定"，不是"不要思考"。
+            enabled: (model.max_mode
+                || details.is_some_and(|model| model.thinking_details.is_some()))
+            .then_some(true),
             effort: None,
+            thinking_budget_tokens: None,
         },
         latency: ModelLatency::Standard,
         max_output_tokens: None,
@@ -100,11 +107,22 @@ fn from_requested(
         match parameter.id.as_str() {
             "effort" | "reasoning" => {
                 let effort = parameter.value.trim();
-                spec.reasoning.effort =
-                    (effort != "none" && !effort.is_empty()).then(|| effort.to_string());
-                spec.reasoning.enabled |= spec.reasoning.effort.is_some();
+                if effort.is_empty() || effort == "none" {
+                    // Cursor 点了"不思考"：这是显式关闭，模型配置的强度不得再把它打开。
+                    spec.reasoning.enabled = Some(false);
+                    spec.reasoning.effort = None;
+                } else {
+                    spec.reasoning.enabled = Some(true);
+                    spec.reasoning.effort = Some(effort.to_string());
+                }
             }
-            "thinking" => spec.reasoning.enabled |= parse_bool(parameter)?,
+            "thinking" => {
+                // 只有 `true` 才是"要思考"。`false` 保持"没表态"：思考强度是模型配置
+                // 给的，把 Cursor 的模式默认值读成"显式关闭"会一次关掉所有 Anthropic 思考。
+                if parse_bool(parameter)? {
+                    spec.reasoning.enabled = Some(true);
+                }
+            }
             "fast" => {
                 if parse_bool(parameter)? {
                     spec.latency = ModelLatency::Fast;
@@ -155,6 +173,6 @@ mod tests {
 
         assert_eq!(model.model_id, "test-model");
         assert_eq!(model.latency, ModelLatency::Standard);
-        assert!(!model.reasoning.enabled);
+        assert!(!model.reasoning.is_enabled());
     }
 }

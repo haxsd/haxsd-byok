@@ -3,10 +3,19 @@ import { api, type OutboundStatus, type ProxySettings, type ProxySettingsInput }
 import { useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { useMessage } from "../../shared/ui/message";
+import { loadWhenVisible } from "../../shared/utils/visibleLoad";
 import { ProxySettingsCard } from "./ProxySettingsCard";
+import { loadNetworkSettings } from "./settingsLoaders";
 import styles from "./SettingsPage.module.scss";
 
-export function NetworkSettingsCard() {
+/**
+ * `visible` 来自设置页：分区/搜索没显示这张卡时不要取数。
+ *
+ * 卡片仍然挂在树上（`hidden` 只隐藏，草稿和编辑态留在本地），但请求要等它真的被看到——
+ * 进设置页就为五个分区里所有卡片各发一轮请求，是纯粹的浪费。门在 `loadWhenVisible` 里，
+ * 组件不再自己写 `if (!visible) return`：判据只有一处，才钉得住。
+ */
+export function NetworkSettingsCard({ visible }: { visible: boolean }) {
   const { cursorHarness } = useAppStore();
   const message = useMessage();
   const [settings, setSettings] = useState<ProxySettings | null>(null);
@@ -21,10 +30,15 @@ export function NetworkSettingsCard() {
     let active = true;
     setError(null);
     setStatusError(null);
-    void api.proxySettings().then(value => { if (active) setSettings(value); }).catch(cause => { if (active) setError(String(cause)); });
-    void api.outboundStatus().then(value => { if (active) setOutbound(value); }).catch(cause => { if (active) setStatusError(String(cause)); });
+    void loadWhenVisible(visible, loadNetworkSettings).then(loaded => {
+      if (!active || !loaded) return;
+      if (loaded.settings) setSettings(loaded.settings);
+      if (loaded.settingsError) setError(loaded.settingsError);
+      if (loaded.outbound) setOutbound(loaded.outbound);
+      if (loaded.outboundError) setStatusError(loaded.outboundError);
+    });
     return () => { active = false; };
-  }, [attempt]);
+  }, [attempt, visible]);
   const cancel = () => { setEditing(false); setError(null); };
   const edit = () => {
     if (!settings) return;

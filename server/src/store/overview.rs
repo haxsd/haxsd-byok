@@ -28,45 +28,60 @@ impl Store {
         model_hashes: Option<&str>,
         bucket_ms: Option<i64>,
     ) -> Result<Overview> {
-        let call_row = sqlx::query(
+        let (token_usage_granularity, bucket_ms, series_start_ms, bucket_count) =
+            token_usage_buckets(start_ms, end_ms, bucket_ms);
+        // 合计的时间条件只在真有边界时出现。
+        //
+        // 为什么不留 `? IS NULL OR created_at_ms >= ?`：`? IS NULL` 不引用任何列，OR 子句
+        // 拆不成索引约束，`llm_calls_created` 用不上。
+        // 为什么两端都没给时**也不**绑一个"覆盖全表"的宽区间：合计要读整行，实测 20 万行
+        // 下宽区间会把计划从顺序扫推成"索引 + 回表"（13.2ms vs 8.2ms）。无区间 = 全部历史
+        // （调用列表那句"共 N 条"就按它算），这个语义下顺序扫就是最快的形状。
+        // 只给了上界时才问一次最早的行（`MIN(created_at_ms)` 走 `llm_calls_created`，是一次
+        // 索引定位），把下界补成具体值——这样谓词才可 sarg，显式区间的调用方真的走上索引。
+        let range = match (start_ms, end_ms) {
+            (Some(start_ms), Some(end_ms)) => Some((start_ms, end_ms)),
+            (Some(start_ms), None) => Some((start_ms, i64::MAX)),
+            (None, Some(end_ms)) => Some((earliest_call_ms(&self.pool).await?, end_ms)),
+            (None, None) => None,
+        };
+        let aggregate = aggregate_predicates(range.is_some(), model_hashes.is_some());
+
+        let call_sql = format!(
             "SELECT
                 COUNT(*) AS llm_calls,
                 COALESCE(SUM(status = 'completed'), 0) AS successful_calls,
                 COALESCE(SUM(status != 'completed'), 0) AS failed_calls
-             FROM llm_calls
-             WHERE status != 'running'
-               AND (? IS NULL OR created_at_ms >= ?)
-               AND (? IS NULL OR created_at_ms < ?)
-               AND (? IS NULL OR model_hash IN (SELECT value FROM json_each(?)))",
-        )
-        .bind(start_ms)
-        .bind(start_ms)
-        .bind(end_ms)
-        .bind(end_ms)
-        .bind(model_hashes)
-        .bind(model_hashes)
-        .fetch_one(&self.pool)
-        .await?;
-        let token_row = sqlx::query(&format!(
+             FROM llm_calls{}",
+            where_clause(&call_predicates(range.is_some(), model_hashes.is_some()))
+        );
+        let mut call_query = sqlx::query(&call_sql);
+        if let Some((start_ms, end_ms)) = range {
+            call_query = call_query.bind(start_ms).bind(end_ms);
+        }
+        if let Some(model_hashes) = model_hashes {
+            call_query = call_query.bind(model_hashes);
+        }
+        let call_row = call_query.fetch_one(&self.pool).await?;
+
+        let token_sql = format!(
             "SELECT
                 COALESCE(SUM({fresh_input}), 0) AS input_tokens,
                 COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0) AS cache_read_tokens,
                 COALESCE(SUM(COALESCE(cache_write_tokens, 0)), 0) AS cache_write_tokens,
                 COALESCE(SUM(COALESCE(output_tokens, 0)), 0) AS output_tokens
-             FROM llm_calls
-             WHERE (? IS NULL OR created_at_ms >= ?)
-               AND (? IS NULL OR created_at_ms < ?)
-               AND (? IS NULL OR model_hash IN (SELECT value FROM json_each(?)))",
+             FROM llm_calls{}",
+            where_clause(&aggregate),
             fresh_input = fresh_input_sql(),
-        ))
-        .bind(start_ms)
-        .bind(start_ms)
-        .bind(end_ms)
-        .bind(end_ms)
-        .bind(model_hashes)
-        .bind(model_hashes)
-        .fetch_one(&self.pool)
-        .await?;
+        );
+        let mut token_query = sqlx::query(&token_sql);
+        if let Some((start_ms, end_ms)) = range {
+            token_query = token_query.bind(start_ms).bind(end_ms);
+        }
+        if let Some(model_hashes) = model_hashes {
+            token_query = token_query.bind(model_hashes);
+        }
+        let token_row = token_query.fetch_one(&self.pool).await?;
 
         let input_tokens = non_negative(token_row.try_get("input_tokens")?);
         let cache_read_tokens = non_negative(token_row.try_get("cache_read_tokens")?);
@@ -85,11 +100,9 @@ impl Store {
             output_tokens,
         };
 
-        let (token_usage_granularity, bucket_ms, series_start_ms, bucket_count) =
-            token_usage_buckets(start_ms, end_ms, bucket_ms);
         // 一行 = 时间桶 × 模型身份（`model_hash`，`model_id`）。父桶的合计字段由这些
         // 分组求和而来，所以「合计 = 各模型之和」是构造出来的恒等式。
-        let rows = sqlx::query(&format!(
+        let series_sql = format!(
             "SELECT
                 (created_at_ms / {bucket_ms}) * {bucket_ms} AS bucket_start_ms,
                 model_hash,
@@ -100,21 +113,19 @@ impl Store {
                 COALESCE(SUM(COALESCE(cache_read_tokens, 0)), 0) AS cache_read_tokens,
                 COALESCE(SUM(COALESCE(cache_write_tokens, 0)), 0) AS cache_write_tokens,
                 COALESCE(SUM(COALESCE(output_tokens, 0)), 0) AS output_tokens
-             FROM llm_calls
-             WHERE created_at_ms >= ?
-               AND (? IS NULL OR created_at_ms < ?)
-               AND (? IS NULL OR model_hash IN (SELECT value FROM json_each(?)))
+             FROM llm_calls{}
              GROUP BY bucket_start_ms, model_hash, model_id
              ORDER BY bucket_start_ms, model_hash, model_id",
+            where_clause(&aggregate_predicates(true, model_hashes.is_some())),
             fresh_input = fresh_input_sql(),
-        ))
-        .bind(start_ms.unwrap_or(series_start_ms).max(series_start_ms))
-        .bind(end_ms)
-        .bind(end_ms)
-        .bind(model_hashes)
-        .bind(model_hashes)
-        .fetch_all(&self.pool)
-        .await?;
+        );
+        let mut series_query = sqlx::query(&series_sql)
+            .bind(start_ms.unwrap_or(series_start_ms).max(series_start_ms))
+            .bind(end_ms.unwrap_or(i64::MAX));
+        if let Some(model_hashes) = model_hashes {
+            series_query = series_query.bind(model_hashes);
+        }
+        let rows = series_query.fetch_all(&self.pool).await?;
         let mut recorded = BTreeMap::<i64, TokenUsageBucket>::new();
         for row in rows {
             let bucket_start_ms: i64 = row.try_get("bucket_start_ms")?;
@@ -161,6 +172,51 @@ impl Store {
             token_usage_granularity,
             token_usage_series,
         })
+    }
+}
+
+/// 表里最早一条调用的时间；空表时 0（等价于"不设下界"）。
+///
+/// 只有"只给了上界"这一种请求需要它：`SELECT MIN(created_at_ms)` 走 `llm_calls_created`，
+/// 是一次索引定位而不是全表扫。
+async fn earliest_call_ms(pool: &sqlx::SqlitePool) -> Result<i64> {
+    Ok(
+        sqlx::query_scalar::<_, Option<i64>>("SELECT MIN(created_at_ms) FROM llm_calls")
+            .fetch_one(pool)
+            .await?
+            .unwrap_or(0),
+    )
+}
+
+/// 合计的时间/模型谓词：只在真有边界时才出现。
+///
+/// `created_at_ms >= ? AND created_at_ms < ?` 对 `llm_calls_created` 是可 sarg 的范围条件；
+/// 模型筛选只在请求真的带了筛选时才拼。两者都缺时谓词表为空，SQL 里连 `WHERE` 都不出现
+/// ——合计要读整行，绑一个覆盖全表的宽区间反而会把计划推成"索引 + 回表"。
+fn aggregate_predicates(has_range: bool, has_model_filter: bool) -> Vec<&'static str> {
+    let mut predicates: Vec<&'static str> = Vec::new();
+    if has_range {
+        predicates.push("created_at_ms >= ? AND created_at_ms < ?");
+    }
+    if has_model_filter {
+        predicates.push("model_hash IN (SELECT value FROM json_each(?))");
+    }
+    predicates
+}
+
+/// 调用计数的谓词：在合计谓词前再钉上"跑完的调用才算数"。
+fn call_predicates(has_range: bool, has_model_filter: bool) -> Vec<&'static str> {
+    let mut predicates = vec!["status != 'running'"];
+    predicates.extend(aggregate_predicates(has_range, has_model_filter));
+    predicates
+}
+
+/// 把谓词拼成 ` WHERE a AND b`；没有谓词时返回空串。
+fn where_clause(predicates: &[&str]) -> String {
+    if predicates.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", predicates.join(" AND "))
     }
 }
 
@@ -611,5 +667,125 @@ mod tests {
         assert_eq!(group.output_tokens, 55);
         assert_eq!(overview.metrics.llm_calls, 1);
         assert_eq!(overview.metrics.input_tokens, 300);
+    }
+
+    /// 不带区间的概览（桌面端默认的全局刷新）不再全表扫 `llm_calls`，但合计的口径
+    /// 保持"全部历史"：调用列表用这个计数显示"共 N 条"，把它缩成序列窗口会让那句
+    /// 文案在大库上少算；一年窗口是分桶序列自己的口径。
+    #[tokio::test]
+    async fn overview_without_a_range_counts_all_history_while_the_series_covers_the_window() {
+        let (_directory, store) = temp_store().await;
+        let now = crate::store::now_ms();
+        insert_call(
+            &store,
+            "call-in-window",
+            Some("aaaa"),
+            "gpt-5",
+            "GPT-5",
+            "completed",
+            now - 24 * HOUR_MS,
+            (1_000, 0, 0, 100),
+        )
+        .await;
+        insert_call(
+            &store,
+            "call-before-window",
+            Some("aaaa"),
+            "gpt-5",
+            "GPT-5",
+            "completed",
+            now - (OVERVIEW_DAYS as i64 + 35) * 24 * HOUR_MS,
+            (7_000, 0, 0, 700),
+        )
+        .await;
+
+        let overview = store.overview(None, None, None, None).await.unwrap();
+
+        assert_eq!(overview.metrics.llm_calls, 2, "无区间的合计仍然是全部历史");
+        assert_eq!(overview.metrics.input_tokens, 8_000);
+        assert_eq!(overview.metrics.output_tokens, 800);
+        assert_eq!(
+            overview.token_usage_series.len(),
+            OVERVIEW_DAYS as usize,
+            "默认序列仍然是最近一年"
+        );
+        let series_calls: i64 = overview
+            .token_usage_series
+            .iter()
+            .map(|bucket| {
+                bucket
+                    .models
+                    .iter()
+                    .map(|model| model.llm_calls)
+                    .sum::<i64>()
+            })
+            .sum();
+        assert_eq!(series_calls, 1, "窗口之外的历史调用不进序列");
+    }
+
+    /// 谓词只在真有边界/筛选时出现：默认路径（两端都不给、无模型筛选）连 `WHERE` 的时间
+    /// 条件都没有。
+    ///
+    /// 这是刻意选择而不是漏改：合计要读整行，20 万行下绑一个"覆盖全表"的宽区间会把计划
+    /// 从顺序扫推成"索引 + 回表"（实测 13.2ms vs 8.2ms）。
+    #[test]
+    fn aggregate_predicates_appear_only_when_they_can_be_sarged() {
+        assert_eq!(aggregate_predicates(false, false), Vec::<&str>::new());
+        assert_eq!(call_predicates(false, false), vec!["status != 'running'"]);
+        assert_eq!(
+            where_clause(&call_predicates(false, false)),
+            " WHERE status != 'running'"
+        );
+        assert_eq!(where_clause(&aggregate_predicates(false, false)), "");
+
+        assert!(aggregate_predicates(true, false)[0].starts_with("created_at_ms >= ?"));
+        assert!(aggregate_predicates(true, true)[1].starts_with("model_hash IN"));
+        assert_eq!(call_predicates(true, true).len(), 3);
+    }
+
+    /// 时间条件必须真的落到 `llm_calls_created` 上（有人把可选区间写回 `? IS NULL OR …`
+    /// 时计划会退回全表扫），而默认路径反过来：没有区间就不许出现时间条件。
+    #[tokio::test]
+    async fn the_aggregate_uses_the_created_at_index_only_when_a_range_is_given() {
+        let (_directory, store) = temp_store().await;
+
+        let ranged_sql = format!(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM llm_calls{}",
+            where_clause(&call_predicates(true, false))
+        );
+        let ranged = sqlx::query(&ranged_sql).bind(START_MS).bind(i64::MAX);
+        let ranged_plan = ranged
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .iter()
+            .map(|row| row.try_get::<String, _>("detail").unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            ranged_plan.contains("llm_calls_created"),
+            "给了区间就必须走 created_at_ms 索引：{ranged_plan}"
+        );
+
+        let default_sql = format!(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM llm_calls{}",
+            where_clause(&call_predicates(false, false))
+        );
+        let default_plan = sqlx::query(&default_sql)
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .iter()
+            .map(|row| row.try_get::<String, _>("detail").unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            default_plan.contains("SCAN llm_calls"),
+            "无区间时按顺序扫：{default_plan}"
+        );
+        assert!(
+            !default_plan.contains("llm_calls_created"),
+            "无区间时不许绑时间条件（绑了会变成索引 + 回表，实测更慢）：{default_plan}"
+        );
     }
 }

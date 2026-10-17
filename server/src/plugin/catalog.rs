@@ -64,6 +64,41 @@ impl PluginCatalog {
         &self.definition_loader
     }
 
+    /// 插件目录的当前指纹：每个根目录、每个插件子目录、以及子目录里每个文件的
+    /// (修改时间, 大小)。
+    ///
+    /// registry 用它给"求值过的插件表"做失效判定：求值一个插件要跑一次 Deno，不能每次
+    /// 都重来；但改了插件、修好清单、预装或卸载之后必须立刻生效，不能要求重启。
+    /// 带上文件大小是因为同一秒内改写文件时 mtime 可能不变，而长度一定变。
+    pub(crate) fn fingerprint(&self) -> String {
+        let mut stamp = String::new();
+        for root in &self.roots {
+            stamp.push_str(&root.display().to_string());
+            append_stamp(&mut stamp, root);
+            let Ok(mut directories) = child_directories(root) else {
+                continue;
+            };
+            directories.sort();
+            for directory in directories {
+                stamp.push_str(&directory.display().to_string());
+                append_stamp(&mut stamp, &directory);
+                let Ok(files) = fs::read_dir(&directory) else {
+                    continue;
+                };
+                let mut names = files
+                    .filter_map(|entry| entry.ok())
+                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>();
+                names.sort();
+                for name in names {
+                    stamp.push_str(&name);
+                    append_stamp(&mut stamp, &directory.join(&name));
+                }
+            }
+        }
+        stamp
+    }
+
     pub(crate) async fn entries(&self, executable: &Path) -> Vec<PluginEntry> {
         let mut plugins = BTreeMap::new();
         for root in &self.roots {
@@ -124,6 +159,21 @@ impl PluginCatalog {
             }
         }
         plugins.into_values().collect()
+    }
+}
+
+/// 把一个路径的 (修改时间, 大小) 追加进指纹。读不到（刚被删掉）也算一种状态。
+fn append_stamp(stamp: &mut String, path: &Path) {
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            let modified = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |elapsed| elapsed.as_nanos());
+            stamp.push_str(&format!(":{modified}:{};", metadata.len()));
+        }
+        Err(_) => stamp.push_str(":missing;"),
     }
 }
 
@@ -353,5 +403,99 @@ pub(super) mod tests {
             app_version: env!("CARGO_PKG_VERSION").into(),
         };
         assert!(!catalog.manifests().is_empty());
+    }
+
+    /// 内置插件的导入图必须完整：每个 `cursor-byok:*` 说明符都要在该插件自己的
+    /// `deno.json` import map 里，且映射到的文件真的存在；相对导入同理；此外不许出现
+    /// `npm:` / `jsr:` / `http(s):` 这类需要联网或额外权限的说明符。
+    ///
+    /// 这条用例是给 CI 里的 `deno test` 当前哨：本机没有 Deno（也拉不动 GitHub release），
+    /// 导入路径写错只会在 CI 上炸，而这里的失败信息直接指出是哪个文件哪一行。
+    #[test]
+    fn built_in_plugin_imports_resolve_within_the_repository() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in");
+        let mut plugins = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect::<Vec<_>>();
+        plugins.sort();
+        assert!(!plugins.is_empty(), "{root:?} 里应当有内置插件");
+
+        for plugin in &plugins {
+            let name = plugin.file_name().unwrap().to_string_lossy().into_owned();
+            let manifest: serde_json::Value =
+                serde_json::from_slice(&fs::read(plugin.join("plugin.json")).unwrap()).unwrap();
+            let entry = manifest["entry"]
+                .as_str()
+                .expect("plugin.json needs an entry");
+            assert!(
+                plugin.join(entry).is_file(),
+                "{name}: 清单里的入口 {entry} 不存在"
+            );
+
+            let deno: serde_json::Value =
+                serde_json::from_slice(&fs::read(plugin.join("deno.json")).unwrap()).unwrap();
+            let imports = deno["imports"]
+                .as_object()
+                .unwrap_or_else(|| panic!("{name}: deno.json 必须有 imports"));
+
+            for file in typescript_files(plugin) {
+                let source = fs::read_to_string(&file).unwrap();
+                for specifier in imported_specifiers(&source) {
+                    let where_ = format!("{name}/{}", file.file_name().unwrap().to_string_lossy());
+                    if specifier.starts_with("cursor-byok:") {
+                        let mapped = imports.get(&specifier).and_then(|value| value.as_str());
+                        let Some(mapped) = mapped else {
+                            panic!("{where_}: 说明符 {specifier} 不在 deno.json 的 imports 里");
+                        };
+                        assert!(
+                            plugin.join(mapped).is_file(),
+                            "{where_}: {specifier} 映射到不存在的 {mapped}"
+                        );
+                    } else if specifier.starts_with("./") || specifier.starts_with("../") {
+                        assert!(
+                            plugin.join(&specifier).is_file(),
+                            "{where_}: 相对导入 {specifier} 不存在"
+                        );
+                    } else {
+                        panic!(
+                            "{where_}: {specifier} 需要联网或额外权限，内置插件的测试必须完全离线"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn typescript_files(directory: &Path) -> Vec<PathBuf> {
+        let mut files = fs::read_dir(directory)
+            .unwrap()
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("ts"))
+            .collect::<Vec<_>>();
+        files.sort();
+        files
+    }
+
+    /// 抽出 `from "x"` / `import "x"` 里的说明符。
+    fn imported_specifiers(source: &str) -> Vec<String> {
+        source
+            .lines()
+            .filter(|line| {
+                let line = line.trim_start();
+                !line.starts_with("//")
+                    && (line.contains("from \"") || line.starts_with("import \""))
+            })
+            .filter_map(|line| {
+                let after = line
+                    .split("from \"")
+                    .nth(1)
+                    .or_else(|| line.trim_start().strip_prefix("import \""))?;
+                after.split('"').next().map(str::to_owned)
+            })
+            .collect()
     }
 }

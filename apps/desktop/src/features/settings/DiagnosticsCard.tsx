@@ -4,6 +4,8 @@ import { useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
+import { loadWhenVisible } from "../../shared/utils/visibleLoad";
+import { loadAppInfo } from "./settingsLoaders";
 import styles from "./SettingsPage.module.scss";
 
 /**
@@ -16,7 +18,8 @@ import styles from "./SettingsPage.module.scss";
  * 只读展示 + 两个动作：打开日志目录、复制诊断摘要。摘要里带上版本、可执行文件路径
  * 与数据目录，因为本机可以同时存在两份安装，"跑的是哪一份"是排查的第一步。
  */
-export function DiagnosticsCard() {
+/** `visible` 来自设置页：没显示这张卡时不取数（门在 `loadWhenVisible` 里）。 */
+export function DiagnosticsCard({ visible }: { visible: boolean }) {
   const { ports, devinStatus, offline } = useAppStore();
   const message = useMessage();
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -25,9 +28,9 @@ export function DiagnosticsCard() {
 
   useEffect(() => {
     let cancelled = false;
-    void api.appInfo()
+    void loadWhenVisible(visible, loadAppInfo)
       .then((value) => {
-        if (!cancelled) setAppInfo(value);
+        if (!cancelled && value) setAppInfo(value);
       })
       .catch((cause) => {
         if (!cancelled) setAppInfoError(cause instanceof Error ? cause.message : String(cause));
@@ -35,7 +38,7 @@ export function DiagnosticsCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [visible]);
 
   const logDirectory = appInfo ? joinPath(appInfo.data_dir, "logs") : null;
   const gateway = offline

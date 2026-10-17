@@ -1159,7 +1159,11 @@ fn signed_anthropic_thinking_round_trips_into_the_next_request() {
 }
 
 #[test]
-fn anthropic_reasoning_state_from_another_model_is_rejected() {
+fn anthropic_reasoning_state_from_another_model_is_not_replayed() {
+    // 契约变化（审计 13-codex/P1-1）：回放归属以前是"整条路由指纹"，改一次模型配置
+    // （换 API Key、改参数、改上限）就让进行中会话的旧密文被判成别的模型，整轮 400 而
+    // 400 不可重试。现在归属只认模型身份 + 协议，不是本模型签发的状态一律降级成
+    // "这轮不回放"：请求照常发出，只是没有那段推理，绝不会把别人的密文发上去。
     let tools = json!([{"type": "function", "name": "f", "parameters": {"type": "object", "properties": {}}}]);
     let foreign = translate_request(
         &json!({"input": "go", "tools": tools.clone()}),
@@ -1183,34 +1187,74 @@ fn anthropic_reasoning_state_from_another_model_is_rejected() {
         ],
     );
     let reasoning = item_of_type(&terminal(&events), "reasoning");
-    let error = translate_request(
+    let issued = reasoning["encrypted_content"]
+        .as_str()
+        .expect("这轮的状态带着密文")
+        .to_owned();
+
+    let next = translate_request(
         &json!({"input": [{"role": "user", "content": "again"}, reasoning],
             "tools": tools, "reasoning": {"effort": "high"}}),
         UpstreamFormat::Anthropic,
         "claude-vendor",
         4096,
     )
-    .expect_err("其他模型签发的 thinking 不能回放给这个模型")
-    .to_string();
-    assert!(error.contains("model"), "{error}");
+    .expect("别的模型签发的状态必须降级成不回放，而不是让这一轮 400");
+    let body = next.body.to_string();
+    assert!(
+        !body.contains(&issued),
+        "别人的密文不能出现在这一轮发出的请求里: {body}"
+    );
+    assert!(
+        !body.contains("\"type\":\"thinking\""),
+        "没有本模型签名的状态不能冒充 thinking 块: {body}"
+    );
 }
 
 #[test]
-fn foreign_encrypted_reasoning_is_rejected_not_silently_dropped() {
-    for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
-        let error = translate_request(
-            &json!({"input": [
-                {"role": "user", "content": "hi"},
-                {"type": "reasoning", "encrypted_content": "gAAAAAB-openai-blob"}
-            ]}),
-            format,
-            "vendor-model",
-            4096,
-        )
-        .expect_err("未知密文不能悄悄丢掉")
-        .to_string();
-        assert!(!error.is_empty(), "{format:?}");
-    }
+fn foreign_encrypted_reasoning_is_dropped_instead_of_failing_the_turn() {
+    // 契约变化（审计 13-codex/P1-1）：外来密文（官方模型或别的工具写的
+    // `encrypted_content`）以前明确报错、整轮 400；现在降级成"这轮不回放"，请求照常
+    // 发出，密文本身既不解析也不转发。
+    const BLOB: &str = "gAAAAAB-openai-blob";
+
+    // Anthropic：没有签名就不能冒充 thinking 块，这段状态直接丢掉。
+    let anthropic_body = translate_request(
+        &json!({"input": [
+            {"role": "user", "content": "hi"},
+            {"type": "reasoning", "encrypted_content": BLOB,
+             "summary": [{"type": "summary_text", "text": "visible"}]}
+        ]}),
+        UpstreamFormat::Anthropic,
+        "vendor-model",
+        4096,
+    )
+    .expect("外来密文必须降级而不是让整轮 400")
+    .body;
+    let anthropic_body = anthropic_body.to_string();
+    assert!(!anthropic_body.contains(BLOB), "{anthropic_body}");
+    assert!(
+        !anthropic_body.contains("\"type\":\"thinking\""),
+        "外来状态不能变成 thinking 块: {anthropic_body}"
+    );
+
+    // Chat：退回可见摘要，密文本身不转发。
+    let chat_body = translate_request(
+        &json!({"input": [
+            {"type": "reasoning", "encrypted_content": BLOB,
+             "summary": [{"type": "summary_text", "text": "visible"}]},
+            {"type": "function_call", "call_id": "c1", "name": "shell", "arguments": "{}"},
+            {"type":"function_call_output","call_id":"c1","output":"ok"}
+        ]}),
+        UpstreamFormat::Chat,
+        "vendor-model",
+        4096,
+    )
+    .expect("外来密文必须降级而不是让整轮 400")
+    .body;
+    assert_eq!(chat_body["messages"][0]["reasoning_content"], "visible");
+    assert!(!chat_body.to_string().contains(BLOB), "{chat_body}");
+
     // 空字符串等同于没有密文：退回可见摘要，不算错误。
     let mapped = chat(json!({"input": [
         {"type": "reasoning", "encrypted_content": "", "summary": [{"type": "summary_text", "text": "visible"}]},
@@ -1218,6 +1262,35 @@ fn foreign_encrypted_reasoning_is_rejected_not_silently_dropped() {
         {"type":"function_call_output","call_id":"c1","output":"ok"}
     ]}));
     assert_eq!(mapped.body["messages"][0]["reasoning_content"], "visible");
+}
+
+/// 降级只针对"不是本模型/本协议签发的密文"。我们自己的数据被改坏（base64 或 JSON
+/// 坏掉、缺 state）仍然是错误：那是真的丢了状态，静默吞掉只会让下一轮悄悄少一段推理。
+#[test]
+fn structurally_broken_reasoning_state_is_still_rejected() {
+    for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
+        for broken in [
+            format!("{REPLAY_PREFIX}not base64!!"),
+            // `ew==` 是 `{` 的 base64：解出来不是合法 JSON。
+            format!("{REPLAY_PREFIX}ew=="),
+        ] {
+            let error = translate_request(
+                &json!({"input": [
+                    {"role": "user", "content": "hi"},
+                    {"type": "reasoning", "encrypted_content": broken}
+                ]}),
+                format,
+                "vendor-model",
+                4096,
+            )
+            .expect_err("坏掉的密文不能被当成'没有状态'")
+            .to_string();
+            assert!(
+                error.contains("reasoning state"),
+                "{format:?} 的报错必须指认是推理状态: {error}"
+            );
+        }
+    }
 }
 
 #[test]

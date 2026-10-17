@@ -83,25 +83,73 @@ pub struct PatchReceipt {
 }
 
 pub fn inspect(path: &Path) -> Result<PatchStatus> {
-    let content = fs::read_to_string(path).map_err(|error| {
-        Error::Config(format!(
-            "cannot read explicit Devin host file {}: {error}",
-            path.display()
-        ))
-    })?;
+    recover_displaced(path);
+    let content = fs::read_to_string(path).map_err(|error| host_read_error(path, &error))?;
     let mut status = inspect_content(path, &content)?;
     status.restore_receipt = usable_receipt(path, &status);
     Ok(status)
 }
 
-pub fn apply(path: &Path, ports: DevinPorts) -> Result<PatchReceipt> {
-    let ports = ports.validate()?;
-    let current = fs::read(path).map_err(|error| {
+/// 宿主文件读不出来时的说法。
+///
+/// 这句话会直接进界面提示，所以它指认是哪个文件，并给出可检查的一步；`os error 5`
+/// 这类系统原文跟在后面，是给用户提交问题时用的证据。
+///
+/// "cannot read explicit Devin host file" 是界面的匹配片段（`apps/desktop` 的
+/// `harnessErrorText.ts` 按它换成中文），改文案要连着那张表一起改。
+fn host_read_error(path: &Path, error: &std::io::Error) -> Error {
+    // 宿主文件读不出来（被移走、删掉、权限不对）时，如果旁边还留着上一次 apply 的干净
+    // 备份，用户唯一能照做的一步就是"把备份复制回去"。这句话对 status/apply/restore
+    // 三个入口都成立——以前只有收据校验之后的分支才给指引，而那条路实际走不到
+    // （复核 12-devin/P3-2）。
+    let backup = backup_path(path);
+    let hint = fs::read(&backup).ok().map(|_| {
+        format!(
+            "; if this file was patched by this app, restore it by copying {} over {} and \
+             restarting the Devin client; backup: {}",
+            backup.display(),
+            path.display(),
+            backup.display()
+        )
+    });
+    Error::Config(format!(
+        "cannot read explicit Devin host file {}: {error}; check that the file still exists and \
+         is readable{}",
+        path.display(),
+        hint.unwrap_or_default()
+    ))
+}
+
+/// 还原被拒绝时的说法。
+///
+/// 每一支都带两样东西：备份在哪（句末固定的 `backup: <path>`，界面按它把路径留在提示里）
+/// 和用户下一步该做什么。以前这里只说 "restore refused"，用户手上既有收据又有备份，却
+/// 不知道下一步该做什么。
+fn restore_refusal(receipt: &PatchReceipt, reason: &str) -> Error {
+    let backup_usable =
+        fs::read(&receipt.backup_path).is_ok_and(|bytes| sha256(&bytes) == receipt.original_sha256);
+    if backup_usable {
         Error::Config(format!(
-            "cannot read explicit Devin host file {}: {error}",
-            path.display()
+            "{reason}; restore manually by copying {} over {} and restarting the Devin client; \
+             backup: {}",
+            receipt.backup_path.display(),
+            receipt.path.display(),
+            receipt.backup_path.display()
         ))
-    })?;
+    } else {
+        Error::Config(format!(
+            "{reason}; backup {} is unavailable or does not match the receipt, so restore the \
+             clean version by reinstalling the Devin client; backup: {}",
+            receipt.backup_path.display(),
+            receipt.backup_path.display()
+        ))
+    }
+}
+
+pub fn apply(path: &Path, ports: DevinPorts) -> Result<PatchReceipt> {
+    recover_displaced(path);
+    let ports = ports.validate()?;
+    let current = fs::read(path).map_err(|error| host_read_error(path, &error))?;
     let current_content = String::from_utf8(current.clone())
         .map_err(|_| Error::Config("Devin host file is not UTF-8; patch refused".into()))?;
     let status = inspect_content(path, &current_content)?;
@@ -122,8 +170,12 @@ pub fn apply(path: &Path, ports: DevinPorts) -> Result<PatchReceipt> {
     // 收据先于宿主改动落盘：这一步之后无论哪里失败，磁盘上都还有恢复凭据。
     write_receipt(&receipt)?;
     if let Err(error) = atomic_replace(path, patched.as_bytes()) {
-        discard_failed_receipt(path, &current);
-        return Err(error);
+        // 替换的尾部动作（清掉离位副本）失败时，补丁其实已经落到宿主文件上了：
+        // 成败按宿主文件的实际内容判，别让"应用失败"和实际状态对不上。
+        if !fs::read(path).is_ok_and(|bytes| bytes == patched.as_bytes()) {
+            discard_failed_receipt(path, &current);
+            return Err(error);
+        }
     }
     let verified = fs::read_to_string(path)
         .map_err(Error::Io)
@@ -153,30 +205,40 @@ pub fn apply(path: &Path, ports: DevinPorts) -> Result<PatchReceipt> {
 }
 
 pub fn restore(receipt: &PatchReceipt) -> Result<()> {
-    let current = fs::read(&receipt.path).map_err(Error::Io)?;
+    let current =
+        fs::read(&receipt.path).map_err(|error| host_read_error(&receipt.path, &error))?;
     if sha256(&current) != receipt.patched_sha256 {
-        return Err(Error::Config(
-            "Devin host file changed after patch; restore refused".into(),
+        return Err(restore_refusal(
+            receipt,
+            "Devin host file changed after patch; restore refused",
         ));
     }
     let backup = fs::read(&receipt.backup_path).map_err(|error| {
         Error::Config(format!(
-            "Devin host backup {} is unavailable ({error}); restore refused",
+            "Devin host backup {} is unavailable ({error}); restore refused; restore the clean \
+             version by reinstalling the Devin client; backup: {}",
+            receipt.backup_path.display(),
             receipt.backup_path.display()
         ))
     })?;
     if sha256(&backup) != receipt.original_sha256 {
-        return Err(Error::Config(
-            "Devin host backup SHA-256 mismatch; restore refused".into(),
+        return Err(restore_refusal(
+            receipt,
+            "Devin host backup SHA-256 mismatch; restore refused",
         ));
     }
-    let backup_content = String::from_utf8(backup.clone())
-        .map_err(|_| Error::Config("Devin host backup is not UTF-8; restore refused".into()))?;
+    let backup_content = String::from_utf8(backup.clone()).map_err(|_| {
+        Error::Config(format!(
+            "Devin host backup is not UTF-8; restore refused; backup: {}",
+            receipt.backup_path.display()
+        ))
+    })?;
     let backup_status = inspect_content(&receipt.path, &backup_content)?;
     if !backup_status.clean {
-        return Err(Error::Config(
-            "Devin host backup is not a recognized clean version; restore refused".into(),
-        ));
+        return Err(Error::Config(format!(
+            "Devin host backup is not a recognized clean version; restore refused; backup: {}",
+            receipt.backup_path.display()
+        )));
     }
     atomic_replace(&receipt.path, &backup)?;
     let restored = inspect(&receipt.path)?;
@@ -189,6 +251,35 @@ pub fn restore(receipt: &PatchReceipt) -> Result<()> {
     // 恢复成功后收据失效：文件已回到原文，收据描述的补丁版本不复存在。
     let _ = fs::remove_file(receipt_path(&receipt.path));
     Ok(())
+}
+
+/// 强杀收尾用的恢复入口：调用它的进程没有内存里的收据，只能靠宿主文件旁边落盘的
+/// 那份（`restore` 的语义完全一致：收据、备份、端口任一不符就拒绝）。
+///
+/// 优雅退出**不**走这条路：`docs/devin-go-live.md` 把"退出 Devin 后仍在本机网关
+/// 跑、用界面按钮恢复原文件"写成产品步骤，退出时自动还原会让那一步失效。只有进程
+/// 被强杀、宿主文件留在补丁状态而网关已经不在时才需要它。
+///
+/// 返回是否真的恢复了。收尾助手不该因为"没什么可恢复"而失败，所以读不出来、没有
+/// 可用收据、恢复动作本身失败都归为 `false`（失败原因进日志）。
+pub fn restore_persisted(path: &Path) -> bool {
+    let Ok(status) = inspect(path) else {
+        return false;
+    };
+    let Some(receipt) = status.restore_receipt else {
+        return false;
+    };
+    match restore(&receipt) {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                path = %path.display(),
+                "cannot restore the Devin host file after an unclean exit"
+            );
+            false
+        }
+    }
 }
 
 /// The receipt only counts while it still describes this exact host file, its
@@ -295,15 +386,29 @@ fn refusal_message(status: &PatchStatus) -> String {
             ),
             None => "unknown ports".into(),
         };
+        // 有备份就把路径写出来：用户要手动还原时，第一步就是找到这份文件。句末固定带
+        // `backup: <path>`，界面（apps/desktop 的 harnessErrorText.ts）按它把路径留下。
+        let backup = if status.backup_available {
+            format!(
+                "; the verified clean copy is at {}; copy it over this file and restart the \
+                 Devin client",
+                status.backup_path.display()
+            )
+        } else {
+            String::new()
+        };
         return format!(
-            "Devin host file is already patched (ports {ports}); restore the clean version first, \
-             for example the router's own backup next to the file, and then apply this patch"
+            "Devin host file is already patched (ports {ports}); restore the clean version first\
+             {backup}, then apply this patch; backup: {}",
+            status.backup_path.display()
         );
     }
     if status.compatible {
-        return "Devin host file is patched but its ports could not be read; restore the clean \
-                version first"
-            .into();
+        return format!(
+            "Devin host file is patched but its ports could not be read; restore the clean \
+             version by reinstalling the Devin client; backup: {}",
+            status.backup_path.display()
+        );
     }
     if !status.message.is_empty() {
         return status.message.clone();
@@ -423,15 +528,20 @@ where
     Ok(output)
 }
 
+/// 备份的写入：内容与宿主文件一致就复用，不一致就轮换成新的。
+///
+/// 调用方（`apply`）已经确认宿主文件是**已知干净版本**，所以不匹配的旧备份只可能来自
+/// 更早的客户端版本。以前这里永久拒绝打补丁，用户只能自己去文件系统里找那个备份删掉，
+/// 而提示里连备份路径都没给。
 fn ensure_backup(path: &Path, source: &[u8]) -> Result<()> {
-    if path.exists() {
-        let existing = fs::read(path).map_err(Error::Io)?;
-        if existing != source {
-            return Err(Error::Config(
-                "existing Devin host backup does not match the clean file; patch refused".into(),
-            ));
+    if let Ok(existing) = fs::read(path) {
+        if existing == source {
+            return Ok(());
         }
-        return Ok(());
+        tracing::warn!(
+            path = %path.display(),
+            "replacing a Devin host backup that does not match the current clean file"
+        );
     }
     atomic_create(path, source)
 }
@@ -468,21 +578,46 @@ fn atomic_replace(path: &Path, bytes: &[u8]) -> Result<()> {
             "Devin host replacement staging hash mismatch".into(),
         ));
     }
-    let displaced = path.with_extension(format!(
+    let displaced = displaced_path(path);
+    let _ = fs::remove_file(&displaced);
+    fs::rename(path, &displaced).map_err(Error::Io)?;
+    if let Err(error) = temporary.persist(path).map_err(|error| error.error) {
+        // 新内容没落上就把离位副本放回去，宿主文件保持原样。
+        let _ = fs::rename(&displaced, path);
+        return Err(Error::Io(error));
+    }
+    // 到这里宿主文件已经是新内容，这次替换就算成功：离位副本清不掉只是留下一份
+    // 垃圾，以前把它当成错误返回，调用方会以为补丁没生效。
+    let _ = fs::remove_file(&displaced);
+    Ok(())
+}
+
+/// 替换过程中"宿主文件已被改名离位、新内容还没放上"的那份副本。
+fn displaced_path(path: &Path) -> PathBuf {
+    path.with_extension(format!(
         "{}devin-router-replace",
         path.extension()
             .and_then(|value| value.to_str())
             .map(|value| format!("{value}."))
             .unwrap_or_default()
-    ));
-    let _ = fs::remove_file(&displaced);
-    fs::rename(path, &displaced).map_err(Error::Io)?;
-    if let Err(error) = temporary.persist(path).map_err(|error| error.error) {
-        let _ = fs::rename(&displaced, path);
-        return Err(Error::Io(error));
+    ))
+}
+
+/// 上次替换在离位与落盘之间中断（崩溃、强杀）时，宿主文件不在原位、只剩离位副本，
+/// 客户端直接报文件缺失。这种残留只可能由 `atomic_replace` 自己造成，所以下一次
+/// 读或写宿主文件之前先把它放回去。
+fn recover_displaced(path: &Path) {
+    let displaced = displaced_path(path);
+    if path.exists() || !displaced.is_file() {
+        return;
     }
-    fs::remove_file(displaced).map_err(Error::Io)?;
-    Ok(())
+    if let Err(error) = fs::rename(&displaced, path) {
+        tracing::warn!(
+            %error,
+            path = %path.display(),
+            "cannot put back the displaced Devin host file"
+        );
+    }
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -852,6 +987,98 @@ mod tests {
         );
     }
 
+    /// 宿主文件被换过时还原会被拒绝，但备份还在：提示必须给出"复制备份回去"这一步，
+    /// 否则用户手上同时有收据和备份，却只能看到一句 restore refused。
+    #[test]
+    fn a_changed_host_file_tells_the_user_how_to_restore_manually() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        let receipt = apply(&path, ports()).unwrap();
+        fs::write(&path, "// someone else edited the host file").unwrap();
+
+        let error = restore(&receipt).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains(&receipt.backup_path.display().to_string()),
+            "提示里要有备份路径: {message}"
+        );
+        assert!(
+            message.contains(&path.display().to_string()),
+            "提示里要有宿主文件路径: {message}"
+        );
+        assert!(
+            message.contains("copying"),
+            "提示里要给出可照做的一步: {message}"
+        );
+    }
+
+    /// 客户端升级后残留的旧备份不该让打补丁永久失败：当前文件已经是已知干净版本，
+    /// 对不上的旧备份只说明它来自更早的版本，按过期轮换掉即可。
+    #[test]
+    fn a_stale_backup_from_an_older_client_is_rotated_instead_of_refusing() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        let receipt = apply(&path, ports()).unwrap();
+        restore(&receipt).unwrap();
+        // 旧客户端留下的备份：既不是当前文件，也不是本次收据记录的原文。
+        fs::write(
+            &receipt.backup_path,
+            b"/* stale backup from an older client */",
+        )
+        .unwrap();
+
+        let rotated =
+            apply(&path, ports()).expect("干净文件 + 过期备份必须还能打补丁，而不是永久拒绝");
+        assert_eq!(
+            fs::read_to_string(&rotated.backup_path).unwrap(),
+            fixture(),
+            "过期备份必须被轮换成当前干净文件"
+        );
+        restore(&rotated).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), fixture());
+    }
+
+    /// 宿主文件不在了（客户端被移动或卸载，路径却还记着）：报的是能读的配置错误，
+    /// 指认文件并给出可检查的一步，而不是一条裸的 `os error 2`。
+    #[test]
+    fn reports_a_missing_host_file_as_a_readable_configuration_error() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+
+        let error = inspect(&path).unwrap_err();
+        assert!(matches!(error, Error::Config(_)), "got {error:?}");
+        let message = error.to_string();
+        assert!(message.contains("extension.js"), "{message}");
+        assert!(message.contains("readable"), "{message}");
+    }
+
+    /// 复核 12-devin/P3-2：还原指引必须挂在**真正会失败**的路径上。宿主文件被删掉后
+    /// 恢复（以及状态接口的 inspect）走的是"读不到宿主文件"这一支，这里必须同时给出
+    /// 备份路径与"复制回去"这一步；把指引拿掉，这两个断言就会红。
+    #[test]
+    fn a_restore_without_the_host_file_still_names_the_backup_and_the_copy_step() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        let receipt = apply(&path, ports()).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        let backup = receipt.backup_path.display().to_string();
+        for message in [
+            restore(&receipt).unwrap_err().to_string(),
+            inspect(&path).unwrap_err().to_string(),
+        ] {
+            assert!(message.contains(&backup), "提示里要有备份路径: {message}");
+            assert!(
+                message.contains("copy"),
+                "提示里要给出复制回去这一步: {message}"
+            );
+            assert!(message.contains("backup:"), "界面按它取路径: {message}");
+        }
+    }
+
     /// Applying on top of another router's patch is refused, and the refusal has
     /// to show the way out: the ports it found and the need for a clean file.
     #[test]
@@ -870,6 +1097,98 @@ mod tests {
         assert!(
             message.contains("restore the clean version"),
             "the refusal must name the way out: {message}"
+        );
+    }
+
+    /// 替换在"宿主文件已离位、新内容还没落上"之间被打断（崩溃、强杀）时，宿主文件
+    /// 不在原位，只剩离位副本。下一次读必须把它放回去，而不是报"文件读不出来"。
+    #[test]
+    fn a_displaced_copy_left_by_an_interrupted_replace_is_put_back() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        apply(&path, ports()).unwrap();
+        let patched = fs::read_to_string(&path).unwrap();
+        // 模拟中断现场：宿主文件已被改名离位，新内容还没放上去。
+        let displaced = displaced_path(&path);
+        fs::rename(&path, &displaced).unwrap();
+        assert!(!path.exists());
+
+        let status = inspect(&path).unwrap();
+        assert!(status.patched, "放回去的必须是补丁版本");
+        assert_eq!(fs::read_to_string(&path).unwrap(), patched);
+        assert!(!displaced.exists(), "离位副本不该留在原地");
+
+        // 放回去之后收据重新可用，恢复入口照常工作。
+        let receipt: PatchReceipt = serde_json::from_value(restore_receipt_of(&status)).unwrap();
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), fixture());
+    }
+
+    /// 写入路径也会先把上次留下的离位副本放回去：否则 apply 只会报"宿主文件读不
+    /// 出来"，用户看到的是一条无路可走的错误。
+    #[test]
+    fn apply_recovers_a_displaced_copy_before_writing() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        apply(&path, ports()).unwrap();
+        let displaced = displaced_path(&path);
+        fs::rename(&path, &displaced).unwrap();
+
+        // 补丁还在，只是躺在离位副本里：这次 apply 先把文件放回原位，再按"已经打过
+        // 补丁"拒绝（fail-closed），而不是报文件读不出来。
+        let error = apply(&path, ports()).unwrap_err().to_string();
+        assert!(error.contains("already patched"), "{error}");
+        assert!(path.is_file(), "宿主文件必须先被放回原位");
+        assert!(!displaced.exists());
+        assert!(inspect(&path).unwrap().patched);
+    }
+
+    /// 成功的替换不留离位副本，宿主文件就是补丁内容。
+    #[test]
+    fn a_successful_replace_leaves_no_displaced_copy_behind() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        apply(&path, ports()).unwrap();
+        assert!(!displaced_path(&path).exists());
+        assert!(inspect(&path).unwrap().patched);
+    }
+
+    /// 强杀收尾：没有内存里的收据，靠落盘那份把宿主文件还原回干净版本。
+    #[test]
+    fn a_persisted_receipt_restores_the_host_file_without_any_in_memory_state() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        apply(&path, ports()).unwrap();
+
+        assert!(restore_persisted(&path), "收据可用时必须真的恢复");
+        assert_eq!(fs::read_to_string(&path).unwrap(), fixture());
+        assert!(
+            !restore_persisted(&path),
+            "已经恢复过（收据已失效）之后不该再报成功"
+        );
+    }
+
+    /// 没什么可恢复时收尾助手必须安静返回：宿主文件本来就没打过补丁，或者收据已经
+    /// 被改动过（用户自己改过文件），都不该让收尾流程失败。
+    #[test]
+    fn a_persisted_restore_reports_nothing_to_do_instead_of_failing() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        fs::write(&path, fixture()).unwrap();
+        assert!(!restore_persisted(&path), "干净文件不该被当成可恢复");
+
+        apply(&path, ports()).unwrap();
+        fs::remove_file(receipt_file(&path)).unwrap();
+        assert!(!restore_persisted(&path), "没有收据时不该报成功");
+        assert!(inspect(&path).unwrap().patched, "宿主文件必须原样保留");
+
+        assert!(
+            !restore_persisted(&directory.path().join("missing.js")),
+            "宿主文件不在了也不该让收尾流程失败"
         );
     }
 }

@@ -115,7 +115,14 @@ impl CheckpointBuilder {
                 Some(self.sync.persist(&encoded, &[]).await?)
             }
         } else {
-            None
+            // 这一轮没折叠出计划：沿用基线里的那一份，与上面 todos 的回读一个道理。
+            // 压缩/续写之后的 checkpoint 丢掉计划，模型下一轮看到的就是"没有计划"的状态，
+            // 于是重新规划一遍；`self.base.plan` 指向的内容块本来就还挂在会话根上。
+            self.base
+                .plan
+                .as_deref()
+                .map(BlobId::from_bytes)
+                .transpose()?
         };
         Ok((todo_ids, plan_id))
     }
@@ -219,4 +226,60 @@ fn normalize(name: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        cursor::{services::blob_sync::BlobSynchronizer, transport::test_registry},
+        store::Store,
+    };
+
+    use super::*;
+
+    /// 一个只有库里那条记录的 builder：这一轮的派生状态只用到 `base`、`sync` 与 store。
+    async fn test_builder() -> (tempfile::TempDir, CheckpointBuilder) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let (_registry_directory, registry) = test_registry().await;
+        let handle = registry.get_or_create("derived-state").await.unwrap();
+        let sync = BlobSynchronizer::new("derived-state".into(), store.clone(), handle);
+        (directory, CheckpointBuilder::new(store, sync, None, None))
+    }
+
+    /// 这一轮没有新的计划时，checkpoint 必须沿用基线里的计划。
+    ///
+    /// 压缩/续写之后把 `plan` 抹成空，等于告诉模型"上一轮没有定过计划"，它会重新规划一遍
+    /// ——而计划的正文块本来就还挂在会话根上，没有任何理由丢。
+    #[tokio::test]
+    async fn a_checkpoint_without_a_new_plan_keeps_the_baseline_plan() {
+        let (_directory, mut builder) = test_builder().await;
+        let base_plan = BlobId::digest(b"previous plan").as_bytes().to_vec();
+        builder.base.plan = Some(base_plan.clone());
+
+        let (todos, plan) = builder.build_derived_state(&[]).await.unwrap();
+
+        assert!(todos.is_empty());
+        assert_eq!(
+            plan,
+            Some(BlobId::from_bytes(&base_plan).unwrap()),
+            "没有新计划时必须沿用基线里的那一份"
+        );
+    }
+
+    /// 反方向：基线里没有计划时，没折叠出计划就保持没有（不许凭空造一份）。
+    #[tokio::test]
+    async fn a_builder_without_a_baseline_plan_reports_none() {
+        let (_directory, builder) = test_builder().await;
+
+        let (todos, plan) = builder.build_derived_state(&[]).await.unwrap();
+
+        assert!(todos.is_empty());
+        assert!(plan.is_none());
+    }
 }

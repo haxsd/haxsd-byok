@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../shared/api";
 import type { CursorMode } from "../../shared/api";
 import { CursorCaGate } from "./CursorGates";
+import { startCursorCaWaitPoll } from "./caWaitPoll";
 import { CursorToolsSettings } from "../cursor/CursorToolsSettings";
 import { cursorSettingsSection, TOOLS_SECTION, type CursorSettingsSection } from "../cursor/toolsSection";
 import styles from "./CursorSettings.module.scss";
@@ -77,25 +78,16 @@ export function CursorSettingsPage() {
   /**
    * 打开终端之后自动等结果：每 2 秒问一次状态，装好即停，最多等 30 秒。
    * 超时不是失败——授权可能还在等待，所以保留手动刷新。
+   *
+   * 循环本体在 `caWaitPoll.ts`：递归 setTimeout（上一拍 settle 之后才排下一拍），
+   * 而且等待期间只读 Cursor 接管状态这一个接口，不再整批刷新十二个接口。
    */
   useEffect(() => {
     if (!waitingForCaRefresh) return;
-    let attempts = 0;
-    let cancelled = false;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      void appStore.refresh().then(() => {
-        if (cancelled) return;
-        if (appStore.getSnapshot().cursorHarness?.ca === "ready" || attempts >= CA_READY_POLL_ATTEMPTS) {
-          window.clearInterval(timer);
-          setWaitingForCaRefresh(false);
-        }
-      });
-    }, CA_READY_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+    return startCursorCaWaitPoll(() => setWaitingForCaRefresh(false), {
+      intervalMs: CA_READY_POLL_INTERVAL_MS,
+      maxAttempts: CA_READY_POLL_ATTEMPTS,
+    });
   }, [waitingForCaRefresh]);
 
   const initializeCa = async () => {
@@ -344,7 +336,7 @@ export function CursorSettingsPage() {
 
     <TitledCard
       title={t("模型库")}
-      description={t("Cursor 用这里的模型回答请求；它和 Devin 共用同一份配置。")}
+      description={t("Cursor 用这里的模型回答请求；它和其他接入模块共用同一份配置。")}
       action={<Button size="small" variant="primary" onClick={() => void navigate("/models")}>{t("管理模型")}</Button>}
     >
       <div className={styles.modelSummary}>
@@ -397,8 +389,8 @@ export function CursorSettingsPage() {
     </ConfirmDialog>
     <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
       <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{windows
-        ? t("安装命令已自动复制。点击“打开终端”，命令会自动执行并弹出 UAC 授权窗口，选“是”即可；装好后本页会自动刷新。")
-        : t("安装命令已自动复制。点击“打开终端”，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")}</span><pre className={styles.command}>{caCommand}</pre></div>
+        ? t("安装命令已自动复制。点击「打开终端」，命令会自动执行并弹出 UAC 授权窗口，选「是」即可；装好后本页会自动刷新。")
+        : t("安装命令已自动复制。点击「打开终端」，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")}</span><pre className={styles.command}>{caCommand}</pre></div>
     </ConfirmDialog>
   </>;
 }

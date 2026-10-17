@@ -100,7 +100,33 @@ impl Store {
         .await?;
         Ok(())
     }
+}
 
+/// `serde_json` 序列化出来的字节数：只数不留。
+///
+/// 非 detailed 的记录只需要 `request_bytes` 这个数字，而 `to_string` 会把整份请求体
+/// （含全部历史消息，几百 KB 量级）复制一份出来——只为读一次 `.len()`。
+fn json_byte_len(value: &serde_json::Value) -> Result<i64> {
+    #[derive(Default)]
+    struct ByteCounter(usize);
+
+    impl std::io::Write for ByteCounter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.0 += buffer.len();
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = ByteCounter::default();
+    serde_json::to_writer(&mut counter, value)?;
+    Ok(counter.0 as i64)
+}
+
+impl Store {
     pub async fn record_llm_request(
         &self,
         call_id: &str,
@@ -108,24 +134,32 @@ impl Store {
         body: &serde_json::Value,
         detailed: bool,
     ) -> Result<()> {
-        let body_json = serde_json::to_string(body)?;
+        // 非 detailed 模式只要一个字节数：`to_string` 会把整份请求体（含全部历史消息）
+        // 复制一份出来，只为读一次 `.len()`。数一遍写入的字节就够，正文一个字节都不留。
+        let (body_json, request_bytes) = if detailed {
+            let body_json = serde_json::to_string(body)?;
+            let bytes = body_json.len() as i64;
+            (Some(body_json), bytes)
+        } else {
+            (None, json_byte_len(body)?)
+        };
         let headers_json = detailed
             .then(|| serde_json::to_string(headers))
             .transpose()?;
         let _write = self.writes.lock().await;
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
-        if detailed {
+        if let Some(body_json) = &body_json {
             sqlx::query("INSERT INTO llm_call_requests(call_id, headers_json, body_json, byte_count) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM llm_calls WHERE call_id = ?)")
                 .bind(call_id)
                 .bind(headers_json)
-                .bind(&body_json)
-                .bind(body_json.len() as i64)
+                .bind(body_json)
+                .bind(request_bytes)
                 .bind(call_id)
                 .execute(&mut *transaction)
                 .await?;
         }
         sqlx::query("UPDATE llm_calls SET request_bytes = ? WHERE call_id = ?")
-            .bind(body_json.len() as i64)
+            .bind(request_bytes)
             .bind(call_id)
             .execute(&mut *transaction)
             .await?;
@@ -596,5 +630,121 @@ mod tests {
             })
         );
         assert_eq!(store.latest_context_usage("other").await.unwrap(), None);
+    }
+
+    /// 非 detailed 模式不落正文，但 `request_bytes` 必须与序列化长度一致。
+    ///
+    /// 以前这里为了这一个数字把整份请求体 `to_string` 出来（含全部历史消息）；现在只数
+    /// 一遍写入的字节，所以这条用例钉的是"数字没变、正文没留"。
+    #[tokio::test]
+    async fn a_non_detailed_request_records_the_body_length_without_keeping_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let call = new_call("len-call");
+        store.start_llm_call(&call).await.unwrap();
+        let body = serde_json::json!({
+            "model": "test",
+            "messages": [{ "role": "user", "content": "你好，写一段代码" }],
+        });
+
+        store
+            .record_llm_request("len-call", &serde_json::json!({ "x": "y" }), &body, false)
+            .await
+            .unwrap();
+
+        let bytes: i64 =
+            sqlx::query_scalar("SELECT request_bytes FROM llm_calls WHERE call_id = ?")
+                .bind("len-call")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(bytes, serde_json::to_string(&body).unwrap().len() as i64);
+        let stored: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM llm_call_requests WHERE call_id = ?")
+                .bind("len-call")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(stored, 0, "非 detailed 不落正文");
+    }
+
+    async fn plan_of(store: &Store, sql: &str) -> String {
+        sqlx::query(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .iter()
+            .map(|row| row.try_get::<String, _>("detail").unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// `latest_context_usage` 要走上会话索引；不带会话约束的查询不该走它。
+    ///
+    /// 命中：`conversation_id = ?` 加 `ORDER BY created_at_ms DESC LIMIT 1` 由
+    /// `llm_calls_conversation_created` 一次定位——索引的第二列与排序同向，所以也不该再
+    /// 排临时 B 树。
+    /// 不该命中：没有会话号时这个索引的前导列没有约束，它帮不上忙（规划器只能回到表扫或
+    /// 用 created_at_ms 的索引）——索引是给"某个会话"用的，不是给全库用的。
+    #[tokio::test]
+    async fn latest_context_usage_searches_the_conversation_index() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        // 先造点数据再 ANALYZE：空表上规划器没有统计，计划会随启发式摇摆（实测同一个查询
+        // 一会儿选索引、一会儿选全表扫），那样的断言证明不了任何事。
+        for index in 0..200_i64 {
+            let mut call = new_call(&format!("seed-{index}"));
+            call.conversation_id = if index % 2 == 0 {
+                "c1".into()
+            } else {
+                "other".into()
+            };
+            store.start_llm_call(&call).await.unwrap();
+        }
+        sqlx::query("ANALYZE").execute(store.pool()).await.unwrap();
+
+        let hit = plan_of(
+            &store,
+            "SELECT usage_json, message_count FROM llm_calls
+             WHERE conversation_id = 'c1'
+               AND json_extract(usage_json, '$.context_input_tokens') IS NOT NULL
+             ORDER BY created_at_ms DESC, rowid DESC
+             LIMIT 1",
+        )
+        .await;
+        assert!(hit.contains("llm_calls_conversation_created"), "{hit}");
+        assert!(!hit.contains("SCAN llm_calls"), "{hit}");
+        // 计划里允许出现 `USE TEMP B-TREE FOR LAST TERM OF ORDER BY`：排序里还有 `rowid DESC`
+        // 这个 tiebreaker（同一毫秒的两条调用要取确定的那条），索引存的是隐含 rowid 升序，
+        // 所以最后一项要排——它只在"同一个 created_at_ms 之内"排，最多一行。不允许的是
+        // 为整个结果集排序（那说明索引方向根本没被用上）。
+        assert!(
+            !hit.contains("USE TEMP B-TREE FOR ORDER BY"),
+            "不该为整个排序建临时表：{hit}"
+        );
+
+        let miss = plan_of(
+            &store,
+            "SELECT usage_json, message_count FROM llm_calls
+             WHERE json_extract(usage_json, '$.context_input_tokens') IS NOT NULL
+             ORDER BY created_at_ms DESC, rowid DESC
+             LIMIT 1",
+        )
+        .await;
+        assert!(
+            !miss.contains("llm_calls_conversation_created"),
+            "没有会话约束时不该用会话索引：{miss}"
+        );
     }
 }

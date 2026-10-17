@@ -214,4 +214,45 @@ mod tests {
         assert_eq!(descriptor.resources[0].add[0].method_type, "oauth2.0");
         assert!(descriptor.resources[0].import.is_some());
     }
+
+    /// 真的起一次 Deno 求值内置插件的定义（worker 的握手往返）。
+    ///
+    /// **只在有运行时的环境里跑**：本机没有 pin 住的 Deno，也拉不动 GitHub release（连接被
+    /// 重置），所以默认 `#[ignore]`——宁可显式不跑，也不写成"没有运行时也绿"的假用例。
+    /// CI 的 plugins job 会装上 asset.rs 里 pin 的那一版、把路径写进 `CURSOR_SERVER_DENO`，
+    /// 然后 `cargo test -p cursor-server --lib plugin:: -- --ignored` 显式跑它。
+    #[tokio::test]
+    #[ignore = "needs the pinned Deno runtime; the CI plugins job installs it and sets CURSOR_SERVER_DENO"]
+    async fn the_pinned_runtime_evaluates_a_built_in_plugin() {
+        let executable = std::path::PathBuf::from(std::env::var_os("CURSOR_SERVER_DENO").expect(
+            "CURSOR_SERVER_DENO 必须指向 asset.rs 里 pin 的那版 Deno；\
+             这条用例只在该运行时可用的环境（CI）里跑，本机默认 ignore",
+        ));
+        let directory = tempfile::tempdir().unwrap();
+        let loader = PluginDefinitionLoader::for_test(directory.path()).unwrap();
+        let plugin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("plugins/build-in/codex-auth");
+
+        let definition = loader
+            .load(&executable, &plugin, &plugin.join("main.ts"))
+            .await
+            .expect("内置插件的定义必须能在 pin 住的运行时上求值");
+
+        assert!(
+            definition
+                .providers
+                .iter()
+                .any(|provider| provider.id == "codex"),
+            "定义里应当有 codex provider：{:?}",
+            definition
+                .providers
+                .iter()
+                .map(|provider| provider.id.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !definition.resources.is_empty(),
+            "定义里应当有资源声明（内置插件至少一个账号类型）"
+        );
+    }
 }

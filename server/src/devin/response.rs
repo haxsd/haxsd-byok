@@ -321,7 +321,7 @@ mod tests {
         let frames = stream_event(&mut state, ModelEvent::TextDelta("hello".into())).unwrap();
         assert_eq!(frames.len(), 1);
 
-        let fields = parse_fields(&unwrap_request(&frames[0], None).unwrap()).unwrap();
+        let fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&fields, 1).unwrap().value,
             FieldValue::Bytes(b"response-1".to_vec())
@@ -363,7 +363,7 @@ mod tests {
 
         let frames = finish(state, "MODEL_CLAUDE_4_SONNET_BYOK").unwrap();
         assert_eq!(frames.len(), 3);
-        let tool_fields = parse_fields(&unwrap_request(&frames[0], None).unwrap()).unwrap();
+        let tool_fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
         let tool = match &first_field(&tool_fields, 6).unwrap().value {
             FieldValue::Bytes(value) => parse_fields(value).unwrap(),
             _ => panic!("tool field must be nested"),
@@ -377,7 +377,7 @@ mod tests {
             FieldValue::Bytes(br#"{"path":"README.md"}"#.to_vec())
         );
 
-        let stop_fields = parse_fields(&unwrap_request(&frames[1], None).unwrap()).unwrap();
+        let stop_fields = parse_fields(&unwrap_request(&frames[1], None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&stop_fields, 5).unwrap().value,
             FieldValue::Varint(10)
@@ -399,7 +399,7 @@ mod tests {
         )
         .unwrap();
         let frames = finish(state, "model-1").unwrap();
-        let stop = parse_fields(&unwrap_request(&frames[0], None).unwrap()).unwrap();
+        let stop = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
         let usage = match &first_field(&stop, 7).unwrap().value {
             FieldValue::Bytes(value) => parse_fields(value).unwrap(),
             _ => panic!("usage field must be nested"),
@@ -409,5 +409,49 @@ mod tests {
             FieldValue::Varint(120)
         );
         assert_eq!(first_field(&usage, 3).unwrap().value, FieldValue::Varint(7));
+    }
+
+    /// 网关写出的思考增量与签名帧用的字段号。
+    ///
+    /// 写侧（`ChatMessageDelta`）用 9/10，而请求方向解析回传历史（`ChatMessage`）读的
+    /// 是 11/12——两侧是不同的 Devin 消息类型，字段号不必相同，客户端把 delta 收成
+    /// 哪个字段只有真实抓包能确认。这条用例把写侧锁住：改号必须是有意的，不能顺手
+    /// "统一"两侧而改坏真正对的那一侧。
+    #[test]
+    fn thinking_and_signature_deltas_use_the_delta_field_numbers() {
+        let mut state = ResponseState::new("response-4", ProviderType::Anthropic);
+        let frames =
+            stream_event(&mut state, ModelEvent::ThinkingDelta("a thought".into())).unwrap();
+        let fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        assert_eq!(
+            first_field(&fields, 9).unwrap().value,
+            FieldValue::Bytes(b"a thought".to_vec())
+        );
+        assert!(
+            first_field(&fields, 11).is_none(),
+            "11 是 ChatMessage 的思考字段，不是 delta 的"
+        );
+
+        stream_event(
+            &mut state,
+            ModelEvent::ProviderReplayState(ProviderReplayState {
+                provider_kind: "anthropic".into(),
+                value: serde_json::json!({
+                    "blocks": [{"type": "thinking", "thinking": "a thought", "signature": "sig"}]
+                }),
+            }),
+        )
+        .unwrap();
+        stream_event(&mut state, ModelEvent::Done(FinishReason::Stop)).unwrap();
+        let frames = finish(state, "MODEL_CLAUDE_4_SONNET_BYOK").unwrap();
+        let signature = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        assert_eq!(
+            first_field(&signature, 10).unwrap().value,
+            FieldValue::Bytes(b"sig".to_vec())
+        );
+        assert!(
+            first_field(&signature, 12).is_none(),
+            "12 是 ChatMessage 的签名字段，不是 delta 的"
+        );
     }
 }

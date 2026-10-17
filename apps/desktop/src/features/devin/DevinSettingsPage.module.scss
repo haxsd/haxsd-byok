@@ -12,6 +12,9 @@
    one of them fell back to currentColor and drew brighter than the card edge. */
 .binding { border-top: 1px solid var(--oa-border); }
 
+/* 同一张卡片里"按钮为什么点不了"的一行说明：跟着它解释的控件走，用次要字号。 */
+.reason { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+
 /* A mapping row: the two values that actually decide it, then the disclosure. */
 .bindingRow {
   display: grid;
@@ -47,8 +50,7 @@
 .bindingExtra { border-top: 1px dashed var(--oa-border); }
 .bindingFields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px 16px 0; }
 .bindingFooter { padding: 12px 16px 16px; }
-.routes { display: grid; gap: 10px; padding: 0 16px 4px; }
-.routesHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.routes { display: grid; gap: 10px; padding: 0 16px 4px; }.routesHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .routesHeader > span { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
 .routeHint { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 .route { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--oa-border); border-radius: var(--oa-radius-xs); }
@@ -60,6 +62,11 @@
 .remove:disabled { opacity: .5; cursor: default; }
 .hostActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hostStatus { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+
+/* 接入卡片的正文：状态说明与「按钮为什么点不了」是同一段话的几行，间距比两段独立
+   说明紧一档。 */
+.hostNotes { display: grid; gap: 6px; padding: 16px; }
+.hostNotes p { margin: 0; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; overflow-wrap: anywhere; }
 
 /* Sticky, so a pending change is reachable from anywhere on the page. The save
    button used to live inside the collapsed section, where a change made in the open

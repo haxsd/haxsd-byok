@@ -2,8 +2,12 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    path::PathBuf,
-    sync::Arc,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::Router;
@@ -14,6 +18,15 @@ use uuid::Uuid;
 use crate::{config::managed_data_dir, Error, Result};
 
 const CACHE_ROUTE: &str = "/web-cache";
+
+/// 保留窗口:抓取结果的提醒会让模型"稍后再回来读这份文件"(分页读全量正文),所以窗口
+/// 不能短;7 天既覆盖一次正常会话的所有后续轮次,也覆盖用户隔天回来接着问。
+const CACHE_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+/// 总量上限:单份最多 5 MiB,按实测强度(约 0.6 MB/天)这个上限够跑很久;它兜的是
+/// "长期运行、只写不删"这个默认结局,而不是日常用量。
+const CACHE_MAX_BYTES: u64 = 256 * 1024 * 1024;
+/// 清扫频率:目录扫描是纯本地操作,但没必要每次抓取都扫一遍。
+const CACHE_SWEEP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WebCacheEntry {
@@ -31,6 +44,7 @@ pub struct WebCache {
 struct WebCacheInner {
     directory: PathBuf,
     service_addr: RwLock<Option<SocketAddr>>,
+    last_sweep_ms: AtomicU64,
 }
 
 impl WebCache {
@@ -44,6 +58,7 @@ impl WebCache {
             inner: Some(Arc::new(WebCacheInner {
                 directory,
                 service_addr: RwLock::new(None),
+                last_sweep_ms: AtomicU64::new(0),
             })),
         })
     }
@@ -70,12 +85,39 @@ impl WebCache {
         tokio::task::spawn_blocking(move || fs::write(path, bytes))
             .await
             .map_err(|error| Error::Store(format!("web cache write task failed: {error}")))??;
+        self.sweep_if_due().await;
         Ok(Some(WebCacheEntry {
             url: format!("http://{address}{CACHE_ROUTE}/{file_name}"),
             file_path,
             size_bytes,
             line_count,
         }))
+    }
+
+    /// 目录"只写不删"是这个功能的默认结局:UUID 命名一次一写、内容相同也不去重,而
+    /// `cache/web` 既不进统计也不在界面上。回收挂在写入之后(一小时最多一次),这样不需要
+    /// 维护循环认识这个目录;清扫按"保留窗口 + 总量上限"两条线走,先删过期,再按最旧优先
+    /// 删到上限以内。
+    async fn sweep_if_due(&self) {
+        let Some(inner) = &self.inner else {
+            return;
+        };
+        let now_ms = epoch_ms();
+        let last_sweep_ms = inner.last_sweep_ms.load(Ordering::Relaxed);
+        if now_ms.saturating_sub(last_sweep_ms) < CACHE_SWEEP_INTERVAL.as_millis() as u64 {
+            return;
+        }
+        inner.last_sweep_ms.store(now_ms, Ordering::Relaxed);
+        let directory = inner.directory.clone();
+        let sweep =
+            tokio::task::spawn_blocking(move || prune(&directory, CACHE_MAX_AGE, CACHE_MAX_BYTES))
+                .await;
+        match sweep {
+            Ok(Ok(0)) => {}
+            Ok(Ok(removed)) => tracing::info!(removed, "pruned the fetched web content cache"),
+            Ok(Err(error)) => tracing::warn!(%error, "web content cache sweep failed"),
+            Err(error) => tracing::warn!(%error, "web content cache sweep task failed"),
+        }
     }
 
     pub fn router(&self) -> Router {
@@ -103,6 +145,52 @@ fn local_address(address: SocketAddr) -> SocketAddr {
     }
 }
 
+fn epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |value| value.as_millis() as u64)
+}
+
+/// 删掉超过 `max_age` 的文件;剩下的按最旧优先删到总量不超过 `max_bytes`。
+/// 返回删除的文件数。
+fn prune(directory: &Path, max_age: Duration, max_bytes: u64) -> std::io::Result<usize> {
+    let now = SystemTime::now();
+    let mut kept = Vec::new();
+    let mut removed = 0;
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let modified = metadata.modified().unwrap_or(now);
+        // 时钟回拨时 duration_since 会报错;那种文件按"刚写过"处理,不删。
+        if now.duration_since(modified).is_ok_and(|age| age > max_age) {
+            if fs::remove_file(entry.path()).is_ok() {
+                removed += 1;
+            }
+            continue;
+        }
+        kept.push((entry.path(), modified, metadata.len()));
+    }
+    let mut total = kept.iter().map(|(_, _, len)| *len).sum::<u64>();
+    if total > max_bytes {
+        kept.sort_by_key(|(_, modified, _)| *modified);
+        for (path, _, len) in kept {
+            if total <= max_bytes {
+                break;
+            }
+            if fs::remove_file(&path).is_ok() {
+                total = total.saturating_sub(len);
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -113,7 +201,13 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
-    use super::WebCache;
+    use super::*;
+
+    fn write_with_age(path: &Path, content: &[u8], age: Duration) {
+        fs::write(path, content).unwrap();
+        let file = fs::File::options().write(true).open(path).unwrap();
+        file.set_modified(SystemTime::now() - age).unwrap();
+    }
 
     #[tokio::test]
     async fn stores_uuid_named_content_and_serves_it_from_existing_router() {
@@ -150,6 +244,73 @@ mod tests {
         assert_eq!(
             to_bytes(response.into_body(), usize::MAX).await.unwrap(),
             "complete fetched content"
+        );
+    }
+
+    /// 清扫的两条线:过期的先删,剩下的按最旧优先删到总量上限以内。
+    #[test]
+    fn the_sweep_drops_expired_files_then_the_oldest_ones_over_the_size_cap() {
+        let root = tempdir().unwrap();
+        let directory = root.path().join("web");
+        fs::create_dir_all(&directory).unwrap();
+        write_with_age(
+            &directory.join("expired.txt"),
+            b"xxxxx",
+            CACHE_MAX_AGE + Duration::from_secs(60),
+        );
+        write_with_age(
+            &directory.join("old.txt"),
+            b"aaaaa",
+            Duration::from_secs(600),
+        );
+        write_with_age(&directory.join("new.txt"), b"bbbbb", Duration::from_secs(1));
+
+        // 上限 6 字节:两个保留文件共 10 字节,只能留下最新的那个。
+        let removed = prune(&directory, CACHE_MAX_AGE, 6).unwrap();
+
+        assert_eq!(removed, 2);
+        assert!(!directory.join("expired.txt").exists());
+        assert!(!directory.join("old.txt").exists());
+        assert!(directory.join("new.txt").exists());
+    }
+
+    #[test]
+    fn the_sweep_keeps_everything_inside_the_window_and_cap() {
+        let root = tempdir().unwrap();
+        let directory = root.path().join("web");
+        fs::create_dir_all(&directory).unwrap();
+        write_with_age(&directory.join("a.txt"), b"aaaaa", Duration::from_secs(60));
+        write_with_age(&directory.join("b.txt"), b"bbbbb", Duration::from_secs(30));
+
+        assert_eq!(prune(&directory, CACHE_MAX_AGE, 1024).unwrap(), 0);
+        assert!(directory.join("a.txt").exists());
+        assert!(directory.join("b.txt").exists());
+    }
+
+    /// 抓取路径(store)自己负责回收:没有维护循环认识这个目录。
+    #[tokio::test]
+    async fn storing_content_prunes_the_directory_once_the_sweep_is_due() {
+        let root = tempdir().unwrap();
+        let directory = root.path().join("cache").join("web");
+        let cache = WebCache::at(directory.clone()).unwrap();
+        cache.set_service_addr("0.0.0.0:4312".parse().unwrap());
+        write_with_age(
+            &directory.join("expired.txt"),
+            b"xxxxx",
+            CACHE_MAX_AGE + Duration::from_secs(60),
+        );
+
+        let entry = cache.store("fresh content").await.unwrap().unwrap();
+
+        assert!(!directory.join("expired.txt").exists());
+        assert_eq!(
+            fs::read_to_string(
+                cache
+                    .directory()
+                    .join(entry.url.rsplit('/').next().unwrap())
+            )
+            .unwrap(),
+            "fresh content"
         );
     }
 }

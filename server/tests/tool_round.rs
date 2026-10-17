@@ -50,6 +50,7 @@ fn exec_context() -> ExecContext {
         default_subagent_model: "model".into(),
         subagent_model: None,
         terminals_folder: "/tmp/terminals".into(),
+        workspace_paths: Vec::new(),
         admin_command_denylist: Vec::new(),
         allow_subagents: true,
         subagents_disabled: false,
@@ -178,11 +179,10 @@ async fn dynamic_mcp_uses_one_definition_for_stream_ui_exec_and_result() {
             &[invocation],
             ToolBatchState {
                 completed: &HashSet::new(),
-                started: &HashSet::new(),
                 response_text: "",
                 response_thinking: "",
             },
-            &[],
+            0,
             &definitions,
             &exec_context(),
         )
@@ -242,7 +242,6 @@ async fn call_mcp_tool_uses_the_request_descriptor_and_returns_client_errors_to_
     let runtime = CursorToolRuntime::default();
     let dispatcher = ToolDispatcher::new(runtime.clone());
     let completed = HashSet::new();
-    let started = HashSet::new();
     let mut invocation = call("call-mcp", "CallMcpTool");
     invocation.arguments = json!({
         "server": "plugin-browser-use-browser-use",
@@ -255,11 +254,10 @@ async fn call_mcp_tool_uses_the_request_descriptor_and_returns_client_errors_to_
             &[invocation],
             ToolBatchState {
                 completed: &completed,
-                started: &started,
                 response_text: "",
                 response_thinking: "",
             },
-            &[],
+            0,
             &BTreeMap::new(),
             &mcp_context(
                 "plugin-browser-use-browser-use",
@@ -312,7 +310,6 @@ async fn mcp_auth_uses_the_cursor_auth_interaction_without_a_tool_definition() {
     let runtime = CursorToolRuntime::default();
     let dispatcher = ToolDispatcher::new(runtime.clone());
     let completed = HashSet::new();
-    let started = HashSet::new();
     let mut auth = call("auth-gmail", "CallMcpTool");
     auth.arguments = json!({
         "server": "plugin-gmail-gmail",
@@ -324,11 +321,10 @@ async fn mcp_auth_uses_the_cursor_auth_interaction_without_a_tool_definition() {
             &[auth],
             ToolBatchState {
                 completed: &completed,
-                started: &started,
                 response_text: "",
                 response_thinking: "",
             },
-            &[],
+            0,
             &BTreeMap::new(),
             &exec_context(),
         )
@@ -376,7 +372,6 @@ async fn mcp_auth_uses_the_cursor_auth_interaction_without_a_tool_definition() {
 async fn unknown_mcp_descriptor_returns_a_tool_error_without_client_discovery() {
     let dispatcher = ToolDispatcher::new(CursorToolRuntime::default());
     let completed = HashSet::new();
-    let started = HashSet::new();
     let mut invocation = call("call-fast-context", "CallMcpTool");
     invocation.arguments = json!({
         "server": "fast-context",
@@ -388,11 +383,10 @@ async fn unknown_mcp_descriptor_returns_a_tool_error_without_client_discovery() 
             &[invocation],
             ToolBatchState {
                 completed: &completed,
-                started: &started,
                 response_text: "",
                 response_thinking: "",
             },
-            &[],
+            0,
             &BTreeMap::new(),
             &exec_context(),
         )
@@ -411,10 +405,8 @@ async fn unknown_mcp_descriptor_returns_a_tool_error_without_client_discovery() 
 async fn invalid_tool_arguments_complete_as_tool_errors() {
     let dispatcher = ToolDispatcher::new(CursorToolRuntime::default());
     let completed = HashSet::new();
-    let started = HashSet::new();
     let state = || ToolBatchState {
         completed: &completed,
-        started: &started,
         response_text: "",
         response_thinking: "",
     };
@@ -435,13 +427,7 @@ async fn invalid_tool_arguments_complete_as_tool_errors() {
         (invalid_timeout, "out of range"),
     ] {
         let dispatched = dispatcher
-            .start_batch(
-                &[invocation],
-                state(),
-                &[],
-                &BTreeMap::new(),
-                &exec_context(),
-            )
+            .start_batch(&[invocation], state(), 0, &BTreeMap::new(), &exec_context())
             .await
             .unwrap();
         let completion = dispatched[0]
@@ -468,7 +454,9 @@ async fn shell_uses_background_timeout_and_preserves_stream_identity() {
     else {
         panic!("expected ExecServerMessage")
     };
-    assert_eq!(request.accept_hook_additional_contexts, Some(true));
+    // 服务端从不消费 hook 附加上下文:出站请求一律明确回答"不接受"(见
+    // codec/request.rs 的 ACCEPT_HOOK_ADDITIONAL_CONTEXTS)。
+    assert_eq!(request.accept_hook_additional_contexts, Some(false));
     let Some(pb::exec_server_message::Message::ShellStreamArgs(args)) = request.message else {
         panic!("expected ShellArgs")
     };

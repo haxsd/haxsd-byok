@@ -40,21 +40,42 @@ fn restoring_keeps_user_changes_to_unmanaged_fields() {
     assert!(text.contains("model = 'old'"));
     assert!(!text.contains("local-test-token"), "restored TOML: {text}");
 }
+/// 别家的 provider 不覆盖；受管字段被外部改过只报冲突，撤销永远可用。
 #[test]
-fn foreign_providers_and_modified_managed_fields_are_never_overwritten() {
+fn a_foreign_provider_is_refused_and_modified_managed_fields_still_restore() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.toml");
     std::fs::write(&path, "model_provider = 'other'\n").unwrap();
     assert!(apply(dir.path(), &route(dir.path())).is_err());
-    std::fs::write(&path, "").unwrap();
+    std::fs::write(
+        &path,
+        "model = 'old'\n\n[projects.'x']\ntrust_level = 'trusted'\n",
+    )
+    .unwrap();
     apply(dir.path(), &route(dir.path())).unwrap();
     let text = std::fs::read_to_string(&path)
         .unwrap()
         .replace("43120", "43121");
     std::fs::write(&path, &text).unwrap();
-    assert!(inspect(dir.path()).unwrap().conflict);
-    assert!(restore(dir.path()).is_err());
-    assert_eq!(std::fs::read_to_string(path).unwrap(), text);
+    let status = inspect(dir.path()).unwrap();
+    assert!(!status.applied && status.conflict, "{}", status.message);
+    assert!(status.restorable, "{}", status.message);
+    assert_eq!(status.conflicts.len(), 1, "{:?}", status.conflicts);
+    assert_eq!(status.conflicts[0].key, "model_providers.haxsd-byok");
+    restore(dir.path()).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("model = 'old'"), "restored TOML: {text}");
+    assert!(
+        text.contains("trust_level = 'trusted'"),
+        "restored TOML: {text}"
+    );
+    assert!(!text.contains("haxsd-byok"), "restored TOML: {text}");
+    let status = inspect(dir.path()).unwrap();
+    assert!(
+        !status.applied && !status.conflict && !status.restorable,
+        "{}",
+        status.message
+    );
 }
 #[test]
 fn absent_config_is_removed_after_restore_and_repeated_restore_is_safe() {

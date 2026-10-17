@@ -1,4 +1,4 @@
-import { cloneElement, useCallback, useEffect, useId, useRef, useState, type FocusEventHandler, type PointerEventHandler, type ReactElement } from "react";
+import { cloneElement, useCallback, useEffect, useId, useState, type FocusEventHandler, type PointerEventHandler, type ReactElement } from "react";
 import { useTooltip, type TooltipAnchor } from "./Tooltip";
 
 
@@ -19,26 +19,12 @@ export function TooltipTrigger({ label, children }: { label: string; children: R
   const { show: showTooltip, hide: hideTooltip } = useTooltip();
   const [anchor, setAnchor] = useState<TooltipAnchor | null>(null);
   const tooltipId = useId();
-  const timerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
   const hide = useCallback(() => {
-    clearTimer();
     setAnchor(null);
     hideTooltip();
-  }, [clearTimer, hideTooltip]);
-  const scheduleHide = useCallback(() => {
-    clearTimer();
-    setAnchor(null);
-    hideTooltip();
-  }, [clearTimer, hideTooltip]);
+  }, [hideTooltip]);
 
-  useEffect(() => () => clearTimer(), [clearTimer]);
   useEffect(() => {
     if (!anchor) return;
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") hide(); };
@@ -58,7 +44,7 @@ export function TooltipTrigger({ label, children }: { label: string; children: R
     },
     onPointerLeave: (event) => {
       children.props.onPointerLeave?.(event);
-      scheduleHide();
+      hide();
     },
     onPointerDown: (event) => {
       children.props.onPointerDown?.(event);
@@ -66,7 +52,6 @@ export function TooltipTrigger({ label, children }: { label: string; children: R
     },
     onFocus: (event) => {
       children.props.onFocus?.(event);
-      clearTimer();
       if (event.currentTarget.matches(":focus-visible")) {
         const nextAnchor = anchorFor(event.currentTarget);
         setAnchor(nextAnchor);
@@ -77,7 +62,7 @@ export function TooltipTrigger({ label, children }: { label: string; children: R
     },
     onBlur: (event) => {
       children.props.onBlur?.(event);
-      scheduleHide();
+      hide();
     },
   });
 

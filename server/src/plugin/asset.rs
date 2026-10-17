@@ -1,10 +1,15 @@
 //! Maps supported desktop platforms to pinned Deno release assets.
 pub(super) const DENO_VERSION: &str = "2.9.6";
 
-#[derive(Clone, Copy, Debug)]
+/// 这台机器要装的 Deno 运行时：平台、摘要，以及归档从哪里取。
+///
+/// 归档地址是数据而不是方法：生产路径固定指向 pin 住的那次 GitHub Release，
+/// 测试把它换成本地 HTTP 服务就能走完整条下载路径。
+#[derive(Clone, Debug)]
 pub(super) struct RuntimeAsset {
     pub target: &'static str,
     pub sha256: &'static str,
+    pub source: String,
 }
 
 impl RuntimeAsset {
@@ -40,27 +45,30 @@ impl RuntimeAsset {
             ),
             _ => return None,
         };
-        Some(Self { target, sha256 })
+        let archive_name = format!("deno-{target}.zip");
+        Some(Self {
+            target,
+            sha256,
+            source: release_url(&archive_name),
+        })
     }
 
-    pub fn archive_name(self) -> String {
+    pub fn archive_name(&self) -> String {
         format!("deno-{}.zip", self.target)
     }
 
-    pub fn download_url(self) -> String {
-        format!(
-            "https://github.com/denoland/deno/releases/download/v{DENO_VERSION}/{}",
-            self.archive_name()
-        )
-    }
-
-    pub fn executable_name(self) -> &'static str {
+    pub fn executable_name(&self) -> &'static str {
         if self.target.contains("windows") {
             "deno.exe"
         } else {
             "deno"
         }
     }
+}
+
+/// pin 住的那次 Release 上某个归档的固定地址。
+fn release_url(archive_name: &str) -> String {
+    format!("https://github.com/denoland/deno/releases/download/v{DENO_VERSION}/{archive_name}")
 }
 
 #[cfg(test)]
@@ -78,10 +86,15 @@ mod tests {
             ("linux", "x86_64", "x86_64-unknown-linux-gnu"),
         ];
         for (os, arch, expected) in cases {
+            let asset = RuntimeAsset::for_platform(os, arch).unwrap();
+            assert_eq!(asset.target, expected);
             assert_eq!(
-                RuntimeAsset::for_platform(os, arch).unwrap().target,
-                expected
+                asset.source,
+                format!(
+                    "https://github.com/denoland/deno/releases/download/v{DENO_VERSION}/deno-{expected}.zip"
+                )
             );
+            assert_eq!(asset.archive_name(), format!("deno-{expected}.zip"));
         }
         assert!(RuntimeAsset::for_platform("linux", "x86").is_none());
     }

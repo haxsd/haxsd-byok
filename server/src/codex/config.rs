@@ -9,8 +9,25 @@ use std::{
 use toml_edit::{value, DocumentMut, Item};
 const RECEIPT: &str = ".haxsd-byok-routing.json";
 const PROVIDER: &str = "haxsd-byok";
-const KEYS: &[&str] = &[
-    "model",
+/// 路由字段：只有本应用会写它们，一旦被外部改动，路由就不再是我们发布的那条。
+///
+/// `web_search` **不在**这里：Codex 客户端自己的设置界面会写它（联网搜索开关）。把它算作
+/// 路由字段的代价是——用户在客户端里点一下搜索，我们这边就报"配置冲突"、两个按钮都动不了。
+/// 它仍然是我们接管时会写的字段（见 `OWNED_KEYS`），但只作为"与接管快照不一致"的提示，
+/// 不阻断路由判定。
+const ROUTING_KEYS: &[&str] = &[
+    "model_provider",
+    "model_catalog_json",
+    "model_context_window",
+    "model_auto_compact_token_limit",
+];
+/// 客户端自己会写的字段：Codex 允许用户在它自己的界面里切模型，切换时它会写
+/// `model = "<slug>"`。切换后的 slug 仍在本次发布目录里就不算外部冲突——否则用户
+/// 一切换模型，所有请求都会 409。
+const MODEL_KEY: &str = "model";
+/// 应用与恢复都作用于这一组：路由字段加上我们要负责换回原样的 model。
+const OWNED_KEYS: &[&str] = &[
+    MODEL_KEY,
     "model_provider",
     "model_catalog_json",
     "model_context_window",
@@ -30,8 +47,107 @@ pub struct ConfigStatus {
     pub home: String,
     pub config_path: String,
     pub applied: bool,
+    /// 有接管凭证：可以撤销。即使受管字段被外部改过，撤销也应该能把它们还回去——
+    /// 否则用户会卡在"应用不了、也撤销不了"的状态里。
+    pub restorable: bool,
     pub conflict: bool,
+    /// 与接管快照不一致的受管字段（含 `model`）。界面据此说清"哪一项被改成了什么"，
+    /// 而不是只丢一句"配置冲突"。
+    pub conflicts: Vec<ConfigFieldConflict>,
     pub message: String,
+}
+
+/// 一个受管字段的当前值与接管时写下的值（字段缺失时用空串）。
+#[derive(Clone, Debug, Serialize)]
+pub struct ConfigFieldConflict {
+    pub key: String,
+    pub applied: String,
+    pub current: String,
+}
+
+/// 字段值渲染成字符串：比较与界面展示都只关心值本身，去掉 TOML 的排版空白
+/// （`Item::to_string` 会把 `=` 之后的空格也算进值的前缀）。
+fn render_value(item: &Item) -> String {
+    item.to_string().trim().to_owned()
+}
+
+/// 冲突卡片会把 `applied` / `current` 直接显示出来（并经 RPC 回传前端），所以凭据在渲染
+/// 前就要脱敏：provider 表里装着本机网关的 bearer 令牌，整表 `to_string()` 会把它原样
+/// 送到界面上。
+const REDACTED: &str = "[redacted]";
+/// provider 表作为一个受管字段参与冲突比较。
+const PROVIDER_KEY: &str = "model_providers.haxsd-byok";
+
+/// 按名字判定凭据字段：本应用现在只写一个令牌，但按名字判定才不会因为将来加字段而漏掉。
+fn is_secret_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    key.contains("token") || key.contains("secret") || key.contains("key")
+}
+
+/// provider 表按字段渲染，凭据字段只回 `[redacted]`。
+fn render_provider(item: &Item) -> String {
+    let Some(table) = item.as_table_like() else {
+        return REDACTED.into();
+    };
+    table
+        .iter()
+        .map(|(key, value)| {
+            if is_secret_key(key) {
+                format!("{key} = {REDACTED}")
+            } else {
+                format!("{key} = {}", render_value(value))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// 受管字段在文档里的位置（provider 表嵌在 `model_providers` 下）。
+fn owned_item<'a>(document: &'a DocumentMut, key: &str) -> Option<&'a Item> {
+    match key {
+        PROVIDER_KEY => document
+            .get("model_providers")
+            .and_then(|providers| providers.get(PROVIDER)),
+        other => document.get(other),
+    }
+}
+
+fn render_owned(key: &str, item: Option<&Item>) -> String {
+    match item {
+        None => String::new(),
+        Some(item) if key == PROVIDER_KEY => render_provider(item),
+        Some(item) => render_value(item),
+    }
+}
+
+/// 受管字段里与快照不一致的那些。
+///
+/// 比较用原值：只看脱敏后的文本会把「只换了令牌」当成没改。
+fn field_conflicts(doc: &DocumentMut, applied: &DocumentMut) -> Vec<ConfigFieldConflict> {
+    let mut keys = OWNED_KEYS.to_vec();
+    keys.push(PROVIDER_KEY);
+    keys.iter()
+        .filter_map(|key| {
+            let applied_item = owned_item(applied, key);
+            let current_item = owned_item(doc, key);
+            let changed = applied_item.map(Item::to_string) != current_item.map(Item::to_string);
+            changed.then(|| {
+                let mut applied_value = render_owned(key, applied_item);
+                let mut current_value = render_owned(key, current_item);
+                if applied_value == current_value {
+                    // 只有被脱敏的字段不同（例如只换了令牌）：文本一样，但卡片仍要说清有差异。
+                    const NOTE: &str = "（已脱敏的字段与快照不同）";
+                    applied_value.push_str(NOTE);
+                    current_value.push_str(NOTE);
+                }
+                ConfigFieldConflict {
+                    key: (*key).to_owned(),
+                    applied: applied_value,
+                    current: current_value,
+                }
+            })
+        })
+        .collect()
 }
 #[derive(Serialize, Deserialize)]
 struct Receipt {
@@ -79,17 +195,73 @@ fn receipt(home: &Path) -> Result<Option<Receipt>> {
         })
         .transpose()
 }
-fn managed(doc: &DocumentMut) -> Vec<Option<String>> {
-    let mut values = KEYS
+/// 已发布目录里的模型标识：客户端切模型时写的 slug 必须来自这里。
+fn catalog_slugs(published: &DocumentMut) -> Vec<String> {
+    published
+        .get("model_catalog_json")
+        .and_then(Item::as_str)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|catalog| {
+            catalog
+                .get("models")
+                .and_then(serde_json::Value::as_array)
+                .map(|models| {
+                    models
+                        .iter()
+                        .filter_map(|model| {
+                            model
+                                .get("slug")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                        })
+                        .collect()
+                })
+        })
+        .unwrap_or_default()
+}
+fn route_matches(doc: &DocumentMut, reference: &DocumentMut) -> bool {
+    let mut current = ROUTING_KEYS
         .iter()
         .map(|key| doc.get(key).map(Item::to_string))
         .collect::<Vec<_>>();
-    values.push(
+    current.push(
         doc.get("model_providers")
             .and_then(|i| i.get(PROVIDER))
             .map(Item::to_string),
     );
-    values
+    let mut reference_values = ROUTING_KEYS
+        .iter()
+        .map(|key| reference.get(key).map(Item::to_string))
+        .collect::<Vec<_>>();
+    reference_values.push(
+        reference
+            .get("model_providers")
+            .and_then(|i| i.get(PROVIDER))
+            .map(Item::to_string),
+    );
+    current == reference_values
+}
+/// 客户端切到这个模型仍然可以路由：要么它还是我们写下的 slug，要么切换后的 slug 仍在
+/// 本次发布目录里。只有后者需要读目录文件。
+fn model_routes(doc: &DocumentMut, published: &DocumentMut) -> bool {
+    let slug = doc
+        .get(MODEL_KEY)
+        .and_then(Item::as_str)
+        .unwrap_or_default()
+        .trim();
+    if slug.is_empty() {
+        return false;
+    }
+    if published
+        .get(MODEL_KEY)
+        .and_then(Item::as_str)
+        .map(str::trim)
+        == Some(slug)
+    {
+        return true;
+    }
+    catalog_slugs(published).iter().any(|known| known == slug)
 }
 fn external(doc: &DocumentMut) -> bool {
     doc.get("model_provider")
@@ -102,24 +274,76 @@ fn external(doc: &DocumentMut) -> bool {
             .and_then(|i| i.get(PROVIDER))
             .is_some()
 }
+/// 把 `reference` 里的受管字段（`OWNED_KEYS` + provider 表）搬到 `doc` 上。
+///
+/// 两个调用点：撤销时把接管前的值还回去；再接管时把新收据的原值基线对齐旧收据。
+fn restore_owned(doc: &mut DocumentMut, reference: &DocumentMut) {
+    for key in OWNED_KEYS {
+        if let Some(item) = reference.get(key) {
+            doc[key] = item.clone();
+        } else {
+            doc.remove(key);
+        }
+    }
+    if let Some(providers) = doc
+        .get_mut("model_providers")
+        .and_then(Item::as_table_like_mut)
+    {
+        if let Some(item) = reference
+            .get("model_providers")
+            .and_then(|providers| providers.get(PROVIDER))
+        {
+            providers.insert(PROVIDER, item.clone());
+        } else {
+            providers.remove(PROVIDER);
+        }
+    }
+    if reference.get("model_providers").is_none()
+        && doc
+            .get("model_providers")
+            .and_then(Item::as_table_like)
+            .is_some_and(|table| table.is_empty())
+    {
+        doc.remove("model_providers");
+    }
+}
+
+/// 新收据的原值基线：当前文件内容（用户可能又改过别的键）加上旧收据记下的受管字段原值。
+///
+/// 没有这一步，"用户手动把路由改回原样、但 `web_search` 还是我们写的 disabled"这种半还原
+/// 状态会被当成用户的原值写进新收据，接管前的 `web_search` 再也回不来。
+fn rebase_original(current: &str, previous: Option<&str>) -> Result<String> {
+    let mut doc = parse(current)?;
+    restore_owned(&mut doc, &parse(previous.unwrap_or(""))?);
+    Ok(doc.to_string())
+}
+
 pub fn inspect(home: &Path) -> Result<ConfigStatus> {
     absolute(home)?;
     let path = home.join("config.toml");
     let text = read(&path)?;
     let doc = parse(text.as_deref().unwrap_or(""))?;
-    let (applied, conflict) = if let Some(receipt) = receipt(home)? {
+    let (applied, conflict, restorable, conflicts) = if let Some(receipt) = receipt(home)? {
         let applied = parse(&receipt.applied)?;
         let original = parse(receipt.original.as_deref().unwrap_or(""))?;
-        let own = managed(&doc) == managed(&applied);
-        (own, !own && managed(&doc) != managed(&original))
+        let own = route_matches(&doc, &applied) && model_routes(&doc, &applied);
+        let original_route = route_matches(&doc, &original);
+        (
+            own,
+            !own && !original_route,
+            true,
+            field_conflicts(&doc, &applied),
+        )
     } else {
-        (false, external(&doc))
+        (false, external(&doc), false, Vec::new())
     };
     Ok(ConfigStatus {
         home: home.display().to_string(),
         config_path: path.display().to_string(),
         applied,
+        restorable,
         conflict,
+        conflicts,
         message: if conflict {
             "Codex routing is managed by another configuration or was modified"
         } else if applied {
@@ -147,6 +371,7 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     let path = home.join("config.toml");
     let original = read(&path)?;
     let mut doc = parse(original.as_deref().unwrap_or(""))?;
+    let mut rebased_original = None;
     if let Some(receipt) = receipt(home)? {
         let current = inspect(home)?;
         if current.applied {
@@ -168,10 +393,15 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
             }
             return Ok(current);
         }
-        if managed(&doc) != managed(&parse(receipt.original.as_deref().unwrap_or(""))?) {
+        if !route_matches(&doc, &parse(receipt.original.as_deref().unwrap_or(""))?) {
             return Err(Error::Config(
                 "Codex managed configuration was modified; refusing to overwrite".into(),
             ));
+        }
+        // 路由已经回到原样，但受管字段里可能还留着我们的值（撤销的短路分支过去只删收据）。
+        // 新收据的原值基线要沿用旧收据，否则这些残留会被当成用户的原值。
+        if let Some(current_text) = original.as_deref() {
+            rebased_original = Some(rebase_original(current_text, receipt.original.as_deref())?);
         }
         fs::remove_file(home.join(RECEIPT))?;
     }
@@ -195,6 +425,7 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     doc["model_providers"][PROVIDER]["experimental_bearer_token"] = value(route.token.as_str());
     doc["model_providers"][PROVIDER]["capabilities"]["remote_compaction"] = value("unsupported");
     let applied = doc.to_string();
+    let receipt_original = rebased_original.or_else(|| original.clone());
     if read(&path)? != original {
         return Err(Error::Config(
             "Codex config changed while preparing the update".into(),
@@ -204,7 +435,7 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
         &home.join(RECEIPT),
         &serde_json::to_vec(&Receipt {
             version: 1,
-            original: original.clone(),
+            original: receipt_original,
             applied: applied.clone(),
         })?,
     )?;
@@ -224,57 +455,30 @@ pub fn restore(home: &Path) -> Result<ConfigStatus> {
     let path = home.join("config.toml");
     let current = read(&path)?;
     let mut doc = parse(current.as_deref().unwrap_or(""))?;
-    let applied = parse(&receipt.applied)?;
     let original = parse(receipt.original.as_deref().unwrap_or(""))?;
-    if managed(&doc) == managed(&original) {
-        fs::remove_file(home.join(RECEIPT))?;
-        return inspect(home);
-    }
-    if managed(&doc) != managed(&applied) {
-        return Err(Error::Config(
-            "Codex managed fields changed after apply; refusing to restore over external edits"
-                .into(),
-        ));
-    }
+    // 受管字段被外部改过也照样撤销：撤销的意思就是"把我们的字段还回去"，而下面这段只动
+    // `OWNED_KEYS`（含 provider 表），不碰其它键。以前这里整体拒绝，于是用户在"应用不了、
+    // 也撤销不了"的状态里出不来。
+    //
+    // 过去还有一条"路由已经回到原样 → 只删收据"的短路。它漏掉了 `OWNED_KEYS` 里不属于
+    // 路由的字段（`web_search`）：用户手动把路由清干净之后撤销，我们写的
+    // `web_search = "disabled"` 会留在文件里，下一次接管又会把它当成用户的原值。
     if current.as_deref() == Some(receipt.applied.as_str()) {
+        // 整体回滚：当前文件就是我们写下的那一份，直接写回原文最干净。
         if let Some(original) = receipt.original {
             atomic_write(&path, original.as_bytes())?;
         } else {
             fs::remove_file(&path)?;
         }
     } else {
-        for key in KEYS {
-            if let Some(item) = original.get(key) {
-                doc[key] = item.clone();
-            } else {
-                doc.remove(key);
+        restore_owned(&mut doc, &original);
+        let updated = doc.to_string();
+        if Some(updated.as_str()) != current.as_deref() {
+            if read(&path)? != current {
+                return Err(Error::Config("Codex config changed during restore".into()));
             }
+            atomic_write(&path, updated.as_bytes())?;
         }
-        if let Some(providers) = doc
-            .get_mut("model_providers")
-            .and_then(Item::as_table_like_mut)
-        {
-            if let Some(item) = original
-                .get("model_providers")
-                .and_then(|i| i.get(PROVIDER))
-            {
-                providers.insert(PROVIDER, item.clone());
-            } else {
-                providers.remove(PROVIDER);
-            }
-        }
-        if original.get("model_providers").is_none()
-            && doc
-                .get("model_providers")
-                .and_then(Item::as_table_like)
-                .is_some_and(|t| t.is_empty())
-        {
-            doc.remove("model_providers");
-        }
-        if read(&path)? != current {
-            return Err(Error::Config("Codex config changed during restore".into()));
-        }
-        atomic_write(&path, doc.to_string().as_bytes())?;
     }
     fs::remove_file(home.join(RECEIPT))?;
     inspect(home)
@@ -330,6 +534,61 @@ pub(super) fn write_catalog(home: &Path, bytes: &[u8]) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// 目录是写给客户端的快照，模型被编辑后它会过期。请求路径读的是模型库里的最新
+/// 配置，这里把目录刷新到同一份路由：只换 `model_catalog_json` 指针——`model` 是
+/// 客户端自己的选择，切过模型不能被重置。
+pub(super) fn republish_catalog(home: &Path, catalog: &[u8]) -> Result<PathBuf> {
+    absolute(home)?;
+    let Some(receipt) = receipt(home)? else {
+        return Err(Error::Config(
+            "Codex configuration is not applied; refusing to republish its catalog".into(),
+        ));
+    };
+    let path = home.join("config.toml");
+    let original = read(&path)?;
+    let mut doc = parse(original.as_deref().unwrap_or(""))?;
+    let previous = doc
+        .get("model_catalog_json")
+        .and_then(Item::as_str)
+        .map(PathBuf::from);
+    let catalog_path = write_catalog(home, catalog)?;
+    let pointer = catalog_path.to_string_lossy().into_owned();
+    doc["model_catalog_json"] = value(pointer.as_str());
+    // 恢复收据里的 applied 快照必须跟着换指针：`inspect`/`restore` 靠它判断配置
+    // 是否仍由本应用发布，不同步的话这次刷新会被当成外部改动。
+    let mut applied = parse(&receipt.applied)?;
+    applied["model_catalog_json"] = value(pointer.as_str());
+    let updated = doc.to_string();
+    if read(&path)? != original {
+        return Err(Error::Config(
+            "Codex config changed while preparing the update".into(),
+        ));
+    }
+    atomic_write(
+        &home.join(RECEIPT),
+        &serde_json::to_vec(&Receipt {
+            version: 1,
+            original: receipt.original,
+            applied: applied.to_string(),
+        })?,
+    )?;
+    if read(&path)? != original {
+        return Err(Error::Config(
+            "Codex config changed before replacement; restore receipt retained".into(),
+        ));
+    }
+    atomic_write(&path, updated.as_bytes())?;
+    // 上一份目录是本应用的产物，留着只会让人分不清哪份在用。
+    if let Some(previous) = previous.filter(|previous| previous != &catalog_path) {
+        if previous.parent() == Some(home) {
+            if let Err(error) = fs::remove_file(&previous) {
+                tracing::warn!(%error, path = %previous.display(), "Codex catalog cleanup failed");
+            }
+        }
+    }
+    Ok(catalog_path)
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
@@ -339,4 +598,271 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     file.as_file().sync_all()?;
     file.persist(path).map_err(|error| Error::Io(error.error))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 发布目录：客户端在它自己的界面里能选到的 slug 来自这里。
+    fn catalog(home: &Path, slugs: &[&str]) -> PathBuf {
+        let path = home.join("models.json");
+        let models = slugs
+            .iter()
+            .map(|slug| serde_json::json!({"slug": slug}))
+            .collect::<Vec<_>>();
+        fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({"models": models})).unwrap(),
+        )
+        .unwrap();
+        path
+    }
+
+    fn route(home: &Path) -> ConfigRoute {
+        ConfigRoute {
+            model: "model-a".into(),
+            base_url: "http://127.0.0.1:43120/v1".into(),
+            token: "local-test-token".into(),
+            catalog_path: catalog(home, &["model-a", "model-b"]),
+            context_window: 32768,
+        }
+    }
+
+    fn applied_home(content: Option<&str>) -> tempfile::TempDir {
+        let directory = tempfile::tempdir().unwrap();
+        if let Some(content) = content {
+            fs::write(directory.path().join("config.toml"), content).unwrap();
+        }
+        apply(directory.path(), &route(directory.path())).unwrap();
+        directory
+    }
+
+    /// 客户端切换模型就是重写 config.toml 里的这一行。
+    fn switch_client_model(home: &Path, slug: &str) {
+        edit(home, |doc| doc[MODEL_KEY] = value(slug));
+    }
+
+    fn edit(home: &Path, change: impl FnOnce(&mut DocumentMut)) -> String {
+        let path = home.join("config.toml");
+        let mut doc = parse(&fs::read_to_string(&path).unwrap()).unwrap();
+        change(&mut doc);
+        let text = doc.to_string();
+        fs::write(&path, &text).unwrap();
+        text
+    }
+
+    /// 客户端切到目录里发布的另一个模型：路由没变，不能报冲突，否则每个请求都 409。
+    #[test]
+    fn switching_to_another_published_model_keeps_the_route_applied() {
+        let directory = applied_home(None);
+        switch_client_model(directory.path(), "model-b");
+        let status = inspect(directory.path()).unwrap();
+        assert!(status.applied, "{}", status.message);
+        assert!(!status.conflict, "{}", status.message);
+    }
+
+    /// 切到目录里不存在的模型：上游绑定已经不属于本次发布，必须报冲突。
+    #[test]
+    fn switching_to_an_unpublished_model_is_a_conflict() {
+        let directory = applied_home(None);
+        switch_client_model(directory.path(), "not-in-catalog");
+        let status = inspect(directory.path()).unwrap();
+        assert!(!status.applied, "{}", status.message);
+        assert!(status.conflict, "{}", status.message);
+    }
+
+    /// 路由字段被外部改动：仍然报冲突（应用不能覆盖别家的路由），但撤销永远可用——
+    /// 只把 `OWNED_KEYS` 与 provider 表还回接管前的样子，用户自己的其它键原样保留。
+    #[test]
+    fn external_edits_to_routing_fields_are_conflicts_but_restore_still_returns_them() {
+        let original = "model = 'user-choice'\nweb_search = 'live'\n\n[projects.'x']\ntrust_level = 'trusted'\n\n[desktop]\nscale = 1.25\n";
+        let changes: [fn(&mut DocumentMut); 3] = [
+            |doc| doc["model_providers"][PROVIDER]["base_url"] = value("http://127.0.0.1:43121/v1"),
+            |doc| {
+                doc["model_providers"][PROVIDER]["experimental_bearer_token"] = value("other-token")
+            },
+            |doc| doc["model_context_window"] = value(16384),
+        ];
+        for change in changes {
+            let directory = applied_home(Some(original));
+            let edited = edit(directory.path(), change);
+            let status = inspect(directory.path()).unwrap();
+            assert!(!status.applied && status.conflict, "{}", status.message);
+            assert!(status.restorable, "{}", status.message);
+            assert!(!status.conflicts.is_empty(), "{}", status.message);
+            let restored = restore(directory.path()).unwrap();
+            assert!(
+                !restored.applied && !restored.conflict && !restored.restorable,
+                "{}",
+                restored.message
+            );
+            assert!(restored.conflicts.is_empty(), "{:?}", restored.conflicts);
+            let text = fs::read_to_string(directory.path().join("config.toml")).unwrap();
+            assert_ne!(text, edited, "撤销没有把受管字段还回去");
+            let doc = parse(&text).unwrap();
+            assert_eq!(doc.get("model").and_then(Item::as_str), Some("user-choice"));
+            assert_eq!(doc.get("web_search").and_then(Item::as_str), Some("live"));
+            for key in [
+                "model_provider",
+                "model_catalog_json",
+                "model_context_window",
+                "model_auto_compact_token_limit",
+                "model_providers",
+            ] {
+                assert!(doc.get(key).is_none(), "{key} 在撤销后仍然存在: {text}");
+            }
+            assert!(
+                text.contains("trust_level = 'trusted'") && text.contains("scale = 1.25"),
+                "用户自己的配置项被撤销动过: {text}"
+            );
+        }
+    }
+
+    /// 客户端在它自己的界面里打开联网搜索（写 `web_search = "live"`）：路由照旧可用，
+    /// 只在 `conflicts` 里给出"快照写的是 disabled、现在是 live"，撤销时按快照还原。
+    #[test]
+    fn a_client_web_search_switch_is_reported_without_blocking_the_route() {
+        let directory = applied_home(Some("model = 'user-choice'\n"));
+        edit(directory.path(), |doc| doc["web_search"] = value("live"));
+        let status = inspect(directory.path()).unwrap();
+        assert!(status.applied, "{}", status.message);
+        assert!(!status.conflict, "{}", status.message);
+        assert!(status.restorable, "{}", status.message);
+        assert_eq!(status.conflicts.len(), 1, "{:?}", status.conflicts);
+        let conflict = &status.conflicts[0];
+        assert_eq!(conflict.key, "web_search");
+        assert_eq!(conflict.applied, "\"disabled\"");
+        assert_eq!(conflict.current, "\"live\"");
+        restore(directory.path()).unwrap();
+        let doc =
+            parse(&fs::read_to_string(directory.path().join("config.toml")).unwrap()).unwrap();
+        assert!(doc.get("web_search").is_none(), "接管前的配置里没有这一项");
+    }
+
+    /// 与接管快照完全一致的配置没有字段冲突。
+    #[test]
+    fn a_configuration_matching_the_snapshot_has_no_field_conflicts() {
+        let directory = applied_home(Some("model = 'user-choice'\n"));
+        let status = inspect(directory.path()).unwrap();
+        assert!(status.applied && !status.conflict, "{}", status.message);
+        assert!(status.restorable, "{}", status.message);
+        assert!(status.conflicts.is_empty(), "{:?}", status.conflicts);
+    }
+
+    /// 客户端切过模型之后仍然可以恢复，并且 model 回到收据里的原值。
+    #[test]
+    fn restore_after_a_client_model_switch_puts_back_the_original_model() {
+        let directory = applied_home(Some("model = 'user-choice'\n"));
+        switch_client_model(directory.path(), "model-b");
+        restore(directory.path()).unwrap();
+        let text = fs::read_to_string(directory.path().join("config.toml")).unwrap();
+        assert!(text.contains("model = 'user-choice'"), "{text}");
+        assert!(!text.contains("local-test-token"), "{text}");
+        let status = inspect(directory.path()).unwrap();
+        assert!(!status.applied && !status.conflict, "{}", status.message);
+    }
+
+    /// 目录文件还没生成或已被删除时，没有切换过模型的配置仍然算我们的路由。
+    #[test]
+    fn a_missing_catalog_keeps_an_untouched_route_applied() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut route = route(directory.path());
+        route.catalog_path = directory.path().join("missing.json");
+        apply(directory.path(), &route).unwrap();
+        let status = inspect(directory.path()).unwrap();
+        assert!(status.applied, "{}", status.message);
+        assert!(!status.conflict, "{}", status.message);
+        // 客户端切换模型后无法再确认新 slug 属于本次发布。
+        switch_client_model(directory.path(), "model-b");
+        assert!(inspect(directory.path()).unwrap().conflict);
+    }
+
+    /// 冲突卡片会显示 `applied` / `current`：provider 表里的 bearer 令牌不得出现在里面。
+    /// 「只换了令牌」仍要算冲突——比较用原值，渲染才脱敏。
+    #[test]
+    fn provider_conflicts_never_carry_the_gateway_token() {
+        let directory = applied_home(None);
+        edit(directory.path(), |doc| {
+            doc["model_providers"][PROVIDER]["experimental_bearer_token"] = value("other-token")
+        });
+        let status = inspect(directory.path()).unwrap();
+        assert!(status.conflict, "{}", status.message);
+        let conflict = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.key == PROVIDER_KEY)
+            .expect("令牌被改过就要报 provider 表冲突");
+        for rendered in [&conflict.applied, &conflict.current] {
+            assert!(!rendered.contains("local-test-token"), "{rendered}");
+            assert!(!rendered.contains("other-token"), "{rendered}");
+            assert!(rendered.contains(REDACTED), "{rendered}");
+        }
+        assert!(
+            conflict.applied.contains("base_url"),
+            "非凭据字段照旧显示: {}",
+            conflict.applied
+        );
+    }
+
+    /// 用户手动把路由清干净：删掉路由键与 provider 表，模型改回自己的值。
+    /// `web_search` 故意留着——它也是受管字段，但不是路由键。
+    fn manually_unroute(home: &Path) {
+        edit(home, |doc| {
+            doc.remove("model_provider");
+            doc.remove("model_catalog_json");
+            doc.remove("model_context_window");
+            doc.remove("model_auto_compact_token_limit");
+            if let Some(providers) = doc
+                .get_mut("model_providers")
+                .and_then(Item::as_table_like_mut)
+            {
+                providers.remove(PROVIDER);
+            }
+            doc["model"] = value("user-choice");
+        });
+    }
+
+    /// 手动清干净路由、但留下我们写的 `web_search`：撤销必须把它也还回去。
+    /// 以前「路由已回到原样」的短路只删收据，于是 `web_search = "disabled"` 永久留在
+    /// 用户的配置里，下一次接管还会把它当成用户的原值。
+    #[test]
+    fn restore_returns_leftovers_even_when_the_route_already_matches_again() {
+        let directory = applied_home(Some("model = 'user-choice'\nweb_search = 'live'\n"));
+        manually_unroute(directory.path());
+        let status = inspect(directory.path()).unwrap();
+        assert!(!status.conflict, "{}", status.message);
+        assert!(status.restorable, "{}", status.message);
+
+        restore(directory.path()).unwrap();
+
+        let doc =
+            parse(&fs::read_to_string(directory.path().join("config.toml")).unwrap()).unwrap();
+        assert_eq!(
+            doc.get("web_search").and_then(Item::as_str),
+            Some("live"),
+            "受管字段里不属于路由的那一项也要还回去"
+        );
+        assert!(doc.get("model_providers").is_none());
+    }
+
+    /// 半还原状态下再次接管：新收据的原值基线要沿用旧收据里的受管字段，否则我们留下的
+    /// `web_search = "disabled"` 会被当成用户的原值，接管前的 `live` 再也还不出来。
+    #[test]
+    fn applying_again_after_a_manual_revert_keeps_the_true_original() {
+        let directory = applied_home(Some("model = 'user-choice'\nweb_search = 'live'\n"));
+        manually_unroute(directory.path());
+
+        apply(directory.path(), &route(directory.path())).unwrap();
+        restore(directory.path()).unwrap();
+
+        let doc =
+            parse(&fs::read_to_string(directory.path().join("config.toml")).unwrap()).unwrap();
+        assert_eq!(
+            doc.get("web_search").and_then(Item::as_str),
+            Some("live"),
+            "接管前的值不能丢"
+        );
+        assert!(doc.get("model_providers").is_none());
+    }
 }

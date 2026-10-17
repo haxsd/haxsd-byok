@@ -13,6 +13,7 @@ use crate::{
     local_app::CursorHarness,
     model::{format_token_count, parse_token_count, ModelConfig},
     plugin::PluginModelDescriptor,
+    store::CursorMode,
     Error, Result,
 };
 
@@ -353,9 +354,23 @@ pub async fn usable_models(
 
 pub async fn default_model_for_cli(
     State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
 ) -> Result<Response<Body>> {
+    let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if forwards_default_model(mode, &models, &plugin_models) {
+        if let Some(response) =
+            forward_default_model(&proxy, request, "GetDefaultModelForCli").await
+        {
+            return Ok(response);
+        }
+        // 上游答不了（不可达或被拒）时没有别的来源：本机确实一个模型都没有。
+        return Ok(local_response(
+            agent::GetDefaultModelForCliResponse { model: None }.encode_to_vec(),
+        ));
+    }
     Ok(local_response(
         agent::GetDefaultModelForCliResponse {
             model: default_model_details(&models, &plugin_models),
@@ -364,9 +379,19 @@ pub async fn default_model_for_cli(
     ))
 }
 
-pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<Response<Body>> {
+pub async fn default_model(
+    State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
+) -> Result<Response<Body>> {
+    let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if forwards_default_model(mode, &models, &plugin_models) {
+        if let Some(response) = forward_default_model(&proxy, request, "GetDefaultModel").await {
+            return Ok(response);
+        }
+    }
     Ok(local_response(
         default_model_response(&models, &plugin_models).encode_to_vec(),
     ))
@@ -374,12 +399,56 @@ pub async fn default_model(State(registry): State<TransportRegistry>) -> Result<
 
 pub async fn default_model_nudge(
     State(registry): State<TransportRegistry>,
+    Extension(proxy): Extension<CursorProxy>,
+    request: Request<Body>,
 ) -> Result<Response<Body>> {
+    let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
     let plugin_models = configured_plugin_models(&registry).await;
+    if forwards_default_model(mode, &models, &plugin_models) {
+        if let Some(response) =
+            forward_default_model(&proxy, request, "GetDefaultModelNudgeData").await
+        {
+            return Ok(response);
+        }
+    }
     Ok(local_response(
         default_model_nudge_response(&models, &plugin_models).encode_to_vec(),
     ))
+}
+
+/// 默认模型该不该问上游。
+///
+/// 三个端点以前只在本机模型里挑第一个：Mixed/官方模式下用户没配任何 BYOK 模型时，它们
+/// 会回一个空的默认模型 id，Cursor 客户端拿着空 id 去发起对话。本机（含插件）一个模型都
+/// 没有、而模式又带着官方模型时，这个问题只有上游能回答；只要有本地模型，本地那份就是
+/// 用户的显式选择，不必也不该问上游。
+fn forwards_default_model(
+    mode: CursorMode,
+    models: &[ModelConfig],
+    plugin_models: &[PluginModelDescriptor],
+) -> bool {
+    mode.includes_official_models() && models.is_empty() && plugin_models.is_empty()
+}
+
+/// 把默认模型请求原样交给上游。返回 `None` 表示上游没答上来（不可达、被拒），由调用方
+/// 退回本地响应。
+async fn forward_default_model(
+    proxy: &CursorProxy,
+    request: Request<Body>,
+    endpoint: &str,
+) -> Option<Response<Body>> {
+    match proxy::forward_buffered(proxy, request).await {
+        Ok(response) if response.status.is_success() => Some(response.into_response()),
+        Ok(response) => {
+            tracing::warn!(endpoint, status = %response.status, "Cursor default model upstream rejected request");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(endpoint, %error, "Cursor default model upstream unavailable");
+            None
+        }
+    }
 }
 
 async fn configured_plugin_models(registry: &TransportRegistry) -> Vec<PluginModelDescriptor> {
@@ -892,6 +961,46 @@ mod tests {
         assert_eq!(
             nudge.models_with_no_default_switch,
             vec!["local-model-hash"]
+        );
+    }
+
+    /// 本机（含插件）一个模型都没有、模式又带官方模型时，默认模型只能由上游回答；只要有
+    /// 本地模型就用本地那份，本地模式下更是绝不问上游。以前三条端点一律只挑本地第一个，
+    /// Mixed 模式没配模型时返回空 id。
+    #[test]
+    fn default_model_endpoints_forward_only_when_nothing_is_local() {
+        let models = vec![model()];
+        let plugin_models = vec![PluginModelDescriptor {
+            id: "plugin:test/provider/model".into(),
+            plugin_id: "plugin:test".into(),
+            plugin_name: "Test Plugin".into(),
+            provider_id: "provider".into(),
+            model_id: "model".into(),
+            display_name: "Plugin Model".into(),
+            description: None,
+            icon: String::new(),
+            provider_type: "test".into(),
+            max_output_tokens: None,
+            images: false,
+            enabled: true,
+        }];
+
+        assert!(
+            forwards_default_model(CursorMode::Mixed, &[], &[]),
+            "Mixed 模式没配模型时问上游"
+        );
+        assert!(
+            forwards_default_model(CursorMode::Official, &[], &[]),
+            "官方目录模式同理"
+        );
+        assert!(!forwards_default_model(CursorMode::Local, &[], &[]));
+        assert!(
+            !forwards_default_model(CursorMode::Mixed, &models, &[]),
+            "有本地模型就不问上游"
+        );
+        assert!(
+            !forwards_default_model(CursorMode::Mixed, &[], &plugin_models),
+            "插件模型也算本地模型"
         );
     }
 }

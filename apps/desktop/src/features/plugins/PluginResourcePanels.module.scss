@@ -90,6 +90,13 @@
   gap: 8px;
 }
 
+/* 说明开关作用范围的一行：比表格正文弱一级，不抢注意力。 */
+.modelNote {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
 .modelTableWrap {
   min-width: min(520px, 70vw);
 }

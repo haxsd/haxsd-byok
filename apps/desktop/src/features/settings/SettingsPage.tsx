@@ -19,7 +19,7 @@ import { PortSettingsCard } from "./PortSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { StorageSettingsCard } from "./StorageSettingsCard";
 import { UpdateCard } from "./UpdateCard";
-import { settingsDestinations, settingsSections, visibleSettingsSections, type SettingsItemId } from "./settingsNavigation";
+import { settingsDestinations, settingsSections, visibleSettingsItems, visibleSettingsSections, type SettingsItemId } from "./settingsNavigation";
 import styles from "./SettingsPage.module.scss";
 
 export function SettingsPage() {
@@ -33,7 +33,8 @@ export function SettingsPage() {
   const selected = sections.find(section => section.id === params.get("section"))?.id ?? "general";
   const query = params.get("q") ?? "";
   const shown = visibleSettingsSections(sections, selected, query);
-  const visibleItems = new Set(shown.flatMap(section => section.items.map(item => item.id)));
+  // 取数的卡片用这个集合决定要不要发请求（卡片本身仍然挂着，草稿不丢）。
+  const visibleItems = visibleSettingsItems(sections, selected, query);
   const select = (section: string) => setParams({ section }, { replace: true });
   const updateRecording = async (enabled: boolean) => {
     setSaving("recording");
@@ -62,7 +63,7 @@ export function SettingsPage() {
       </div>
     </TitledCard>,
     app: <AppLifecycleSettingsCard />,
-    proxy: <NetworkSettingsCard />,
+    proxy: <NetworkSettingsCard visible={visibleItems.has("proxy")} />,
     recording: <TitledCard title={t("调用记录")}>
       <div className={styles.settingRow}>
         <div><strong>{t("保存请求与响应")}</strong><small>{t("可能包含对话及敏感内容，并增加磁盘占用。关闭时只保存时间、状态与用量。")}</small></div>
@@ -70,7 +71,7 @@ export function SettingsPage() {
       </div>
     </TitledCard>,
     pricing: <PricingSettingsCard />,
-    storage: <StorageSettingsCard />,
+    storage: <StorageSettingsCard visible={visibleItems.has("storage")} />,
     developer: <TitledCard title={t("开发者模式")}>
       <div className={styles.settingRow}>
         <div><strong>{t("显示开发者信息")}</strong><small>{t("显示内部标识、协议字段和端口设置；详细日志需重启后生效。")}</small></div>
@@ -79,7 +80,7 @@ export function SettingsPage() {
       {status && <div className={styles.inlineStatus} role="status">{status}</div>}
     </TitledCard>,
     ports: <PortSettingsCard />,
-    diagnostics: <DiagnosticsCard />,
+    diagnostics: <DiagnosticsCard visible={visibleItems.has("diagnostics")} />,
     update: <UpdateCard />,
   };
   const destinations = settingsDestinations(query);
@@ -89,7 +90,9 @@ export function SettingsPage() {
       {sections.map(section => <button type="button" key={section.id} className={styles.category} aria-current={!query && selected === section.id ? "page" : undefined} onClick={() => select(section.id)}>{section.label}</button>)}
     </nav>
     <ScrollableContent className={styles.content} contentClassName={styles.contentInner} resetKey={`${selected}|${query}`}>
-      {/* Keep drafts mounted when changing categories or searching; hidden regions are not visible or focusable. */}
+      {/* 卡片全部保持挂载（草稿、折叠、编辑态在切分区与搜索时不丢），隐藏的区域不可见也不可聚焦。
+          但取数的卡片只在被显示时才拉数据：靠 `hidden` 挡不住副作用，以前一进设置页就替五个
+          分区里所有卡片各发一轮请求。 */}
       {sections.map(section => <section key={section.id} hidden={!shown.some(item => item.id === section.id)} className={styles.cards} aria-label={section.label}>
         {query.trim() && <h2 className={styles.resultsHeading}>{section.label}</h2>}
         {section.items.map(item => <div key={item.id} hidden={!visibleItems.has(item.id)}>{items[item.id]}</div>)}

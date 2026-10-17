@@ -13,18 +13,23 @@ pub(super) fn open_install_terminal() -> Result<(), String> {
             .map(std::path::PathBuf::from)
             .ok_or_else(|| "Cannot locate the Windows system directory".to_string())?
             .join("System32");
-        let request = windows_install_request(&system_directory, &ca.cert_path())?;
-        install_windows(request)?;
-        // 证书文件在用户可写目录里，而提权后的 certutil 是在授权之后才去读它：
-        // 装完回读存储确认在我们名下，避免"装上了，但不是这份"。
-        match ca.state().map_err(|error| error.to_string())? {
-            cursor_server::local_app::CaState::Ready => Ok(()),
-            _ => Err(
-                "Certificate installation finished, but the certificate is not in the system \
-                 trust store; it may have been replaced while the authorization prompt was open"
-                    .into(),
-            ),
-        }
+        let certificate_path = ca.cert_path();
+        let install_path = certificate_path.clone();
+        install_and_confirm(
+            // 授权前读进内存：certutil 是在用户点过授权之后才去读这个用户可写文件的。
+            move || {
+                std::fs::read_to_string(&certificate_path)
+                    .map_err(|error| format!("Cannot read the CA certificate: {error}"))
+            },
+            || {
+                let request = windows_install_request(&system_directory, &install_path)?;
+                install_windows(request)
+            },
+            |certificate| {
+                cursor_server::local_app::is_certificate_installed(certificate)
+                    .map_err(|error| error.to_string())
+            },
+        )
     }
     #[cfg(target_os = "macos")]
     {
@@ -63,6 +68,33 @@ pub(super) fn open_install_terminal() -> Result<(), String> {
         }
         Err("No supported terminal emulator found".into())
     }
+}
+
+/// 提权安装 + 回读确认：确认的对象必须是**授权前读到的那一份**证书。
+///
+/// `certutil` 是在用户点过 UAC 之后才去读 `ca.crt` 的，而那个文件在用户可写目录里。若这期间
+/// 文件被连证书带私钥一起换掉，`certutil` 装进去的就是换过的那一份；此时"重新读一遍文件再
+/// 看它在不在存储里"（旧实现走 `CaState::Ready`）恰好会通过——随后 `load()` 还会用这对被换掉
+/// 的证书与私钥去签发拦截证书。所以先把 PEM 读进内存，装完拿内存里这一份问系统存储。
+///
+/// 三段都参数化：用例要能分别注入"读到的证书""安装是否成功""存储里有没有这份证书"，
+/// 覆盖"文件在授权期间被换掉"这个分支。
+#[cfg(windows)]
+fn install_and_confirm(
+    read_certificate: impl FnOnce() -> Result<String, String>,
+    install: impl FnOnce() -> Result<(), String>,
+    is_installed: impl FnOnce(&str) -> Result<bool, String>,
+) -> Result<(), String> {
+    let certificate = read_certificate()?;
+    install()?;
+    if is_installed(&certificate)? {
+        return Ok(());
+    }
+    Err(
+        "Certificate installation finished, but the certificate we asked for is not in the system \
+         trust store; it may have been replaced while the authorization prompt was open"
+            .into(),
+    )
 }
 
 #[cfg(windows)]
@@ -197,5 +229,71 @@ mod tests {
             windows_install_request(system, Path::new("D:\\ca\" -delstore Root\\ca.crt")).is_err()
         );
         assert!(windows_install_request(Path::new("System32"), Path::new(r"D:\ca.crt")).is_err());
+    }
+
+    /// 回读确认问的必须是"我们请求装的那一份"，不是"当前文件里那一份"。
+    ///
+    /// 旧实现装完重新读 `ca.crt` 再走 `CaState::Ready`：授权窗口期间文件被换掉时，
+    /// `certutil` 装的是换过的那份，而回读恰好通过。用例让"读证书"这个动作第二次返回
+    /// **换过的那份**（存储里也只有那份），于是"装完再读一次"的写法会走进通过分支。
+    #[test]
+    fn the_installation_confirmation_checks_the_certificate_we_asked_for() {
+        let asked = "the certificate we asked for";
+        let swapped = "the certificate swapped in while the prompt was open";
+
+        // 文件在授权期间被换掉：安装一动，之后读到的就是换过的那份；存储里也只有那份。
+        let installed = std::cell::Cell::new(false);
+        let read_before_install = std::cell::Cell::new(false);
+        let swapped_case = install_and_confirm(
+            || {
+                read_before_install.set(!installed.get());
+                Ok(String::from(if installed.get() { swapped } else { asked }))
+            },
+            || {
+                installed.set(true);
+                Ok(())
+            },
+            |certificate| Ok(certificate == swapped),
+        );
+        assert!(
+            read_before_install.get(),
+            "证书必须在提权之前读一次就定下来（装完再读会读到换过的那份）"
+        );
+        assert!(
+            swapped_case
+                .unwrap_err()
+                .contains("not in the system trust store"),
+            "装进去的不是我们请求的那一份时必须报出来"
+        );
+
+        // 请求的那份在存储里 → 通过。
+        assert!(install_and_confirm(
+            || Ok(asked.into()),
+            || Ok(()),
+            |certificate| Ok(certificate == asked),
+        )
+        .is_ok());
+
+        // 读不到证书就不要提权。
+        assert_eq!(
+            install_and_confirm(
+                || Err("Cannot read the CA certificate".into()),
+                || panic!("must not install without a certificate"),
+                |_| panic!("must not check without a certificate"),
+            )
+            .unwrap_err(),
+            "Cannot read the CA certificate"
+        );
+
+        // 授权被取消 / 安装失败：不再回读。
+        assert_eq!(
+            install_and_confirm(
+                || Ok("certificate".into()),
+                || Err("Administrator authorization was cancelled".into()),
+                |_| panic!("must not check after a failed install"),
+            )
+            .unwrap_err(),
+            "Administrator authorization was cancelled"
+        );
     }
 }

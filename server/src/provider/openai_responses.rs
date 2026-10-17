@@ -16,12 +16,10 @@ use crate::{
 };
 
 use super::{
-    apply_body_allowlist, apply_openai_prompt_cache_key,
-    attempt::{send_once, Attempt},
-    map_sse_error, merge_extra_params, provider_event_error,
-    recorder::recorded_headers,
-    CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
+    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
+    recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
+use crate::upstream::{self, UpstreamCall};
 
 #[derive(Default)]
 struct ResponseToolState {
@@ -84,20 +82,22 @@ impl Provider for OpenAiResponsesProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
-            apply_body_allowlist(&mut body, config.allowed_body_fields.as_ref())?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
-            let attempt = send_once(
-                "OpenAI Responses",
+            let Some(response) = upstream::send(
+                &UpstreamCall {
+                    label: "OpenAI Responses",
+                    model: &request.model.model_id,
+                    url: &config.request_url,
+                },
                 &outbound,
                 |client| client.post(&config.request_url)
                     .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
                 &cancellation,
                 recorder.as_ref(),
-            ).await?;
-            let Attempt::Response(response) = attempt else { return };
+            ).await? else { return };
             yield ModelEvent::Start { model_call_id: call_id };
             let chunk_recorder = recorder.clone();
             let chunks = response.bytes_stream()
@@ -376,7 +376,7 @@ fn apply_model(
     if let Some(max) = model.max_output_tokens.or(route_max_output_tokens) {
         object.insert("max_output_tokens".into(), json!(max));
     }
-    if model.reasoning.enabled || model.reasoning.effort.is_some() {
+    if model.reasoning.is_enabled() || model.reasoning.effort.is_some() {
         let mut reasoning = Map::new();
         reasoning.insert("summary".into(), json!("auto"));
         if let Some(effort) = &model.reasoning.effort {
@@ -628,6 +628,64 @@ fn responses_usage(value: &Value) -> Usage {
 mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
+    use crate::provider::testing;
+
+    /// 结束条件一：`response.completed` 收尾，文本照常交付。
+    #[tokio::test]
+    async fn a_completed_response_ends_the_stream_with_done() {
+        let url = testing::sse_upstream(
+            "/v1/responses",
+            vec![
+                json!({"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg-1"}}),
+                json!({"type":"response.output_text.delta","delta":"你好"}),
+                json!({"type":"response.output_text.done"}),
+                json!({"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":2}}}),
+            ],
+        )
+        .await;
+        let provider = OpenAiResponsesProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::OpenAiResponses, url),
+        );
+
+        let events = testing::drain(provider.stream(
+            testing::invocation("gpt-5.1"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .unwrap_or_else(|error| panic!("带 response.completed 的流必须正常收尾: {error}"));
+
+        assert_eq!(testing::text_of(&events), "你好");
+        assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+    }
+
+    /// 结束条件二：断开时既没有 completed 也没有 incomplete——必须报错，不能当成功。
+    #[tokio::test]
+    async fn a_stream_that_ends_without_a_completion_event_is_an_error() {
+        let url = testing::sse_upstream(
+            "/v1/responses",
+            vec![json!({"type":"response.output_text.delta","delta":"断"})],
+        )
+        .await;
+        let provider = OpenAiResponsesProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::OpenAiResponses, url),
+        );
+
+        let error = testing::drain(provider.stream(
+            testing::invocation("gpt-5.1"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .expect_err("没有结束事件的流必须报错");
+
+        assert!(
+            error
+                .to_string()
+                .contains("without response.completed or response.incomplete"),
+            "{error}"
+        );
+    }
 
     #[test]
     fn tool_schemas_normalize_float_written_integer_keywords() {

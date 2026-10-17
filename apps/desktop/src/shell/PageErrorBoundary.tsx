@@ -5,8 +5,13 @@ import { Button } from "../shared/ui/Button";
 
 type PageErrorBoundaryProps = {
   children: ReactNode;
-  /** 出错的页面路径；路径变化时自动重试，否则一个坏页面会把整个外壳留在这里。 */
-  resetKey: string;
+  /**
+   * 出错后自动重试的触发键：键变化时清掉错误、让 children 重新挂载。
+   *
+   * 只给**外壳那层**边界用（它套在 keep-alive 容器外面，切页时键真的会变）。缓存节点内部的
+   * 边界不传这个键：节点内的缓存键恒定，自动重试既不可达、也不该做（见 `PageCacheErrorBoundary`）。
+   */
+  resetKey?: string;
 };
 
 type PageErrorBoundaryState = {
@@ -47,4 +52,22 @@ export class PageErrorBoundary extends Component<PageErrorBoundaryProps, PageErr
       />
     </div>;
   }
+}
+
+/**
+ * keep-alive 缓存节点**内部**的边界。
+ *
+ * 原来只有一层页面级边界，套在整个缓存容器外面：任何一页渲染出错，容器连同其它页面的
+ * 缓存状态（草稿、滚动位置、已加载的数据）一起被卸掉。keepalive-for-react 的
+ * `errorElement` 渲染在每个缓存节点内部，于是错误只重建出错的那一页。
+ *
+ * 复位**只支持手动**（"重新加载这个页面"按钮）：缓存节点内的缓存键就是路由路径，节点存活
+ * 期间恒定，所以"切走再切回来自动重试"不可达——keep-alive 切回是恢复同一个节点，不会重新
+ * 挂载，边界实例和错误状态都还在（曾经按 `_cacheKey` 做复位键，实际上永远不会触发）。
+ *
+ * 也不该改成失败即自动重试：渲染错误通常是确定性的，自动重试只会把同一段崩溃循环原样重放。
+ * 页面真被缓存淘汰、或路由重建时，边界会跟着重新挂载，那时自然就是一次新的尝试。
+ */
+export function PageCacheErrorBoundary({ children }: { children: ReactNode }) {
+  return <PageErrorBoundary>{children}</PageErrorBoundary>;
 }

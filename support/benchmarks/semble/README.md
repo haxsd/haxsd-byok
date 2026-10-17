@@ -34,9 +34,11 @@
 
 ```sh
 cargo run --release -p semble-benchmark
+# 或
+make bench-check
 ```
 
-需要用于 CI 或本地回归检查时增加 `--check`。跑分报告仍会正常生成，但任一 Semble 轨道低于 [`quality-gates.json`](./quality-gates.json) 中的公开质量下限时，命令会返回失败。完整双系统报告还要求 Semble 的缓存加载，以及符号查询的 P50、P95，均不超过 CodeGraph 的 90%：
+跑分报告会写到 `results/latest.json` 与 `results/latest.md`。需要让命令在结果不达门槛时失败时增加 `--check`：任一 Semble 轨道低于 [`quality-gates.json`](./quality-gates.json) 中的公开质量下限，命令就返回失败。完整双系统报告还要求 Semble 的缓存加载，以及符号查询的 P50、P95，均不超过 CodeGraph 的 90%：
 
 ```sh
 cargo run --release -p semble-benchmark -- --check
@@ -47,6 +49,20 @@ cargo run --release -p semble-benchmark -- --check
 ```sh
 cargo run --release -p semble-benchmark -- --semble-only --check
 ```
+
+CI 跑的是门槛的可判定子集：不重新跑分，只用提交的 `results/latest.json` 复核同一个门槛文件。它不需要 `codegraph`、模型与网络，所以拦的是"门槛被调高、报告被改坏、报告与门槛不再对应"这类改动：
+
+```sh
+cargo run -p semble-benchmark -- --verify-report support/benchmarks/semble/results/latest.json
+# 或
+make bench-gates
+```
+
+完整跑分需要 `codegraph`、能联网拉取固定提交，并且以十分钟计，因此留在本地（或具备这些条件的机器）执行。
+
+### Windows
+
+`codegraph` 同样要能在 `PATH` 上被找到：Windows 用 `where` 定位（不再是只存在于类 Unix 的 `which`），CodeGraph 发行目录里的 Node 按平台名查找（Windows 上是 `node.exe`）。跑分本身与平台无关。
 
 工具默认自行拉取固定提交，并清空隔离的基准索引，模型缓存保留。CodeGraph 使用位于 `target` 下的独立 Git 工作副本，不会创建、覆盖或删除传入代码库中的 `.codegraph`。已有精确提交的工作区可以复用：
 

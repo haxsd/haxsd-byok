@@ -138,14 +138,14 @@ impl CursorTraceRecorder {
         });
     }
 
+    /// 遥测事件（请求正文、响应片段、blob 链接）：队列满时丢弃并记一条警告。
+    ///
+    /// 这些事件量大，丢几条只说明"这次调用的记录少了一段"；把它们排进队列等空位
+    /// 反而会把生产者拖住。
     fn send(&self, event: TraceEvent) {
         if self.activation.load(Ordering::Acquire) == TRACE_DISABLED {
             return;
         }
-        self.send_control(event);
-    }
-
-    fn send_control(&self, event: TraceEvent) {
         if let Err(error) = self.sender.try_send(event) {
             tracing::warn!(
                 request_id = %self.request_id,
@@ -153,5 +153,64 @@ impl CursorTraceRecorder {
                 "dropping Cursor trace event"
             );
         }
+    }
+
+    /// 生命周期事件（开始、恢复、结束）：队列满时排队等空位，绝不丢弃。
+    ///
+    /// 丢掉 `Begin` 会让这条调用在调用列表里根本不存在；丢掉 `Finish` 会让它永远停在
+    /// "进行中"，并连带把它引用的响应 blob 钉在库里不回收。两者都不是"记录少了点"，
+    /// 而是错的状态。
+    fn send_control(&self, event: TraceEvent) {
+        match self.sender.try_send(event) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(event)) => {
+                // 这里不能 `.await`：`finish` 会在非 async 的收尾路径上被调用
+                // （见 `CursorTraceRecorder::finish`），所以把"等到空位再发"交给一个
+                // 短命任务。队列容量固定，这类事件每个请求最多三条，不会堆积。
+                let sender = self.sender.clone();
+                match tokio::runtime::Handle::try_current() {
+                    Ok(handle) => {
+                        handle.spawn(async move {
+                            let _ = sender.send(event).await;
+                        });
+                    }
+                    Err(_) => tracing::warn!(
+                        request_id = %self.request_id,
+                        "no runtime to queue a Cursor trace lifecycle event"
+                    ),
+                }
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::event::TraceEvent;
+    use super::*;
+
+    /// 队列满时遥测片段可以丢，`Begin`/`Finish` 这类生命周期事件不能丢掉：丢了这条
+    /// 调用会永远停在"进行中"（或干脆不出现在调用列表里）。容量 1 的队列复现
+    /// "生产者跑在消费者前面"那一刻。
+    #[tokio::test]
+    async fn lifecycle_events_survive_a_full_trace_queue() {
+        let (sender, mut receiver) = mpsc::channel(1);
+        let service = CursorTraceService { sender };
+        let recorder = service.recorder("request");
+
+        recorder.artifact("test", "test", b"payload", serde_json::json!({}));
+        // 队列此刻是满的：这条 Finish 必须排队等空位，而不是被丢掉。
+        recorder.finish(None);
+
+        let first = receiver.recv().await.unwrap();
+        assert!(matches!(first, TraceEvent::Artifact { .. }));
+        let finish = tokio::time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("the finish event must reach the queue")
+            .unwrap();
+        assert!(matches!(finish, TraceEvent::Finish { .. }));
     }
 }

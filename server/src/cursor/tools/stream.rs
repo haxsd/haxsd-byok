@@ -5,7 +5,7 @@ use crate::{
             json_stream::{JsonStringFields, StringFieldEvent},
             proto::agent::v1 as pb,
         },
-        tools::codec as interaction,
+        tools::{codec as interaction, edit},
     },
     model::ToolCall,
     Result,
@@ -25,8 +25,8 @@ enum Presentation {
 
 struct EditProjection {
     fields: JsonStringFields,
-    path_field: &'static str,
-    content_field: &'static str,
+    path_fields: &'static [&'static str],
+    content_fields: &'static [&'static str],
     path: String,
     content: NewlineStream,
 }
@@ -55,11 +55,18 @@ impl ToolCallStream {
         let presentation = match dynamic_mcp {
             Some(definition) => Presentation::DynamicMcp(definition.clone()),
             None => match normalized(name).as_str() {
-                "write" => Presentation::Edit(EditProjection::new("path", "contents")),
-                "strreplace" => Presentation::Edit(EditProjection::new("path", "new_string")),
-                "editnotebook" => {
-                    Presentation::Edit(EditProjection::new("target_notebook", "new_string"))
+                // 别名表与执行侧共用(`edit::PATH_FIELDS` 等):模型写 `file_path`/`content`
+                // 时执行成功,流式卡片也必须认得出同样的字段名。
+                "write" => {
+                    Presentation::Edit(EditProjection::new(edit::PATH_FIELDS, edit::CONTENT_FIELDS))
                 }
+                "strreplace" => {
+                    Presentation::Edit(EditProjection::new(edit::PATH_FIELDS, &["new_string"]))
+                }
+                "editnotebook" => Presentation::Edit(EditProjection::new(
+                    edit::NOTEBOOK_PATH_FIELDS,
+                    &["new_string"],
+                )),
                 "createplan" => Presentation::CreatePlan(CreatePlanProjection::default()),
                 "task" => Presentation::Task(TaskProjection::default()),
                 _ => Presentation::Plain,
@@ -155,11 +162,11 @@ impl CreatePlanProjection {
 }
 
 impl EditProjection {
-    fn new(path_field: &'static str, content_field: &'static str) -> Self {
+    fn new(path_fields: &'static [&'static str], content_fields: &'static [&'static str]) -> Self {
         Self {
             fields: JsonStringFields::default(),
-            path_field,
-            content_field,
+            path_fields,
+            content_fields,
             path: String::new(),
             content: NewlineStream::default(),
         }
@@ -173,19 +180,23 @@ impl EditProjection {
     ) -> Result<()> {
         for event in self.fields.push(raw_delta)? {
             match event {
-                StringFieldEvent::Delta { name, text } if name == self.path_field => {
+                StringFieldEvent::Delta { name, text }
+                    if self.path_fields.contains(&name.as_str()) =>
+                {
                     self.path.push_str(&text)
                 }
-                StringFieldEvent::End { name } if name == self.path_field => {
+                StringFieldEvent::End { name } if self.path_fields.contains(&name.as_str()) => {
                     messages.push(interaction::edit_path_partial(call, &self.path));
                 }
-                StringFieldEvent::Delta { name, text } if name == self.content_field => {
+                StringFieldEvent::Delta { name, text }
+                    if self.content_fields.contains(&name.as_str()) =>
+                {
                     let content = self.content.push(&text, false);
                     if !content.is_empty() {
                         messages.push(interaction::edit_content_delta(call, content));
                     }
                 }
-                StringFieldEvent::End { name } if name == self.content_field => {
+                StringFieldEvent::End { name } if self.content_fields.contains(&name.as_str()) => {
                     let content = self.content.push("", true);
                     if !content.is_empty() {
                         messages.push(interaction::edit_content_delta(call, content));
@@ -284,5 +295,68 @@ mod tests {
         let args = task.args.as_ref().expect("expected partial Task args");
         assert_eq!(args.description, "Review K10");
         assert_eq!(args.prompt, "");
+    }
+
+    fn write_call(arguments_text: &str) -> ToolCall {
+        ToolCall {
+            index: 0,
+            call_id: "write-1".into(),
+            model_call_id: "model-write".into(),
+            name: "Write".into(),
+            arguments_text: arguments_text.into(),
+            arguments: serde_json::Value::Null,
+            argument_error: None,
+        }
+    }
+
+    /// 模型按 Claude Code 习惯写 `file_path`/`content` 时,执行侧认这两个别名,
+    /// 流式卡片也必须认——否则编辑能成功,用户却看到一张空卡片。
+    #[test]
+    fn edit_streaming_accepts_the_same_field_aliases_as_execution() {
+        let mut stream = ToolCallStream::new("Write", None);
+        let first = r#"{"file_path":"src/a.ts","content":"one"#;
+        let messages = stream.arguments_delta(&write_call(first), first).unwrap();
+
+        // 路径 (End) + 正文 (Delta) 两条更新。
+        assert_eq!(messages.len(), 2, "{messages:#?}");
+        let Some(pb::agent_server_message::Message::InteractionUpdate(update)) =
+            messages[0].message.as_ref()
+        else {
+            panic!("expected interaction update")
+        };
+        let Some(pb::interaction_update::Message::PartialToolCall(partial)) =
+            update.message.as_ref()
+        else {
+            panic!("expected partial tool call")
+        };
+        let Some(pb::tool_call::Tool::EditToolCall(tool)) = partial
+            .tool_call
+            .as_ref()
+            .and_then(|call| call.tool.as_ref())
+        else {
+            panic!("expected EditToolCall")
+        };
+        assert_eq!(tool.args.as_ref().unwrap().path, "src/a.ts");
+
+        // JSON 转义出来的换行必须照常流出去(增量里带真实控制字符是非法 JSON)。
+        let closing = r#"\n"}"#;
+        let messages = stream
+            .arguments_delta(&write_call(&format!("{first}{closing}")), closing)
+            .unwrap();
+        assert_eq!(messages.len(), 1, "{messages:#?}");
+    }
+
+    /// 规范拼写(与执行侧一致的 `path`/`contents`)行为不变。
+    #[test]
+    fn canonical_edit_field_names_still_stream() {
+        let mut stream = ToolCallStream::new("Write", None);
+        let first = r#"{"path":"src/b.ts","contents":"x"#;
+        assert_eq!(
+            stream
+                .arguments_delta(&write_call(first), first)
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }

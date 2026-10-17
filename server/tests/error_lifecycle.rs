@@ -285,12 +285,129 @@ async fn provider_failure_keeps_the_initial_checkpoint_then_returns_structured_e
         .await
         .unwrap();
     assert!(messages.iter().any(|message| message.role == Role::User));
+    // 口径：截断时落库的是**已经生成的半段**。这一轮一条文本都没生成（只发到
+    // `Done(Length)`），所以历史里不该多出 assistant 消息——写了就说明落的是空消息。
     assert!(!messages.iter().any(|message| {
         matches!(
             &message.content,
             MessageContent::Assistant { text, .. } if text.contains("Cursor server error")
         )
     }));
+    assert!(
+        !messages
+            .iter()
+            .any(|message| matches!(&message.content, MessageContent::Assistant { .. })),
+        "没有生成任何文本时不该落 assistant"
+    );
+}
+
+/// `max_tokens` 截断（默认口径）：已经流给用户的半段回答要落成 assistant 消息，
+/// 服务端历史与用户看到的一致；这一轮仍然按失败收尾（客户端据此知道被截断了）。
+#[tokio::test]
+async fn a_length_stop_persists_the_half_answer_and_still_reports_the_error() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(vec![
+        ModelEvent::Start {
+            model_call_id: "length-limited-with-text".into(),
+        },
+        ModelEvent::TextStart,
+        ModelEvent::TextDelta("half an answer".into()),
+        ModelEvent::TextEnd,
+        ModelEvent::Done(FinishReason::Length),
+    ]);
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("truncated-request").await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run()),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let mut checkpoints = Vec::new();
+    let mut text = String::new();
+    let error_json = loop {
+        let frame = tokio::time::timeout(TERMINAL_FRAME_TIMEOUT, output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            break serde_json::from_slice::<serde_json::Value>(&payload).unwrap();
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                handle
+                    .command(TransportCommand::Append {
+                        seqno: append_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await
+                    .unwrap();
+                append_seqno += 1;
+            }
+            Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(state)) => {
+                checkpoints.push(state);
+            }
+            Some(pb::agent_server_message::Message::InteractionUpdate(update)) => {
+                if let Some(pb::interaction_update::Message::TextDelta(delta)) = update.message {
+                    text.push_str(&delta.text);
+                }
+            }
+            _ => {}
+        }
+    };
+
+    assert_eq!(text, "half an answer", "用户看到的就是这半段");
+    assert_eq!(
+        error_json["error"]["code"], "unavailable",
+        "截断仍然是一条结构化的上游错误"
+    );
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "截断不重试：重试拿到的是同一份 prompt"
+    );
+    assert!(!checkpoints.is_empty(), "起手那次状态提交必须到达客户端");
+    // 失败路径不推终态：`ConversationOutput` 在 `RunOutcome::Failed` 上直接 abort 掉
+    // checkpoint worker。半段回答对用户是靠流式 delta 显现的，服务端历史以落库为准，
+    // 客户端手上那份状态会在下一轮由服务端重新投影。这条断言把这个现状写下来。
+    assert_eq!(
+        checkpoints.len(),
+        1,
+        "失败收尾不额外推终态，实际收到 {} 次状态",
+        checkpoints.len()
+    );
+    let messages = store
+        .load_current_messages(&cursor_server::model::ConversationId::new(
+            "failed-conversation",
+        ))
+        .await
+        .unwrap();
+    assert!(
+        messages.iter().any(|message| {
+            matches!(
+                &message.content,
+                MessageContent::Assistant { text, .. } if text == "half an answer"
+            )
+        }),
+        "服务端历史里要有用户看到的那半段回答"
+    );
 }
 
 #[tokio::test]

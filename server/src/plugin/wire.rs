@@ -27,7 +27,7 @@ pub fn llm_request(invocation: &ModelInvocation) -> Result<serde_json::Value> {
             "parameters": tool.parameters,
         })).collect::<Vec<_>>(),
         "reasoning": {
-            "enabled": request.model.reasoning.enabled,
+            "enabled": request.model.reasoning.is_enabled(),
             "effort": request.model.reasoning.effort,
         },
         "latency": match request.model.latency {

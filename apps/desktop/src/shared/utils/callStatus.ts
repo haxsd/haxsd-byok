@@ -30,3 +30,22 @@ export function callStatusLabel(status: string): string {
     default: return status;
   }
 }
+
+/**
+ * 一次调用的客户端来源。
+ *
+ * 这个字段以前有两套说法：调用页的筛选条写「内部调用」，展开行和详情页直接显示
+ * 数据库里的 `internal`／`cursor`——同一屏里同一个字段，一处中文一处英文。这里
+ * 收成一处：筛选条和明细都从这里取名字。
+ *
+ * 三个客户端名是固定产品名，不参与翻译；未知来源保留原文。
+ */
+export function callClientLabel(source: string): string {
+  switch (source) {
+    case "cursor": return "Cursor";
+    case "devin": return "Devin";
+    case "codex": return "Codex";
+    case "internal": return t("内部调用");
+    default: return source;
+  }
+}

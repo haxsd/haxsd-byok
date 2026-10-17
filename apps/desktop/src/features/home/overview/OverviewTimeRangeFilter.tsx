@@ -1,7 +1,7 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { parseTimeInput } from "../../../shared/utils/parseTimeInput";
+import { timeRangeProblem } from "../../../shared/utils/parseTimeInput";
 import controls from "../../../shared/ui/Controls.module.scss";
 import { Icon } from "../../../shared/ui/Icon";
 import { ModelSelect, type ModelSelectOption } from "../../../shared/ui/ModelSelect";
@@ -71,9 +71,9 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [customOpen, onCustomOpenChange]);
 
-  const parsedStart = parseTimeInput(customStart);
-  const parsedEnd = parseTimeInput(customEnd);
-  const customValid = parsedStart !== null && parsedEnd !== null && parsedStart < parsedEnd;
+  // 「应用」按钮不可用时必须说出原因：只灰掉按钮，用户分不清是格式不认还是区间反了。
+  const problem = timeRangeProblem(customStart, customEnd);
+  const customValid = problem === null;
   return <div className={styles.root} aria-label={t("概览时间范围")}>
     <Segmented<OverviewRangePreset>
       ariaLabel={t("概览时间范围")}
@@ -121,6 +121,11 @@ export function OverviewTimeRangeFilter({ value, quick, customOpen, customStart,
       </div>
       <label><span>{t("开始时间")}</span><input type="text" placeholder={t("如：2026-08-23 09:00、1小时前")} value={customStart} onChange={(event) => onCustomStartChange(event.target.value)} /></label>
       <label><span>{t("结束时间")}</span><input type="text" placeholder={t("如：现在、2026-08-23 18:00")} value={customEnd} onChange={(event) => onCustomEndChange(event.target.value)} /></label>
+      {problem && (customStart.trim() !== "" || customEnd.trim() !== "") && <small className={styles.rangeProblem} role="alert">
+        {problem === "order"
+          ? t("开始时间必须早于结束时间。")
+          : t("时间格式无法识别：请填 2026-08-23 09:00 这样的时间，或用「现在」「1小时前」。")}
+      </small>}
       <div className={styles.filterRow}><ModelSelect mode="multiple" label={t("模型")} value={selectedModels} options={modelOptions} onChange={onSelectedModelsChange} /></div>
       <div className={styles.popoverActions}>
         <button type="button" className={controls.secondary} onClick={() => onCustomOpenChange(false)}>{t("取消")}</button>

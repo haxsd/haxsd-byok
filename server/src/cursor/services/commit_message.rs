@@ -50,21 +50,16 @@ pub async fn write_git_commit_message(
 ) -> Result<Response<Body>> {
     let settings = registry.store().commit_settings().await?;
     if settings.is_direct() {
-        return forward_direct(&registry, upstream, request).await;
+        return forward_direct(upstream, request).await;
     }
     generate_local(&registry, request, settings).await
 }
 
-async fn forward_direct(
-    registry: &TransportRegistry,
-    upstream: CursorProxy,
-    request: Request<Body>,
-) -> Result<Response<Body>> {
-    let settings = registry.store().tab_settings().await?;
-    match settings.service_url() {
-        Some(service_url) => proxy::forward_to_service(&upstream, request, service_url).await,
-        None => proxy::forward(Extension(upstream), request).await,
-    }
+/// 「直连」= 交给 Cursor 官方上游,与本机是否配置了 Tab 补全服务无关。
+/// 以前这里读 Tab 设置并复用它的地址:Tab 默认指向公开的补全服务,于是提交信息
+/// 请求(里面是 staged diff)会带着用户的私有改动发到那个第三方主机上。
+async fn forward_direct(upstream: CursorProxy, request: Request<Body>) -> Result<Response<Body>> {
+    proxy::forward(Extension(upstream), request).await
 }
 
 async fn generate_local(

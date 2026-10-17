@@ -6,6 +6,12 @@
   --app-nav-height: 46px;
   /* The page title gets a band of its own between the bar and the content. */
   --app-title-band: 44px;
+  /* 标题带里标题与右侧动作区是同一行的两列。动作区的宽度随页面动作变化（每页 0~3 个
+     按钮），运行期由 AppLayout 量出来写进 documentElement 上的 --app-title-actions，
+     标题行的右边界据此让位（见 PageContent 的 .title），说明文字不够宽时自己省略。
+     这里不声明默认值：在 .shell 上再声明一次会把根元素上的实测值盖住，取值处的
+     var(--app-title-actions, 0px) 就是兜底。 */
+  --app-title-band-gap: var(--oa-space-4);
   --app-content-left: 0px;
   --window-safe-top: var(--window-header-height);
   --window-menu-top: var(--window-safe-top);

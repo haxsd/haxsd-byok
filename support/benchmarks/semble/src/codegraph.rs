@@ -88,7 +88,7 @@ pub fn benchmark(
 ) -> Result<CodeGraphRun, String> {
     let executable = locate_executable(executable)?;
     let distribution = distribution_root(&executable)?;
-    let node = distribution.join("node");
+    let node = distribution.join(node_binary());
     let library = distribution.join("lib");
     if !node.is_file() || !library.is_dir() {
         return Err(format!(
@@ -191,13 +191,34 @@ pub fn benchmark(
     })
 }
 
+/// CodeGraph 发行目录里的 Node 可执行文件名：Windows 带 `.exe`，类 Unix 不带。
+/// 写死 `"node"` 会让整个基准在 Windows 上以"不支持的安装布局"失败。
+fn node_binary() -> String {
+    format!("node{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// 定位 CodeGraph 可执行文件：`which` 在 Windows 上不存在，那里用 `where`。
+/// `where` 会把所有匹配逐行列出（还可能是 CRLF），只取第一条非空行。
 fn locate_executable(name: &str) -> Result<PathBuf, String> {
-    let output = command_output(
-        Command::new("which").arg(name),
+    let locator = if cfg!(windows) { "where" } else { "which" };
+    let output = match command_output(
+        Command::new(locator).arg(name),
         "locate CodeGraph executable",
-    )?;
-    fs::canonicalize(output)
-        .map_err(|error| format!("resolve CodeGraph executable symlink: {error}"))
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            return Err(format!(
+                "CodeGraph executable `{name}` is not on PATH: {error}"
+            ))
+        }
+    };
+    let path = first_path_line(&output)
+        .ok_or_else(|| format!("CodeGraph executable `{name}` is not on PATH"))?;
+    fs::canonicalize(path).map_err(|error| format!("resolve CodeGraph executable symlink: {error}"))
+}
+
+fn first_path_line(output: &str) -> Option<&str> {
+    output.lines().map(str::trim).find(|line| !line.is_empty())
 }
 
 fn distribution_root(executable: &Path) -> Result<PathBuf, String> {
@@ -255,4 +276,48 @@ fn directory_size(path: &Path) -> Result<u64, String> {
         }
     }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_node_binary_carries_this_platforms_extension() {
+        assert_eq!(
+            node_binary(),
+            format!("node{}", std::env::consts::EXE_SUFFIX)
+        );
+        #[cfg(windows)]
+        assert_eq!(node_binary(), "node.exe");
+    }
+
+    /// `where` 会把所有匹配逐行列出，还可能带 CRLF 和空行。
+    #[test]
+    fn only_the_first_non_empty_locator_line_is_used() {
+        assert_eq!(
+            first_path_line("C:\\Windows\\System32\\cmd.exe\r\nC:\\Other\\cmd.exe\r\n"),
+            Some("C:\\Windows\\System32\\cmd.exe")
+        );
+        assert_eq!(first_path_line("\n\n/usr/bin/sh\n"), Some("/usr/bin/sh"));
+        assert_eq!(first_path_line("   \r\n"), None);
+        assert_eq!(first_path_line(""), None);
+    }
+
+    /// 定位器换成了 `where`（Windows）：用两个平台都必然存在的程序实跑一次，
+    /// 确认能拿到绝对路径而不是空。
+    #[test]
+    fn the_locator_resolves_a_program_every_platform_ships() {
+        let program = if cfg!(windows) { "cmd" } else { "sh" };
+        let path = locate_executable(program)
+            .unwrap_or_else(|error| panic!("{program} must be locatable: {error}"));
+        assert!(path.is_absolute(), "{}", path.display());
+    }
+
+    #[test]
+    fn a_program_that_does_not_exist_is_reported_by_name() {
+        let error = locate_executable("codegraph-that-does-not-exist")
+            .expect_err("a missing executable must not resolve");
+        assert!(error.contains("codegraph-that-does-not-exist"), "{error}");
+    }
 }

@@ -53,11 +53,9 @@ pub async fn clear_storage(
     input: Option<Json<ClearStorageInput>>,
 ) -> Result<Json<StatisticsStorage>> {
     let scope = input.map(|Json(input)| input.scope).unwrap_or_default();
-    let storage = match scope {
-        StatisticsStorageScope::Details => service.clear_statistics_storage().await?,
-        StatisticsStorageScope::All => service.clear_all_statistics_storage().await?,
-    };
-    Ok(Json(storage))
+    // 立刻返回：删除在后台分批跑，响应里的 `clearing` 说明"已经在清理"，界面轮询
+    // `GET /api/storage` 直到它消失再显示清理后的数字。
+    Ok(Json(service.start_clear_statistics_storage(scope).await?))
 }
 
 #[derive(Deserialize)]

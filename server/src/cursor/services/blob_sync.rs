@@ -164,7 +164,10 @@ impl BlobSynchronizer {
                 result: sender,
             },
         );
-        self.inner.handle.emit(&pb::AgentServerMessage {
+        // emit 失败与 `ensure_set` 一样要先把登记的条目摘掉：transport 已经关掉时这条请求
+        // 永远等不到响应，留下的条目和它的 oneshot 就一直挂在 map 里（`respond_get` 之后
+        // 也没人再碰它）。
+        if let Err(error) = self.inner.handle.emit(&pb::AgentServerMessage {
             ttft_breakdown: None,
             message: Some(pb::agent_server_message::Message::KvServerMessage(
                 pb::KvServerMessage {
@@ -177,7 +180,10 @@ impl BlobSynchronizer {
                     )),
                 },
             )),
-        })?;
+        }) {
+            self.inner.get_requests.lock().await.remove(&id);
+            return Err(error);
+        }
         let cancellation = self.inner.handle.disconnect_token();
         let result = tokio::select! {
             result = receiver => result.map_err(|_| Error::Protocol("KV GET response channel closed".into()))?,
@@ -314,6 +320,8 @@ impl BlobSynchronizer {
 
 #[cfg(test)]
 mod tests {
+    use crate::{cursor::transport::test_registry, store::Store};
+
     use super::*;
 
     #[test]
@@ -324,5 +332,36 @@ mod tests {
     #[test]
     fn get_timeout_allows_slow_cursor_responses() {
         assert_eq!(GET_TIMEOUT, Duration::from_secs(10 * 60));
+    }
+
+    /// 向客户端要块的 emit 失败时，登记项必须跟着消失。
+    ///
+    /// 失败路径以前只写 `?`：transport 关掉之后这条请求永远等不到响应，条目和它的
+    /// oneshot 就一直留在 `get_requests` 里，谁也不会再碰它。
+    #[tokio::test]
+    async fn a_failed_get_emit_leaves_no_pending_request() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let (_registry_directory, registry) = test_registry().await;
+        let handle = registry.get_or_create("blob-sync").await.unwrap();
+        let sync = BlobSynchronizer::new("blob-sync".into(), store, handle.clone());
+        // 输出通道关掉：之后每一次 emit 都以 RunNotFound 失败。
+        handle.close_output();
+
+        let error = sync
+            .get(&BlobId::digest(b"missing blob"))
+            .await
+            .expect_err("输出通道关了，向客户端要块的 emit 必然失败");
+
+        assert!(matches!(error, Error::RunNotFound(_)), "{error:?}");
+        assert!(
+            sync.inner.get_requests.lock().await.is_empty(),
+            "emit 失败后不许把条目留在 get_requests 里"
+        );
     }
 }

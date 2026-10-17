@@ -44,8 +44,13 @@ jobs:
             exit 1
           fi
 
-      # 三处版本号必须一致，且标签名必须是 haxsd-byok-v<版本号>；
-      # 手动触发时跳过标签校验，只校验三处版本号一致。
+      # 版本号必须处处一致，且标签名必须是 haxsd-byok-v<版本号>；
+      # 手动触发时跳过标签校验，只校验各处版本号一致。
+      #
+      # 除了 tauri.conf.json / package.json / src-tauri/Cargo.toml 三处源文件，两个锁
+      # 文件也要一起校验：`cargo build --locked`（Dockerfile 与 release 构建都在用）会
+      # 因为 Cargo.lock 停在旧版本而直接失败，package-lock.json 落后则会把旧版本写进
+      # 发布产物的依赖树。
       - name: Read and verify app version
         id: version
         shell: bash
@@ -53,8 +58,15 @@ jobs:
           version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
           package_version=$(node -p "require('./apps/desktop/package.json').version")
           cargo_version=$(sed -n '/^version = / { s/version = "\([^"]*\)"/\1/p; q; }' apps/desktop/src-tauri/Cargo.toml)
+          package_lock_version=$(node -p "require('./apps/desktop/package-lock.json').version")
+          package_lock_root_version=$(node -p "require('./apps/desktop/package-lock.json').packages[''].version")
+          cargo_lock_version=$(sed -n '/^name = "haxsd-byok-desktop"$/,/^version = / { s/^version = "\([^"]*\)"/\1/p; }' Cargo.lock | head -n 1)
           test "${version}" = "${package_version}"
           test "${version}" = "${cargo_version}"
+          test "${version}" = "${package_lock_version}"
+          test "${version}" = "${package_lock_root_version}"
+          test -n "${cargo_lock_version}"
+          test "${version}" = "${cargo_lock_version}"
           if [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
             test "${GITHUB_REF_NAME}" = "haxsd-byok-v${version}"
             git fetch origin main:refs/remotes/origin/main
@@ -171,12 +183,19 @@ jobs:
     if: needs.prepare.outputs.should_publish == 'true' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       # tauri-action writes the API asset URL into latest.json. That host answers
       # anonymously only within GitHub's 60-requests-per-hour budget, and an
       # exhausted budget turns the installer download into a 403 for every client
       # behind a shared address. The plain release download URL is not metered, so
       # the manifest is rewritten before it goes live. This runs while the release
       # is still a draft, so no client ever sees the metered URL.
+      #
+      # 重写走 `.github/scripts/normalize-tauri-update.mjs`（用例见
+      # `normalize-tauri-update.test.mjs`，CI 的 `gates` 任务在跑）：这段逻辑原来是这里
+      # 内联的 python 复制品，少了"版本与标签必须一致"和"未知资产必须拒绝"两类校验，
+      # 而且没有用例。
       - name: Rewrite the manifest onto unmetered download URLs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,24 +205,25 @@ jobs:
           tag="haxsd-byok-v${VERSION}"
           mkdir -p manifest
           gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" --pattern latest.json --dir manifest --clobber
-          python3 - "${GITHUB_REPOSITORY}" "${tag}" manifest/latest.json <<'PY'
-          import json, subprocess, sys
-          repo, tag, path = sys.argv[1], sys.argv[2], sys.argv[3]
-          assets = json.loads(subprocess.check_output(
-              ["gh", "release", "view", tag, "--repo", repo, "--json", "assets"]
-          ))["assets"]
-          by_api_url = {asset["apiUrl"]: asset["name"] for asset in assets}
-          with open(path) as handle:
-              manifest = json.load(handle)
-          for name, entry in manifest.get("platforms", {}).items():
-              asset = by_api_url.get(entry.get("url", ""))
-              if asset is None:
-                  raise SystemExit(f"no release asset matches the url for platform {name}")
-              entry["url"] = f"https://github.com/{repo}/releases/download/{tag}/{asset}"
-          with open(path, "w") as handle:
-              json.dump(manifest, handle, indent=2, ensure_ascii=False)
-          print("rewrote", ", ".join(sorted(manifest.get("platforms", {}))))
-          PY
+          # 脚本的契约是 REST 形状（snake_case 的 tag_name 与 assets[].id /
+          # browser_download_url）；`gh release view --json` 给的是 camelCase。
+          #
+          # 不能用 `releases/tags/<tag>`：此时 release 还是草稿（tauri-action 用
+          # releaseDraft=true 建的），REST 按 tag 解析会把草稿当成不存在而返回 404。
+          # 草稿只出现在列表接口里，所以取最近的 release 列表再按 tag_name 过滤；列表默认
+          # 每页 30 条，per_page=100 足够覆盖刚建的那条，配合下面的空结果检查不会静默通过。
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"${tag}\")" > manifest/release.json
+          if [ ! -s manifest/release.json ]; then
+            echo "no release (draft included) found for tag ${tag}" >&2
+            exit 1
+          fi
+          node .github/scripts/normalize-tauri-update.mjs \
+            --manifest manifest/latest.json \
+            --release manifest/release.json \
+            --repository "${GITHUB_REPOSITORY}" \
+            --tag "${tag}" \
+            --version "${VERSION}"
           # Fail loudly rather than publish a manifest that still points at the
           # metered host.
           if grep -q "api.github.com" manifest/latest.json; then
@@ -212,9 +232,8 @@ jobs:
           fi
           gh release upload "${tag}" manifest/latest.json --repo "${GITHUB_REPOSITORY}" --clobber
 
-      # This job deliberately has no checkout, so gh cannot infer the repository
-      # from a working tree. Naming it explicitly is what keeps the release from
-      # staying a draft: without --repo, gh fails with "not a git repository".
+      # 显式 --repo 不依赖工作树：这一步失败会让版本停在草稿状态，不能靠"gh 能从
+      # checkout 推断仓库"这种隐式前提（本任务只是为了跑上面的共享脚本才 checkout）。
       - name: Publish the completed release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

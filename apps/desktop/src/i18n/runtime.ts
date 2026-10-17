@@ -4,6 +4,9 @@ import enUS from "./locales/en-US.json";
 export type Locale = "zh-CN" | "en-US";
 export type CommitPromptLocale = "zh-CN" | "en-US";
 
+/** 语言偏好：跟随系统，或钉死其中一种。持久化在服务端（见 shared/store/uiPreferences.ts）。 */
+export type LocalePreference = "system" | Locale;
+
 export function commitPromptLocale(locale: Locale): CommitPromptLocale {
   return locale === "zh-CN" ? "zh-CN" : "en-US";
 }

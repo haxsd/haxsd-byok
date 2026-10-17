@@ -65,10 +65,15 @@ where
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
         .map_err(|error| Error::io(&temporary, error))?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| Error::io(path, error))?;
+    // 直接改名覆盖：先删目标再改名会留出一个"缓存文件不存在"的窗口，崩溃或断电正好
+    // 落在这里就等于丢掉整份索引。两边的 rename 都能替换已存在的文件（Rust 在
+    // Windows 上用 MoveFileEx + MOVEFILE_REPLACE_EXISTING），所以这一次改名就是切换点。
+    if let Err(error) = fs::rename(&temporary, path) {
+        // 改名失败要收拾掉临时文件：它的名字带进程 id 与纳秒时间戳，留下就是永久的垃圾。
+        let _ = fs::remove_file(&temporary);
+        return Err(Error::io(path, error));
     }
-    fs::rename(&temporary, path).map_err(|error| Error::io(path, error))
+    Ok(())
 }
 
 fn now_nanos() -> u128 {
@@ -140,5 +145,45 @@ mod tests {
             .lexical
             .exact_symbol("missing", &loaded.chunks, 1)
             .is_empty());
+    }
+
+    fn temporary_files(directory: &Path) -> Vec<String> {
+        fs::read_dir(directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect()
+    }
+
+    /// 覆盖已有快照必须是一次改名完成：这条用例在 Windows 上会失败，如果实现退回到
+    /// "先删目标再改名"（删掉之后那次改名失败就再也回不来），或者 rename 覆盖不了
+    /// 已存在的目标。
+    #[test]
+    fn saving_over_an_existing_snapshot_replaces_it_without_a_temp_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.bin");
+        save_snapshot(&path, &snapshot()).unwrap();
+
+        let mut updated = snapshot();
+        updated.files[0].path = "src/updated.rs".into();
+        save_snapshot(&path, &updated).unwrap();
+
+        let loaded = load_snapshot(&path).unwrap().unwrap();
+        assert_eq!(loaded.files[0].path, "src/updated.rs");
+        assert!(temporary_files(directory.path()).is_empty());
+    }
+
+    /// 替换失败时目标必须原样还在，且不留临时文件：临时文件是逐个进程 id 命名的，
+    /// 留下来就是永久的垃圾。
+    #[test]
+    fn a_failed_replacement_keeps_the_target_and_leaves_no_temporary() {
+        let directory = tempfile::tempdir().unwrap();
+        // 目标是个目录：改名到已存在的目录上在两边都必然失败。
+        let path = directory.path().join("index.bin");
+        fs::create_dir(&path).unwrap();
+
+        assert!(save_snapshot(&path, &snapshot()).is_err());
+        assert!(path.is_dir(), "失败后目标不该被删掉");
+        assert!(temporary_files(directory.path()).is_empty());
     }
 }

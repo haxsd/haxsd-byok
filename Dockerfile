@@ -6,7 +6,6 @@ COPY apps/desktop/package.json apps/desktop/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY apps/desktop/index.html apps/desktop/tsconfig.json apps/desktop/tsconfig.node.json apps/desktop/vite.config.ts ./
 COPY apps/desktop/plugins/ plugins/
-COPY apps/desktop/public/ public/
 COPY apps/desktop/src/ src/
 RUN npm run build
 
@@ -14,6 +13,10 @@ FROM rust:1-bookworm AS server
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY server/ server/
+# 工作区成员必须一起复制:cargo 解析 Cargo.toml 时会读取每个成员的清单,
+# 而 cursor-server 依赖 crates/semble-core(server/Cargo.toml 的 path 依赖)。
+COPY crates/ crates/
+COPY support/benchmarks/semble/ support/benchmarks/semble/
 COPY apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/Cargo.toml
 COPY apps/desktop/src-tauri/build.rs apps/desktop/src-tauri/build.rs
 COPY apps/desktop/src-tauri/src/ apps/desktop/src-tauri/src/
@@ -38,7 +41,12 @@ RUN apt-get update && \
 COPY --from=server /tmp/cursor-server /usr/local/bin/cursor-server
 COPY --from=web /src/apps/desktop/dist/ /app/console/
 
+# 容器里必须绑 0.0.0.0 才能被端口映射访问，而网关默认拒绝非回环监听（Cursor 侧路由表
+# 本身没有独立的鉴权层，直接绑到网卡上等于把同网段的主机都放进来）。容器是例外，但要显式
+# 写出来：容器自身的网络命名空间就是信任边界——谁能连到它由编排层的端口映射/反代/网络
+# 策略决定，而不是由监听地址决定。不设这个开关，镜像一启动就会带着拒绝信息退出。
 ENV CURSOR_LISTEN_ADDR=0.0.0.0:3000 \
+    HAXSD_BYOK_ALLOW_REMOTE_LISTEN=1 \
     HAXSD_BYOK_DATABASE_URL=sqlite:///data/haxsd-byok.db \
     CURSOR_CONSOLE_DIR=/app/console \
     RUST_LOG=cursor_server=info

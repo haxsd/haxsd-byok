@@ -7,6 +7,8 @@
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
+    sync::OnceLock,
+    time::{Duration, Instant},
 };
 
 /// Relative location of the Devin/Windsurf host extension inside an install.
@@ -92,11 +94,14 @@ impl Detected {
             // 语言是可切换的，服务端不该替用户选一种。
             //
             // 只报搜索规模，不铺候选路径：几十条猜过的路径挤在提示框里，用户
-            // 拿不到任何下一步动作。真正的出路是"填宿主文件路径"，所以直接说它。
+            // 拿不到任何下一步动作。后半句直接说下一步：填安装目录，或安装目录里的
+            // extension.js；安装目录内部的相对路径用户看不见，只当噪声。
+            //
+            // "Devin installation not found" 是界面的匹配片段（`apps/desktop` 的
+            // `harnessErrorText.ts` 按它把这句话换成中文），改文案要连着那张表一起改。
             Self::NotFound { searched } => format!(
-                "Devin installation not found; {} locations were searched. \
-                 Fill in the host file path below: it is the file inside the installation at \
-                 <install directory>\\{HOST_RELATIVE}",
+                "Devin installation not found; {} locations were searched. Enter the installation \
+                 directory in the path field below, or the extension.js file inside it",
                 searched.len()
             ),
         }
@@ -104,6 +109,59 @@ impl Detected {
 }
 
 pub fn detect() -> Detected {
+    static CACHE: OnceLock<parking_lot::Mutex<DetectCache>> = OnceLock::new();
+    cached_detect(
+        CACHE.get_or_init(Default::default),
+        detect_key(),
+        Instant::now(),
+        detect_uncached,
+    )
+}
+
+/// 探测缓存的有效期。安装位置不会在几秒内变化，而固定候选全落空时一次探测要扫最多
+/// 3000 个目录；页面加载、点「检查宿主」、取模型 UID、应用补丁都会探测，所以这段
+/// 重复开销直接省掉。
+const DETECT_CACHE_TTL: Duration = Duration::from_secs(10);
+
+/// 让缓存立即失效的外部输入：显式路径与安装根。用户改了它们就是在说"照我说的再找
+/// 一次"，不该等到 TTL 到期。
+type DetectKey = (Option<String>, Option<String>);
+
+fn detect_key() -> DetectKey {
+    (non_empty_env(PATH_ENV), non_empty_env(ROOT_ENV))
+}
+
+#[derive(Default)]
+struct DetectCache {
+    entry: Option<(DetectKey, Instant, Detected)>,
+}
+
+impl DetectCache {
+    fn get(&self, key: &DetectKey, now: Instant) -> Option<Detected> {
+        let (cached_key, at, detected) = self.entry.as_ref()?;
+        (cached_key == key && now.duration_since(*at) < DETECT_CACHE_TTL).then(|| detected.clone())
+    }
+
+    fn put(&mut self, key: DetectKey, now: Instant, detected: &Detected) {
+        self.entry = Some((key, now, detected.clone()));
+    }
+}
+
+fn cached_detect(
+    cache: &parking_lot::Mutex<DetectCache>,
+    key: DetectKey,
+    now: Instant,
+    scan: impl FnOnce() -> Detected,
+) -> Detected {
+    if let Some(detected) = cache.lock().get(&key, now) {
+        return detected;
+    }
+    let detected = scan();
+    cache.lock().put(key, now, &detected);
+    detected
+}
+
+fn detect_uncached() -> Detected {
     // The fixed candidates are free and almost always hit; the bounded scan is a
     // second pass so that paying for it stays the exception.
     match detect_from_candidates(candidates()) {
@@ -313,6 +371,74 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml")
     }
 
+    /// 探测很贵（固定候选全落空时要扫最多 3000 个目录），而调用点很密：TTL 内的
+    /// 重复探测必须命中缓存，不重扫；TTL 到期或用户改了显式路径才重扫。
+    #[test]
+    fn a_cache_hit_does_not_run_another_scan() {
+        let cache = parking_lot::Mutex::new(DetectCache::default());
+        let key = (None, None);
+        let start = Instant::now();
+        let mut scans = 0;
+        for offset in [0, 1, 2] {
+            let detected = cached_detect(
+                &cache,
+                key.clone(),
+                start + Duration::from_secs(offset),
+                || {
+                    scans += 1;
+                    Detected::Found {
+                        path: PathBuf::from(r"D:\devin\extension.js"),
+                        source: DetectionSource::Guessed,
+                    }
+                },
+            );
+            assert!(detected.path().is_some());
+        }
+        assert_eq!(scans, 1, "TTL 内的重复探测必须命中缓存");
+
+        cached_detect(
+            &cache,
+            key.clone(),
+            start + DETECT_CACHE_TTL + Duration::from_secs(1),
+            || {
+                scans += 1;
+                Detected::NotFound { searched: vec![] }
+            },
+        );
+        assert_eq!(scans, 2, "TTL 到期必须重新探测");
+
+        cached_detect(&cache, (Some(r"E:\devin".into()), None), start, || {
+            scans += 1;
+            Detected::NotFound { searched: vec![] }
+        });
+        assert_eq!(scans, 3, "显式路径变了必须立即重新探测");
+    }
+
+    /// 反面结果也缓存：这正是最贵的那条路径（扫描跑满预算还是没找到），而用户
+    /// 紧接着再点一次「检查宿主」不该重付一次。
+    #[test]
+    fn a_cached_negative_result_is_reused_within_the_ttl() {
+        let cache = parking_lot::Mutex::new(DetectCache::default());
+        let start = Instant::now();
+        let mut scans = 0;
+        for offset in [0, 1] {
+            let detected = cached_detect(
+                &cache,
+                (None, None),
+                start + Duration::from_secs(offset),
+                || {
+                    scans += 1;
+                    Detected::NotFound {
+                        searched: vec![PathBuf::from(r"C:\nowhere\extension.js")],
+                    }
+                },
+            );
+            assert!(detected.path().is_none());
+            assert!(detected.explanation().contains("1 locations"));
+        }
+        assert_eq!(scans, 1);
+    }
+
     #[test]
     fn the_first_existing_candidate_wins_and_keeps_its_source() {
         let detected = detect_from_candidates(vec![
@@ -381,8 +507,18 @@ mod tests {
         assert!(detected.path().is_none());
         let message = detected.explanation();
         assert!(message.contains("2 locations"), "{message}");
-        assert!(message.contains(HOST_RELATIVE), "{message}");
+        // 提示给出的是用户能照做的东西：安装目录，或安装目录里的 extension.js。
+        assert!(message.contains("extension.js"), "{message}");
+        assert!(message.contains("installation directory"), "{message}");
+        // 猜过的候选路径与安装目录内部的相对路径都不该进提示。
         assert!(!message.contains(r"C:\nowhere"), "{message}");
+        assert!(!message.contains(HOST_RELATIVE), "{message}");
+        // 界面按这句片段把提示换成中文（`apps/desktop` 的 `harnessErrorText.ts`）：
+        // 改了它，那边认不出来，中文提示就没了。
+        assert!(
+            message.contains("Devin installation not found"),
+            "{message}"
+        );
     }
 
     /// The drive-letter layout only exists on Windows, so the assertion is

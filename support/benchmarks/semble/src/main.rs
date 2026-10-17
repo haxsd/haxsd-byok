@@ -41,6 +41,11 @@ fn run() -> Result<(), String> {
         print_help();
         return Ok(());
     }
+    // 只复核一份已有报告时不需要代码库、模型或网络：这是 CI 每次都能跑的形态。
+    // 完整跑分（下面的路径）需要 codegraph、能联网拉固定提交，并以十分钟计。
+    if let Some(report) = &args.verify_report {
+        return verify_report(report, &args.quality_gates);
+    }
     let suites = case::load_suites(&args.cases_dir)?;
     let sources = repository::resolve_sources(&suites, &args.sources_dir, &args.sources)?;
     let codegraph_sources = if args.semble_only {
@@ -574,6 +579,16 @@ fn rustc_version() -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
+fn verify_report(path: &Path, quality_gates: &Path) -> Result<(), String> {
+    let bytes =
+        fs::read(path).map_err(|error| format!("read report {}: {error}", path.display()))?;
+    let report = serde_json::from_slice::<BenchmarkReport>(&bytes)
+        .map_err(|error| format!("parse report {}: {error}", path.display()))?;
+    gates::check(quality_gates, &report)?;
+    println!("{} passes the quality gates", path.display());
+    Ok(())
+}
+
 struct Args {
     cases_dir: PathBuf,
     sources_dir: PathBuf,
@@ -589,6 +604,7 @@ struct Args {
     reset_indexes: bool,
     check: bool,
     semble_only: bool,
+    verify_report: Option<PathBuf>,
     help: bool,
 }
 
@@ -611,6 +627,7 @@ impl Args {
             reset_indexes: true,
             check: false,
             semble_only: false,
+            verify_report: None,
             help: false,
         };
         let mut arguments = env::args().skip(1);
@@ -646,6 +663,9 @@ impl Args {
                 "--keep-indexes" => parsed.reset_indexes = false,
                 "--check" => parsed.check = true,
                 "--semble-only" => parsed.semble_only = true,
+                "--verify-report" => {
+                    parsed.verify_report = Some(value(&mut arguments, &argument)?.into())
+                }
                 "-h" | "--help" => parsed.help = true,
                 _ => return Err(format!("unknown argument {argument}")),
             }
@@ -680,7 +700,8 @@ fn print_help() {
            --markdown PATH        Markdown report path\n\
            --keep-indexes         keep the existing Semble indexes\n\
            --check                fail when Semble misses a quality floor\n\
-           --semble-only          skip CodeGraph for fast Semble iteration"
+           --semble-only          skip CodeGraph for fast Semble iteration\n\
+           --verify-report PATH   only check an existing JSON report against the gates"
     );
 }
 
@@ -706,5 +727,65 @@ mod tests {
         fs::write(directory.path().join("one"), [1_u8, 2]).unwrap();
         fs::write(directory.path().join("nested/two"), [3_u8, 4, 5]).unwrap();
         assert_eq!(directory_size(directory.path()).unwrap(), 5);
+    }
+
+    fn committed(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("results")
+            .join(name)
+    }
+
+    fn committed_gates() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("quality-gates.json")
+    }
+
+    fn committed_report() -> PathBuf {
+        committed("latest.json")
+    }
+
+    /// 提交的报告必须过提交的门槛：这是 CI 每次都能跑的那条路（不需要 codegraph、
+    /// 模型与网络）。它也会因为门槛被悄悄调高而失败——这正是它要拦的。
+    #[test]
+    fn the_committed_report_passes_the_committed_gates() {
+        verify_report(&committed_report(), &committed_gates())
+            .expect("the committed report must pass the committed gates");
+    }
+
+    /// 门槛真的在判定：把每条轨道的 recall@1 下限抬到 1.0，同一份报告必须失败。
+    /// 1.0 是合法配置（`gates::validate` 允许到 1.0），所以失败只可能来自比较。
+    #[test]
+    fn a_raised_floor_rejects_the_same_report() {
+        let directory = tempfile::tempdir().unwrap();
+        let gates_path = directory.path().join("quality-gates.json");
+        let committed: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("quality-gates.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        let mut raised = committed;
+        for track in raised["tracks"].as_object_mut().unwrap().values_mut() {
+            track["recall_at_1"] = serde_json::json!(1.0);
+        }
+        fs::write(&gates_path, serde_json::to_string_pretty(&raised).unwrap()).unwrap();
+
+        let error = verify_report(&committed_report(), &gates_path)
+            .expect_err("a floor above the achieved recall must fail");
+        assert!(error.contains("Recall@1"), "{error}");
+    }
+
+    /// 报告路径不存在或格式不对时要报清楚，而不是静默通过。
+    #[test]
+    fn a_missing_report_is_reported_instead_of_passing() {
+        let directory = tempfile::tempdir().unwrap();
+        let gates = committed_gates();
+        let missing = directory.path().join("nope.json");
+
+        let error = verify_report(&missing, &gates).expect_err("a missing report must not pass");
+        assert!(error.contains("read report"), "{error}");
+
+        let broken = directory.path().join("broken.json");
+        fs::write(&broken, b"{ not json").unwrap();
+        let error = verify_report(&broken, &gates).expect_err("a broken report must not pass");
+        assert!(error.contains("parse report"), "{error}");
     }
 }

@@ -60,6 +60,21 @@ impl Drop for FinishGeneration {
     }
 }
 
+/// 命令通道在 actor 活着的时候关不掉，所以"通道关闭 / 客户端消失"不是一条真实的收尾路径。
+///
+/// actor 自己持有 `TransportActorGuard(handle.clone())`（内含命令发送端），另有 blob_sync /
+/// context_sync 两份 handle 克隆，注册表那侧即使摘掉条目也仍有发送端在。收尾因此只有两个
+/// 入口：`TransportCommand::Disconnect`（`api/cursor/run_sse.rs` 的 Drop → `handle.disconnect()`）
+/// 加随后的 draining，以及 `waiting_for_action` 的 idle 超时。这里不写"通道关闭就收尾"的
+/// 恢复分支：那条路永远不走，留着只会让人以为"客户端消失"有两条收尾路径，而且它会在
+/// 有人改掉了上面的前提时悄悄收掉一条可能还有订阅者的 run。真发生就是响亮的 panic。
+fn command_channel_closed() -> ! {
+    unreachable!(
+        "the actor keeps its own command sender, so the command channel cannot close while it runs; \
+         the only teardown entries are TransportCommand::Disconnect and the continuation idle timeout"
+    )
+}
+
 impl ConversationRuntime {
     pub(crate) fn spawn(
         registry: ConversationRegistry,
@@ -89,10 +104,7 @@ impl ConversationRuntime {
                         tokio::select! {
                             command = receiver.recv() => match command {
                                 Some(command) => command,
-                                None => {
-                                    finish_pending(&registry, &handle, &current, pending_finish.take()).await;
-                                    break;
-                                }
+                                None => command_channel_closed(),
                             },
                             _ = handle.wait_admissions_drained() => continue,
                         }
@@ -100,11 +112,13 @@ impl ConversationRuntime {
                         handle.mark_draining();
                         match receiver.try_recv() {
                             Ok(command) => command,
-                            Err(mpsc::error::TryRecvError::Empty)
-                            | Err(mpsc::error::TryRecvError::Disconnected) => {
+                            Err(mpsc::error::TryRecvError::Empty) => {
                                 finish_pending(&registry, &handle, &current, pending_finish.take())
                                     .await;
                                 break;
+                            }
+                            Err(mpsc::error::TryRecvError::Disconnected) => {
+                                command_channel_closed()
                             }
                         }
                     }
@@ -112,11 +126,7 @@ impl ConversationRuntime {
                     tokio::select! {
                         command = receiver.recv() => match command {
                             Some(command) => command,
-                            None => {
-                                handle.mark_disconnected();
-                                super::finish_success(&handle);
-                                break;
-                            }
+                            None => command_channel_closed(),
                         },
                         _ = tokio::time::sleep(CONTINUATION_IDLE_TIMEOUT) => {
                             let Some(generation) = current.as_ref() else {
@@ -133,17 +143,7 @@ impl ConversationRuntime {
                 } else {
                     match receiver.recv().await {
                         Some(command) => command,
-                        None => {
-                            handle.mark_disconnected();
-                            if let Some(generation) = current.as_ref() {
-                                generation.superseded.cancel();
-                                if let Some(run) = generation.run.lock().clone() {
-                                    run.cancel();
-                                }
-                            }
-                            super::finish_cancelled(&handle).ok();
-                            break;
-                        }
+                        None => command_channel_closed(),
                     }
                 };
                 match command {
@@ -251,12 +251,6 @@ impl ConversationRuntime {
                                     Some(pb::agent_client_message::Message::RunRequest(
                                         request,
                                     )) => {
-                                        waiting_for_action = false;
-                                        if draining {
-                                            handle.reopen();
-                                            draining = false;
-                                            pending_finish = None;
-                                        }
                                         if let Some(conversation_id) =
                                             request.conversation_id.as_deref()
                                         {
@@ -281,6 +275,9 @@ impl ConversationRuntime {
                                             &tool_runtime_factory,
                                             &mut current,
                                             &mut next_generation,
+                                            &mut draining,
+                                            &mut pending_finish,
+                                            &mut waiting_for_action,
                                             request,
                                         )
                                         .await;
@@ -452,6 +449,11 @@ impl ConversationRuntime {
                                                 action,
                                             ),
                                         ) => {
+                                            let mut action = action;
+                                            merge_dynamic_context(
+                                                &mut action.request_context,
+                                                &conversation_action,
+                                            );
                                             let delivered_to_active_run =
                                                 current.as_ref().is_some_and(|generation| {
                                                     generation.run.lock().as_ref().is_some_and(
@@ -473,7 +475,6 @@ impl ConversationRuntime {
                                             request.action = Some(conversation_action);
                                             request.conversation_state = None;
                                             request.pre_fetched_blobs.clear();
-                                            waiting_for_action = false;
                                             start_generation(
                                                 &registry,
                                                 &handle,
@@ -483,6 +484,9 @@ impl ConversationRuntime {
                                                 &tool_runtime_factory,
                                                 &mut current,
                                                 &mut next_generation,
+                                                &mut draining,
+                                                &mut pending_finish,
+                                                &mut waiting_for_action,
                                                 request,
                                             )
                                             .await;
@@ -504,6 +508,18 @@ impl ConversationRuntime {
                                                 action,
                                             ),
                                         ) => {
+                                            let mut action = action;
+                                            if let Some(
+                                                pb::inject_context_action::Payload::UserContext(
+                                                    context,
+                                                ),
+                                            ) = action.payload.as_mut()
+                                            {
+                                                merge_dynamic_context(
+                                                    &mut context.request_context,
+                                                    &conversation_action,
+                                                );
+                                            }
                                             let Some(generation) = current.as_ref() else {
                                                 continue;
                                             };
@@ -572,8 +588,24 @@ async fn start_generation(
     tool_runtime_factory: &CursorToolRuntime,
     current: &mut Option<RunGeneration>,
     next_generation: &mut u64,
+    draining: &mut bool,
+    pending_finish: &mut Option<(u64, TransportFinish)>,
+    waiting_for_action: &mut bool,
     request: pb::AgentRunRequest,
 ) {
+    // 起新代之前必须把上一代的收尾状态清干净。
+    //
+    // 上一代以 `RunFinish::Transport(_)` 收尾时，actor 已经把 transport 推进 Closing 并
+    // 留下 `pending_finish`，等 admissions 排空后收尾退出。这里若不清，回到循环顶就会
+    // 立刻走"已排空"分支：用旧代的 id 收尾（id 与 current 不匹配 → 什么都不做）然后
+    // 退出 actor——新代照常跑，它的每一帧却打进已经没人订阅的输出，客户端看到一条空流。
+    // 过去这三行只挂在 `RunRequest` 那条路上，运行时 `UserMessageAction` 起的新代就会
+    // 变成孤儿；放在这里，任何起代入口都不会漏。
+    handle.reopen();
+    *draining = false;
+    *pending_finish = None;
+    *waiting_for_action = false;
+
     let previous_finished = if let Some(previous) = current.take() {
         previous.superseded.cancel();
         if let Some(run) = previous.run.lock().clone() {
@@ -695,7 +727,10 @@ fn spawn_run_request(
             handle
                 .parent()
                 .and_then(|parent| parent.tool_call_id.clone()),
-            request.conversation_state.clone(),
+            // 状态结构不在构造时克隆：编译阶段只按 `request.conversation_state` 水合消息与
+            // prefetched blob，编译完再把整份状态**移动**进 builder（`adopt`）。过去这里
+            // `clone()` 一整份会话状态，长会话每轮白拷一次（审计 05/P2-1）。
+            None,
         );
         let prepared = tokio::select! {
             biased;
@@ -714,6 +749,8 @@ fn spawn_run_request(
                 },
             ) => prepared,
         };
+        let mut request = request;
+        checkpoint.adopt(request.conversation_state.take());
         let (mut prepared, context) = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -920,6 +957,23 @@ fn spawn_run_request(
     });
 }
 
+/// 把父 `ConversationAction` 上报的请求上下文并进具体 action 的 `request_context`。
+///
+/// `context::request_context`（整条 RunRequest 那条路）的取值顺序是"`request_context_parts.
+/// dynamic_context` 优先，其次才是 action 自己的 `request_context`"；运行时插话/注入走的
+/// 是另一条路——只把具体 action 发进 output actor，父级的 `dynamic_context` 在这里就丢了，
+/// 编译出来的运行时消息因此是空上下文。在入口补齐，两条路取到同一份上下文。
+fn merge_dynamic_context(target: &mut Option<pb::RequestContext>, parent: &pb::ConversationAction) {
+    let Some(dynamic) = parent
+        .request_context_parts
+        .as_ref()
+        .and_then(|parts| parts.dynamic_context.as_ref())
+    else {
+        return;
+    };
+    *target = Some(dynamic.clone());
+}
+
 fn runtime_action_name(action: &pb::conversation_action::Action) -> &'static str {
     use pb::conversation_action::Action;
 
@@ -939,5 +993,431 @@ fn runtime_action_name(action: &pb::conversation_action::Action) -> &'static str
         Action::SubscriptionNotificationAction(_) => "SubscriptionNotificationAction",
         Action::GoalContinuationAction(_) => "GoalContinuationAction",
         Action::InjectContextAction(_) => "InjectContextAction",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::VecDeque,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+
+    use crate::{
+        cursor::{
+            prompting::{PromptAssets, PromptCompiler},
+            protocol::connect,
+            transport::TransportRegistry,
+        },
+        model::{ModelConfigInput, ModelInvocation, ModelType},
+        provider::{FinishReason, ModelEvent, Provider, ProviderStream},
+        store::Store,
+    };
+    use prost::Message;
+
+    use super::*;
+
+    struct ScriptedProvider {
+        responses: parking_lot::Mutex<VecDeque<Vec<crate::Result<ModelEvent>>>>,
+        calls: AtomicUsize,
+    }
+
+    impl ScriptedProvider {
+        fn push(&self, events: Vec<crate::Result<ModelEvent>>) {
+            self.responses.lock().push_back(events);
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Provider for ScriptedProvider {
+        fn stream(
+            &self,
+            _invocation: ModelInvocation,
+            _cancellation: CancellationToken,
+        ) -> ProviderStream {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let events = self.responses.lock().pop_front().unwrap_or_default();
+            Box::pin(tokio_stream::iter(events))
+        }
+    }
+
+    fn model_input(model_id: &str) -> ModelConfigInput {
+        ModelConfigInput {
+            sort_order: 0,
+            display_name: model_id.into(),
+            group_name: None,
+            model_type: ModelType::OpenAi,
+            base_url: "https://example.com/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "test-key".into(),
+            tooltip_data: model_id.into(),
+            model_id: model_id.into(),
+            reasoning_effort: None,
+            openai_endpoint: "/v1/chat/completions".into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(100_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        }
+    }
+
+    fn client_run(
+        request_id: &str,
+        conversation_id: &str,
+        model_id: &str,
+    ) -> pb::AgentClientMessage {
+        pb::AgentClientMessage {
+            message: Some(pb::agent_client_message::Message::RunRequest(
+                pb::AgentRunRequest {
+                    action: Some(pb::ConversationAction {
+                        action: Some(pb::conversation_action::Action::UserMessageAction(
+                            pb::UserMessageAction {
+                                user_message: Some(user_message("draining-user-1", "first turn")),
+                                ..Default::default()
+                            },
+                        )),
+                        ..Default::default()
+                    }),
+                    conversation_id: Some(conversation_id.into()),
+                    run_id: Some(request_id.into()),
+                    requested_model: Some(pb::RequestedModel {
+                        model_id: model_id.into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            )),
+        }
+    }
+
+    fn runtime_user_message() -> pb::AgentClientMessage {
+        pb::AgentClientMessage {
+            message: Some(pb::agent_client_message::Message::ConversationAction(
+                pb::ConversationAction {
+                    action: Some(pb::conversation_action::Action::UserMessageAction(
+                        pb::UserMessageAction {
+                            user_message: Some(user_message("draining-user-2", "second turn")),
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                },
+            )),
+        }
+    }
+
+    fn user_message(message_id: &str, text: &str) -> pb::UserMessage {
+        pb::UserMessage {
+            text: text.into(),
+            message_id: message_id.into(),
+            mode: pb::AgentMode::Agent as i32,
+            ..Default::default()
+        }
+    }
+
+    fn text_response(text: &str) -> Vec<crate::Result<ModelEvent>> {
+        vec![
+            Ok(ModelEvent::Start {
+                model_call_id: format!("call-{text}"),
+            }),
+            Ok(ModelEvent::TextStart),
+            Ok(ModelEvent::TextDelta(text.into())),
+            Ok(ModelEvent::TextEnd),
+            Ok(ModelEvent::Done(FinishReason::Stop)),
+        ]
+    }
+
+    fn kv_ack(id: u32) -> pb::AgentClientMessage {
+        pb::AgentClientMessage {
+            message: Some(pb::agent_client_message::Message::KvClientMessage(
+                pb::KvClientMessage {
+                    id,
+                    message: Some(pb::kv_client_message::Message::SetBlobResult(
+                        pb::SetBlobResult { error: None },
+                    )),
+                },
+            )),
+        }
+    }
+
+    async fn acknowledge_kv(handle: &TransportHandle, seqno: &mut i64, frame: &[u8]) {
+        let (flags, payload) = connect::decode_frames(frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            return;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+            handle
+                .command(TransportCommand::Append {
+                    seqno: *seqno,
+                    message: Box::new(kv_ack(kv.id)),
+                })
+                .await
+                .unwrap();
+            *seqno += 1;
+        }
+    }
+
+    /// draining 期间收到运行时 `UserMessageAction`：新代必须有人收尾。
+    ///
+    /// 复现方式贴近真机：上一代以 `RunFinish::Transport(Failed)` 收尾（上一轮报错），
+    /// 同时还有一次 append 准入在处理（客户端的心跳/KV 应答就是这个准入），actor 于是
+    /// 停在 draining 分支上等命令——这时客户端把重发的消息投进来。旧的写法只在
+    /// `RunRequest` 那条路上清 draining，新代照跑而 actor 用旧代的 id 收尾后退出：
+    /// 一个帧都收不到。修好后新代正常收尾（turnEnded + 成功 EndStream）。
+    #[tokio::test]
+    async fn a_user_message_while_draining_still_finishes_the_new_generation() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let model = store
+            .create_model(&model_input("draining-model"))
+            .await
+            .unwrap();
+        let provider = Arc::new(ScriptedProvider {
+            responses: parking_lot::Mutex::new(VecDeque::new()),
+            calls: AtomicUsize::new(0),
+        });
+        // 上一代：不可重试的上游错误，run 立刻以 Transport(Failed) 收尾。
+        provider.push(vec![Err(crate::Error::Provider(
+            "Anthropic 401 Unauthorized: bad key".into(),
+        ))]);
+        // 新代：正常回答。
+        provider.push(text_response("second generation"));
+        let registry = TransportRegistry::new(
+            store,
+            provider.clone(),
+            PromptCompiler::new(PromptAssets::embedded().unwrap()),
+        );
+        let handle = registry.get_or_create("draining-request").await.unwrap();
+        let mut output = handle.subscribe();
+        let admission = handle.admit().unwrap();
+        handle
+            .command(TransportCommand::Append {
+                seqno: 0,
+                message: Box::new(client_run(
+                    "draining-request",
+                    "draining-conversation",
+                    &model.model_hash,
+                )),
+            })
+            .await
+            .unwrap();
+
+        // 一边读帧一边等上一代收尾：准备阶段会向客户端要 blob 应答（KV），不读帧就会
+        // 把这一代卡在准备阶段。actor 处理 `RunFinished::Transport` 时会 `begin_close`，
+        // 那就是"上一代已经收尾、actor 正停在 draining 里"的标志。
+        let mut append_seqno = 1;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while handle.accepting_appends() {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "上一代没有以 Transport 收尾"
+            );
+            if let Ok(Some(frame)) =
+                tokio::time::timeout(Duration::from_millis(20), output.recv()).await
+            {
+                let (flags, _) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+                assert_eq!(
+                    flags & connect::END_STREAM_FLAG,
+                    0,
+                    "上一代的收尾被准入占着，不该已经关流"
+                );
+                acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+            }
+        }
+        // 这条运行时消息正好落在 draining 窗口里。
+        handle
+            .command(TransportCommand::Append {
+                seqno: append_seqno,
+                message: Box::new(runtime_user_message()),
+            })
+            .await
+            .unwrap();
+        append_seqno += 1;
+        drop(admission);
+
+        let mut saw_turn_ended = false;
+        let ended = loop {
+            let frame = tokio::time::timeout(Duration::from_secs(5), output.recv())
+                .await
+                .expect("新代没有收尾：draining 没被清掉")
+                .expect("输出被关闭");
+            let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+            if flags & connect::END_STREAM_FLAG != 0 {
+                break payload;
+            }
+            let server = pb::AgentServerMessage::decode(payload).unwrap();
+            if let Some(pb::agent_server_message::Message::InteractionUpdate(update)) =
+                &server.message
+            {
+                if matches!(
+                    update.message,
+                    Some(pb::interaction_update::Message::TurnEnded(_))
+                ) {
+                    saw_turn_ended = true;
+                }
+            }
+            acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+        };
+
+        assert_eq!(ended.as_ref(), b"{}", "新代应当正常收尾");
+        assert!(saw_turn_ended, "新代要发出 turnEnded");
+        assert_eq!(provider.calls(), 2, "两代各跑一次模型");
+    }
+
+    /// 运行时插话/注入的请求上下文：父 `ConversationAction` 的 `dynamic_context` 优先，
+    /// 与 `compile::context::request_context` 同一套取值顺序。
+    #[test]
+    fn the_parent_dynamic_context_wins_for_runtime_actions() {
+        let dynamic = pb::RequestContext {
+            env: Some(pb::RequestContextEnv {
+                workspace_paths: vec!["/dynamic".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let own = pb::RequestContext {
+            env: Some(pb::RequestContextEnv {
+                workspace_paths: vec!["/own".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let parent = pb::ConversationAction {
+            action: Some(pb::conversation_action::Action::UserMessageAction(
+                pb::UserMessageAction {
+                    user_message: Some(user_message("context-user", "hi")),
+                    request_context: Some(own.clone()),
+                    ..Default::default()
+                },
+            )),
+            request_context_parts: Some(pb::RequestContextPartReferences {
+                dynamic_context: Some(dynamic.clone()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut target = Some(own);
+        merge_dynamic_context(&mut target, &parent);
+        assert_eq!(target, Some(dynamic));
+
+        // 父级没有 dynamic_context 时不动具体 action 自己的那份。
+        let parent_without_dynamic = pb::ConversationAction {
+            request_context_parts: Some(pb::RequestContextPartReferences::default()),
+            ..parent.clone()
+        };
+        let mut target = parent_without_dynamic
+            .action
+            .as_ref()
+            .and_then(|action| match action {
+                pb::conversation_action::Action::UserMessageAction(action) => {
+                    action.request_context.clone()
+                }
+                _ => None,
+            });
+        merge_dynamic_context(&mut target, &parent_without_dynamic);
+        assert_eq!(
+            target
+                .as_ref()
+                .and_then(|context| context.env.as_ref())
+                .and_then(|env| env.workspace_paths.first())
+                .map(String::as_str),
+            Some("/own")
+        );
+    }
+
+    /// 收尾只有一个入口：`Disconnect`（`api/cursor/run_sse.rs` 的 Drop 走它）。
+    ///
+    /// 删掉"通道关闭 / 客户端消失"那几条不可达的恢复分支之后，这条路的结局必须仍然是
+    /// "给客户端一条终止帧 + 关掉输出 + transport 关闭"。断开落在一条真跑的代上（客户端
+    /// 关掉流、用户点停止都长这样）：actor 收到命令后取消这一代，按"轮次是否已收尾"选
+    /// `finish_cancelled` 或 `finish_success`，两者都发终止帧。
+    ///
+    /// 驱动是确定性的、**不含任何墙钟上界**（并行跑全量套件、CPU 被抢时不会假红）：
+    /// `wait_transport_closed()` 等到的是 actor 退出时 `TransportActorGuard` 的 Drop，
+    /// 而 `finish_*` 一定在它之前跑完——所以它返回时终止帧已经躺在输出队列里，之后
+    /// `try_recv` 只是把队列读空：`Empty` 表示"收尾没跑（输出还开着、也没有终止帧）"，
+    /// `Disconnected` 才是收尾完成。注册表条目退休由集成用例
+    /// `cursor_transport_lifecycle::actor_exit_removes_the_matching_transport_and_allows_a_new_generation`
+    /// 负责（那一步在另一个任务里做，unit 用例里等它只能靠墙钟）。
+    #[tokio::test]
+    async fn disconnecting_finishes_the_run_with_a_terminal_frame() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let model = store
+            .create_model(&model_input("disconnect-model"))
+            .await
+            .unwrap();
+        let provider = Arc::new(ScriptedProvider {
+            responses: parking_lot::Mutex::new(VecDeque::new()),
+            calls: AtomicUsize::new(0),
+        });
+        let registry = TransportRegistry::new(
+            store,
+            provider,
+            PromptCompiler::new(PromptAssets::embedded().unwrap()),
+        );
+        let handle = registry.get_or_create("disconnect-request").await.unwrap();
+        let mut output = handle.subscribe();
+        handle
+            .command(TransportCommand::Append {
+                seqno: 0,
+                message: Box::new(client_run(
+                    "disconnect-request",
+                    "disconnect-conversation",
+                    &model.model_hash,
+                )),
+            })
+            .await
+            .unwrap();
+
+        handle.command(TransportCommand::Disconnect).await.unwrap();
+        handle.wait_transport_closed().await;
+
+        let mut flags_seen = Vec::new();
+        loop {
+            match output.try_recv() {
+                Ok(frame) => {
+                    let (flags, _) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+                    flags_seen.push(flags);
+                }
+                Err(mpsc::error::TryRecvError::Empty) => panic!(
+                    "actor 已经退出，收尾却没跑：输出还开着、也没有终止帧（已收到的 flags: {flags_seen:?}）"
+                ),
+                Err(mpsc::error::TryRecvError::Disconnected) => break,
+            }
+        }
+        assert!(
+            flags_seen
+                .iter()
+                .any(|flags| flags & connect::END_STREAM_FLAG != 0),
+            "收尾必须给客户端一条终止帧：{flags_seen:?}"
+        );
+        assert!(!handle.accepting_appends(), "收尾之后不该再接受 append");
     }
 }

@@ -33,6 +33,10 @@ pub struct CheckpointBuilder {
     pub(super) roots: Option<RootFrontier>,
     pub(super) turn: Option<TurnFrontier>,
     pub(super) turns_initialized: bool,
+    /// 每条历史消息的 token 量测：整条 run 里消息只增不改，重算 breakdown 时复用。
+    pub(super) measure_cache: super::super::services::usage::MessageMeasureCache,
+    /// 系统提示与工具定义那半量测：只随 `configure` 变，配置后算一次、每个 checkpoint 复用。
+    pub(super) static_measures: Option<super::super::services::usage::StaticMeasures>,
 }
 
 impl CheckpointBuilder {
@@ -57,7 +61,18 @@ impl CheckpointBuilder {
             roots: None,
             turn: None,
             turns_initialized: false,
+            measure_cache: Default::default(),
+            static_measures: None,
         }
+    }
+
+    /// 接管请求带来的会话状态结构。
+    ///
+    /// 编译阶段只按 `request.conversation_state` 水合消息与 prefetched blob（`prepare`
+    /// 不读 `base`），所以状态结构可以等编译完再**移动**进来：过去在构造 builder 时
+    /// `clone()` 一份，长会话 + 多文件状态的每一轮都白拷一整份状态结构（审计 05/P2-1）。
+    pub fn adopt(&mut self, state: Option<pb::ConversationStateStructure>) {
+        self.base = state.unwrap_or_default();
     }
 
     pub fn configure(
@@ -79,6 +94,25 @@ impl CheckpointBuilder {
         self.tool_definitions = tool_definitions;
         self.dynamic_tools = dynamic_tools;
         self.turn_user = turn_user;
+        // 上面三项变了，量测必须跟着重算；下一次 breakdown 用到时再算。
+        self.static_measures = None;
+    }
+
+    /// 系统提示 + 工具定义那半量测：`configure` 之后算一次，之后每个 checkpoint 复用，
+    /// 不再每次提交都把全部工具序列化一遍。
+    pub(super) fn static_measures(
+        &mut self,
+    ) -> Result<super::super::services::usage::StaticMeasures> {
+        if let Some(measures) = self.static_measures {
+            return Ok(measures);
+        }
+        let measures = super::super::services::usage::StaticMeasures::new(
+            &self.instructions,
+            &self.tool_definitions,
+            &self.dynamic_tools,
+        )?;
+        self.static_measures = Some(measures);
+        Ok(measures)
     }
 
     pub(crate) fn record_context_tokens(&mut self, used_tokens: Option<u64>) {
@@ -186,15 +220,15 @@ impl CheckpointBuilder {
         checkpoint.mode = Some(mode);
         checkpoint.communicate_update_states_by_parent_tool_call_id =
             communicate_update_states_by_parent_tool_call_id;
+        let statics = self.static_measures()?;
         if let Some(details) = checkpoint.token_details.as_mut() {
             details.breakdown = Some(crate::cursor::services::usage::breakdown(
                 details.used_tokens,
                 details.max_tokens,
                 details.breakdown.as_ref(),
-                &self.instructions,
-                &self.tool_definitions,
-                &self.dynamic_tools,
+                statics,
                 messages,
+                &mut self.measure_cache,
             )?);
         }
         Ok(checkpoint)
@@ -208,12 +242,19 @@ impl CheckpointBuilder {
         if self.base.subagent_runs_by_parent_tool_call_id.is_empty() {
             return Ok(());
         }
+        // 已经是终态的那些不必再问库：`finished_child_runs` 内部按 id 逐条查，
+        // 每个 checkpoint 都带上全部历史子代理的话，长会话里就是每个提交一条 SQL ×
+        // 子代理数。先按本地状态过滤，库那次查询只收还在跑（或状态未知）的 id。
         let tool_call_ids = self
             .base
             .subagent_runs_by_parent_tool_call_id
-            .keys()
-            .cloned()
+            .iter()
+            .filter(|(_, state)| state.completed_timestamp_ms.is_none())
+            .map(|(tool_call_id, _)| tool_call_id.clone())
             .collect::<Vec<_>>();
+        if tool_call_ids.is_empty() {
+            return Ok(());
+        }
         for (tool_call_id, status, completed_at_ms) in
             self.store.finished_child_runs(&tool_call_ids).await?
         {
@@ -230,6 +271,9 @@ impl CheckpointBuilder {
             state.status = match status {
                 RunStatus::Completed => pb::SubagentRunStatus::Success as i32,
                 RunStatus::Failed => pb::SubagentRunStatus::Error as i32,
+                // `Running` 到不了这里：状态来自 `finished_child_runs`，它的 SQL 只挑
+                // completed / failed / cancelled。留着这一臂是因为 `RunStatus` 必须穷尽匹配，
+                // 真到了这里也只会把卡片标成"已中止"，不会谎报成功。
                 RunStatus::Cancelled | RunStatus::Running => pb::SubagentRunStatus::Aborted as i32,
             };
             state.completed_timestamp_ms = Some(completed_at_ms);

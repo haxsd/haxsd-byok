@@ -6,6 +6,7 @@ pub mod gateway;
 mod upstream;
 
 use crate::{Error, Result};
+pub use config::ConfigFieldConflict;
 pub use gateway::CodexGateway;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -60,6 +61,13 @@ impl CodexSettings {
                 "select a default Codex model before enabling the gateway".into(),
             ));
         }
+        if self.enabled && self.home.is_empty() {
+            // 默认 home 解析不出来（系统没有可用的用户主目录）必须在启用之前就挡住：
+            // 请求路径上再失败只能回一个含糊的 5xx，用户不知道要显式填一个 home。
+            config::default_home().map_err(|_| {
+                Error::Config("cannot resolve the Codex home directory; set it explicitly".into())
+            })?;
+        }
         Ok(())
     }
 
@@ -79,6 +87,10 @@ pub struct CodexStatus {
     pub port: u16,
     pub configured: bool,
     pub config_conflict: bool,
+    /// 有接管凭证：即使受管字段被外部改过，撤销也能把它们还回去，界面据此允许撤销。
+    pub restorable: bool,
+    /// 与接管快照不一致的受管字段；界面据此说清"哪一项被改成了什么"。
+    pub conflicts: Vec<ConfigFieldConflict>,
     pub home: String,
     pub calls: usize,
     pub last_error: Option<String>,

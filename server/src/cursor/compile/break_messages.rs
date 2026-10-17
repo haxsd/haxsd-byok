@@ -138,7 +138,7 @@ pub async fn compile(
             .env
             .as_ref()
             .map(|env| env.time_zone.as_str()),
-    )?
+    )
     .timestamp;
     compile_with_timestamp(
         event_id,
@@ -235,7 +235,7 @@ pub(super) fn compile_request_context(
             .env
             .as_ref()
             .map(|env| env.time_zone.as_str()),
-    )?;
+    );
     let text = context::compile_context(request_context, &time.today);
     if text.is_empty() {
         return Ok(None);
@@ -272,7 +272,7 @@ pub async fn compile_background(
             .env
             .as_ref()
             .map(|env| env.time_zone.as_str()),
-    )?
+    )
     .timestamp;
     let text = format!(
         "<timestamp>{timestamp}</timestamp>\n{}\n<user_query>{}</user_query>",
@@ -305,7 +305,7 @@ async fn message(
 /// 与客户端发来完成通知时的形状一致（同样以 `background-completed:<identity>` 作事件
 /// 身份），区别只是没有请求上下文可依，时间戳按 UTC 记。
 pub(crate) fn wakeup_message(event_id: &str, context: &str) -> Result<CanonicalMessage> {
-    let timestamp = Time::now(None)?.timestamp;
+    let timestamp = Time::now(None).timestamp;
     let text = format!(
         "<timestamp>{timestamp}</timestamp>\n{}\n<user_query>{}</user_query>",
         context.trim(),
@@ -388,11 +388,26 @@ struct Time {
 }
 
 impl Time {
-    fn now(time_zone: Option<&str>) -> Result<Self> {
+    /// 客户端给的时区名不一定能被解析。
+    ///
+    /// 协议里 `time_zone` 是没有取值域约束的自由字符串（`agent_v1.proto` 只写 `string`），
+    /// Windows 时区显示名（`China Standard Time`）、空串、任意垃圾都会进来。以前解析失败
+    /// 直接返回 `Error::Protocol`，而三条路径（runtime 消息、request-context 消息、后台完成
+    /// 消息）都带 `?`——整轮请求失败、会话完全不可用，用户看到的却只是
+    /// "invalid Cursor time zone"。现在降级成 UTC：时间戳仍然可用，原值记一条 warn，
+    /// 事后能确认客户端到底送了什么。
+    fn now(time_zone: Option<&str>) -> Self {
         let zone = match time_zone.filter(|value| !value.is_empty()) {
-            Some(value) => value
-                .parse::<Tz>()
-                .map_err(|_| Error::Protocol(format!("invalid Cursor time zone: {value}")))?,
+            Some(value) => match value.parse::<Tz>() {
+                Ok(zone) => zone,
+                Err(_) => {
+                    tracing::warn!(
+                        time_zone = value,
+                        "unknown Cursor time zone; using UTC for timestamps"
+                    );
+                    chrono_tz::UTC
+                }
+            },
             None => chrono_tz::UTC,
         };
         let now = Utc::now().with_timezone(&zone);
@@ -406,10 +421,10 @@ impl Time {
         } else {
             format!("UTC{sign}{hours}:{minutes:02}")
         };
-        Ok(Self {
+        Self {
             timestamp: format!("{} ({utc})", now.format("%A, %b %-d, %Y, %-I:%M %p")),
             today: now.format("%A %b %-d,\n%Y").to_string(),
-        })
+        }
     }
 }
 
@@ -486,5 +501,29 @@ mod tests {
             ),
             "{text}"
         );
+    }
+
+    /// 客户端给的时区名解析不了时，时间戳降级到 UTC，而不是整轮请求失败。
+    ///
+    /// 协议里 `time_zone` 是自由字符串：Windows 时区显示名（`China Standard Time`）真的会
+    /// 出现在这里；以前它会让 runtime / request-context / 后台完成三条消息编译路径一起报
+    /// "invalid Cursor time zone"，会话完全不可用。
+    #[test]
+    fn an_unknown_cursor_time_zone_falls_back_to_utc() {
+        let utc = Time::now(None).timestamp;
+        let windows_name = Time::now(Some("China Standard Time")).timestamp;
+        let garbage = Time::now(Some("not a time zone")).timestamp;
+        assert!(utc.contains("(UTC+0)"), "{utc}");
+        assert_eq!(windows_name, utc, "解析不了的名字按 UTC 处理");
+        assert_eq!(garbage, utc);
+        // 合法的 IANA 名字仍然按它算偏移。
+        let shanghai = Time::now(Some("Asia/Shanghai"));
+        assert!(
+            shanghai.timestamp.contains("(UTC+8)"),
+            "{}",
+            shanghai.timestamp
+        );
+        // 空串与缺省同义（客户端没填时不要报错）。
+        assert_eq!(Time::now(Some("")).timestamp, utc);
     }
 }

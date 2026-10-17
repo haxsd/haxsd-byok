@@ -17,28 +17,50 @@ import { buildOnboarding, type OnboardingClient } from "./onboarding";
 import styles from "./TutorialPage.module.scss";
 
 /**
+ * 客户端选择的顺序与接入页一致。客户端名是固定产品名，不参与翻译；
+ * 顺序写在这里，而不是从各页面推断，接入模块之间互不依赖。
+ */
+const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
+  { id: "cursor", label: "Cursor" },
+  { id: "devin", label: "Devin" },
+  { id: "codex", label: "Codex" },
+];
+
+/**
  * 产品自己的使用教程。
  *
  * 以前这个入口打开的是**上游产品的文档站**：那里的步骤、截图和概念都不是这个应用的，
  * 用户照着做会对不上界面。这一页写的是这个产品的真实流程，而且会**读当前状态**——
  * 已经做完的步骤直接打勾，并指出下一步该去哪一页。
  *
- * Cursor 和 Devin 是两条独立的接入路径，所以先选客户端：只有选定的那一条进入
- * 清单与进度，另一条不会被当成欠下的待办。选择只存在于页面状态里。
+ * Cursor、Devin 和 Codex 是三条独立的接入路径，所以先选接入模块：只有选定的那一条
+ * 进入清单与进度，其余两条不会被当成欠下的待办。选择只存在于页面状态里。
  */
 export function TutorialPage() {
-  const { models, cursorHarness, devinStatus, overview, calls } = useAppStore();
+  const { models, cursorHarness, devinStatus, codexStatus, overview, calls } = useAppStore();
   const navigate = useNavigate();
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
+  // 读取过程单独记一份：读不到和「确实没打补丁」必须分开，否则清单会把读失败
+  // 说成「还差宿主补丁」，让人去重打一次会改写 Devin 文件的补丁。
+  const [hostStatusRead, setHostStatusRead] = useState<"reading" | "failed" | null>("reading");
   const [hostAttempt, setHostAttempt] = useState(0);
   const [client, setClient] = useState<OnboardingClient | null>(null);
 
   // 计数由「刷新状态」按钮推进，让宿主补丁状态跟着重读；卸载守卫保持原样。
   useEffect(() => {
     let cancelled = false;
+    setHostStatusRead("reading");
     void api.devinHostStatus()
-      .then((status) => { if (!cancelled) setHostStatus(status); })
-      .catch(() => { if (!cancelled) setHostStatus(null); });
+      .then((status) => {
+        if (cancelled) return;
+        setHostStatus(status);
+        setHostStatusRead(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHostStatus(null);
+        setHostStatusRead("failed");
+      });
     return () => { cancelled = true; };
   }, [hostAttempt]);
 
@@ -51,14 +73,16 @@ export function TutorialPage() {
       mode: cursorHarness.mode,
     } : null,
     devin: devinStatus ? { enabled: devinStatus.enabled, listening: devinStatus.listening } : null,
+    codex: codexStatus ? { enabled: codexStatus.enabled, listening: codexStatus.listening, configured: codexStatus.configured } : null,
     hostPatched: hostStatus?.patched ?? false,
+    hostPatchRead: hostStatusRead,
     callCount: Math.max(calls.length, overview.metrics.llm_calls),
   });
 
   const faq: Array<{ question: string; answer: string }> = [
     {
       question: t("模型测试失败了怎么办？"),
-      answer: t("先看错误信息：401/403 多半是 Key 或套餐不匹配（有些厂商的编程套餐 Key 与普通 Key 不通用），404 是地址多了或少了路径，超时是网络或代理问题。模型卡上的「测试」会用一次真实请求验证，成功后会显示 tokens/s。"),
+      answer: t("先看错误信息：401/403 多半是 Key 或套餐不匹配（有些厂商的编程套餐 Key 与普通 Key 不通用），404 多半是地址写错了（多写或少写了路径），超时多半是网络或代理问题。模型卡上的「测试」会用一次真实请求验证，成功后会显示 tokens/s。"),
     },
     {
       question: t("Cursor 里看不到我的模型？"),
@@ -66,7 +90,7 @@ export function TutorialPage() {
     },
     {
       question: t("Devin 页显示端口未监听？"),
-      answer: t("先保存设置：端口在保存后的下次启动才打开。如果已经重启过仍显示未监听，多半是端口被别的进程占用（本机其他路由器工具也会抢 43110-43112）。"),
+      answer: t("先保存设置：端口在保存后的下次启动才打开。如果已经重启过仍显示未监听，多半是端口被别的进程占用（本机其他同类软件也会抢 43110-43112）。"),
     },
     {
       question: t("缓存命中率一直是 0？"),
@@ -77,12 +101,12 @@ export function TutorialPage() {
       answer: t("用你在设置里为每个模型填的单价乘实际用量；没填单价的模型不计入金额。计价方式（全时段固定，或高峰与低谷分别计价）由你为每个模型选择，币种跟随界面语言。它是估算，不是账单。"),
     },
     {
-      question: t("退出软件后 Cursor / Devin 还能用吗？"),
-      answer: t("开启接管期间，客户端被指向本机端口，软件不在运行时这些请求会失败。长期不用时建议先关闭接管开关（会把配置清理掉），需要时再打开。"),
+      question: t("退出软件后 Cursor、Devin 和 Codex 还能用吗？"),
+      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的宿主补丁会保留，在恢复原文件之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
     },
     {
       question: t("会影响机器上另一个同类软件吗？"),
-      answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。唯一的交汇点是 Cursor 的 settings.json：如果代理设置是别的软件写入的，本应用不会覆盖它，只在 Cursor 页说明冲突；要由本应用接管，请先关闭对方的接管。"),
+      answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的宿主文件）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。"),
     },
     {
       question: t("数据存在哪？怎么清理？"),
@@ -92,7 +116,7 @@ export function TutorialPage() {
 
   const glossary: Array<[string, string]> = [
     [t("自带密钥（BYOK）"), t("Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。")],
-    [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置；对 Devin 来说是改宿主文件的端口。")],
+    [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是改宿主文件的端口。")],
     [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。")],
     [t("宿主补丁"), t("改写 Devin 自己的 extension.js，把它的上游地址指向本机端口。应用前会校验版本锚点并备份原文件。")],
     [t("缓存命中率"), t("缓存读取 /（缓存读取 + 非缓存输入）。它衡量的是「有多少输入是从提供方的缓存里读回来的」。")],
@@ -103,11 +127,11 @@ export function TutorialPage() {
     <Card className={styles.hero}>
       <div className={styles.heroText}>
         <span className={styles.heroEyebrow}>{t("这是什么")}</span>
-        <h2>{t("把 Cursor 和 Devin 接到你自己的模型上")}</h2>
-        <p>{t("两个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。两个客户端各自独立接入，共用同一份模型库与统计数据。")}</p>
+        <h2>{t("把 Cursor、Devin 和 Codex 接到你自己的模型上")}</h2>
+        <p>{t("三个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。三个客户端各自独立接入，共用同一份模型库与统计数据。")}</p>
       </div>
       <div className={styles.heroProgress}>
-        {client === null ? <span className={styles.heroPrompt}>{t("先选择要接入的客户端")}</span> : <>
+        {client === null ? <span className={styles.heroPrompt}>{t("先选择接入模块")}</span> : <>
           <span className={styles.heroCount}>{completed}<small>/{total}</small></span>
           <span className={styles.heroCountLabel}>{t("已完成的上手步骤")}</span>
           <Meter
@@ -125,18 +149,18 @@ export function TutorialPage() {
       action={<Button size="small" onClick={() => { void appStore.refresh(); setHostAttempt(value => value + 1); }}>{t("刷新状态")}</Button>}
     >
       <div className={styles.clientPicker}>
-        <span className={styles.clientPickerLabel} id="tutorial-client-label">{t("先选择要接入的客户端")}</span>
+        <span className={styles.clientPickerLabel} id="tutorial-client-label">{t("先选择接入模块")}</span>
         <div className={styles.clientOptions} role="group" aria-labelledby="tutorial-client-label">
-          {(["cursor", "devin"] as const).map((option) => <button
-            key={option}
+          {onboardingClients.map((option) => <button
+            key={option.id}
             type="button"
             className={styles.clientOption}
-            data-active={client === option || undefined}
-            aria-pressed={client === option}
-            onClick={() => setClient(option)}
-          >{option === "cursor" ? "Cursor" : "Devin"}</button>)}
+            data-active={client === option.id || undefined}
+            aria-pressed={client === option.id}
+            onClick={() => setClient(option.id)}
+          >{option.label}</button>)}
         </div>
-        <span className={styles.clientHint}>{t("清单只跟随所选客户端，另一个客户端不计入进度。")}</span>
+        <span className={styles.clientHint}>{t("清单只跟随所选接入模块，其他接入模块不计入进度。")}</span>
       </div>
       <ol className={styles.steps}>
         {steps.map((step, index) => <li key={step.key} className={styles.step} data-done={step.done || undefined}>
@@ -163,7 +187,7 @@ export function TutorialPage() {
         title={t("一次请求的三段路")}
         description={t("客户端把请求发给本机网关，网关按你的配置调用模型服务，再把结果原样流回客户端。")}
         stages={[
-          { key: "client", label: t("客户端"), detail: "Cursor / Devin", state: "up" },
+          { key: "client", label: t("客户端"), detail: "Cursor / Devin / Codex", state: "up" },
           { key: "gateway", label: t("本机网关"), detail: t("改写模型与鉴权，其余透传"), state: "up" },
           { key: "model", label: t("你的模型"), detail: t("模型库里配置的服务"), state: "up" },
         ]}
@@ -202,7 +226,7 @@ export function TutorialPage() {
         </li>
         <li>
           <Icon icon={navModelsIcon} size="1.1em" />
-          <span>{t("换模型不用改客户端：在模型库里改完，两个客户端下次请求就会用新的。")}</span>
+          <span>{t("换模型不用改客户端：在模型库里改完，接入模块下次请求就会用新的。")}</span>
         </li>
         <li>
           <Icon icon={navDevinIcon} size="1.1em" />

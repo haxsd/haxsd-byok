@@ -1,7 +1,13 @@
 //! Aggregates and ranks results from search sources.
-use std::{cmp::Ordering, collections::HashMap};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+    time::{Duration, Instant},
+};
 
 use futures_util::future::join_all;
+use tokio::sync::OnceCell;
 
 use crate::store::Store;
 
@@ -9,6 +15,15 @@ use super::{catalog, SearchEngine, SearchHit};
 
 const RRF_K: f64 = 60.0;
 const MAX_RESULTS: usize = 15;
+
+/// 同一个 query 的短期结果缓存:重试与多轮追问常常问同一个问题,而每次搜索都是 23 个出网
+/// 请求。TTL 取 5 分钟(搜索引擎自己的结果窗口远大于此),条目上限 16,防止长期运行攒下
+/// 无界内存;只缓存成功结果,失败照旧重试。
+const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+const CACHE_ENTRIES: usize = 16;
+
+static RESULTS: OnceLock<parking_lot::Mutex<HashMap<String, (Instant, Vec<SearchHit>)>>> =
+    OnceLock::new();
 
 #[derive(Clone)]
 pub struct WebSearch {
@@ -18,7 +33,13 @@ pub struct WebSearch {
 
 #[derive(Clone)]
 enum SearchClient {
-    Managed(Store),
+    /// 客户端按实例记忆:以前每次 `search()` 都走一遍 `network::client`(读代理设置 + 建连接
+    /// 池),一次工具轮里 23 个引擎共用同一个客户端就够。实例的生命周期是一个 run,所以不会
+    /// 像进程级缓存那样在代理设置变化后长期发往旧路由。
+    Managed {
+        store: Store,
+        client: Arc<OnceCell<reqwest::Client>>,
+    },
     Direct(reqwest::Client),
 }
 
@@ -33,7 +54,10 @@ impl WebSearch {
 
     pub(crate) fn managed(store: Store) -> Self {
         Self {
-            client: SearchClient::Managed(store),
+            client: SearchClient::Managed {
+                store,
+                client: Arc::new(OnceCell::new()),
+            },
             engines: catalog::engines(),
         }
     }
@@ -58,12 +82,15 @@ impl WebSearch {
         if query.is_empty() {
             return Err(SearchError("query is empty".into()));
         }
-        let client = match &self.client {
-            SearchClient::Managed(store) => crate::network::client(store)
-                .await
-                .map_err(|error| SearchError(format!("HTTP client failed: {error}")))?,
-            SearchClient::Direct(client) => client.clone(),
-        };
+        if let Some(cached) = cached_results(query) {
+            tracing::debug!(
+                query,
+                results = cached.len(),
+                "serving web search from cache"
+            );
+            return Ok(cached);
+        }
+        let client = self.client().await?;
         let responses = join_all(
             self.engines
                 .iter()
@@ -107,8 +134,47 @@ impl WebSearch {
                 .then_with(|| left.url.cmp(&right.url))
         });
         results.truncate(MAX_RESULTS);
+        remember_results(query, &results);
         Ok(results)
     }
+
+    async fn client(&self) -> Result<reqwest::Client, SearchError> {
+        match &self.client {
+            SearchClient::Managed { store, client } => client
+                .get_or_try_init(|| async {
+                    crate::network::client(store)
+                        .await
+                        .map_err(|error| SearchError(format!("HTTP client failed: {error}")))
+                })
+                .await
+                .cloned(),
+            SearchClient::Direct(client) => Ok(client.clone()),
+        }
+    }
+}
+
+fn cache() -> &'static parking_lot::Mutex<HashMap<String, (Instant, Vec<SearchHit>)>> {
+    RESULTS.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
+}
+
+fn cached_results(query: &str) -> Option<Vec<SearchHit>> {
+    let cache = cache().lock();
+    let (at, hits) = cache.get(query)?;
+    (at.elapsed() < CACHE_TTL).then(|| hits.clone())
+}
+
+fn remember_results(query: &str, hits: &[SearchHit]) {
+    let mut cache = cache().lock();
+    if cache.len() >= CACHE_ENTRIES && !cache.contains_key(query) {
+        let oldest = cache
+            .iter()
+            .min_by_key(|(_, (at, _))| *at)
+            .map(|(key, _)| key.clone());
+        if let Some(oldest) = oldest {
+            cache.remove(&oldest);
+        }
+    }
+    cache.insert(query.to_owned(), (Instant::now(), hits.to_vec()));
 }
 
 impl Default for WebSearch {
@@ -216,5 +282,50 @@ mod tests {
             merged["https://example.com/agreed"].score
                 > merged["https://example.com/repeated"].score
         );
+    }
+
+    /// 同 query 在 TTL 内不再出网:一批工具调用重复同一个查询时,23×N 个请求会退化成一次。
+    #[tokio::test]
+    async fn a_repeated_query_is_served_from_the_cache() {
+        let stub = super::super::test_support::StubServer::fixed(
+            axum::http::StatusCode::OK,
+            "application/json",
+            br#"{"items":[{"title":"Hit","url":"https://example.com/a","snippet":"s"}]}"#.to_vec(),
+        )
+        .await;
+        let engine = super::super::JsonEngine::new(
+            "stub",
+            stub.url("/search?q={query}"),
+            "/items",
+            "/title",
+            "/url",
+            "/snippet",
+            None,
+        );
+        let search = WebSearch::with_engines([engine]);
+        // 静态缓存跨用例共享,查询串必须唯一,避免互相命中。
+        let query = format!("cache-probe-{}", std::process::id());
+
+        let first = search.search(&query).await.unwrap();
+        assert_eq!(stub.requests(), 1);
+
+        let second = search.search(&query).await.unwrap();
+
+        assert_eq!(second, first);
+        assert_eq!(stub.requests(), 1, "TTL 内不该再次出网");
+    }
+
+    /// 过期的条目不再命中(直接测缓存函数,避免真的等 5 分钟)。
+    #[test]
+    fn an_expired_cache_entry_is_not_served() {
+        let query = format!("expired-probe-{}", std::process::id());
+        remember_results(&query, &[hit("https://example.com/a", "stub", "a")]);
+        assert!(cached_results(&query).is_some());
+
+        cache()
+            .lock()
+            .insert(query.clone(), (Instant::now() - CACHE_TTL, Vec::new()));
+
+        assert!(cached_results(&query).is_none());
     }
 }

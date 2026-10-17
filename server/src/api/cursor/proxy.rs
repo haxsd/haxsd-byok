@@ -1,20 +1,30 @@
 //! Selects local handling or the configured official Cursor upstream.
+//!
+//! 官方转发的出网与 BYOK provider 路径共用 [`crate::upstream::attempt`] 的发送语义：
+//! 连接类失败按当前配置重建客户端（必要时绕开已经没人监听的系统代理直连）并重试，
+//! 但只在还没拿到任何响应内容之前重试。请求体因此先整段读进内存——重发需要一个
+//! 可重放的副本，而流只能被消费一次。
 use std::time::Instant;
 
 use axum::{
-    body::{to_bytes, Body, Bytes},
+    body::{Body, Bytes},
     extract::Extension,
-    http::{header, Request, Response},
+    http::{header, HeaderMap, HeaderValue, Method, Request, Response},
 };
+use tokio_util::sync::CancellationToken;
 
-use crate::Result;
+use crate::{
+    network::{NetworkClients, OutboundClient},
+    upstream::{self, Attempt, UpstreamCall},
+    Error, Result,
+};
 
 const CURSOR_UPSTREAM: &str = "https://api2.cursor.sh";
 pub const UPSTREAM_URL_HEADER: &str = "x-server-upstream-url";
 
 #[derive(Clone)]
 pub struct CursorProxy {
-    clients: crate::network::NetworkClients,
+    clients: NetworkClients,
     upstream: String,
 }
 
@@ -46,15 +56,52 @@ impl BufferedResponse {
 }
 
 impl CursorProxy {
-    pub fn cursor(clients: crate::network::NetworkClients) -> Self {
+    pub fn cursor(clients: NetworkClients) -> Self {
         Self {
             clients,
             upstream: CURSOR_UPSTREAM.into(),
         }
     }
+}
 
-    async fn client(&self) -> Result<reqwest::Client> {
-        self.clients.cursor_client().await
+/// 官方转发的一次出网：与 BYOK 路径同一套发送语义。
+///
+/// 连接类失败时 [`OutboundClient::rebuild_after`] 会按当前配置重建客户端，配置没变
+/// 却是连接失败就绕开系统代理直连；重建后的客户端交给 `attempt`，按 provider 路径
+/// 同一份预算退避重试。重试日志、次数上限与退避时长都来自那一份实现，所以这条路径
+/// 不会刷屏。
+async fn send_upstream(
+    proxy: &CursorProxy,
+    method: Method,
+    url: &str,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<reqwest::Response> {
+    let outbound = OutboundClient::cursor(proxy.clients.clone()).await?;
+    // 这条路径没有自己的取消源：句柄被丢弃时整个 future 一起结束，重试不会继续跑。
+    let cancellation = CancellationToken::new();
+    let outcome = upstream::attempt(
+        &UpstreamCall {
+            label: "Cursor",
+            // 官方转发没有模型维度：日志靠 url 与 label 定位这次请求。
+            model: "",
+            url,
+        },
+        &outbound,
+        |client| {
+            client
+                .request(method.clone(), url)
+                .headers(headers.clone())
+                .body(body.clone())
+        },
+        &cancellation,
+        None,
+    )
+    .await?;
+    match outcome {
+        Attempt::Response(response) | Attempt::Rejected { response, .. } => Ok(response),
+        Attempt::Failed { error, retries } => Err(upstream::send_failure("Cursor", error, retries)),
+        Attempt::Cancelled => Err(Error::Cancelled),
     }
 }
 
@@ -62,7 +109,7 @@ pub async fn forward(
     Extension(proxy): Extension<CursorProxy>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    forward_request(&proxy, request, None).await
+    forward_request(&proxy, request, None, crate::api::cursor::MAX_REQUEST_BODY).await
 }
 
 pub(crate) async fn forward_to_service(
@@ -70,13 +117,22 @@ pub(crate) async fn forward_to_service(
     request: Request<Body>,
     service_url: &str,
 ) -> Result<Response<Body>> {
-    forward_request(proxy, request, Some(service_url)).await
+    forward_request(
+        proxy,
+        request,
+        Some(service_url),
+        crate::api::cursor::MAX_REQUEST_BODY,
+    )
+    .await
 }
 
+/// 转发失败返回 `Err`(交给 axum 渲染);**超限返回 `Ok(413)`**——那是一个完整的响应,
+/// 不是转发失败,调用方不该把它再翻成 400/500。
 async fn forward_request(
     proxy: &CursorProxy,
     request: Request<Body>,
     service_url: Option<&str>,
+    body_limit: usize,
 ) -> Result<Response<Body>> {
     let started = Instant::now();
     let (parts, body) = request.into_parts();
@@ -95,25 +151,23 @@ async fn forward_request(
     headers.remove(header::HOST);
     remove_hop_by_hop_headers(&mut headers);
 
-    let client = proxy.client().await?;
-    let upstream = client
-        .request(parts.method.clone(), url)
-        .headers(headers)
-        .body(reqwest::Body::wrap_stream(body.into_data_stream()))
-        .send()
-        .await;
-
-    let upstream = match upstream {
-        Ok(response) => response,
+    // 请求体先整段读成字节：出网失败后的重试要重发同一个请求，而流只能被消费一次。
+    // 上限一到就返回 413，而且不再继续读（见 `read_request_body`）。
+    let body = match crate::api::cursor::read_request_body(body, body_limit).await {
+        Ok(body) => body,
+        Err(_) => return Ok(crate::api::cursor::body_too_large_response(body_limit)),
+    };
+    let upstream = match send_upstream(proxy, parts.method.clone(), &url, headers, body).await {
+        Ok(upstream) => upstream,
         Err(error) => {
             tracing::error!(
                 method = %parts.method,
                 path,
                 elapsed_ms = started.elapsed().as_millis(),
-                %error,
+                error = %crate::diagnostics::error_chain(&error),
                 "Cursor upstream request failed"
             );
-            return Err(error.into());
+            return Err(error);
         }
     };
 
@@ -156,17 +210,29 @@ pub async fn forward_buffered(
         header::ACCEPT_ENCODING,
         axum::http::HeaderValue::from_static("identity"),
     );
-    let body = to_bytes(body, usize::MAX)
-        .await
-        .map_err(|error| crate::Error::Protocol(format!("cannot read request body: {error}")))?;
-    let upstream = proxy
-        .client()
-        .await?
-        .request(parts.method, url)
-        .headers(headers)
-        .body(body)
-        .send()
-        .await?;
+    let body =
+        match crate::api::cursor::read_request_body(body, crate::api::cursor::MAX_REQUEST_BODY)
+            .await
+        {
+            Ok(body) => body,
+            // 缓冲转发没有自己的响应通道，所以这里把 413 装成 `BufferedResponse` 交回去；
+            // 调用方照常 `with_body`/`into_response`，状态码与文案与直通路径一致。
+            Err(status) => {
+                let mut headers = HeaderMap::new();
+                headers.insert(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static("text/plain; charset=utf-8"),
+                );
+                return Ok(BufferedResponse {
+                    status,
+                    headers,
+                    body: Bytes::from(crate::api::cursor::body_too_large_body(
+                        crate::api::cursor::MAX_REQUEST_BODY,
+                    )),
+                });
+            }
+        };
+    let upstream = send_upstream(proxy, parts.method, &url, headers, body).await?;
     let status = upstream.status();
     let mut headers = upstream.headers().clone();
     remove_hop_by_hop_headers(&mut headers);
@@ -224,4 +290,57 @@ fn remove_hop_by_hop_headers(headers: &mut axum::http::HeaderMap) {
         headers.remove(name);
     }
     headers.remove("keep-alive");
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use super::*;
+    use crate::store::Store;
+
+    async fn test_store() -> (tempfile::TempDir, Store) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        (directory, store)
+    }
+
+    fn post(body: Vec<u8>) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/aiserver.v1.AiService/BidiAppend")
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    /// 请求体超过上限：立刻 413，而且**一个字节都不往上游发**。
+    ///
+    /// 上游地址故意指向没人监听的端口：真发了就是连接失败（500/502），状态码会把两种
+    /// 结局区分开。上限用小值注入，不必真的分配 64 MiB。
+    #[tokio::test]
+    async fn a_body_over_the_limit_is_answered_with_413_before_any_upstream_contact() {
+        let (_directory, store) = test_store().await;
+        let proxy = CursorProxy::cursor(NetworkClients::new(store));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let dead = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+
+        let response = forward_request(&proxy, post(vec![b'x'; 128]), Some(&dead), 32)
+            .await
+            .expect("超限是一个完整的响应，不是转发失败");
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&body).contains("32 byte limit"),
+            "文案要说清上限是多少: {body:?}"
+        );
+    }
 }

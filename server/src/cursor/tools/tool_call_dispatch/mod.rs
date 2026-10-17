@@ -64,7 +64,9 @@ pub(super) async fn start(
         "askquestion" | "websearch" | "webfetch" | "switchmode" | "createplan"
         | "generateimage" => interaction::start(runtime, call).await,
         "todowrite" | "updatecurrentstep" => local::start(call, message_index),
-        "semblesearch" | "semblefindrelated" => search::start(results, call, store.cloned()),
+        "semblesearch" | "semblefindrelated" => {
+            search::start(runtime, results, call, context, store.cloned())
+        }
         _ => Ok(unavailable_tool(call)),
     }
 }
@@ -135,13 +137,14 @@ fn is_mcp_auth(call: &ToolCall) -> bool {
 }
 
 pub(super) async fn resume_interaction(
+    runtime: &CursorToolRuntime,
     results: &ToolResultSender,
     search: &WebSearch,
     fetch: &WebFetch,
     pending: PendingInteraction,
     response: &pb::InteractionResponse,
 ) -> Result<InteractionContinuation> {
-    interaction::resume(results, search, fetch, pending, response).await
+    interaction::resume(runtime, results, search, fetch, pending, response).await
 }
 
 fn is_shell_tool(name: &str) -> bool {

@@ -65,6 +65,20 @@
   overflow-wrap: anywhere;
 }
 
+/* 语言不一致是提示、不是错误：写不写由用户点。 */
+.notice {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: var(--oa-space-3);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  overflow-wrap: anywhere;
+}
+
 .promptEditor {
   width: 100%;
   flex: 1;

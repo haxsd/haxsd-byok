@@ -126,7 +126,7 @@ pub(crate) async fn prepare(
     }
     let mut request_context = context::hydrate(request, context_sync).await?;
     if let Some(rules_dir) = local_rules_dir {
-        context::merge_local_rules(&mut request_context, rules_dir);
+        context::merge_local_rules(&mut request_context, rules_dir).await;
     }
     let request_context = request_context;
     let ActionProjection {
@@ -522,7 +522,20 @@ fn action(request: &pb::AgentRunRequest) -> Result<ActionProjection> {
             })
         }
         pb::conversation_action::Action::BackgroundTaskCompletionAction(action) => {
-            let projection = insert_messages::project(action, mode)?;
+            let Some(projection) = insert_messages::project(action, mode)? else {
+                // 只有进度/改派通知的批次：没有可投影的完成事件。按"这条请求没有 action"
+                // 处理（不写 runtime 消息、不换 turn user），而不是把整轮 run 判成协议错误。
+                return Ok(ActionProjection {
+                    mode,
+                    turn_user: None,
+                    action_context: String::new(),
+                    event_id: None,
+                    input_id: None,
+                    starts_turn: false,
+                    compacting: false,
+                    background_completion: false,
+                });
+            };
             let event_id = projection.turn_user.message_id.clone();
             Ok(ActionProjection {
                 mode,
@@ -616,10 +629,16 @@ pub(super) fn mode_from_proto(mode: i32) -> Result<Mode> {
         pb::AgentMode::Plan => Ok(Mode::Plan),
         pb::AgentMode::Debug => Ok(Mode::Debug),
         pb::AgentMode::Multitask => Ok(Mode::Multitask),
-        mode => Err(Error::Protocol(format!(
-            "unsupported Cursor agent mode: {}",
-            mode.as_str_name()
-        ))),
+        // 客户端会发这几种模式（未指定、triage、project、custom），而提示词资产里
+        // 没有对应的一套。以前它们让 run 在编译阶段直接失败——用户那条消息连库都进不去，
+        // 看起来像被吞了；按 Agent 处理至少让会话继续，原始枚举值留给日志。
+        other => {
+            tracing::warn!(
+                mode = other.as_str_name(),
+                "no prompt asset for this Cursor agent mode, using Agent"
+            );
+            Ok(Mode::Agent)
+        }
     }
 }
 
@@ -656,7 +675,45 @@ fn exec_context(
             .as_ref()
             .map(|env| env.terminals_folder.clone())
             .unwrap_or_default(),
+        workspace_paths: request_context
+            .env
+            .as_ref()
+            .map(|env| env.workspace_paths.clone())
+            .unwrap_or_default(),
         admin_command_denylist: request_context.admin_command_denylist.clone(),
         mcp_routes: context::meta_mcp_routes(request_context),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 客户端会发未指定/triage/project/custom 这几种模式,提示词资产里没有对应的一套。
+    /// 它们不能让 run 在编译阶段失败:那样用户的消息连库都进不去,看起来像被吞了。
+    #[test]
+    fn cursor_modes_without_a_prompt_asset_fall_back_to_agent() {
+        for mode in [
+            pb::AgentMode::Unspecified,
+            pb::AgentMode::Triage,
+            pb::AgentMode::Project,
+            pb::AgentMode::Custom,
+        ] {
+            assert_eq!(
+                mode_from_proto(mode as i32).unwrap(),
+                Mode::Agent,
+                "{mode:?} 应回退到 Agent"
+            );
+        }
+        for (mode, expected) in [
+            (pb::AgentMode::Agent, Mode::Agent),
+            (pb::AgentMode::Ask, Mode::Ask),
+            (pb::AgentMode::Plan, Mode::Plan),
+            (pb::AgentMode::Debug, Mode::Debug),
+            (pb::AgentMode::Multitask, Mode::Multitask),
+        ] {
+            assert_eq!(mode_from_proto(mode as i32).unwrap(), expected);
+        }
+        assert!(mode_from_proto(99).is_err(), "未知数值仍应报协议错误");
     }
 }

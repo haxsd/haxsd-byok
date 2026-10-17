@@ -166,6 +166,8 @@ impl DevinSettings {
                 return Err(Error::Config("Devin model UID must not be empty".into()));
             }
             if binding.model_hash.trim().is_empty() {
+                // "must include a cursor-byok model hash" 是界面的匹配片段：改文案要连着
+                // `apps/desktop` 的 `harnessErrorText.ts` 与它的测试一起改。
                 return Err(Error::Config(format!(
                     "Devin model binding for {uid} must include a cursor-byok model hash"
                 )));
@@ -386,7 +388,10 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("must include a cursor-byok model hash"));
+        assert!(
+            error.contains("must include a cursor-byok model hash"),
+            "{error}"
+        );
     }
 
     #[test]

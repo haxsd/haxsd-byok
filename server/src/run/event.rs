@@ -10,6 +10,14 @@ use crate::model::{CheckpointId, ToolCall, ToolRoundId, Usage};
 pub enum RunFailure {
     Protocol(String),
     Provider(String),
+    /// 模型在回答中途撞到长度上限就停了。
+    ///
+    /// 必须与 `Provider` 分开：provider 层把 `max_tokens`（输出预算用完）与
+    /// `model_context_window_exceeded`（窗口在生成中途打满）归一成同一个
+    /// `FinishReason::Length`，run 层看不到 stop_reason 原文，只有靠 provider 自己
+    /// 报的用量才能把两者分开——窗口打满要回到溢出压缩阶梯，输出被截断则压缩无用。
+    /// 归一成 `Provider` 会让"每次重试都撞同一份超限 prompt"变成硬失败。
+    Truncated(String),
     Store(String),
     Client(String),
 }
@@ -18,7 +26,7 @@ impl RunFailure {
     pub fn category(&self) -> &'static str {
         match self {
             Self::Protocol(_) => "protocol",
-            Self::Provider(_) => "provider",
+            Self::Provider(_) | Self::Truncated(_) => "provider",
             Self::Store(_) => "store",
             Self::Client(_) => "client",
         }

@@ -111,7 +111,7 @@ export function installAppBackend(overrides = {}) {
     pricing: defaultPricing(),
     cursorHarness: cursorHarnessStatus(),
     devinStatus: { enabled: false, listening: false, calls: 0 },
-    codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, home: "test-home", calls: 0, last_error: null },
+    codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], home: "test-home", calls: 0, last_error: null },
     pluginRuntime: pluginRuntimeStatus(),
     plugins: [],
     desktop: { silent_start: false, show_dock_icon: true, developer_mode: false },

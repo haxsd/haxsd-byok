@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, pluginText, type CommitSettingsView } from "../../shared/api";
-import { commitPromptLocale } from "../../i18n/runtime";
+import { commitPromptLocale, type CommitPromptLocale } from "../../i18n/runtime";
+import { adoptInterfacePromptLocale, commitLocaleMismatch, loadCommitSettings } from "./commitSettings";
 import { useI18n } from "../../i18n/store";
 import { useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
@@ -33,23 +34,23 @@ export function CommitSettingsCard() {
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [savingPrompt, setSavingPrompt] = useState(false);
+  const [syncingPromptLocale, setSyncingPromptLocale] = useState(false);
 
+  /**
+   * 只读设置（`loadCommitSettings` 里没有任何写请求）。
+   *
+   * 这里以前会在 GET 之后补一次 PUT：没自定义过提示词、且服务端记的语言与当前界面语言不一致
+   * 时，顺手把 prompt_locale 改成界面语言。后果是每次进这一页、每次切语言都会静默写一次库，
+   * 用户根本没点过"保存"。现在只读，不一致时在卡片里提示，用户点了才写。
+   */
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        let loaded = await api.commitSettings(locale);
-        const promptLocale = commitPromptLocale(locale);
-        if (!loaded.prompt.trim() && loaded.prompt_locale !== promptLocale) {
-          loaded = await api.setCommitSettings({
-            model_id: loaded.model_id,
-            prompt: "",
-            prompt_locale: promptLocale,
-          });
-        }
+        const loaded = await loadCommitSettings(locale);
         if (active) {
-          setView(loaded);
-          setModelDraft(loaded.model_id);
+          setView(loaded.view);
+          setModelDraft(loaded.view.model_id);
           setLoadError(null);
         }
       } catch (cause) {
@@ -60,6 +61,23 @@ export function CommitSettingsCard() {
       active = false;
     };
   }, [locale, reloadToken]);
+
+  // 默认提示词按服务端存的语言生成，界面语言决定编辑器里预览哪一份默认文案。
+  const promptLocaleMismatch = view !== null && commitLocaleMismatch(view, locale);
+
+  const adoptInterfaceLocale = useCallback(async () => {
+    if (!view) return;
+    setSyncingPromptLocale(true);
+    try {
+      const saved = await adoptInterfacePromptLocale(view, locale);
+      setView(saved);
+      setModelDraft(saved.model_id);
+    } catch (cause) {
+      message.error(cause);
+    } finally {
+      setSyncingPromptLocale(false);
+    }
+  }, [view, locale, message]);
 
   const modelOptions = useMemo(() => {
     const options: ModelSelectOption[] = [{ value: "", label: t("直连"), group: "Cursor" }];
@@ -209,6 +227,15 @@ export function CommitSettingsCard() {
             <span>{t("读取提交信息设置失败：{error}", { error: loadError })}</span>
             <Button size="small" onClick={() => setReloadToken((current) => current + 1)}>{t("重试")}</Button>
           </div>}
+          {promptLocaleMismatch && <div className={styles.notice} role="status">
+            <span>{t("默认提示词当前用的是{current}，与界面语言（{wanted}）不一致：改过来才会按当前语言生成提交信息。", {
+              current: promptLocaleLabel(view.prompt_locale),
+              wanted: promptLocaleLabel(commitPromptLocale(locale)),
+            })}</span>
+            <Button size="small" disabled={syncingPromptLocale} onClick={() => void adoptInterfaceLocale()}>
+              {syncingPromptLocale ? t("保存中…") : t("使用界面语言的默认提示词")}
+            </Button>
+          </div>}
         </div>
       </TitledCard>
 
@@ -242,4 +269,9 @@ export function CommitSettingsCard() {
 
 function errorText(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/** 语言标签直接写中文/英文名，和设置页的语言下拉一致，不走 t()。 */
+function promptLocaleLabel(locale: CommitPromptLocale) {
+  return locale === "zh-CN" ? "简体中文" : "English";
 }

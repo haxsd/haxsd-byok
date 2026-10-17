@@ -149,13 +149,26 @@ async fn decode_part<T: Message + Default>(
 /// 把本地 md 规则目录(rules 服务的存储)合并进请求上下文,
 /// 使 BYOK 运行在 IDE 未携带这些规则时也能消费它们。
 /// 与 IDE 已发规则按内容去重;读取失败只告警,不影响运行。
-pub fn merge_local_rules(context: &mut pb::RequestContext, rules_dir: &Path) {
-    let records = match crate::cursor::services::knowledge::RuleStore::open(rules_dir.into())
-        .and_then(|store| store.list())
+///
+/// 读目录是阻塞 IO（`create_dir_all` + 读 `meta.json` + 全目录遍历 + 每个 md 一次
+/// `read_to_string`），而它每轮请求都跑一次、调用点在 `tokio::spawn` 出来的任务里
+/// （`conversation/runtime.rs`）——直接跑就会占住 runtime 工作线程，代价随规则数量线性
+/// 增长。放到 `spawn_blocking` 里；合并本身是内存操作，仍在调用线程上做。
+pub async fn merge_local_rules(context: &mut pb::RequestContext, rules_dir: &Path) {
+    let directory = rules_dir.to_path_buf();
+    let records = match tokio::task::spawn_blocking(move || {
+        crate::cursor::services::knowledge::RuleStore::open(directory.as_path().into())
+            .and_then(|store| store.list())
+    })
+    .await
     {
-        Ok(records) => records,
-        Err(error) => {
+        Ok(Ok(records)) => records,
+        Ok(Err(error)) => {
             tracing::warn!(%error, "cannot read local rules; continuing without them");
+            return;
+        }
+        Err(error) => {
+            tracing::warn!(%error, "cannot scan local rules; continuing without them");
             return;
         }
     };
@@ -676,8 +689,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn merge_local_rules_appends_and_dedupes_by_content() {
+    #[tokio::test]
+    async fn merge_local_rules_appends_and_dedupes_by_content() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("a.md"), "shared rule").unwrap();
         std::fs::write(directory.path().join("b.md"), "local only rule").unwrap();
@@ -687,7 +700,7 @@ mod tests {
             non_file_rules: vec![rule("  shared rule  ")],
             ..Default::default()
         };
-        merge_local_rules(&mut context, directory.path());
+        merge_local_rules(&mut context, directory.path()).await;
 
         let contents = context
             .non_file_rules
@@ -701,11 +714,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn merge_local_rules_survives_a_missing_directory() {
+    #[tokio::test]
+    async fn merge_local_rules_survives_a_missing_directory() {
         let directory = tempfile::tempdir().unwrap();
         let mut context = pb::RequestContext::default();
-        merge_local_rules(&mut context, &directory.path().join("nested/rules"));
+        merge_local_rules(&mut context, &directory.path().join("nested/rules")).await;
         assert!(context.non_file_rules.is_empty());
     }
 

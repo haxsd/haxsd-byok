@@ -36,6 +36,20 @@ pub struct TransportHandle {
     disconnect: CancellationToken,
 }
 
+/// 一次性绑定：写入成功或"已经绑的就是同一个值"都算成功，绑过别的值就是冲突。
+///
+/// 不能写成"先 `get()` 判断再 `set()`"：两个并发 append 可能都读到空、都通过冲突检测，
+/// 后到的 `set` 只会在 `OnceLock` 里静默失败（旧代码 `let _ = set(...)`），于是它带着
+/// 一份没被采纳的 conversation/parent 继续跑——冲突检测等于没有。这里把判据放在 `set`
+/// 的结果上：`OnceLock::set` 本身是原子的（只填空槽），失败说明槽已被占，比较的就是
+/// 真正落下的那个值。
+fn bind_once<T: PartialEq + Clone>(slot: &OnceLock<T>, value: &T) -> Result<(), ()> {
+    if slot.set(value.clone()).is_ok() {
+        return Ok(());
+    }
+    (slot.get() == Some(value)).then_some(()).ok_or(())
+}
+
 impl TransportHandle {
     pub(crate) fn new(
         request_id: String,
@@ -63,18 +77,12 @@ impl TransportHandle {
         if conversation_id.is_empty() {
             return Err(Error::Protocol("Cursor conversation id is required".into()));
         }
-        if self
-            .conversation_id
-            .get()
-            .is_some_and(|current| current != conversation_id)
-        {
-            return Err(Error::Protocol(format!(
+        bind_once(&self.conversation_id, &conversation_id.to_owned()).map_err(|()| {
+            Error::Protocol(format!(
                 "conflicting conversation ids for request {}",
                 self.request_id
-            )));
-        }
-        let _ = self.conversation_id.set(conversation_id.into());
-        Ok(())
+            ))
+        })
     }
 
     pub fn conversation_id(&self) -> Option<&str> {
@@ -91,14 +99,12 @@ impl TransportHandle {
                 "Cursor parent ids must not be empty".into(),
             ));
         }
-        if self.parent.get().is_some_and(|current| current != &parent) {
-            return Err(Error::Protocol(format!(
+        bind_once(&self.parent, &parent).map_err(|()| {
+            Error::Protocol(format!(
                 "conflicting parent ids for request {}",
                 self.request_id
-            )));
-        }
-        let _ = self.parent.set(parent);
-        Ok(())
+            ))
+        })
     }
 
     pub fn parent(&self) -> Option<&TransportParent> {
@@ -116,7 +122,7 @@ impl TransportHandle {
         let _ = self.commands.send(TransportCommand::Disconnect).await;
     }
 
-    pub fn subscribe(&self) -> tokio::sync::mpsc::UnboundedReceiver<Bytes> {
+    pub fn subscribe(&self) -> tokio::sync::mpsc::Receiver<Bytes> {
         self.output.subscribe()
     }
 
@@ -184,5 +190,76 @@ impl TransportHandle {
 
     pub(crate) fn mark_disconnected(&self) {
         self.disconnect.cancel();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Barrier};
+
+    use super::*;
+
+    /// 槽已被占、且占的不是同一个值时，`bind_once` 必须报冲突——旧代码正是在这里
+    /// `let _ = set(...)` 把结果丢掉，于是并发落败的那一方也返回成功。
+    #[test]
+    fn binding_a_different_value_after_the_slot_is_taken_is_a_conflict() {
+        let slot = OnceLock::new();
+        assert_eq!(bind_once(&slot, &"A".to_owned()), Ok(()));
+        assert_eq!(
+            bind_once(&slot, &"A".to_owned()),
+            Ok(()),
+            "重复绑同一个值是正常路径（每次 append 都会走）"
+        );
+        assert_eq!(bind_once(&slot, &"B".to_owned()), Err(()));
+        assert_eq!(slot.get().map(String::as_str), Some("A"), "先到的值不动");
+    }
+
+    /// 并发绑定同一个槽：无论怎么交错，只能有一方成功。
+    ///
+    /// 一轮里两个线程在 barrier 处对齐后同时写，跑很多轮——旧实现（先 get 判断、再 set
+    /// 且丢弃结果）在这个窗口里会让两方都返回成功，冲突检测形同虚设。
+    #[test]
+    fn concurrent_binds_of_one_slot_let_exactly_one_side_win() {
+        const ROUNDS: usize = 400;
+
+        for round in 0..ROUNDS {
+            let slot = Arc::new(OnceLock::<String>::new());
+            let barrier = Arc::new(Barrier::new(2));
+            let spawn = |value: &'static str| {
+                let slot = slot.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    bind_once(&slot, &value.to_owned())
+                })
+            };
+            let left = spawn("conversation-a");
+            let right = spawn("conversation-b");
+
+            let results = [left.join().unwrap(), right.join().unwrap()];
+            let winners = results.iter().filter(|result| result.is_ok()).count();
+            assert_eq!(
+                winners, 1,
+                "第 {round} 轮有两个成功者：{results:?}，绑定不是原子的"
+            );
+        }
+    }
+
+    /// 走公开接口：同一个 conversation id 重复绑定是常态，换一个就是冲突。
+    #[tokio::test]
+    async fn rebinding_a_conversation_to_another_id_is_refused() {
+        let (_directory, registry) = crate::cursor::transport::test_registry().await;
+        let handle = registry.get_or_create("handle-bind").await.unwrap();
+
+        handle.set_conversation_id("conversation-a").unwrap();
+        assert!(
+            handle.set_conversation_id("conversation-a").is_ok(),
+            "每次 append 都会重绑同一个 id，必须照常通过"
+        );
+        assert!(
+            handle.set_conversation_id("conversation-b").is_err(),
+            "换一个 id 必须报冲突"
+        );
+        assert_eq!(handle.conversation_id(), Some("conversation-a"));
     }
 }

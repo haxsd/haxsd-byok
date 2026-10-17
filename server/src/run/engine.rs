@@ -10,25 +10,81 @@ use crate::{
         ToolRoundId, Usage,
     },
     provider::Provider,
-    store::{ContextUsageAnchor, RunStatus, Store},
+    store::{BlobId, ContextUsageAnchor, RunStatus, Store},
 };
 
 use super::{
     consume_model_cycle,
     model_retry::{should_retry, MODEL_RETRY_DELAY},
-    CommitBarrier, CommitCause, MessageBatch, MessagesCommitted, RunCommand, RunEvent, RunFailure,
-    RunOutcome, RunPort,
+    CommitBarrier, CommitCause, MessageBatch, MessagesCommitted, ModelCycleFailure, RunCommand,
+    RunEvent, RunFailure, RunOutcome, RunPort,
 };
 
 pub struct RunEngine {
     store: Store,
     provider: Arc<dyn Provider>,
+    images: ImageCache,
+}
+
+/// 同一次 Run 内按 `BlobId` 复用图片字节。
+///
+/// 每个模型轮都会按 checkpoint 重建整条 provider 可见历史，图片内容块却是同一批
+/// 字节——内容寻址，写进 `blobs` 之后不再变。没有缓存时，一轮里每张图都要回库读一次
+/// （截图类工具结果是 MB 级的），工具轮越多读得越多。缓存随 Run 一起消失，不会跨 run
+/// 常驻，也不需要失效逻辑。
+#[derive(Default)]
+struct ImageCache {
+    blobs: parking_lot::Mutex<std::collections::HashMap<BlobId, Arc<Vec<u8>>>>,
+}
+
+impl ImageCache {
+    async fn data(&self, store: &Store, id: &BlobId) -> crate::Result<Arc<Vec<u8>>> {
+        if let Some(data) = self.blobs.lock().get(id).cloned() {
+            return Ok(data);
+        }
+        // 锁不跨 await：读库在锁外，取完再放进去（同一张图并发读到两次也无害，内容是
+        // 同一份字节）。
+        let data = Arc::new(store.get_blob(id).await?.ok_or_else(|| {
+            crate::Error::Protocol(format!("Read image Blob is missing: {}", id.to_base64()))
+        })?);
+        self.blobs.lock().insert(id.clone(), data.clone());
+        Ok(data)
+    }
+
+    async fn hydrate(
+        &self,
+        store: &Store,
+        messages: &mut [crate::model::ProjectedMessage],
+    ) -> crate::Result<()> {
+        use crate::model::{ContentPart, ProjectedContent};
+
+        for message in messages {
+            let ProjectedContent::ToolResult(result) = &mut message.content else {
+                continue;
+            };
+            let Some(image) = &result.image else {
+                continue;
+            };
+            let id = BlobId::from_base64(&image.blob_id)?;
+            let data = self.data(store, &id).await?;
+            result.provider_parts = vec![
+                ContentPart::Text {
+                    text: result.content.clone(),
+                },
+                ContentPart::Image {
+                    mime_type: image.mime_type.clone(),
+                    data: (*data).clone(),
+                },
+            ];
+        }
+        Ok(())
+    }
 }
 
 /// Provider-visible tail appended when the committed history ends with the
 /// assistant, which happens when Cursor resumes a turn that had already
 /// finished (for example after a cancelled follow-up).
-const CONTINUE_MESSAGE_ID: &str = "runtime:continue";
+const CONTINUE_MESSAGE_ID: &str = crate::model::CONTINUE_TAIL_MESSAGE_ID;
 const CONTINUE_INSTRUCTION: &str = "Continue from where you left off.";
 
 /// 父轮等后台子代理时重查"还有子代理在跑吗"的间隔。
@@ -48,9 +104,46 @@ enum BackgroundWait {
     Drained,
 }
 
+/// 溢出压缩阶梯的计数：**按"当前溢出 episode"**，不按整个 run 累计。
+///
+/// 阶梯本身保证同一个 episode 内最多压缩两次：第一次保留近期轮（provider 拒绝往往只是
+/// 比估算器多算了一点）、第二次只留摘要、第三次才认定当前输入本身放不下而失败。
+/// 一次成功的模型调用说明这次溢出已经解决，episode 随之结束——长轮次里几十分钟后的
+/// 另一次溢出必须重新从"保留近期轮"开始，否则会因为本 run 早先溢出过就直接丢掉全部
+/// 逐字历史（审计 09/F8）。
+#[derive(Default)]
+struct OverflowEpisode {
+    compactions: u8,
+}
+
+impl OverflowEpisode {
+    /// 这次拒绝该用哪种保留策略；`None` = 不再压缩，直接失败。
+    fn retention(&self) -> Option<super::compaction::Retention> {
+        match self.compactions {
+            0 => Some(super::compaction::Retention::Window),
+            1 => Some(super::compaction::Retention::None),
+            _ => None,
+        }
+    }
+
+    /// 模型调用成功：当前 episode 结束，计数回到起点。
+    fn model_call_succeeded(&mut self) {
+        self.compactions = 0;
+    }
+
+    /// 上游拒绝了这次请求：当前 episode 内往下走一级。
+    fn provider_refused(&mut self) {
+        self.compactions = self.compactions.saturating_add(1);
+    }
+}
+
 impl RunEngine {
     pub fn new(store: Store, provider: Arc<dyn Provider>) -> Self {
-        Self { store, provider }
+        Self {
+            store,
+            provider,
+            images: ImageCache::default(),
+        }
     }
 
     #[tracing::instrument(
@@ -99,7 +192,39 @@ impl RunEngine {
             .finish_run(&prepared.run_id, status, usage, failure_ref)
             .await
         {
-            tracing::error!(run_id = %prepared.run_id, %error, "failed to persist Run outcome");
+            // runs 行停在 `running` 会让 UI 与列表永远显示"进行中"，还会因为
+            // `store/retention.rs` 的 running 守卫推迟整个会话的回收。重试一次（同参数），
+            // 再失败就写一个最小终态：终态本身比终态的精确内容更重要。
+            tracing::warn!(
+                run_id = %prepared.run_id,
+                conversation_id = %prepared.conversation_id,
+                %error,
+                "failed to persist the Run outcome; retrying once"
+            );
+            if let Err(error) = self
+                .store
+                .finish_run(&prepared.run_id, status, usage, failure_ref)
+                .await
+            {
+                tracing::error!(
+                    run_id = %prepared.run_id,
+                    conversation_id = %prepared.conversation_id,
+                    %error,
+                    "retry failed as well; writing a bare failed status"
+                );
+                if let Err(error) = self
+                    .store
+                    .finish_run(&prepared.run_id, RunStatus::Failed, None, None)
+                    .await
+                {
+                    tracing::error!(
+                        run_id = %prepared.run_id,
+                        conversation_id = %prepared.conversation_id,
+                        %error,
+                        "Run status could not be persisted at all; the row stays running"
+                    );
+                }
+            }
         }
         client.phase.finish();
         let _ = client.events.send(RunEvent::Ended(outcome.clone())).await;
@@ -115,6 +240,10 @@ impl RunEngine {
         cancellation: &CancellationToken,
     ) -> (RunOutcome, Option<Usage>) {
         let mut usage = None;
+        // 这一轮里已经落库的工具调用（正常回报的，以及轮次超时后被补成 interrupted
+        // 的）。客户端可能在那之后才把真正的结果送上来——那条结果不能算协议错误：
+        // 它的调用已经收过尾了，再提交一次只会被 store 判成重复。
+        let mut accounted_tool_results = HashSet::new();
         let mut context_usage_anchor = match self
             .store
             .latest_context_usage(prepared.conversation_id.as_str())
@@ -129,6 +258,9 @@ impl RunEngine {
         );
         if !prepared.initial_messages.is_empty() {
             let mut changed = false;
+            // 这一批要提交的消息：一次提交整批（store 侧只装载一次链、一个事务，审计 09/F2），
+            // 所以先收集再一次性写。
+            let mut pending: Vec<crate::model::CanonicalMessage> = Vec::new();
             for message in &prepared.initial_messages {
                 // 后台完成通知是幂等投递：身份相同就说明这条通知已经送达过（服务端
                 // 自己发的，或客户端发来的那一份）。这时不该跑模型——否则同一次子
@@ -146,8 +278,34 @@ impl RunEngine {
                                 message_id = %message.message_id,
                                 "background completion was already delivered; this turn has nothing to do"
                             );
+                            // 收集到这里的消息仍然要提交（与逐条提交时的顺序一致：
+                            // 已经收下的那几条在遇到重复身份之前就写进去了）。
+                            if !pending.is_empty() {
+                                checkpoint = match self
+                                    .store
+                                    .append_messages_once(
+                                        &prepared.conversation_id,
+                                        &prepared.run_id,
+                                        checkpoint,
+                                        &pending,
+                                    )
+                                    .await
+                                {
+                                    Ok(appended) => {
+                                        appended.into_iter().fold(checkpoint, |_, (next, _)| next)
+                                    }
+                                    Err(error) => return (RunOutcome::Failed(error.into()), usage),
+                                };
+                            }
                             // 仍然推一次已收敛的状态：客户端这一轮要看到一个
                             // "没有待办"的终态，否则它会把这一轮当成没结束。
+                            //
+                            // 这次提交是 `InitialMessages`（settled）而不是 `FinalTurn`：
+                            // 这一轮没有新消息，收尾的 `Final` 提交会把"最后一条消息"当成
+                            // 刚生成的 assistant（`checkpoint::worker::build_final`），
+                            // 于是少算一个根、报 "Cursor stable history shrank"。终态帧
+                            // 由 output 的 `Completed` 兜底补上（见
+                            // `ConversationOutput::run_inner`）。
                             let (barrier, ready) = CommitBarrier::before_continue();
                             if emit(
                                 client,
@@ -172,19 +330,26 @@ impl RunEngine {
                         Err(error) => return (RunOutcome::Failed(error.into()), usage),
                     }
                 }
+                pending.push(message.clone());
+            }
+            // 整批一次提交：过去每条 initial message 都要整链装载 + 一个事务，
+            // 一批客户端初始消息的开销按条数放大（审计 09/F2）。
+            if !pending.is_empty() {
                 match self
                     .store
-                    .append_message_once(
+                    .append_messages_once(
                         &prepared.conversation_id,
                         &prepared.run_id,
                         checkpoint,
-                        message,
+                        &pending,
                     )
                     .await
                 {
-                    Ok((next, inserted)) => {
-                        checkpoint = next;
-                        changed |= inserted;
+                    Ok(appended) => {
+                        for (next, inserted) in appended {
+                            checkpoint = next;
+                            changed |= inserted;
+                        }
                     }
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 }
@@ -228,6 +393,7 @@ impl RunEngine {
                     recovered_started_at_ms: Some(round.started_at_ms),
                 },
                 Vec::new(),
+                &mut accounted_tool_results,
             )
             .await
             {
@@ -243,7 +409,7 @@ impl RunEngine {
         // short summary that recovers the conversation) instead of a failed
         // run. A third refusal means the current input itself does not fit, and
         // compacting again would only destroy history.
-        let mut overflow_compactions = 0_u8;
+        let mut overflow = OverflowEpisode::default();
         'model: loop {
             if cancellation.is_cancelled() {
                 return (RunOutcome::Cancelled, usage);
@@ -279,6 +445,7 @@ impl RunEngine {
                         client,
                         cancellation,
                         super::compaction::Retention::Window,
+                        &accounted_tool_results,
                     )
                     .await
                 {
@@ -303,16 +470,16 @@ impl RunEngine {
                 "starting model call"
             );
             let mut history = history;
-            if let Err(error) = hydrate_tool_images(&self.store, &mut history).await {
+            if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
                 return (RunOutcome::Failed(error.into()), usage);
             }
-            // The usage anchor counts persisted messages only; a transient
-            // tail is provider-visible but never committed.
+            // 观测层的上下文用量锚点只数持久化消息：下面追加的尾巴只对 provider 可见、
+            // 不进库（`ModelInvocation::persisted_message_count` 按消息身份把它排除）。
             let anchored_messages = history.len();
             let history = if prepared.action == RunAction::Compact {
                 super::history::user_terminated(
                     history,
-                    "compaction:instruction",
+                    crate::model::COMPACTION_TAIL_MESSAGE_ID,
                     super::compaction::INSTRUCTIONS,
                 )
             } else {
@@ -320,7 +487,14 @@ impl RunEngine {
             };
             let request = crate::model::ModelRequest {
                 prompt: prepared.prompt.clone(),
-                model: prepared.model.clone(),
+                // 手动 `/summarize`（Compact）与自动压缩产出的是同一种东西——一段之后顶替
+                // 历史、对模型可见的摘要——所以两者用同一份摘要规格，不能走调用方原样的模型
+                // 规格（那会把思考打开并且不设输出上限）。
+                model: cycle_model(
+                    &prepared.action,
+                    &prepared.model,
+                    self.summary_output_tokens(prepared).await,
+                ),
                 history,
             };
             let mut retries = 0_u32;
@@ -363,7 +537,10 @@ impl RunEngine {
                                     let _ = emit(client, RunEvent::CycleInterrupted).await;
                                     return (RunOutcome::Cancelled, usage);
                                 }
-                                Some(RunCommand::ToolResult(_)) => {
+                                Some(RunCommand::ToolResult(result)) => {
+                                    if late_tool_result(&result, &accounted_tool_results) {
+                                        continue;
+                                    }
                                     cycle_cancellation.cancel();
                                     let _ = cycle.await;
                                     let _ = emit(client, RunEvent::CycleInterrupted).await;
@@ -440,7 +617,12 @@ impl RunEngine {
                     }
                 };
                 match cycle {
-                    Ok(cycle) => break 'attempt cycle,
+                    Ok(cycle) => {
+                        // 这一轮模型调用成了：当前溢出 episode 到此结束，阶梯计数回到
+                        // 起点（`OverflowEpisode::model_call_succeeded`）。
+                        overflow.model_call_succeeded();
+                        break 'attempt cycle;
+                    }
                     Err(cycle_failure) => {
                         if let Some(cycle_usage) = cycle_failure.usage {
                             update_context_usage_anchor(
@@ -464,22 +646,25 @@ impl RunEngine {
                         // this a conversation that crosses the line is wedged:
                         // every retry rebuilds the same prompt and gets the
                         // same refusal.
-                        let overflow_retention = match overflow_compactions {
-                            0 => Some(super::compaction::Retention::Window),
-                            1 => Some(super::compaction::Retention::None),
-                            _ => None,
-                        };
+                        let window_exhausted = exhausted_context_window(
+                            &cycle_failure.failure,
+                            cycle_failure.usage.as_ref(),
+                            super::compaction::input_budget(prepared),
+                        );
+                        let overflow_retention = overflow.retention();
                         let overflow_refusal = prepared.action != RunAction::Compact
-                            && matches!(&cycle_failure.failure, RunFailure::Provider(message)
-                                if super::compaction::is_context_overflow(message));
+                            && (window_exhausted
+                                || matches!(&cycle_failure.failure, RunFailure::Provider(message)
+                                    if super::compaction::is_context_overflow(message)));
                         if let Some(retention) = overflow_retention.filter(|_| overflow_refusal) {
                             tracing::warn!(
                                 provider_call_index,
                                 checkpoint_id = checkpoint.0,
                                 keep_recent_turns = retention == super::compaction::Retention::Window,
+                                window_exhausted,
                                 "provider rejected the prompt as over-limit; compacting and retrying"
                             );
-                            overflow_compactions += 1;
+                            overflow.provider_refused();
                             checkpoint = match super::messages::append_batches(
                                 &self.store,
                                 prepared,
@@ -506,6 +691,7 @@ impl RunEngine {
                                     client,
                                     cancellation,
                                     retention,
+                                    &accounted_tool_results,
                                 )
                                 .await
                             {
@@ -543,6 +729,28 @@ impl RunEngine {
                                     "message": message,
                                 }),
                             );
+                            // 口径（2026-10-16 裁定，按默认口径落地）：`max_tokens` 截断
+                            // **不丢文本**。已经流给客户端的半段回答要落成 assistant 消息：
+                            // 用户看到的就是它，服务端历史也要与之一致——否则下一轮模型
+                            // 看到的是一轮"什么都没发生"，而用户明明看见了半截回答。
+                            // 落库之后仍按失败收尾（客户端据此知道这轮被截断了）。
+                            if matches!(cycle_failure.failure, RunFailure::Truncated(_))
+                                && !cycle_failure.partial_text.trim().is_empty()
+                            {
+                                if let Err(outcome) = self
+                                    .persist_truncated_assistant(
+                                        prepared,
+                                        checkpoint,
+                                        client,
+                                        cancellation,
+                                        &cycle_failure,
+                                        provider_call_index,
+                                    )
+                                    .await
+                                {
+                                    return (outcome, usage);
+                                }
+                            }
                             return (RunOutcome::Failed(cycle_failure.failure), usage);
                         }
                         retries += 1;
@@ -585,7 +793,10 @@ impl RunEngine {
                                             let _ = emit(client, RunEvent::CycleInterrupted).await;
                                             return (RunOutcome::Cancelled, usage);
                                         }
-                                        Some(RunCommand::ToolResult(_)) => {
+                                        Some(RunCommand::ToolResult(result)) => {
+                                            if late_tool_result(&result, &accounted_tool_results) {
+                                                continue;
+                                            }
                                             return (
                                                 RunOutcome::Failed(RunFailure::Protocol(
                                                     "received a tool result while waiting to retry the model".into(),
@@ -797,12 +1008,7 @@ impl RunEngine {
                 }
                 // 还有后台子代理在跑：这一轮先不收尾。父轮挂在这里等它们的完成消息
                 // 被投递进来（InsertMessages），写进历史后回到模型循环继续干活。
-                if self
-                    .store
-                    .has_running_background_subagents(&prepared.run_id)
-                    .await
-                    .unwrap_or(false)
-                {
+                if self.has_background_work(prepared).await {
                     let mut waiting = Vec::new();
                     match self
                         .await_background_subagents(
@@ -882,6 +1088,7 @@ impl RunEngine {
                     recovered_started_at_ms: None,
                 },
                 pending_insertions,
+                &mut accounted_tool_results,
             )
             .await
             {
@@ -889,6 +1096,92 @@ impl RunEngine {
                 Err(outcome) => return (outcome, usage),
             };
         }
+    }
+
+    /// 这个 run 还有在跑的后台子代理吗。
+    ///
+    /// 查库失败按"没有"处理：宁可早收尾（完成通知会排进父会话的 pending，用户下次
+    /// 开口时看到），也不能因为一次查询失败把父轮挂到 `BACKGROUND_WORK_TIMEOUT`。
+    /// 但失败必须留痕——这条路径过去连日志都没有，收尾早了完全看不出为什么。
+    async fn has_background_work(&self, prepared: &PreparedRun) -> bool {
+        match self
+            .store
+            .has_running_background_subagents(&prepared.run_id)
+            .await
+        {
+            Ok(running) => running,
+            Err(error) => {
+                tracing::warn!(
+                    run_id = %prepared.run_id,
+                    conversation_id = %prepared.conversation_id,
+                    %error,
+                    "failed to check for running background subagents; finishing this turn now"
+                );
+                false
+            }
+        }
+    }
+
+    /// 把被 `max_tokens` 截断的半段回答落成 assistant 消息，并推一次终态。
+    ///
+    /// 口径（按默认口径落地）：截断不丢文本。已经流给客户端的半段回答要进服务端历史，
+    /// 下一轮模型看到的就是用户看到的那一段；提交用 `FinalTurn`——这条消息正是刚生成的
+    /// assistant（`checkpoint::worker::build_final` 把最后一条当新消息），与正常收尾同形。
+    /// 提交完成后调用方仍按 `Failed(Truncated)` 收尾：客户端要能看出这一轮是被截断的，
+    /// 而不是正常结束。
+    async fn persist_truncated_assistant(
+        &self,
+        prepared: &PreparedRun,
+        checkpoint: crate::model::CheckpointId,
+        client: &mut RunPort,
+        cancellation: &CancellationToken,
+        cycle_failure: &ModelCycleFailure,
+        provider_call_index: u64,
+    ) -> Result<(), RunOutcome> {
+        let message = CanonicalMessage {
+            // 与正常收尾同一条身份规则：同一次 provider 调用只可能产出一条 assistant。
+            message_id: format!("{}:assistant:{provider_call_index}", prepared.run_id),
+            role: Role::Assistant,
+            origin: Origin::Assistant,
+            content: MessageContent::Assistant {
+                text: cycle_failure.partial_text.clone(),
+                thinking: cycle_failure.partial_reasoning.clone(),
+                tool_round_id: None,
+                replay_state: cycle_failure.replay_state.clone(),
+                tool_calls: Vec::new(),
+            },
+            runtime_event_id: None,
+        };
+        let next = self
+            .store
+            .append_checkpoint(
+                &prepared.conversation_id,
+                &prepared.run_id,
+                checkpoint,
+                &[message],
+            )
+            .await
+            .map_err(|error| RunOutcome::Failed(error.into()))?;
+        tracing::warn!(
+            run_id = %prepared.run_id,
+            conversation_id = %prepared.conversation_id,
+            provider_call_index,
+            characters = cycle_failure.partial_text.chars().count(),
+            "persisted the truncated assistant message before ending the run"
+        );
+        let (barrier, ready) = CommitBarrier::before_continue();
+        emit(
+            client,
+            RunEvent::MessagesCommitted(MessagesCommitted {
+                checkpoint_id: next,
+                tool_round_version: 0,
+                cause: CommitCause::FinalTurn,
+                barrier,
+            }),
+        )
+        .await
+        .map_err(|_| client_failure())?;
+        wait_for_state_ready(ready, cancellation).await
     }
 
     /// 收尾前等后台子代理：父轮停在这里，等它们的完成消息被投递进来。
@@ -1022,6 +1315,7 @@ impl RunEngine {
         client: &mut RunPort,
         cancellation: &CancellationToken,
         retention: super::compaction::Retention,
+        accounted_tool_results: &HashSet<String>,
     ) -> std::result::Result<(crate::model::CheckpointId, Option<Usage>), RunOutcome> {
         let current_ids = prepared
             .initial_messages
@@ -1054,10 +1348,7 @@ impl RunEngine {
                 super::compaction::compaction_history(history, prepared.model.context_window_tokens)
             })
             .map_err(|error| RunOutcome::Failed(error.into()))?;
-        let mut model = prepared.model.clone();
-        model.max_output_tokens = Some(self.summary_output_tokens(prepared).await);
-        model.reasoning.enabled = false;
-        model.reasoning.effort = None;
+        let model = summary_model(&prepared.model, self.summary_output_tokens(prepared).await);
         let invocation = crate::model::ModelInvocation {
             client_source: crate::model::CallClient::Cursor,
             call_id: format!("{}:{provider_call_index}", prepared.run_id),
@@ -1102,7 +1393,10 @@ impl RunEngine {
                             let _ = cycle.await;
                             return Err(RunOutcome::Cancelled);
                         }
-                        Some(RunCommand::ToolResult(_)) => {
+                        Some(RunCommand::ToolResult(result)) => {
+                            if late_tool_result(&result, accounted_tool_results) {
+                                continue;
+                            }
                             cycle_cancellation.cancel();
                             let _ = cycle.await;
                             return Err(RunOutcome::Failed(RunFailure::Protocol(
@@ -1210,38 +1504,36 @@ impl RunEngine {
     }
 }
 
-async fn hydrate_tool_images(
-    store: &Store,
-    messages: &mut [crate::model::ProjectedMessage],
-) -> crate::Result<()> {
-    use crate::{
-        model::{ContentPart, ProjectedContent},
-        store::BlobId,
-        Error,
-    };
+/// 摘要调用用的模型规格：显式关掉思考，并把输出预算收紧到摘要上限。
+///
+/// 关闭必须是**显式**的（`Some(false)`）：摘要请求走的还是 `ProviderRouter`，那里会用
+/// `ModelConfig::configure` 兜底，而 `None` 在它眼里是"调用方没表态"，会被模型配置的
+/// 思考强度（Anthropic 默认 xhigh）重新打开——thinking 与正文共享 `max_tokens`，
+/// 8K 摘要预算就被思考吃掉了。
+fn summary_model(model: &crate::model::ModelSpec, output_tokens: u64) -> crate::model::ModelSpec {
+    let mut summary = model.clone();
+    summary.max_output_tokens = Some(output_tokens);
+    summary.reasoning.enabled = Some(false);
+    summary.reasoning.effort = None;
+    summary.reasoning.thinking_budget_tokens = None;
+    summary
+}
 
-    for message in messages {
-        let ProjectedContent::ToolResult(result) = &mut message.content else {
-            continue;
-        };
-        let Some(image) = &result.image else {
-            continue;
-        };
-        let id = BlobId::from_base64(&image.blob_id)?;
-        let data = store.get_blob(&id).await?.ok_or_else(|| {
-            Error::Protocol(format!("Read image Blob is missing: {}", image.blob_id))
-        })?;
-        result.provider_parts = vec![
-            ContentPart::Text {
-                text: result.content.clone(),
-            },
-            ContentPart::Image {
-                mime_type: image.mime_type.clone(),
-                data,
-            },
-        ];
+/// 这一轮模型调用该用哪份规格。
+///
+/// 手动 `/summarize` 是 `RunAction::Compact`，它和自动压缩的区别只在触发者：产出的摘要
+/// 同样会顶替历史、同样对后续模型可见。所以它也要走 `summary_model`——否则思考（模型配置
+/// 默认 xhigh）会与正文抢同一份 `max_tokens`，8K 摘要预算被思考吃掉；而"不写上限"又会让
+/// 64k 级模型按整段输出计费、把一段摘要写成几千 token。其它动作原样透传调用方的规格。
+fn cycle_model(
+    action: &RunAction,
+    model: &crate::model::ModelSpec,
+    summary_output_tokens: u64,
+) -> crate::model::ModelSpec {
+    match action {
+        RunAction::Compact => summary_model(model, summary_output_tokens),
+        _ => model.clone(),
     }
-    Ok(())
 }
 
 fn context_usage_snapshot(tokens: u64) -> Usage {
@@ -1300,11 +1592,273 @@ pub(super) fn client_failure() -> RunOutcome {
     RunOutcome::Failed(RunFailure::Client("client event channel closed".into()))
 }
 
+/// 迟到的工具结果：它的调用已经收过尾（正常回报，或轮次超时后被补成 interrupted）。
+///
+/// 超时收轮之后客户端仍可能把真正的结果送上来；那条结果不能当成协议错误，否则一次
+/// 超时会被"迟到结果"二次放大成整轮失败。
+fn late_tool_result(result: &crate::model::ToolResult, accounted: &HashSet<String>) -> bool {
+    let late = accounted.contains(&result.call_id);
+    if late {
+        tracing::debug!(
+            call_id = %result.call_id,
+            "ignoring a tool result the round already accounted for"
+        );
+    }
+    late
+}
+
 fn failure_message(failure: &RunFailure) -> String {
     match failure {
         RunFailure::Protocol(message)
         | RunFailure::Provider(message)
+        | RunFailure::Truncated(message)
         | RunFailure::Store(message)
         | RunFailure::Client(message) => message.clone(),
+    }
+}
+
+/// 撞长度上限的这一轮，是不是"输入已经把窗口打满"而不是"输出被截断"。
+///
+/// provider 层把 `max_tokens` 与 `model_context_window_exceeded` 归一成同一个
+/// `FinishReason::Length`（`provider/anthropic.rs` 的 stop_reason 映射），run 层拿不到
+/// 原文，只能按 provider 自己报的用量分流：prompt 已经吃满可用预算的那一次，压缩是唯一
+/// 出路——不压缩的话下一轮带着同一份超限 prompt 再来一遍，用户看到的是同一个错误重复
+/// 出现；prompt 远未吃满的那一次是输出被截断，压缩不解决问题，维持终态失败。
+///
+/// 用量或窗口预算缺失时一律按"输出被截断"处理：宁可保持旧的终态失败，也不要在信息
+/// 不足时自动改写历史。
+fn exhausted_context_window(
+    failure: &RunFailure,
+    usage: Option<&Usage>,
+    input_budget: Option<u64>,
+) -> bool {
+    if !matches!(failure, RunFailure::Truncated(_)) {
+        return false;
+    }
+    let (Some(usage), Some(budget)) = (usage, input_budget) else {
+        return false;
+    };
+    usage
+        .context_input_tokens
+        .or(usage.input_tokens)
+        .is_some_and(|tokens| tokens >= budget)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 溢出压缩阶梯（审计 09/F8）：计数按"当前溢出 episode"走——一次成功的模型调用就
+    /// 清零，同一 run 里第二次**相距很远**的溢出仍然先用保留近期轮的压缩，而不是因为
+    /// 本 run 早先溢出过就直接跳到"只留摘要"。
+    #[test]
+    fn a_successful_model_call_resets_the_overflow_ladder() {
+        let mut episode = OverflowEpisode::default();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::Window),
+            "第一次溢出保留近期轮"
+        );
+        episode.provider_refused();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::None),
+            "同一 episode 内第二次只留摘要"
+        );
+        episode.provider_refused();
+        assert_eq!(episode.retention(), None, "第三次不再压缩，直接失败");
+
+        // 模型调用成功 = episode 结束：下一次溢出重新从"保留近期轮"开始。
+        episode.model_call_succeeded();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::Window),
+            "跨 episode 不再累计"
+        );
+        episode.provider_refused();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::None)
+        );
+    }
+
+    /// 摘要调用必须拿到"显式关思考"的规格：这一轮之后还会经过 `ProviderRouter` 里的
+    /// `ModelConfig::configure`，只有 `Some(false)` 能活过它；`None` 会被模型配置的
+    /// 思考强度重新打开（见 `model::configuration` 的同名用例与 `provider::anthropic`
+    /// 的发出侧断言）。
+    #[test]
+    fn the_summarizer_runs_without_reasoning() {
+        let mut model = crate::model::ModelSpec::new("claude-sonnet-4");
+        model.reasoning.enabled = Some(true);
+        model.reasoning.effort = Some("xhigh".into());
+        model.reasoning.thinking_budget_tokens = Some(8_192);
+
+        let summary = summary_model(&model, 8_192);
+
+        assert_eq!(summary.model_id, "claude-sonnet-4");
+        assert_eq!(summary.max_output_tokens, Some(8_192));
+        assert_eq!(summary.reasoning.enabled, Some(false));
+        assert_eq!(summary.reasoning.effort, None);
+        assert_eq!(summary.reasoning.thinking_budget_tokens, None);
+        assert_eq!(model.reasoning.enabled, Some(true), "原规格不被改动");
+    }
+
+    /// 手动 `/summarize` 与自动压缩产出同一种摘要，因此必须拿到同一份规格：显式关思考，
+    /// 并且把输出收紧到摘要预算——否则 64k 级模型会把"没写上限"当成可以写很长。
+    #[test]
+    fn a_manual_summarize_uses_the_summary_spec() {
+        let mut model = crate::model::ModelSpec::new("claude-sonnet-4");
+        model.reasoning.enabled = Some(true);
+        model.reasoning.effort = Some("xhigh".into());
+        model.reasoning.thinking_budget_tokens = Some(32_000);
+        model.max_output_tokens = Some(64_000);
+
+        let compact = cycle_model(&RunAction::Compact, &model, 8_192);
+
+        assert_eq!(compact.model_id, "claude-sonnet-4");
+        assert_eq!(compact.max_output_tokens, Some(8_192));
+        assert_eq!(compact.reasoning.enabled, Some(false));
+        assert_eq!(compact.reasoning.effort, None);
+        assert_eq!(compact.reasoning.thinking_budget_tokens, None);
+        assert_eq!(model.max_output_tokens, Some(64_000), "原规格不被改动");
+    }
+
+    /// 普通 cycle 不套摘要规则：调用方的规格（思考强度、64k 上限）原样进入请求。
+    #[test]
+    fn a_normal_cycle_keeps_the_caller_spec() {
+        let mut model = crate::model::ModelSpec::new("claude-sonnet-4");
+        model.reasoning.enabled = Some(true);
+        model.reasoning.effort = Some("xhigh".into());
+        model.max_output_tokens = Some(64_000);
+
+        let normal = cycle_model(&RunAction::Start, &model, 8_192);
+
+        assert_eq!(normal.max_output_tokens, Some(64_000));
+        assert_eq!(normal.reasoning.enabled, Some(true));
+        assert_eq!(normal.reasoning.effort.as_deref(), Some("xhigh"));
+    }
+
+    fn usage(tokens: Option<u64>) -> Usage {
+        Usage {
+            input_tokens: tokens,
+            context_input_tokens: tokens,
+            ..Default::default()
+        }
+    }
+
+    /// `max_tokens` 与 `model_context_window_exceeded` 在 provider 层归一成同一个
+    /// `FinishReason::Length`；这里按 provider 自己报的用量分流：prompt 吃满预算的
+    /// 那次回到压缩阶梯，其余情况维持终态失败。
+    #[test]
+    fn a_length_stop_only_compacts_when_the_prompt_filled_the_budget() {
+        let budget = Some(super::super::compaction::context_budget(200_000));
+        let truncated = RunFailure::Truncated("model stopped".into());
+
+        assert!(exhausted_context_window(
+            &truncated,
+            Some(&usage(Some(199_000))),
+            budget
+        ));
+        assert!(!exhausted_context_window(
+            &truncated,
+            Some(&usage(Some(12_000))),
+            budget
+        ));
+        // 信息不足时不改道：没有用量、没有窗口预算。
+        assert!(!exhausted_context_window(&truncated, None, budget));
+        assert!(!exhausted_context_window(
+            &truncated,
+            Some(&usage(Some(199_000))),
+            None
+        ));
+        // 其它失败类型（含上游拒绝的文案）不走这条分流。
+        assert!(!exhausted_context_window(
+            &RunFailure::Provider("Anthropic 400 Bad Request: prompt is too long".into()),
+            Some(&usage(Some(199_000))),
+            budget
+        ));
+    }
+
+    /// 同一张图片在一次 Run 里只回库读一次。
+    ///
+    /// 水化第二次之前把内容块删掉：缓存命中就不该再回库——旧实现每个模型轮都会重新读
+    /// 一遍，这里会以 "Read image Blob is missing" 失败。
+    #[tokio::test]
+    async fn hydrated_images_are_read_from_the_store_once_per_run() {
+        use crate::model::{
+            ContentPart, ProjectedContent, ProjectedMessage, Role, ToolImageReference,
+            ToolResultContent,
+        };
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let data = vec![7_u8; 4_096];
+        let blob = store.put_blob(&data, &[]).await.unwrap();
+        let messages = || {
+            vec![ProjectedMessage {
+                message_id: "tool-result".into(),
+                role: Role::Tool,
+                content: ProjectedContent::ToolResult(ToolResultContent {
+                    call_id: "call".into(),
+                    name: "Read".into(),
+                    content: "captured".into(),
+                    is_error: false,
+                    image: Some(ToolImageReference {
+                        blob_id: blob.to_base64(),
+                        mime_type: "image/png".into(),
+                        path: "/tmp/a.png".into(),
+                    }),
+                    provider_parts: Vec::new(),
+                }),
+            }]
+        };
+        let image_data = |messages: &[ProjectedMessage]| {
+            let ProjectedContent::ToolResult(result) = &messages[0].content else {
+                panic!("expected a tool result")
+            };
+            let [ContentPart::Text { .. }, ContentPart::Image { data, .. }] =
+                result.provider_parts.as_slice()
+            else {
+                panic!("expected hydrated text and image parts")
+            };
+            data.clone()
+        };
+
+        let cache = ImageCache::default();
+        let mut first = messages();
+        cache.hydrate(&store, &mut first).await.unwrap();
+        assert_eq!(image_data(&first), data);
+
+        sqlx::query("DELETE FROM blobs WHERE blob_id = ?")
+            .bind(blob.as_bytes().as_slice())
+            .execute(store.pool())
+            .await
+            .unwrap();
+        let mut second = messages();
+        cache
+            .hydrate(&store, &mut second)
+            .await
+            .expect("第二次水化应该命中缓存，而不是回库");
+        assert_eq!(image_data(&second), data);
+    }
+
+    /// 轮次收尾后客户端才送到的结果按"已收尾"处理，不能升级成协议错误。
+    #[test]
+    fn results_for_calls_the_round_already_settled_are_late() {
+        let accounted = HashSet::from(["call-1".to_string()]);
+        let result = |call_id: &str| crate::model::ToolResult {
+            call_id: call_id.into(),
+            content: "late".into(),
+            is_error: false,
+            image: None,
+        };
+
+        assert!(late_tool_result(&result("call-1"), &accounted));
+        assert!(!late_tool_result(&result("call-2"), &accounted));
     }
 }

@@ -13,6 +13,17 @@ use super::{now_ms, Store};
 /// 两份配置内容相同：创建与编辑都拒绝落成重复配置。
 const DUPLICATE_CONFIGURATION: &str = "model configurations must be unique";
 
+/// 模型不在了：说清发生了什么，并给出下一步。
+///
+/// 以前这里回 `Error::RunNotFound("model …")`——界面原样弹 "run not found"，用户既不知道
+/// 是模型没了、也不知道该做什么（模型根本不是 run）。`Config` 这一类在界面里是"配置问题"，
+/// 文案带上"刷新模型列表"这个可执行步骤。
+fn missing_model(hash: &str) -> Error {
+    Error::Config(format!(
+        "model {hash} no longer exists; reload the model list and try again"
+    ))
+}
+
 const MODEL_COLUMNS: &str = r#"
     model_hash, sort_order, display_name, group_name, model_type, base_url, use_full_url, api_key, tooltip_data,
     model_id, reasoning_effort, openai_endpoint, openai_extra_params_enabled,
@@ -44,6 +55,16 @@ impl Store {
             .transpose()
     }
 
+    /// 取一份模型配置；模型不在了就报"配置问题 + 下一步"这条统一文案。
+    ///
+    /// 发现模型回填凭据、连通性测试这类"按 hash 找模型"的入口都该走这里：过去它们回
+    /// `Error::RunNotFound("model …")`，界面原样弹 "run not found"（模型根本不是 run，
+    /// 用户也不知道下一步做什么），与更新/删除/复制已经统一过的那条文案不一致
+    /// （审计 11/P3-5）。
+    pub async fn require_model(&self, hash: &str) -> Result<ModelConfig> {
+        self.model(hash).await?.ok_or_else(|| missing_model(hash))
+    }
+
     pub async fn create_model(&self, input: &ModelConfigInput) -> Result<ModelConfig> {
         let mut models = self.create_models(std::slice::from_ref(input)).await?;
         Ok(models.remove(0))
@@ -52,6 +73,15 @@ impl Store {
     /// 创建一批模型配置。身份（`model_hash`）在这里分配，之后不再随配置变化；
     /// 去重按配置内容（`model_fingerprint`）判断，与身份无关。
     pub async fn create_models(&self, inputs: &[ModelConfigInput]) -> Result<Vec<ModelConfig>> {
+        let _write = self.writes.lock().await;
+        self.insert_models(inputs).await
+    }
+
+    /// [`create_models`](Self::create_models) 的本体：调用方必须已持有写锁。
+    ///
+    /// 单独拆出来是为了让 `duplicate_model` 把"算下一个序号"与"插入"放进同一把锁——
+    /// 写锁不可重入，它不能先拿锁再调 `create_models`。
+    async fn insert_models(&self, inputs: &[ModelConfigInput]) -> Result<Vec<ModelConfig>> {
         if inputs.is_empty() {
             return Err(Error::Config("at least one model is required".into()));
         }
@@ -66,7 +96,6 @@ impl Store {
             normalized.push((fingerprint, input));
         }
         let now = now_ms();
-        let _write = self.writes.lock().await;
         let stored = self.stored_fingerprints(None).await?;
         if normalized
             .iter()
@@ -149,7 +178,7 @@ impl Store {
         let current = self
             .model(current_hash)
             .await?
-            .ok_or_else(|| Error::RunNotFound(format!("model {current_hash}")))?;
+            .ok_or_else(|| missing_model(current_hash))?;
         // 接口不再回传明文 key，编辑表单留空即为"不修改"：沿用已保存的凭据。
         let mut input: ModelConfigInput = input.clone();
         if input.api_key.trim().is_empty() {
@@ -205,7 +234,7 @@ impl Store {
         .execute(&mut *transaction)
         .await?;
         if result.rows_affected() != 1 {
-            return Err(Error::RunNotFound(format!("model {current_hash}")));
+            return Err(missing_model(current_hash));
         }
         transaction.commit().await?;
         Ok(self
@@ -215,17 +244,21 @@ impl Store {
     }
 
     /// 复制一份模型配置，连凭据一起。凭据不再回传前端，"连 key 一起复制"只能由服务端做。
+    ///
+    /// 下一个序号与插入在同一把写锁里算：以前先在锁外读 `MAX(sort_order)` 再走 `create_model`
+    /// （它自己再拿锁），两次并发复制会读到同一个序号，插进去就是两条并列的配置——列表顺序
+    /// 从此不稳定。写锁不可重入，所以这里直接用锁内的插入本体。
     pub async fn duplicate_model(&self, hash: &str, display_name: &str) -> Result<ModelConfig> {
-        let source = self
-            .model(hash)
-            .await?
-            .ok_or_else(|| Error::RunNotFound(format!("model {hash}")))?;
+        let source = self.model(hash).await?.ok_or_else(|| missing_model(hash))?;
+        let _write = self.writes.lock().await;
         let sort_order: i64 =
             sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM model_configs")
                 .fetch_one(&self.pool)
                 .await?;
-        self.create_model(&source.config_input(display_name.to_string(), sort_order))
-            .await
+        let mut saved = self
+            .insert_models(&[source.config_input(display_name.to_string(), sort_order)])
+            .await?;
+        Ok(saved.remove(0))
     }
 
     pub async fn delete_model(&self, hash: &str) -> Result<()> {
@@ -240,7 +273,7 @@ impl Store {
             .execute(&mut *transaction)
             .await?;
         if result.rows_affected() != 1 {
-            return Err(Error::RunNotFound(format!("model {hash}")));
+            return Err(missing_model(hash));
         }
         transaction.commit().await?;
         Ok(())
@@ -744,5 +777,50 @@ mod tests {
                 .display_name,
             "Second Model"
         );
+    }
+
+    /// 复制模型的序号必须逐次递增：算序号与插入在同一把写锁里，两次复制不可能拿到同一个
+    /// 序号（旧写法在锁外读 `MAX(sort_order)`，并发复制会插出两条并列配置）。
+    #[tokio::test]
+    async fn duplicating_a_model_assigns_a_strictly_greater_order() {
+        let (_directory, store) = test_store().await;
+        let source = store.create_model(&model_input(None)).await.unwrap();
+
+        let first = store
+            .duplicate_model(&source.model_hash, "Copy A")
+            .await
+            .unwrap();
+        let second = store
+            .duplicate_model(&source.model_hash, "Copy B")
+            .await
+            .unwrap();
+
+        assert!(first.sort_order > source.sort_order, "{}", first.sort_order);
+        assert!(
+            second.sort_order > first.sort_order,
+            "复制序号必须严格递增: {} vs {}",
+            second.sort_order,
+            first.sort_order
+        );
+        assert_ne!(first.model_hash, second.model_hash);
+    }
+
+    /// 模型不存在时回的是"配置问题 + 下一步"，不再是 `run not found`。
+    ///
+    /// 界面把 `RunNotFound` 原样弹成 "run not found"：用户既不知道是模型没了，也不知道该
+    /// 做什么。这条错误必须说清是模型、并给出"刷新模型列表"这个动作。
+    #[tokio::test]
+    async fn a_missing_model_reports_an_actionable_configuration_error() {
+        let (_directory, store) = test_store().await;
+
+        let error = store
+            .duplicate_model("no-such-model", "Copy")
+            .await
+            .expect_err("模型不存在必须报错");
+
+        assert!(matches!(error, Error::Config(_)), "{error:?}");
+        let message = error.to_string();
+        assert!(message.contains("no-such-model"), "{message}");
+        assert!(message.contains("reload the model list"), "{message}");
     }
 }

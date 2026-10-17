@@ -5,7 +5,10 @@ import { CallFacts } from "./CallFacts";
 import styles from "./CallDetails.module.scss";
 
 export function CallDetails({ detail }: { detail: CallDetail }) {
-  const { call, request, response_chunks: chunks, cursor_trace: cursorTrace } = detail;
+  const { call, request, cursor_trace: cursorTrace } = detail;
+  // 响应也可能是空的：把所有取值都收在一个为空的默认值上，别让一个缺字段的
+  // 响应把整个详情窗口打空（真实发生过）。
+  const chunks = detail.response_chunks ?? [];
   const responseBody = chunks.map((chunk) => chunk.data).join("");
   const responseBytes = chunks.reduce((total, chunk) => total + chunk.byte_count, 0);
 

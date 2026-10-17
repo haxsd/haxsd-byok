@@ -2,13 +2,14 @@
   "apiVersion": 1,
   "id": "dev.cursorbyok.examples.grok-auth",
   "name": "Grok",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "author": "@leookun",
   "minAppVersion": "0.1.0",
   "icon": "assets/grok.svg",
   "entry": "main.ts",
   "permissions": {
     "network": [
+      "accounts.x.ai",
       "auth.x.ai",
       "api.x.ai",
       "cli-chat-proxy.grok.com"

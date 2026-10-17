@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, pluginText, type Overview, type OverviewTokenUsageBucket } from "../../shared/api";
+import { pluginText, type Overview, type OverviewTokenUsageBucket } from "../../shared/api";
+import { requestRangeOverview } from "./overview/rangeOverviewRequest";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
 import { DailyTokenUsageChart } from "./charts/DailyTokenUsageChart";
 import { HomeMetrics } from "./metrics/HomeMetrics";
@@ -88,28 +89,25 @@ export function HomePage() {
 
   useEffect(() => {
     if (!selectedRange) return;
-    let active = true;
     setRangeBusy(true);
     setRangeOverview(null);
     setLoadedRange(null);
-    // 失败时清掉区间数据并留下错误：`overview` 是全量数据，拿它兜底会把"近30天"
-    // 的徽标挂到全量数字上——宁可什么都不显示，也不能显示错口径的数字。
-    void api.overview({
-      ...selectedRange,
-      modelHashes: appliedModels,
-    }).then((next) => {
-      if (!active) return;
-      setRangeOverview(next);
-      setLoadedRange(selectedRange);
-      setRangeError(null);
-    }).catch((cause) => {
-      if (!active) return;
-      setRangeOverview(null);
-      setRangeError(cause instanceof Error ? cause.message : String(cause));
-    }).finally(() => {
-      if (active) setRangeBusy(false);
+    // 区间请求的代际管理在 rangeOverviewRequest.ts：快速切换尺度/刷新时 abort 上一发，
+    // 并且让旧的那一发回来后不再落地（失败时清掉区间数据并留下错误：`overview` 是全量
+    // 数据，拿它兜底会把"近30天"的徽标挂到全量数字上——宁可什么都不显示，也不能显示
+    // 错口径的数字）。
+    return requestRangeOverview({ range: selectedRange, modelHashes: appliedModels }, {
+      onLoaded: (next, range) => {
+        setRangeOverview(next);
+        setLoadedRange(range);
+        setRangeError(null);
+      },
+      onFailed: (message) => {
+        setRangeOverview(null);
+        setRangeError(message);
+      },
+      onSettled: () => setRangeBusy(false),
     });
-    return () => { active = false; };
     // overview 只在渲染里当兜底数据用，不参与这次请求；把它列进依赖会让每次
     // store 刷新都重复抓同一段范围。
   }, [preset, customRange, refreshVersion, appliedModels]);
@@ -170,8 +168,8 @@ export function HomePage() {
     return result;
   }, [estimate, granularity]);
   const stats = useMemo(() => bucketStats(filteredOverview.token_usage_series, costs), [filteredOverview.token_usage_series, costs]);
-  const callCounts = useMemo(() => callsPerBucket(filteredOverview.token_usage_series, calls, granularity), [calls, filteredOverview.token_usage_series, granularity]);
-  const modelRows = useMemo(() => estimate ? estimate.models.map(row => ({ ...row, share: estimate.totalTokens > 0 ? row.tokens / estimate.totalTokens : 0 })) : modelUsage(filteredOverview.token_usage_series, calls, granularity), [estimate, calls, filteredOverview.token_usage_series, granularity]);
+  const callCounts = useMemo(() => callsPerBucket(filteredOverview.token_usage_series), [filteredOverview.token_usage_series]);
+  const modelRows = useMemo(() => estimate ? estimate.models.map(row => ({ ...row, share: estimate.totalTokens > 0 ? row.tokens / estimate.totalTokens : 0 })) : modelUsage(filteredOverview.token_usage_series), [estimate, filteredOverview.token_usage_series]);
   const totals = useMemo(() => sumStats(stats), [stats]);
   const busiest = useMemo(() => peakDay(stats), [stats]);
   const rangeIsEmpty = stats.length > 0 && stats.every((stat) => stat.totalTokens === 0);
@@ -247,7 +245,7 @@ export function HomePage() {
     ? t("还没有这个范围的用量数据。")
     : rangeIsEmpty
       ? t("这个范围内没有调用记录。")
-      : t("合计 {tokens} Token · 日均 {average} · 峰值在 {peak}（{peakTokens}）", {
+      : t("合计 {tokens} Token · 日均 {average} · 峰值 {peak}（{peakTokens}）", {
         tokens: formatCompactInteger(totals.totalTokens),
         average: formatCompactInteger(Math.round(totals.totalTokens / stats.length)),
         peak: busiest ? formatBucketLabel(busiest.startMs, granularity, locale) : "-",
@@ -301,7 +299,7 @@ export function HomePage() {
           ? <div className={styles.emptyBlock}><EmptyState
             icon={flatColorAreaChartIcon}
             title={t("这个范围内还没有用量")}
-            description={t("换一个时间范围，或先在 Cursor / Devin 里发起一次对话。")}
+            description={t("换一个时间范围，或先在 Cursor / Devin / Codex 里发起一次对话。")}
           /></div>
           : <div className={styles.chartBlock}>
             <DailyTokenUsageChart

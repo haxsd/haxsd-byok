@@ -1,4 +1,5 @@
 import type { CommitPromptLocale, Locale } from "../i18n/runtime";
+import { clipConsoleBody, errorBodyMessage, errorBodyNeedsConsole } from "./utils/errorBody";
 
 export type ModelType = "openai" | "anthropic";
 
@@ -182,12 +183,23 @@ export interface CodexSettings {
   default_model_hash: string | null;
 }
 
+/** 一个受管字段与接管快照的差异：`applied`/`current` 是 TOML 值的渲染文本（未设置时是空串）。 */
+export interface CodexConfigConflict {
+  key: string;
+  applied: string;
+  current: string;
+}
+
 export interface CodexStatus {
   enabled: boolean;
   listening: boolean;
   port: number;
   configured: boolean;
   config_conflict: boolean;
+  /** 有接管凭证：撤销接管随时可用，哪怕受管字段被外部改过。 */
+  restorable: boolean;
+  /** 与接管快照不一致的受管字段；没有差异时是空数组。 */
+  conflicts: CodexConfigConflict[];
   home: string;
   calls: number;
   last_error: string | null;
@@ -240,13 +252,43 @@ export interface DevinModelUids {
   choices: DevinModelChoice[];
 }
 
-export interface StatisticsStorage {
-  bytes: number;
-  call_count: number;
-  trace_count: number;
+/** 一次后台清理的进度快照（服务端 `ClearProgress`）。 */
+export interface ClearProgress {
+  /** 已删掉的行数。 */
+  deleted_rows: number;
+  /** 已删掉的缓存文件数：只有 `web_cache` 作用域会动它，其它作用域一直是 0。 */
+  deleted_files: number;
 }
 
-export type StatisticsStorageScope = "details" | "all";
+export interface StatisticsStorage {
+  /** 可清理的观测数据（调用行、请求/响应正文、追踪附件）的估算大小。 */
+  bytes: number;
+  /** 数据库文件的当前大小：清理不会让它变小，界面要同时说清这两件事。 */
+  database_bytes: number;
+  call_count: number;
+  trace_count: number;
+  /** 服务端对话副本的闲置回收窗口（天）：只读，来自服务端的回收常量。 */
+  conversation_retention_days: number;
+  /**
+   * 抓取结果缓存（`<数据目录>/cache/web`）的当前占用。
+   *
+   * 它不在数据库里，服务端刻意与 `bytes` 分开报：界面也必须分行显示，把两个数字合并会让
+   * "清理之后数据库文件没变小"更难解释。只有 `web_cache` 作用域会清它。
+   */
+  web_cache_bytes: number;
+  web_cache_files: number;
+  /** 有后台清理在跑时是它此刻的进度；清理是后台分批跑的，界面据此显示"正在清理"并轮询。 */
+  clearing?: ClearProgress | null;
+}
+
+/**
+ * 清理作用域。
+ *
+ * `web_cache` 只删抓取缓存文件，不碰数据库：它不该被"清理全部统计"顺手带走——用户点哪一个
+ * 应该清哪一个。
+ */
+export type StatisticsStorageScope = "details" | "all" | "web_cache";
+
 
 export type ProxyMode = "default" | "custom" | "direct";
 
@@ -279,7 +321,35 @@ export interface TabSettings {
   address: string;
 }
 
-export interface DesktopSettings {
+/** 待核对的升级记录（`{from,to}`），见 features/settings/pendingUpdate.ts。 */
+export interface PendingUpdateRecord {
+  from: string;
+  to: string;
+}
+
+/**
+ * 界面偏好在服务端的形状（17/P2-1 / 01/P2-3）。
+ *
+ * 这些字段以前只存在 webview 的 localStorage 里，而 localStorage 按 origin 隔离、origin 里
+ * 带着管理端口——端口一变（产品明说的行为）偏好就全读不到了。现在服务端是唯一权威。
+ *
+ * 语义：字段**缺席** = 这个字段服务端还没有值（旧版本服务端，或从没设置过）；`null` = 显式
+ * 清空回默认。PUT 时缺席 = 不改，`null` = 清空，有值 = 设置；`disclosure` 是**按卡片键合并**，
+ * 不是整份替换（否则两个卡片先后折叠会互相撤销）。
+ */
+export interface DesktopUiPreferences {
+  /** "midnight" | "default-dark" | "default-light" */
+  theme?: string | null;
+  /** "system" | "zh-CN" | "en-US" */
+  locale?: string | null;
+  tutorial_read?: boolean | null;
+  pending_update?: PendingUpdateRecord | null;
+  devin_host_path?: string | null;
+  /** 折叠状态：卡片键 → 是否展开。 */
+  disclosure?: Record<string, boolean> | null;
+}
+
+export interface DesktopSettings extends DesktopUiPreferences {
   silent_start: boolean;
   show_dock_icon: boolean;
   /** 开发者模式：显示内部标识与协议字段，并让日志记录更详细。默认关。 */
@@ -663,8 +733,176 @@ export class RequestTimeoutError extends Error {
   }
 }
 
+/**
+ * 服务端列表里的坏行（null、缺标识字段）在这里丢掉，并留一条控制台记录。
+ *
+ * 这些数组会直接进界面外壳（命令面板、顶栏计数），以前一条坏数据会一路抛到渲染，
+ * 把整棵组件树卸掉——窗口只剩空白，也没有恢复入口（实测：`[null]` 的模型列表就能
+ * 让整个窗口白屏）。宁可少显示一行，也不要整屏崩掉。
+ *
+ * 只校验标识字段（以及调用方点名要求的数组字段）：其余字段由界面按"读不到就当空"的方式
+ * 处理（见调用页的搜索、模型库的筛选）。控制台信息只给开发者看，不参与翻译。
+ */
+function usableRows<T>(payload: unknown, identityField: string, label: string, requiredArrays: readonly string[] = []): T[] {
+  if (!Array.isArray(payload)) {
+    console.warn(`[api] ${label}：返回的不是数组，已按空列表处理`);
+    return [];
+  }
+  const rows = payload.filter((row): row is Record<string, unknown> => {
+    if (typeof row !== "object" || row === null) return false;
+    if (typeof (row as Record<string, unknown>)[identityField] !== "string") return false;
+    return requiredArrays.every((field) => Array.isArray((row as Record<string, unknown>)[field]));
+  });
+  const dropped = payload.length - rows.length;
+  if (dropped > 0) console.warn(`[api] ${label}：丢弃了 ${dropped} 条结构不完整的数据`);
+  return rows as T[];
+}
+
+/** 单个对象的接口：结构不对时给一句用户能读懂的失败，而不是把渲染带崩。 */
+function requireRow<T>(payload: unknown, identityField: string, label: string): T {
+  if (typeof payload !== "object" || payload === null || typeof (payload as Record<string, unknown>)[identityField] !== "string") {
+    console.warn(`[api] ${label}：返回的数据不完整`);
+    // 写入类接口：失败的说法沿用产品里已有的那一句（保存失败），具体原因在控制台。
+    throw new Error(t("保存失败"));
+  }
+  return payload as T;
+}
+
+/** 读取类接口拿到坏结构时的说法：读是读到了，但内容不能用。 */
+function unusableRead(label: string): Error {
+  console.warn(`[api] ${label}：返回的数据不完整`);
+  return new Error(t("读取失败"));
+}
+
+/**
+ * 状态类接口（Devin / Codex）：`listening` 这类字段缺失时，界面会把"没在监听"当成事实显示，
+ * 比报错更糟——用户会照着这个假状态去改配置。缺字段时按一次读取失败处理。
+ */
+function requireStatus<T>(payload: T, label: string): T {
+  const status = payload as unknown as Record<string, unknown> | null;
+  if (
+    typeof status !== "object" ||
+    status === null ||
+    typeof status.listening !== "boolean" ||
+    typeof status.calls !== "number"
+  ) {
+    throw unusableRead(label);
+  }
+  return payload as T;
+}
+
+/**
+ * Codex 状态里的可用部分。
+ *
+ * `restorable` 与 `conflicts` 是后加的字段：缺少 `conflicts` 时按空数组处理——冲突卡片要
+ * 遍历它，`undefined` 会在渲染里抛错。坏条目（缺 key 或某个值不是字符串）丢掉并留一条
+ * 控制台记录，和列表接口的处置一致。缺 `restorable` 时退回旧口径（`configured`），
+ * 撤销按钮对旧服务端的行为不变。
+ */
+function usableCodexStatus(payload: unknown): CodexStatus {
+  const status = requireStatus(payload as CodexStatus, "Codex 状态");
+  const raw = Array.isArray(status.conflicts) ? status.conflicts as unknown[] : [];
+  const conflicts = raw.filter(
+    (conflict): conflict is CodexConfigConflict => {
+      if (typeof conflict !== "object" || conflict === null) return false;
+      const candidate = conflict as Record<string, unknown>;
+      return typeof candidate.key === "string"
+        && typeof candidate.applied === "string"
+        && typeof candidate.current === "string";
+    },
+  );
+  if (conflicts.length !== raw.length) {
+    console.warn(`[api] Codex 状态：丢弃了 ${raw.length - conflicts.length} 条结构不完整的冲突记录`);
+  }
+  return {
+    ...status,
+    conflicts,
+    restorable: typeof status.restorable === "boolean" ? status.restorable : status.configured,
+  };
+}
+
+/**
+ * 设置类接口：对象本身（以及调用方点名的数组字段）结构不对时给一句可读失败。
+ *
+ * `/devin/settings` 缺 `bindings` 时，Devin 页会在渲染里抛错——页面级边界会兜住，但用户
+ * 只会看到"这个页面出错了"，看不出是数据坏了；这里提前拦住，读失败就说读失败，写入的
+ * 回包坏了就说保存失败（沿用既有写法）。
+ */
+function usableSettings<T>(payload: unknown, requiredArrays: readonly string[], label: string, write: boolean): T {
+  const settings = payload as Record<string, unknown> | null;
+  const broken =
+    typeof settings !== "object" ||
+    settings === null ||
+    requiredArrays.some((field) => !Array.isArray(settings[field]));
+  if (broken) {
+    console.warn(`[api] ${label}：返回的数据不完整`);
+    throw new Error(write ? t("保存失败") : t("读取失败"));
+  }
+  return payload as T;
+}
+
+/** Codex 设置的可用部分：`model_hashes` 里非字符串的条目丢掉（渲染只看字符串）。 */
+function usableCodexSettings(payload: unknown, write: boolean): CodexSettings {
+  const settings = usableSettings<CodexSettings>(payload, ["model_hashes"], "Codex 设置", write);
+  const hashes = settings.model_hashes.filter((hash): hash is string => typeof hash === "string");
+  if (hashes.length !== settings.model_hashes.length) {
+    console.warn(`[api] Codex 设置：丢弃了 ${settings.model_hashes.length - hashes.length} 个非字符串模型标识`);
+  }
+  return { ...settings, model_hashes: hashes };
+}
+
+/** Devin 设置的可用部分：坏绑定与坏路由丢掉，缺字段交给界面按"读不到就当空"处理。 */
+function usableDevinSettings(payload: unknown, write: boolean): DevinSettings {
+  const settings = usableSettings<DevinSettings>(payload, ["bindings"], "Devin 设置", write);
+  const bindings = settings.bindings
+    .filter((binding): binding is DevinModelBinding => {
+      if (typeof binding !== "object" || binding === null) return false;
+      return Array.isArray((binding as DevinModelBinding).routes);
+    })
+    .map((binding) => ({
+      ...binding,
+      routes: binding.routes.filter((route): route is DevinRoute => (
+        typeof route === "object" && route !== null && typeof route.route_id === "string"
+      )),
+    }));
+  if (bindings.length !== settings.bindings.length) {
+    console.warn(`[api] Devin 设置：丢弃了 ${settings.bindings.length - bindings.length} 条结构不完整的映射`);
+  }
+  return { ...settings, bindings };
+}
+
+/**
+ * 价格设置只由「模型哈希 → 一套价格」组成，语言/币种各一套。
+ *
+ * `models` 不是对象时按空表处理：那一页只是暂时没有单价，不该让整个设置页出错。
+ */
+function usablePricing(payload: unknown): TokenPricingSettings {
+  const models = (payload as TokenPricingSettings | null)?.models;
+  if (typeof models !== "object" || models === null || Array.isArray(models)) {
+    console.warn("[api] 价格设置：models 不是对象，已按空表处理");
+    return { models: {} };
+  }
+  return { models };
+}
+
 /** 默认请求超时（毫秒）。长任务显式传 `timeoutMs: null` 关闭。 */
 const DEFAULT_TIMEOUT_MS = 15000;
+
+/**
+ * 写请求的超时（毫秒）。
+ *
+ * 读和写的超时不是一回事：读超时就是"没读到"，写超时是"服务端可能已经落库了"。15 秒对
+ * 一次批量导入、一次宿主补丁（要读写文件、算 SHA-256）根本不够，而且超时会把这次写入
+ * 报成失败，诱导用户重复提交。写请求一律给 60 秒（服务端自己的关停预算才 30 秒）。
+ * 显式传 `timeoutMs` 仍然优先。
+ */
+const WRITE_TIMEOUT_MS = 60_000;
+
+/** 这个方法算不算写。GET/HEAD 之外的都按写处理（含 DELETE、PUT、POST、PATCH）。 */
+export function requestTimeoutMs(method: string | undefined): number {
+  const normalized = (method ?? "GET").toUpperCase();
+  return normalized === "GET" || normalized === "HEAD" ? DEFAULT_TIMEOUT_MS : WRITE_TIMEOUT_MS;
+}
 
 /** 请求选项：在标准 RequestInit 之上多一个可选的超时毫秒数。 */
 type RequestOptions = RequestInit & { timeoutMs?: number | null };
@@ -679,7 +917,7 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
   const { timeoutMs, ...rest } = init ?? {};
   const callerSignal = rest.signal ?? undefined;
   const effectiveTimeoutMs = typeof timeoutMs === "undefined"
-    ? DEFAULT_TIMEOUT_MS
+    ? requestTimeoutMs(rest.method as string | undefined)
     : typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : null;
   const hasTimeout = effectiveTimeoutMs !== null;
 
@@ -739,14 +977,12 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
     }
     if (!response.ok) {
       const body = await response.text();
-      let message = body;
-      try {
-        const parsed = JSON.parse(body) as { message?: unknown };
-        if (typeof parsed.message === "string") message = parsed.message;
-      } catch {
-        // Plain-text errors are already suitable for display.
+      const message = errorBodyMessage(response.status, response.statusText, body);
+      // 被截断或被整段丢掉的正文留一份现场：提示条只放一句能看的话，细节不该消失。
+      if (errorBodyNeedsConsole(message, body)) {
+        console.warn(`[api] ${response.status} ${path} 的错误正文（提示条用的是截断版）`, clipConsoleBody(body));
       }
-      throw new Error(message || `${response.status} ${response.statusText}`);
+      throw new Error(message);
     }
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
@@ -757,14 +993,14 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
 
 export const api = {
   appInfo: () => request<AppInfo>("/app-info"),
-  models: (signal?: AbortSignal) => request<Model[]>("/models", { signal }),
-  createModels: (models: ModelInput[]) => request<Model[]>("/models", { method: "POST", body: JSON.stringify({ models }) }),
-  duplicateModel: (hash: string, displayName: string) => request<Model>(`/models/${encodeURIComponent(hash)}/duplicate`, { method: "POST", body: JSON.stringify({ display_name: displayName }) }),
-  reorderModels: (modelHashes: string[]) => request<Model[]>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }),
+  models: (signal?: AbortSignal) => request<unknown>("/models", { signal }).then(rows => usableRows<Model>(rows, "model_hash", "模型列表")),
+  createModels: (models: ModelInput[]) => request<unknown>("/models", { method: "POST", body: JSON.stringify({ models }) }).then(rows => usableRows<Model>(rows, "model_hash", "模型库")),
+  duplicateModel: (hash: string, displayName: string) => request<unknown>(`/models/${encodeURIComponent(hash)}/duplicate`, { method: "POST", body: JSON.stringify({ display_name: displayName }) }).then(row => requireRow<Model>(row, "model_hash", "复制模型")),
+  reorderModels: (modelHashes: string[]) => request<unknown>("/models/order", { method: "PUT", body: JSON.stringify({ model_hashes: modelHashes }) }).then(rows => usableRows<Model>(rows, "model_hash", "模型库")),
   discoverModels: (input: ModelDiscoveryInput) => request<{ models: string[] }>("/models/discover", { method: "POST", body: JSON.stringify(input) }),
   previewV0049Models: () => request<LegacyModelImportPreview>("/models/import-v0049"),
   importV0049Models: () => request<LegacyModelImportResult>("/models/import-v0049", { method: "POST" }),
-  updateModel: (hash: string, model: ModelInput) => request<Model>(`/models/${hash}`, { method: "PUT", body: JSON.stringify(model) }),
+  updateModel: (hash: string, model: ModelInput) => request<unknown>(`/models/${hash}`, { method: "PUT", body: JSON.stringify(model) }).then(row => requireRow<Model>(row, "model_hash", "更新模型")),
   deleteModel: (hash: string) => request<void>(`/models/${hash}`, { method: "DELETE" }),
   // 连通性测试可能跑几十秒，关掉默认超时，沿用调用方传进来的取消信号。
   testModel: (hash: string, testId: string, signal?: AbortSignal) => request<ModelConnectivityResult>(`/models/${encodeURIComponent(hash)}/test/${encodeURIComponent(testId)}`, { method: "POST", signal, timeoutMs: null }),
@@ -778,17 +1014,27 @@ export const api = {
       if (filter.bucketMs) params.set("bucket_ms", String(filter.bucketMs));
     }
     const query = params.toString();
-    return request<Overview>(`/overview${query ? `?${query}` : ""}`, { signal });
+    return request<Overview>(`/overview${query ? `?${query}` : ""}`, { signal }).then(report => {
+      // 分桶序列与四项计数是首页每一块数据的入口：缺了它们，页面会在 .map 处抛错。
+      // 这里当作一次普通的读取失败（保留上一份数据），而不是把坏结构交给渲染。
+      if (typeof report !== "object" || report === null
+        || !Array.isArray(report.token_usage_series)
+        || typeof report.metrics !== "object" || report.metrics === null
+        || typeof report.metrics.llm_calls !== "number") {
+        throw unusableRead("概览统计");
+      }
+      return report;
+    });
   },
   cursorHarness: (signal?: AbortSignal) => request<CursorHarnessStatus>("/harness/cursor/status", { signal }),
-  codexSettings: () => request<CodexSettings>("/codex/settings"),
-  setCodexSettings: (settings: CodexSettings) => request<CodexSettings>("/codex/settings", { method: "PUT", body: JSON.stringify(settings) }),
-  codexStatus: (signal?: AbortSignal) => request<CodexStatus>("/codex/status", { signal }),
-  applyCodex: () => request<CodexStatus>("/codex/apply", { method: "POST" }),
-  restoreCodex: () => request<CodexStatus>("/codex/restore", { method: "POST" }),
-  devinSettings: () => request<DevinSettings>("/devin/settings"),
-  devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }),
-  setDevinSettings: (settings: DevinSettings) => request<DevinSettings>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }),
+  codexSettings: () => request<unknown>("/codex/settings").then(settings => usableCodexSettings(settings, false)),
+  setCodexSettings: (settings: CodexSettings) => request<unknown>("/codex/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableCodexSettings(saved, true)),
+  codexStatus: (signal?: AbortSignal) => request<unknown>("/codex/status", { signal }).then(usableCodexStatus),
+  applyCodex: () => request<unknown>("/codex/apply", { method: "POST" }).then(usableCodexStatus),
+  restoreCodex: () => request<unknown>("/codex/restore", { method: "POST" }).then(usableCodexStatus),
+  devinSettings: () => request<unknown>("/devin/settings").then(settings => usableDevinSettings(settings, false)),
+  devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }).then(status => requireStatus(status, "Devin 状态")),
+  setDevinSettings: (settings: DevinSettings) => request<unknown>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableDevinSettings(saved, true)),
   /** Without a path the server finds the installation itself. */
   devinHostStatus: (path?: string) => request<DevinHostPatchStatus>(path ? `/harness/devin/host/status?path=${encodeURIComponent(path)}` : "/harness/devin/host/status"),
   /** The identifiers Devin itself asks for, read from the installed client. */
@@ -796,7 +1042,14 @@ export const api = {
   applyDevinHostPatch: (path?: string) => request<DevinHostPatchReceipt>("/harness/devin/host/apply", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
   restoreDevinHostPatch: (path?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
-  plugins: (signal?: AbortSignal) => request<PluginDescriptor[]>("/plugins", { signal }),
+  plugins: (signal?: AbortSignal) => request<unknown>("/plugins", { signal }).then(rows => usableRows<PluginDescriptor>(
+    rows,
+    "id",
+    "插件列表",
+    // providers / resources 是插件信息的两个数组入口：缺了它们，插件列表与模型选择器
+    // 都会在 .flatMap 处抛错，所以整条丢掉（控制台留记录）。
+    ["providers", "resources"],
+  )),
   pluginOAuthBegin: (pluginId: string, resourceType: string, methodId: string) => request<PluginOAuthBegin>(`/plugins/${encodeURIComponent(pluginId)}/resources/${encodeURIComponent(resourceType)}/add/${encodeURIComponent(methodId)}/begin`, { method: "POST" }),
   // OAuth 轮询由调用方按服务端给的间隔反复发起，单次请求不该用默认超时掐断。
   pluginOAuthPoll: (sessionId: string, signal?: AbortSignal) => request<PluginOAuthPoll>(`/plugins/oauth/${encodeURIComponent(sessionId)}/poll`, { method: "POST", signal, timeoutMs: null }),
@@ -839,8 +1092,20 @@ export const api = {
     await invoke("open_log_directory");
   },
   setCursorMode: (mode: CursorMode) => request<CursorHarnessStatus>("/harness/cursor/mode", { method: "PUT", body: JSON.stringify({ mode }) }),
-  calls: (signal?: AbortSignal) => request<LlmCall[]>("/llm-calls?limit=200", { signal }),
-  call: (id: string) => request<CallDetail>(`/llm-calls/${encodeURIComponent(id)}`),
+  calls: (signal?: AbortSignal) => request<unknown>("/llm-calls?limit=200", { signal }).then(rows => usableRows<LlmCall>(rows, "call_id", "调用记录")),
+  /**
+   * 一次调用的完整记录。
+   *
+   * 详情是独立窗口里的整页内容：少一个字段（比如没有 response_chunks）以前会在渲染
+   * 时抛错，把窗口变成空白。这里在边界上把形状补齐/校验，页面只需要处理正常数据。
+   */
+  call: (id: string) => request<CallDetail>(`/llm-calls/${encodeURIComponent(id)}`).then(detail => {
+    const call = detail?.call;
+    if (typeof call !== "object" || call === null || typeof call.call_id !== "string") {
+      throw unusableRead("调用详情");
+    }
+    return { ...detail, response_chunks: Array.isArray(detail.response_chunks) ? detail.response_chunks : [] };
+  }),
   openCallDetails: async (id: string) => {
     const url = new URL(window.location.href);
     url.hash = `/calls/${encodeURIComponent(id)}`;
@@ -862,7 +1127,7 @@ export const api = {
   setDesktopSettings: (patch: DesktopSettingsPatch) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(patch) }),
   commitSettings: (locale: Locale) => request<CommitSettingsView>("/settings/commit", { headers: { "accept-language": locale } }),
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
-  pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }),
-  setModelPricing: (modelHash: string, pricing: ModelTokenPricing) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "PUT", body: JSON.stringify(pricing) }),
-  removeModelPricing: (modelHash: string) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "DELETE" }),
+  pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }).then(usablePricing),
+  setModelPricing: (modelHash: string, pricing: ModelTokenPricing) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "PUT", body: JSON.stringify(pricing) }).then(usablePricing),
+  removeModelPricing: (modelHash: string) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "DELETE" }).then(usablePricing),
 };

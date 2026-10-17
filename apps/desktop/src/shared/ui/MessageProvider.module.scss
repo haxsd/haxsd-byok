@@ -3,7 +3,11 @@
 .region {
   position: fixed;
   z-index: 16000;
-  top: calc(48px + env(safe-area-inset-top));
+  /* 落在顶部三条带之下：导航条 + 接入切换带 + 标题带的下边界就是内容上边界
+     （--app-content-top 由 AppLayout 声明），再留一档间距。提示条因此既不压住
+     主菜单入口，也不与接入切换带、标题带重叠；间距同时保证 8px 的入场位移
+     不会越过标题带。以前这里写死 48px，比导航条下沿还低，长提示会盖住主菜单。 */
+  top: calc(var(--app-content-top) + var(--oa-space-3));
   right: 0;
   left: 0;
   display: flex;

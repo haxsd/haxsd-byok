@@ -18,12 +18,10 @@ use crate::{
 };
 
 use super::{
-    apply_body_allowlist, apply_openai_prompt_cache_key,
-    attempt::{send_once, Attempt},
-    map_sse_error, merge_extra_params, provider_event_error,
-    recorder::recorded_headers,
-    CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
+    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
+    recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
+use crate::upstream::{self, UpstreamCall};
 
 #[derive(Default)]
 struct ChatToolState {
@@ -88,20 +86,22 @@ impl Provider for OpenAiChatProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
-            apply_body_allowlist(&mut body, config.allowed_body_fields.as_ref())?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
-            let attempt = send_once(
-                "OpenAI Chat",
+            let Some(response) = upstream::send(
+                &UpstreamCall {
+                    label: "OpenAI Chat",
+                    model: &request.model.model_id,
+                    url: &config.request_url,
+                },
                 &outbound,
                 |client| client.post(&config.request_url)
                     .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
                 &cancellation,
                 recorder.as_ref(),
-            ).await?;
-            let Attempt::Response(response) = attempt else { return };
+            ).await? else { return };
             yield ModelEvent::Start { model_call_id: call_id };
             let chunk_recorder = recorder.clone();
             let chunks = response.bytes_stream()
@@ -400,7 +400,7 @@ fn update_chat_tool(
         merge_chat_fragment(&mut tool.name, name);
     }
     if let Some(arguments) = arguments {
-        tool.arguments.push_str(arguments);
+        merge_chat_fragment(&mut tool.arguments, arguments);
     }
 
     let mut events = Vec::new();
@@ -420,15 +420,27 @@ fn update_chat_tool(
     events
 }
 
+/// 归并同一个字段的分片。
+///
+/// 上游有两种用法：多数只发增量，少数每个分片都重复下发完整的当前值（这个函数就是为后者
+/// 存在的）。判据只用"整串的前后包含"这种确定关系：
+///   * 与当前值相同 —— 重复下发整串，忽略；
+///   * 当前值是分片的严格前缀 —— 分片是新的完整值，替换；
+///   * 分片是当前值的严格前缀 —— 分片是旧的完整值（迟到的重复），忽略；
+///   * 其余（含"分片恰好等于当前值的末尾"）—— 按增量追加。
+///
+/// 最后一条是重点：以前 `target.ends_with(fragment)` 会把合法的重复增量当重复下发吞掉
+/// （参数 JSON 里 `{`、`"`、`a` 这类片段挨着重复是常态），而更容易被重复下发的
+/// `arguments` 又完全没走这套归并，于是整串参数被拼两遍、拼出 `{...}{...}` 这种非法 JSON。
 fn merge_chat_fragment(target: &mut String, fragment: &str) {
-    if target == fragment || target.ends_with(fragment) {
+    if target.starts_with(fragment) {
         return;
     }
     if fragment.starts_with(target.as_str()) {
         *target = fragment.into();
-    } else {
-        target.push_str(fragment);
+        return;
     }
+    target.push_str(fragment);
 }
 
 pub(crate) fn openai_usage(value: &Value) -> Usage {
@@ -452,6 +464,62 @@ pub(crate) fn openai_usage(value: &Value) -> Usage {
 mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
+    use crate::provider::testing;
+
+    /// 结束条件一：`[DONE]` 就是收尾信号，即使没有 finish_reason 也要正常结束。
+    #[tokio::test]
+    async fn a_done_marker_ends_the_stream_even_without_a_finish_reason() {
+        let url = testing::sse_upstream(
+            "/v1/chat/completions",
+            vec![
+                json!({"choices":[{"delta":{"content":"你好"}}]}),
+                json!({"choices":[{"delta":{},"finish_reason":null}]}),
+                json!("[DONE]"),
+            ],
+        )
+        .await;
+        let provider = OpenAiChatProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::OpenAiChat, url),
+        );
+
+        let events = testing::drain(provider.stream(
+            testing::invocation("gpt-5.1"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .unwrap_or_else(|error| panic!("带 [DONE] 的流必须正常收尾: {error}"));
+
+        assert_eq!(testing::text_of(&events), "你好");
+        assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+    }
+
+    /// 结束条件二：既没有 `[DONE]` 也没有 finish_reason 就断开——必须报错。把这种情况当
+    /// 成功会让"被截断的回答"看起来像完整回答。
+    #[tokio::test]
+    async fn a_stream_that_ends_without_done_or_a_finish_reason_is_an_error() {
+        let url = testing::sse_upstream(
+            "/v1/chat/completions",
+            vec![json!({"choices":[{"delta":{"content":"断"}}]})],
+        )
+        .await;
+        let provider = OpenAiChatProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::OpenAiChat, url),
+        );
+
+        let error = testing::drain(provider.stream(
+            testing::invocation("gpt-5.1"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .expect_err("没有收尾信号的流必须报错");
+
+        assert!(
+            error.to_string().contains("without finish_reason"),
+            "{error}"
+        );
+    }
 
     fn assistant_message(
         text: &str,
@@ -555,5 +623,98 @@ mod tests {
             messages.is_empty(),
             "empty Parts content must be omitted, got: {messages:?}"
         );
+    }
+
+    fn chat_tools(
+        fragments: &[(Option<&str>, Option<&str>, Option<&str>)],
+    ) -> BTreeMap<usize, ChatToolState> {
+        let mut tools = BTreeMap::new();
+        for (call_id, name, arguments) in fragments {
+            update_chat_tool(0, *call_id, *name, *arguments, &mut tools);
+        }
+        tools
+    }
+
+    /// 重复下发整串参数的上游不能把参数拼两遍：以前 `arguments` 直接 `push_str`，
+    /// 结果是 `{...}{...}` 这种非法 JSON，整轮工具白跑。
+    #[test]
+    fn a_repeated_whole_arguments_value_is_ignored() {
+        let tools = chat_tools(&[
+            (Some("call-1"), Some("read"), Some(r#"{"path":"a.txt"}"#)),
+            (Some("call-1"), Some("read"), Some(r#"{"path":"a.txt"}"#)),
+        ]);
+
+        assert_eq!(tools[&0].arguments, r#"{"path":"a.txt"}"#);
+    }
+
+    /// 分片式下发里，分片刚好延伸出完整值时替换而不是追加。
+    #[test]
+    fn a_full_arguments_snapshot_replaces_the_accumulated_fragments() {
+        let tools = chat_tools(&[
+            (Some("call-1"), Some("read"), Some(r#"{"path":"#)),
+            (Some("call-1"), Some("read"), Some(r#"{"path":"a.txt"}"#)),
+        ]);
+
+        assert_eq!(tools[&0].arguments, r#"{"path":"a.txt"}"#);
+        assert_eq!(tools[&0].name, "read");
+        assert_eq!(tools[&0].call_id, "call-1");
+    }
+
+    /// 正常增量按顺序拼起来，拼到最后是合法 JSON，且发给模型的分片正好是增量。
+    #[test]
+    fn incremental_fragments_are_appended_in_order() {
+        let mut tools = BTreeMap::new();
+        update_chat_tool(
+            0,
+            Some("call-1"),
+            Some("read"),
+            Some(r#"{"path""#),
+            &mut tools,
+        );
+        let deltas = update_chat_tool(0, None, None, Some(r#":"a.txt"}"#), &mut tools);
+
+        assert_eq!(tools[&0].arguments, r#"{"path":"a.txt"}"#);
+        assert_eq!(
+            deltas,
+            vec![ModelEvent::ToolCallArgumentsDelta {
+                index: 0,
+                delta: r#":"a.txt"}"#.into(),
+            }]
+        );
+        serde_json::from_str::<Value>(&tools[&0].arguments).expect("拼出来的参数必须是合法 JSON");
+    }
+
+    /// 合法地重复末尾分片必须照旧追加：以前的 `ends_with` 会把这种增量当"重复下发"
+    /// 吞掉，拼出的 JSON 就少字符。
+    #[test]
+    fn a_fragment_that_merely_repeats_the_tail_is_still_appended() {
+        let mut target = "abc".to_string();
+        merge_chat_fragment(&mut target, "c");
+        assert_eq!(target, "abcc");
+
+        // 正常增量流里的相邻重复：`{"path":"a` 之后再来一个 `a`。
+        let tools = chat_tools(&[
+            (Some("call-1"), Some("read"), Some(r#"{"path":"a"#)),
+            (None, None, Some("a")),
+        ]);
+        assert_eq!(tools[&0].arguments, r#"{"path":"aa"#);
+    }
+
+    /// 与当前值完全相同的分片只能理解成"重复下发整串"：`arguments` 拼两遍会得到非法
+    /// JSON，而真正逐字符重复的分片拼出来同样不是合法 JSON，所以这里以"不重复"为准
+    /// （见上面那条整串重复的用例）。
+    #[test]
+    fn an_identical_fragment_is_treated_as_a_resend() {
+        let mut target = r#"{"path":"a.txt"}"#.to_string();
+        merge_chat_fragment(&mut target, r#"{"path":"a.txt"}"#);
+        assert_eq!(target, r#"{"path":"a.txt"}"#);
+    }
+
+    /// 旧值迟到（分片是当前值的前缀）时忽略，不能把已积累的值截短。
+    #[test]
+    fn a_late_older_snapshot_does_not_truncate_the_field() {
+        let mut target = "call-abc".to_string();
+        merge_chat_fragment(&mut target, "call-");
+        assert_eq!(target, "call-abc");
     }
 }

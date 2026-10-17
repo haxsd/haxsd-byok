@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, configuredPluginModels, type Model, type ModelInput } from "../../shared/api";
+import { clientErrorText } from "../harness/harnessErrorText";
 import { CursorModelCards, cursorModelGroups, type CursorModelGroup, type CursorModelGrouping } from "./CursorModelCards";
 import { CursorModelEditor, emptyCursorModelDraft, type CursorModelDraft } from "./CursorModelEditor";
 import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelTestResult";
+import { classifyModelTestFailure } from "./modelTestOutcome";
 import { LegacyModelImport } from "./LegacyModelImport";
 import { modelLibraryFacts } from "./modelLibraryFacts";
 import styles from "./CursorSettings.module.scss";
@@ -23,6 +25,8 @@ import { ServiceOfflineState } from "../../shared/ui/ServiceOfflineState";
 import { addIcon, playIcon, providerIcon } from "../../shared/ui/icons";
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { runBatchedWrites } from "../../shared/utils/batchWrite";
+import { runModelTestBatch } from "./batchTestRunner";
 import toolbar from "../../shared/ui/Toolbar.module.scss";
 
 /**
@@ -46,6 +50,7 @@ export function ModelLibraryPage() {
   const [modelTestResults, setModelTestResults] = useState<Map<string, CursorModelTestState>>(() => new Map());
   const [savingAndTesting, setSavingAndTesting] = useState(false);
   const [batchTesting, setBatchTesting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [grouping, setGrouping] = useState<CursorModelGrouping>("flat");
   const [search, setSearch] = useState("");
   const [settingsGroup, setSettingsGroup] = useState<CursorModelGroup | null>(null);
@@ -54,12 +59,26 @@ export function ModelLibraryPage() {
   const [groupApiKeyDraft, setGroupApiKeyDraft] = useState("");
   const [groupSettingsBusy, setGroupSettingsBusy] = useState(false);
   const activeModelTests = useRef(new Map<string, { testId: string; controller: AbortController; cancelling: boolean }>());
+  /** 正在跑的批量测试：取消时先置 `cancelled`，worker 据此不再派发新目标。 */
+  const batchRun = useRef<{ cancelled: boolean } | null>(null);
 
   const pluginModels = configuredPluginModels(plugins);
-  const testTargets = [
-    ...models.map((model) => ({ model_hash: model.model_hash, display_name: model.display_name })),
-    ...pluginModels.map((model) => ({ model_hash: model.id, display_name: model.displayName })),
-  ];
+  /** 同一个 hash 只留一次:插件模型与会话模型共用一个列表,重复目标会把真实调用翻倍。 */
+  const testTargets = (() => {
+    const seen = new Set<string>();
+    const targets: Array<{ model_hash: string; display_name: string }> = [];
+    for (const model of models) {
+      if (seen.has(model.model_hash)) continue;
+      seen.add(model.model_hash);
+      targets.push({ model_hash: model.model_hash, display_name: model.display_name });
+    }
+    for (const model of pluginModels) {
+      if (seen.has(model.id)) continue;
+      seen.add(model.id);
+      targets.push({ model_hash: model.id, display_name: model.displayName });
+    }
+    return targets;
+  })();
   const providerGroups = cursorModelGroups(models, "provider");
   const typeGroups = cursorModelGroups(models, "type");
   const canGroupByProvider = providerGroups.length > 1;
@@ -69,11 +88,11 @@ export function ModelLibraryPage() {
   const query = search.trim().toLowerCase();
   const visibleModels = useMemo(() => query
     ? models.filter((model) => [model.display_name, model.model_id, model.base_url, model.group_name ?? ""]
-      .some((field) => field.toLowerCase().includes(query)))
+      .some((field) => String(field ?? "").toLowerCase().includes(query)))
     : models, [models, query]);
   const visiblePluginModels = useMemo(() => query
     ? pluginModels.filter((model) => [model.displayName, model.modelId, model.providerId]
-      .some((field) => field.toLowerCase().includes(query)))
+      .some((field) => String(field ?? "").toLowerCase().includes(query)))
     : pluginModels, [pluginModels, query]);
 
   const testedOk = [...modelTestResults.values()].filter((state) => state.status === "success").length;
@@ -162,6 +181,9 @@ export function ModelLibraryPage() {
     }
   };
   const cancelAllModelTests = async () => {
+    // 先停派发再 abort：worker 每轮派发前会检查这个标志，否则取消只中断在跑的几条，
+    // 剩下的模型会被继续一条条发出去——"取消全部"停不住，还在烧真实上游调用。
+    if (batchRun.current) batchRun.current.cancelled = true;
     await Promise.all([...activeModelTests.current.keys()].map((modelHash) => cancelModelTest(modelHash)));
   };
   const testModel = async (model: { model_hash: string; display_name: string }, notify = true): Promise<"success" | "failure" | "cancelled"> => {
@@ -182,7 +204,17 @@ export function ModelLibraryPage() {
         setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "cancelled" }));
         return "cancelled";
       }
-      const error = errorText(cause);
+      // 服务端超时后会立刻收尾并把它算作取消（11/P3-2）：界面上说"已取消"，超时上限进详情。
+      const end = classifyModelTestFailure(
+        cause,
+        (failure) => model.model_hash.startsWith("plugin:") ? clientErrorText(failure) : errorText(failure),
+      );
+      if (end.status === "cancelled") {
+        setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "cancelled", reason: end.reason }));
+        if (notify) message(t("连通性测试已取消：{reason}", { reason: end.reason ?? t("测试已取消") }), { duration: 5000 });
+        return "cancelled";
+      }
+      const error = end.reason;
       setModelTestResults((current) => new Map(current).set(model.model_hash, { status: "error", error }));
       if (notify) message(t("连通性测试失败：{error}", { error }), { duration: 5000 });
       return "failure";
@@ -213,19 +245,37 @@ export function ModelLibraryPage() {
   const testAllModels = async () => {
     if (!testTargets.length || batchTesting) return;
     setBatchTesting(true);
+    setBatchProgress({ done: 0, total: testTargets.length });
+    const controls = { cancelled: false };
+    batchRun.current = controls;
     try {
-      const results = await Promise.all(testTargets.map((model) => testModel(model, false)));
+      const { results, skipped } = await runModelTestBatch({
+        targets: testTargets,
+        cancelled: () => controls.cancelled,
+        run: (target) => testModel(target, false),
+        onProgress: (done, total) => setBatchProgress({ done, total }),
+      });
+      // 取消后来不及开始的目标也标成已取消：不然它们永远停在"未测试"，用户无从知道这批已取消。
+      if (skipped.length) {
+        setModelTestResults((current) => {
+          const next = new Map(current);
+          for (const target of skipped) next.set(target.model_hash, { status: "cancelled" });
+          return next;
+        });
+      }
       const successful = results.filter((result) => result === "success").length;
       const failed = results.filter((result) => result === "failure").length;
-      const cancelled = results.filter((result) => result === "cancelled").length;
+      const cancelled = results.filter((result) => result === "cancelled").length + skipped.length;
       message(cancelled > 0
-        ? t("连通性测试已取消：成功 {successful}，失败 {failed}", { successful, failed })
+        ? t("连通性测试已取消：成功 {successful}，失败 {failed}，未开始 {skipped}", { successful, failed, skipped: skipped.length })
         : failed === 0
           ? t("全部 {count} 个模型连通性测试成功", { count: testTargets.length })
           : t("连通性测试完成：成功 {successful}，失败 {failed}", { successful, failed }),
       { duration: failed === 0 && cancelled === 0 ? 2400 : 5000 });
     } finally {
+      batchRun.current = null;
       setBatchTesting(false);
+      setBatchProgress(null);
     }
   };
   const duplicateModel = async (model: Model) => {
@@ -251,20 +301,35 @@ export function ModelLibraryPage() {
     const group_name = groupNameDraft.trim() || null;
     const base_url = groupBaseUrlDraft.trim();
     const api_key = groupApiKeyDraft.trim();
+    // 三处都没改的模型不提交；凭据留空表示不修改，不能拿它和明文比。
+    const targets = settingsGroup.models.filter((model) => {
+      const input: ModelInput = {
+        ...modelInput(model),
+        group_name,
+        ...(base_url ? { base_url } : {}),
+        ...(api_key ? { api_key } : {}),
+      };
+      return input.group_name !== (model.group_name ?? null) || input.base_url !== model.base_url || Boolean(api_key);
+    });
     setGroupSettingsBusy(true);
     try {
-      for (const model of settingsGroup.models) {
-        const input: ModelInput = {
-          ...modelInput(model),
-          group_name,
-          ...(base_url ? { base_url } : {}),
-          ...(api_key ? { api_key } : {}),
-        };
-        // 三处都没改就不提交；凭据留空表示不修改，不能拿它和明文比。
-        if (input.group_name === (model.group_name ?? null) && input.base_url === model.base_url && !api_key) continue;
-        await api.updateModel(model.model_hash, input);
-      }
+      // 逐条 PUT 改成有限并发 + 全部尝试：串行时 N 个模型要一个个等，中间一条失败还会把
+      // 后面的全丢掉，界面只弹一条通用错误。失败项要带名字报出来，成功的项照常生效。
+      const failures = await runBatchedWrites(targets, (model) => api.updateModel(model.model_hash, {
+        ...modelInput(model),
+        group_name,
+        ...(base_url ? { base_url } : {}),
+        ...(api_key ? { api_key } : {}),
+      }));
       await appStore.refresh();
+      if (failures.length > 0) {
+        message.error(t("已保存 {saved} 个模型，{failed} 个失败：{models}", {
+          saved: targets.length - failures.length,
+          failed: failures.length,
+          models: failures.map((failure) => failure.item.display_name).join("、"),
+        }), { duration: 8_000 });
+        return;
+      }
       setSettingsGroup(null);
     } catch (cause) {
       message.error(cause);
@@ -296,11 +361,11 @@ export function ModelLibraryPage() {
         ? <EmptyState
           icon={providerIcon}
           title={t("模型库还是空的")}
-          description={t("添加一个模型后，Cursor 与 Devin 都能用它；也可以从本机旧版配置里导入。")}
+          description={t("添加一个模型后，Cursor、Devin 和 Codex 都能用它；也可以从本机旧版配置里导入。")}
           steps={[
             { title: t("填服务器地址与 API Key"), detail: t("任何 OpenAI 兼容或 Anthropic 兼容的接口都可以。") },
-            { title: t("点“发现模型”拉取模型 ID"), detail: t("也可以手动填写模型 ID。") },
-            { title: t("保存并测试连通性"), detail: t("测试通过后，模型立刻可以给两个客户端使用。") },
+            { title: t("点「发现模型」拉取模型 ID"), detail: t("也可以手动填写模型 ID。") },
+            { title: t("保存并测试连通性"), detail: t("测试通过后，模型立刻可以给所有接入模块使用。") },
           ]}
           actions={<>
             <button type="button" className={controls.primary} disabled={cursorBusy || importingLegacyModels} onClick={openNew}>{t("添加模型")}</button>
@@ -352,7 +417,11 @@ export function ModelLibraryPage() {
           onClick={() => void (batchTesting ? cancelAllModelTests() : testAllModels())}
         >
           <Icon icon={playIcon} size="1.05em" />
-          {batchTesting ? t("取消全部测试") : t("一键测试")}
+          {batchTesting
+            ? (batchProgress
+              ? t("取消全部测试（{done}/{total}）", { done: batchProgress.done, total: batchProgress.total })
+              : t("取消全部测试"))
+            : t("一键测试")}
         </button>
       </Card>
       {/* 统计条只放有信息量的数字：哪些该出现由 modelLibraryFacts 决定，
@@ -383,7 +452,7 @@ export function ModelLibraryPage() {
       <PageContent
         title={<PageTitle
           title={t("模型库")}
-          meta={t("Cursor 与 Devin 共用同一份模型配置")}
+          meta={t("接入模块共用同一份模型配置")}
         />}
         sections={[{ key: "model-library", estimatedHeight: Math.max(360, estimatedListViewport), content }]}
       />

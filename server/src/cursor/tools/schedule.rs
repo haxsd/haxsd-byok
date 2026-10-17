@@ -19,7 +19,6 @@ struct EditPathQueue {
 pub(super) struct DeferredEdit {
     pub call: ToolCall,
     pub message_index: usize,
-    pub publish_started: bool,
     pub context: ExecContext,
 }
 

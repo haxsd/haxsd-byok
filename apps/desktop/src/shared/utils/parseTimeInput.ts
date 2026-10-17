@@ -75,3 +75,19 @@ export function formatTimeInput(date: Date) {
   const part = (number: number) => String(number).padStart(2, "0");
   return `${date.getFullYear()}-${part(date.getMonth() + 1)}-${part(date.getDate())} ${part(date.getHours())}:${part(date.getMinutes())}`;
 }
+
+export type TimeRangeProblem = "start-unparsed" | "end-unparsed" | "order";
+
+/**
+ * 自定义区间的校验结果。
+ *
+ * 界面原来只把「应用」按钮灰掉：用户看不出是哪个输入框有问题、还是区间反了。返回值区分
+ * 三种情况，界面据此给出能照着改的说法。
+ */
+export function timeRangeProblem(start: string, end: string, now = new Date()): TimeRangeProblem | null {
+  const startMs = parseTimeInput(start, now);
+  if (startMs === null) return "start-unparsed";
+  const endMs = parseTimeInput(end, now);
+  if (endMs === null) return "end-unparsed";
+  return startMs >= endMs ? "order" : null;
+}

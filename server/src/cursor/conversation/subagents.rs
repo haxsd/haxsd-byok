@@ -5,7 +5,11 @@
 //! 子代理里打字"这类交互式子代理上才会发完成通知，代理派出的后台子代理不会——
 //! 所以 BYOK 这边必须由我们补上这一步，否则父轮收尾之后没人再想起子代理。
 
-use std::{collections::HashSet, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
 
 use parking_lot::Mutex;
 
@@ -20,14 +24,50 @@ use crate::{
 
 use super::{CompiledMessages, ConversationRegistry, MessageDelivery, TransportFinish};
 
-/// 已经通知过父会话的完成身份：`KIND:subagent:tool_call`。
+/// 已经通知过父会话的完成身份（`KIND:subagent:tool_call`）→ 通知时刻。
 ///
 /// 子代理那条传输偶尔会收尾两次（客户端重连、两代 generation 各收一次），同一身份
 /// 只该通知一次。重复的那份虽然会被消息身份幂等吃掉，但会多留一条 pending 与一次
-/// 无谓的唤醒。积满上限就整体清空：清空只会让极端情况下多通知一次，不会漏。
-static NOTIFIED: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+/// 无谓的唤醒。按时间过期而不是"记满就整体清空"：清空会让刚通知过的身份重新可通知，
+/// 而且长驻进程里这张表会按子代理数量无界增长。
+static NOTIFIED: LazyLock<Mutex<HashMap<String, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-const NOTIFIED_LIMIT: usize = 4096;
+/// 通知身份的有效期。超过它的同一身份再完成，按新的一次完成处理：更可能是另一段
+/// 生命周期（进程活了很久、同一 tool_call 身份被复用），多通知一次的代价由消息身份
+/// 幂等兜住，而记着不放的代价是内存无界。
+const NOTIFIED_TTL: Duration = Duration::from_secs(6 * 60 * 60);
+
+/// 到这个规模就按 TTL 回收一轮。
+const NOTIFIED_PRUNE_AT: usize = 4096;
+
+/// 回收之后仍然超过它：只可能是期限内的完成风暴。退回"整体清空"的老行为并记一条
+/// warn——宁可极端情况下多通知一次，也不让这张表无界。
+const NOTIFIED_LIMIT: usize = 8192;
+
+/// 这个完成身份是不是刚通知过；没通知过就顺手登记（登记的语义与投递无关：投递失败
+/// 也不重试，这正是"同一身份只通知一次"的意思）。
+fn already_notified(event_id: &str) -> bool {
+    let now = Instant::now();
+    let mut notified = NOTIFIED.lock();
+    if notified.len() >= NOTIFIED_PRUNE_AT {
+        notified.retain(|_, at| now.duration_since(*at) < NOTIFIED_TTL);
+        if notified.len() >= NOTIFIED_LIMIT {
+            tracing::warn!(
+                identities = notified.len(),
+                "subagent completion identities exceeded the cap; clearing the ledger"
+            );
+            notified.clear();
+        }
+    }
+    match notified.get(event_id) {
+        Some(at) if now.duration_since(*at) < NOTIFIED_TTL => true,
+        _ => {
+            notified.insert(event_id.to_owned(), now);
+            false
+        }
+    }
+}
 
 /// 子代理这次跑完的结局，翻译成协议里的后台任务状态。
 fn completion_status(finish: &TransportFinish) -> pb::BackgroundTaskStatus {
@@ -104,7 +144,13 @@ pub(super) async fn subagent_finished(
     // 这个 mode 只进模拟轮的 turn user，而服务端唤醒插进的是已经存在的轮次，
     // 用不上那份 turn user。
     let projection = match project_background_completion(&action, pb::AgentMode::Agent as i32) {
-        Ok(projection) => projection,
+        Ok(Some(projection)) => projection,
+        Ok(None) => {
+            // 服务端自己构造的完成动作一定带 TaskFinished；真出现 None 说明动作形状被
+            // 改坏了，这里只记日志、不投递（与"只有进度通知的批次"同一种处理）。
+            tracing::warn!("server-side subagent completion produced no projection");
+            return;
+        }
         Err(error) => {
             tracing::warn!(%error, "failed to build the parent wakeup message");
             return;
@@ -116,16 +162,9 @@ pub(super) async fn subagent_finished(
         child_conversation,
         tool_call_id
     );
-    {
-        let mut notified = NOTIFIED.lock();
-        if notified.contains(&event_id) {
-            tracing::debug!(%event_id, "this subagent completion was already notified");
-            return;
-        }
-        if notified.len() >= NOTIFIED_LIMIT {
-            notified.clear();
-        }
-        notified.insert(event_id.clone());
+    if already_notified(&event_id) {
+        tracing::debug!(%event_id, "this subagent completion was already notified");
+        return;
     }
     let message = match wakeup_message(&event_id, &projection.context) {
         Ok(message) => message,
@@ -153,4 +192,27 @@ pub(super) async fn subagent_finished(
         ?result,
         "subagent finished; notified the parent conversation"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 同一身份只通知一次；过了 TTL 同一身份按新的一次处理（否则这张表只能靠无界增长
+    /// 或整体清空来回收）。
+    #[test]
+    fn a_notification_identity_expires_after_its_ttl() {
+        let event_id = "background-completed:SUBAGENT:ttl-child:ttl-call";
+        assert!(!already_notified(event_id), "第一次通知");
+        assert!(already_notified(event_id), "同一身份第二次不再通知");
+
+        {
+            let mut notified = NOTIFIED.lock();
+            notified.insert(
+                event_id.to_owned(),
+                Instant::now() - NOTIFIED_TTL - Duration::from_secs(1),
+            );
+        }
+        assert!(!already_notified(event_id), "过期身份重新可通知");
+    }
 }

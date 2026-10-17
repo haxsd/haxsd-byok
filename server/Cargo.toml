@@ -55,6 +55,8 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-m
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = "0.7"
 tracing = "0.1"
+# 独立二进制的文件日志与桌面壳同源（目录/文件名取自 diagnostics 的常量）。
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower-http = { version = "0.6", features = ["cors", "decompression-gzip", "fs"] }
 url = "2"
@@ -67,6 +69,8 @@ protoc-bin-vendored = "3"
 
 [dev-dependencies]
 flate2 = "1"
+# 暂停时钟：超时用例不必真的等满墙上时间。
+tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 
 [target.'cfg(windows)'.dependencies]

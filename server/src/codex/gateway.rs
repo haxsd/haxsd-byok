@@ -36,7 +36,17 @@ struct Inner {
     active: AtomicUsize,
     request_timeout: Duration,
     idle_timeout: Duration,
+    /// 网关令牌在库里只生成一次；`store.codex_token()` 每次都要拿全局写锁，而
+    /// 校验请求只需要读它，所以取到之后常驻内存。
+    token: tokio::sync::OnceCell<String>,
 }
+
+/// 客户端正文的体积上限，以及从连接上读完它的时限。
+///
+/// 读体发生在全局配置锁之外（见 `responses`），所以时限是唯一的兜底：没有它，
+/// 一个连上却不发正文的客户端会让这次请求一直挂到连接消失。
+const MAX_REQUEST_BODY: usize = 24 * 1024 * 1024;
+const MAX_REQUEST_BODY_TIMEOUT: Duration = Duration::from_secs(30);
 struct Running {
     port: u16,
     shutdown: CancellationToken,
@@ -80,8 +90,18 @@ impl CodexGateway {
                 active: AtomicUsize::new(0),
                 request_timeout,
                 idle_timeout,
+                token: tokio::sync::OnceCell::new(),
             }),
         }
+    }
+
+    /// 校验用的网关令牌：第一次从库里取（可能生成），之后直接读缓存。
+    async fn token(&self) -> Result<&str> {
+        self.inner
+            .token
+            .get_or_try_init(|| async { self.inner.store.codex_token().await })
+            .await
+            .map(String::as_str)
     }
 
     pub fn router(&self) -> Router {
@@ -194,9 +214,15 @@ impl CodexGateway {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home);
-        let (configured, conflict, config_error) = match inspected {
-            Ok(status) => (status.applied, status.conflict, None),
-            Err(error) => (false, true, Some(error.to_string())),
+        let (configured, conflict, restorable, conflicts, config_error) = match inspected {
+            Ok(status) => (
+                status.applied,
+                status.conflict,
+                status.restorable,
+                status.conflicts,
+                None,
+            ),
+            Err(error) => (false, true, false, Vec::new(), Some(error.to_string())),
         };
         let runtime = self.inner.runtime.lock().await;
         let listening = runtime
@@ -212,6 +238,8 @@ impl CodexGateway {
             port: settings.port,
             configured,
             config_conflict: conflict,
+            restorable,
+            conflicts,
             home: home.display().to_string(),
             calls: calls.max(0) as usize,
             last_error: config_error.or_else(|| {
@@ -244,23 +272,20 @@ impl CodexGateway {
             ));
         }
         self.sync_listener(&settings).await?;
-        let mut models = Vec::new();
-        for id in &settings.model_hashes {
-            models.push(
-                self.inner
-                    .store
-                    .model(id)
-                    .await?
-                    .ok_or_else(|| Error::Config(format!("unknown Codex model: {id}")))?,
-            );
-        }
+        // 目录正文与自愈发布共用同一份序列化，两边不会漂移。
+        let catalog = self.catalog_bytes(&settings).await?;
         let default = settings
             .default_model_hash
             .as_ref()
-            .and_then(|id| models.iter().find(|m| &m.model_hash == id))
+            .filter(|id| settings.model_hashes.contains(id))
             .ok_or_else(|| Error::Config("select a default Codex model".into()))?;
-        let catalog = super::catalog::build_catalog(&models)?;
-        let catalog_path = config::write_catalog(&home, &serde_json::to_vec_pretty(&catalog)?)?;
+        let default = self
+            .inner
+            .store
+            .model(default)
+            .await?
+            .ok_or_else(|| Error::Config(format!("unknown Codex model: {default}")))?;
+        let catalog_path = config::write_catalog(&home, &catalog)?;
         config::apply(
             &home,
             &ConfigRoute {
@@ -274,6 +299,52 @@ impl CodexGateway {
             },
         )?;
         self.status().await
+    }
+
+    /// 本次发布选中的模型 + 每个模型当前的路由指纹；`apply` 与请求路径上的目录
+    /// 自愈共用它，保证两边写出的目录是同一份东西。
+    async fn catalog_bytes(&self, settings: &CodexSettings) -> Result<Vec<u8>> {
+        let mut models = Vec::new();
+        for id in &settings.model_hashes {
+            models.push(
+                self.inner
+                    .store
+                    .model(id)
+                    .await?
+                    .ok_or_else(|| Error::Config(format!("unknown Codex model: {id}")))?,
+            );
+        }
+        Ok(serde_json::to_vec_pretty(&super::catalog::build_catalog(
+            &models,
+        )?)?)
+    }
+
+    /// 目录是写给客户端的快照，模型被编辑后它会过期。让用户为一次正常编辑付出
+    /// 整条链路不可用的代价不对：请求本来就走模型库里的最新配置，这里把目录刷新
+    /// 到最新，客户端下一次会话会读到它。
+    ///
+    /// 比较的是**整份目录**（新组装的 vs 已发布的），不是单个路由指纹：指纹只覆盖路由
+    /// 相关字段，改 `display_name` 这类目录可见字段不会让它变化，于是客户端永远显示旧名字。
+    ///
+    /// 调用方必须持有 `operations` 锁：`config::republish_catalog` 会重写收据，而
+    /// `apply` / `restore` / `save_settings` 同样在锁内读写收据——两边并发就会互相覆盖。
+    /// 这里不自己取锁（调用方已持有），锁的作用是"每次请求与配置生命周期操作互斥"，
+    /// 不是"与无活跃请求前提互斥"。
+    async fn publish_current_catalog(
+        &self,
+        home: &std::path::Path,
+        settings: &CodexSettings,
+    ) -> Result<()> {
+        let Some(catalog) = config::applied_catalog(home)? else {
+            return Ok(());
+        };
+        let fresh: serde_json::Value =
+            serde_json::from_slice(&self.catalog_bytes(settings).await?)?;
+        if fresh == catalog {
+            return Ok(());
+        }
+        config::republish_catalog(home, &serde_json::to_vec_pretty(&fresh)?)?;
+        Ok(())
     }
 
     pub async fn restore(&self) -> Result<CodexStatus> {
@@ -306,8 +377,8 @@ impl CodexGateway {
 }
 
 async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) -> Response {
-    let expected = match gateway.inner.store.codex_token().await {
-        Ok(token) => token,
+    let expected = match gateway.token().await {
+        Ok(token) => token.to_owned(),
         Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
     let authorization = request
@@ -318,18 +389,25 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     if authorization != format!("Bearer {expected}") {
         return protocol_error(StatusCode::UNAUTHORIZED, "invalid Codex gateway token");
     }
-    let operation = gateway.inner.operations.lock().await;
-    let settings = match gateway.inner.store.codex_settings().await {
-        Ok(s) => s,
-        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-    };
-    if !settings.enabled {
-        return protocol_error(StatusCode::SERVICE_UNAVAILABLE, "Codex gateway is disabled");
-    }
-    let bytes = match to_bytes(request.into_body(), 24 * 1024 * 1024).await {
-        Ok(bytes) => bytes,
-        Err(_) => {
+    // 正文必须在取全局配置锁之前读完：那把锁的持有者是配置生命周期操作
+    // （apply / save_settings / restore / shutdown），让一个慢客户端在锁里等正文，
+    // 等于让配置操作和退出收回一起等它。读体本身也要有时限，否则一个连上却不发
+    // 正文的客户端会把这次请求永久挂住。
+    let bytes = match tokio::time::timeout(
+        MAX_REQUEST_BODY_TIMEOUT,
+        to_bytes(request.into_body(), MAX_REQUEST_BODY),
+    )
+    .await
+    {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(_)) => {
             return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, "Codex request is too large")
+        }
+        Err(_) => {
+            return protocol_error(
+                StatusCode::REQUEST_TIMEOUT,
+                "Codex request body was not received in time",
+            )
         }
     };
     let body: serde_json::Value = match serde_json::from_slice(&bytes) {
@@ -340,6 +418,14 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
         .get("model")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
+    let operation = gateway.inner.operations.lock().await;
+    let settings = match gateway.inner.store.codex_settings().await {
+        Ok(s) => s,
+        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    };
+    if !settings.enabled {
+        return protocol_error(StatusCode::SERVICE_UNAVAILABLE, "Codex gateway is disabled");
+    }
     if !settings.model_hashes.iter().any(|selected| selected == id) {
         return protocol_error(
             StatusCode::BAD_REQUEST,
@@ -351,24 +437,15 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
         Ok(None) => return protocol_error(StatusCode::NOT_FOUND, "Codex model no longer exists"),
         Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
-    let ownership = (|| -> Result<()> {
-        if let Some(catalog) = config::applied_catalog(&settings.resolved_home()?)? {
-            let saved = catalog
-                .get("models")
-                .and_then(serde_json::Value::as_array)
-                .and_then(|models| models.iter().find(|entry| entry["slug"] == id));
-            let fingerprint = super::catalog::routing_fingerprint(&model)?;
-            if saved
-                .and_then(|entry| entry.get("haxsd_byok_routing_fingerprint"))
-                .and_then(serde_json::Value::as_str)
-                != Some(fingerprint.as_str())
-            {
-                return Err(Error::Config("Codex model configuration changed after apply; restore, reapply and start a new conversation".into()));
-            }
-        }
-        Ok(())
-    })();
-    if let Err(error) = ownership {
+    // `home` 解析不出来是环境问题（没有可用的用户主目录），不是"配置冲突"：以前它被折进
+    // 下面那条 409 里，用户看到的是"去处理配置冲突"，而真正该做的是显式填一个 home。
+    let home = match settings.resolved_home() {
+        Ok(home) => home,
+        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    };
+    // 目录过期（模型在 apply 之后被编辑）不是错误：把目录刷新成当前配置后继续
+    // 服务，只有刷新本身失败（例如目录被外部改过）才拒绝这次请求。
+    if let Err(error) = gateway.publish_current_catalog(&home, &settings).await {
         return protocol_error(StatusCode::CONFLICT, error.to_string());
     }
     gateway.inner.active.fetch_add(1, Ordering::SeqCst);
@@ -407,4 +484,171 @@ pub(super) fn protocol_error(status: StatusCode, message: impl Into<String>) -> 
         ),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{ModelConfigInput, ModelType};
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    /// 一个只连上、不发正文的客户端：第一次被读时通知测试，然后永远 Pending，
+    /// 也不注册唤醒——正是"连接还在，正文不再前进"的形态。
+    struct StalledBody {
+        started: Option<tokio::sync::oneshot::Sender<()>>,
+    }
+
+    impl futures_util::Stream for StalledBody {
+        type Item = std::result::Result<axum::body::Bytes, std::io::Error>;
+
+        fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            if let Some(started) = self.started.take() {
+                let _ = started.send(());
+            }
+            Poll::Pending
+        }
+    }
+
+    async fn enabled_gateway() -> (tempfile::TempDir, Store, CodexGateway, String) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let model = store
+            .create_model(&ModelConfigInput {
+                sort_order: 0,
+                display_name: "Codex lock test model".into(),
+                group_name: None,
+                model_type: ModelType::OpenAi,
+                base_url: "http://127.0.0.1:1".into(),
+                use_full_url: true,
+                api_key: "vendor-secret".into(),
+                tooltip_data: "Codex lock test".into(),
+                model_id: "vendor-model".into(),
+                reasoning_effort: None,
+                openai_endpoint: "/v1/responses".into(),
+                openai_extra_params_enabled: false,
+                openai_extra_params: serde_json::json!({}),
+                custom_headers_enabled: false,
+                custom_headers: serde_json::json!({}),
+                anthropic_extra_params_enabled: false,
+                anthropic_extra_params: serde_json::json!({}),
+                context_window_tokens: Some(32_768),
+                max_completion_tokens: Some(4_096),
+                anthropic_max_tokens: None,
+                anthropic_thinking_effort: None,
+                thinking_budget_tokens: None,
+            })
+            .await
+            .unwrap();
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        store
+            .set_codex_settings(CodexSettings {
+                enabled: true,
+                port,
+                model_hashes: vec![model.model_hash.clone()],
+                default_model_hash: Some(model.model_hash.clone()),
+                ..CodexSettings::default()
+            })
+            .await
+            .unwrap();
+        let token = store.codex_token().await.unwrap();
+        let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+        (directory, store, gateway, token)
+    }
+
+    /// 准入段读客户端正文时不能握着全局配置锁：慢客户端卡住的是它自己的连接，不能
+    /// 连带卡住配置操作与退出收回（`shutdown` 抢的就是同一把锁）。
+    #[tokio::test]
+    async fn a_stalled_request_body_does_not_hold_the_configuration_lock() {
+        let (_directory, _store, gateway, token) = enabled_gateway().await;
+        let (started, reading) = tokio::sync::oneshot::channel();
+        let request = Request::post("/v1/responses")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::from_stream(StalledBody {
+                started: Some(started),
+            }))
+            .unwrap();
+        let router = gateway.router();
+        let stalled = tokio::spawn(async move {
+            use tower::ServiceExt;
+            router.oneshot(request).await
+        });
+        // 读到正文了才说明请求已经进入准入段：此刻配置操作必须还能拿到锁。
+        reading.await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(5), gateway.start())
+            .await
+            .expect("配置操作被一个读不完正文的客户端挡在锁外")
+            .unwrap();
+
+        stalled.abort();
+    }
+
+    /// 只改模型显示名（slug 是 `model_hash`，改名不动它）也必须刷新已发布的目录，
+    /// 否则 Codex 的模型列表里永远是旧名字。路由指纹只覆盖路由字段，看它会漏掉这次编辑，
+    /// 所以要比较整份目录。
+    #[tokio::test]
+    async fn renaming_a_model_republishes_the_catalog() {
+        let (directory, store, gateway, _token) = enabled_gateway().await;
+        let mut settings = store.codex_settings().await.unwrap();
+        settings.home = directory.path().join("home").display().to_string();
+        std::fs::create_dir_all(&settings.home).unwrap();
+        store.set_codex_settings(settings.clone()).await.unwrap();
+        gateway.apply().await.unwrap();
+        let home = std::path::PathBuf::from(&settings.home);
+        let before = config::applied_catalog(&home).unwrap().unwrap();
+
+        let model = store
+            .model(&settings.model_hashes[0])
+            .await
+            .unwrap()
+            .unwrap();
+        let renamed = store
+            .update_model(
+                &model.model_hash,
+                &model.config_input("Renamed Model".into(), model.sort_order),
+            )
+            .await
+            .unwrap();
+        assert_eq!(renamed.model_hash, model.model_hash, "改名不动 slug");
+
+        gateway
+            .publish_current_catalog(&home, &settings)
+            .await
+            .unwrap();
+
+        let after = config::applied_catalog(&home).unwrap().unwrap();
+        assert_eq!(
+            after["models"][0]["display_name"], "Renamed Model",
+            "改名后目录没刷新"
+        );
+        assert_ne!(
+            after["models"][0]["display_name"],
+            before["models"][0]["display_name"]
+        );
+    }
+
+    /// 网关令牌在库里只生成一次：`store.codex_token()` 每次都要拿全局写锁，而校验只需要
+    /// 读它，所以第一次取到之后常驻内存（`token()` 里那枚 `OnceCell`）。
+    #[tokio::test]
+    async fn the_gateway_token_is_read_from_the_store_once() {
+        let (_directory, _store, gateway, token) = enabled_gateway().await;
+        assert!(gateway.inner.token.get().is_none(), "还没用过就不该有缓存");
+
+        assert_eq!(gateway.token().await.unwrap(), token);
+        assert_eq!(
+            gateway.inner.token.get().map(String::as_str),
+            Some(token.as_str())
+        );
+        assert_eq!(gateway.token().await.unwrap(), token);
+    }
 }

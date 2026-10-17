@@ -84,6 +84,7 @@ impl HtmlEngine {
         query: &str,
     ) -> Result<Vec<SearchHit>, String> {
         let url = search_url(&self.url, query);
+        let _permit = super::outbound::permit().await;
         let response = client
             .get(&url)
             .header(reqwest::header::USER_AGENT, user_agent())
@@ -99,10 +100,18 @@ impl HtmlEngine {
             return Err(format!("HTTP {}", response.status()));
         }
         let response_url = response.url().clone();
-        let body = response
-            .text()
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        // 与网页抓取共用 5 MiB 上限与同一套字符集解码(含 meta 嗅探与有损解码)。
+        let body = super::fetch::limited_body(response)
             .await
             .map_err(|error| format!("response failed: {error}"))?;
+        let body = super::fetch::decode(&body, &content_type)
+            .map_err(|error| format!("response decoding failed: {error}"))?;
         self.parse(&body, &response_url)
     }
 
@@ -165,6 +174,7 @@ impl JsonEngine {
         client: &reqwest::Client,
         query: &str,
     ) -> Result<Vec<SearchHit>, String> {
+        let _permit = super::outbound::permit().await;
         let response = client
             .get(search_url(&self.url, query))
             .header(reqwest::header::USER_AGENT, user_agent())
@@ -176,9 +186,10 @@ impl JsonEngine {
         if !response.status().is_success() {
             return Err(format!("HTTP {}", response.status()));
         }
-        let body = response
-            .json::<Value>()
+        let body = super::fetch::limited_body(response)
             .await
+            .map_err(|error| format!("response failed: {error}"))?;
+        let body = serde_json::from_slice::<Value>(&body)
             .map_err(|error| format!("response failed: {error}"))?;
         let items = body
             .pointer(self.items)
@@ -337,4 +348,97 @@ fn redirected_target(url: &Url) -> Option<Url> {
     url.query_pairs()
         .find(|(name, _)| name == key)
         .and_then(|(_, value)| Url::parse(&value).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use super::*;
+    use crate::search::test_support::StubServer;
+
+    fn html_engine(stub: &StubServer) -> HtmlEngine {
+        HtmlEngine::new(
+            "stub",
+            stub.url("/search?q={query}"),
+            "div.result",
+            "a.title",
+            "a.title",
+            "span.snippet",
+        )
+    }
+
+    /// 搜索引擎的响应以前是 `response.text()`,没有任何体积上限;一个超大响应就能把服务端
+    /// 内存撑起来。抓取侧的 5 MiB 上限现在由两边共用。
+    #[tokio::test]
+    async fn an_oversized_search_response_is_rejected_instead_of_read_into_memory() {
+        let stub = StubServer::fixed(
+            StatusCode::OK,
+            "text/html",
+            vec![b'x'; super::super::fetch::MAX_RESPONSE_SIZE + 1],
+        )
+        .await;
+
+        let error = html_engine(&stub)
+            .search(&reqwest::Client::new(), "q")
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("5 MiB"), "{error}");
+    }
+
+    /// 正常大小的响应仍然照常解析(上限不是把搜索引擎关掉)。
+    #[tokio::test]
+    async fn a_search_response_within_the_limit_is_parsed() {
+        let stub = StubServer::fixed(
+            StatusCode::OK,
+            "text/html",
+            br#"<html><body><div class="result"><a class="title" href="https://example.com/a">Title</a><span class="snippet">snip</span></div></body></html>"#
+                .to_vec(),
+        )
+        .await;
+
+        let hits = html_engine(&stub)
+            .search(&reqwest::Client::new(), "q")
+            .await
+            .unwrap();
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].url, "https://example.com/a");
+        assert_eq!(hits[0].chunk, "snip");
+    }
+
+    /// 搜索结果里的跳转链接要还原成真实目标,并去掉跟踪参数与片段 —— 这些 URL 会被
+    /// 模型当作后续 WebFetch 的输入。
+    #[test]
+    fn search_result_urls_are_unwrapped_and_cleaned() {
+        let google =
+            Url::parse("https://www.google.com/url?q=https://example.com/page&sa=U").unwrap();
+        assert_eq!(canonicalize(google).unwrap(), "https://example.com/page");
+
+        let duckduckgo =
+            Url::parse("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpage").unwrap();
+        assert_eq!(
+            canonicalize(duckduckgo).unwrap(),
+            "https://example.com/page"
+        );
+
+        let tracked = Url::parse("https://example.com/page?utm_source=x&keep=1#section").unwrap();
+        assert_eq!(
+            canonicalize(tracked).unwrap(),
+            "https://example.com/page?keep=1"
+        );
+
+        let unsupported = Url::parse("ftp://example.com/file").unwrap();
+        assert!(canonicalize(unsupported).is_none());
+    }
+
+    /// bing 的跳转把目标塞在 base64url 的 `u=a1...` 里。
+    #[test]
+    fn bing_redirect_targets_are_decoded_from_their_parameter() {
+        let target = "https://example.com/bing-target";
+        let encoded = URL_SAFE_NO_PAD.encode(target);
+        let url = Url::parse(&format!("https://www.bing.com/ck/a?u=a1{encoded}")).unwrap();
+        assert_eq!(canonicalize(url).unwrap(), target);
+    }
 }

@@ -24,8 +24,10 @@
 /* One grid template shared by the header and every row, so columns line up without
    a <table> and without the 4180px of horizontal scrolling the old column set
    needed. Nine columns is what fits a 1280px page; everything else moved into the
-   expandable panel. */
-$columns: 28px 104px minmax(150px, 1.5fr) 96px 68px 82px 82px minmax(150px, 1fr) 40px;
+   expandable panel. The route column is sized for the widest client badge — "Codex ·
+   BYOK" measures ~87px — because a track narrower than the badge wraps the label
+   inside a 20px-tall pill and the second line spills onto the neighbouring cells. */
+$columns: 28px 104px minmax(150px, 1.5fr) 96px 96px 82px 82px minmax(150px, 1fr) 40px;
 
 .table {
   width: 100%;
@@ -167,6 +169,11 @@ $columns: 28px 104px minmax(150px, 1.5fr) 96px 68px 82px 82px minmax(150px, 1fr)
   align-items: center;
   height: 20px;
   padding: 0 7px;
+  /* A client source is one word plus a suffix ("Codex · BYOK"). Wrapped, it becomes
+     two lines inside a 20px-tall pill, and the second line covers the neighbouring
+     cells. The column is sized for the widest badge, so the label never needs to
+     break: it may fill the column, but it never becomes two lines. */
+  white-space: nowrap;
   color: var(--oa-accent);
   background: var(--oa-accent-soft);
   border-radius: var(--oa-radius-xs);
@@ -237,4 +244,38 @@ $columns: 28px 104px minmax(150px, 1.5fr) 96px 68px 82px 82px minmax(150px, 1fr)
   padding: var(--oa-space-3) var(--oa-space-4) var(--oa-space-4) 52px;
   background: color-mix(in srgb, var(--oa-accent) 5%, transparent);
   border-top: 1px solid var(--oa-border);
+}
+
+/*
+ * 窄窗口（应用最小窗口 880×600）下的列宽。
+ *
+ * 上面那套轨道按 1280px 的页面取值：固定轨道合计 528px，两个弹性列各有 150px 下限，
+ * 八条 12px 间距再加每行 32px 内边距，整表最少要 958px。窗口收到 880px 时表格区域
+ * 只有 842px，于是 Token 数值、表头「操作」和每行的详情按钮被裁在视口外（实测超出
+ * 98px，详情按钮右侧被切掉 91px），而表格没有横向滚动条，用户够不到它们。
+ *
+ * 这里只收窄轨道与间距：固定列按内容的实际需要取值（状态徽标、客户端徽标、
+ * 耗时、TTFB 都是短数字），弹性列的下限降到 110/100px，模型名照旧省略。
+ * 收窄后整表 768px，最小窗口下完整可见；更窄的窗口（低于最小窗口尺寸）由视口的
+ * 横向滚动接管，不再把内容裁掉。
+ */
+@media (max-width: 1000px) {
+  .head,
+  .row {
+    grid-template-columns: 24px 90px minmax(110px, 1.5fr) 92px 96px 66px 62px minmax(100px, 1fr) 40px;
+    gap: var(--oa-space-2);
+  }
+
+  .head {
+    padding: 0 var(--oa-space-3);
+  }
+
+  .row {
+    padding: var(--oa-space-1) var(--oa-space-3);
+  }
+
+  /* 展开面板的缩进跟着展开按钮走：12px 内边距 + 24px 按钮 + 8px 间距。 */
+  .expansion {
+    padding-left: calc(var(--oa-space-3) + 24px + var(--oa-space-2));
+  }
 }

@@ -47,6 +47,13 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --all-targets
 
+      # Semble 的质量门槛。完整跑分（`--check`）要 codegraph、能联网拉固定提交，并以
+      # 十分钟计，所以 CI 跑的是它的可判定子集：用提交的 results/latest.json 复核
+      # quality-gates.json，门槛被调高或报告被改坏都会失败。本地完整回归用
+      # `make bench-check`。
+      - name: Verify the benchmark report against the quality gates
+        run: cargo run --locked -p semble-benchmark -- --verify-report support/benchmarks/semble/results/latest.json
+
   linux-devin:
     name: Devin gateway (Linux)
     runs-on: ubuntu-22.04
@@ -122,6 +129,103 @@ jobs:
       - name: Run the desktop unit tests on MSVC
         if: matrix.os == 'windows-latest'
         run: cargo test --package haxsd-byok-desktop --lib
+
+      # 服务端里 `#[cfg(windows)]` 的测试与实现只有在这里跑得到：Linux 任务跑的是
+      # 整个 workspace，但那些分支在 Linux 上根本不编译。Windows 独有的路径包括进程
+      # 生命周期（`local_app::process`）、证书存储、Windows 的文件语义（改名/替换/
+      # 共享冲突）与网络栈分支。
+      - name: Run the server unit tests on Windows
+        if: matrix.os == 'windows-latest'
+        run: cargo test --locked -p cursor-server --lib
+
+  gates:
+    name: Release and licence gates
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # 许可门禁只读 `cargo metadata`，不构建、不跑测试。
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # `.github/scripts/**` 里的清单生成/规范化脚本与许可判定过去只有一份用例、而且
+      # 没有任何执行入口（`apps/desktop` 的 `npm test` 只扫自己的 tests/）。这里直接跑，
+      # 用例挂了就拦住改动。
+      - name: Run the release script tests
+        run: node --test .github/scripts/*.test.mjs
+
+      # 依赖与许可没有门禁时，混进一个 GPL/未知许可的依赖不会有任何提示。这里对 Rust
+      # （全平台 `cargo metadata`）与前端（`package-lock.json`）各判一次：声明的许可
+      # 必须落在允许清单里，锁文件里没记录许可的条目会被逐条列出来。
+      # 它不覆盖：源码级许可扫描、已知漏洞库、重复依赖版本（那需要 cargo-deny）。
+      - name: Check dependency licenses
+        run: node .github/scripts/check-licenses.mjs
+
+  plugins:
+    name: Plugins (Deno runtime + worker)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # 内置插件的 Deno 用例过去没有任何执行入口（跑不跑全凭人手），而插件在运行时里被
+      # 求值/调用时用的是 `server/src/plugin/asset.rs` 里 pin 住的那一版 Deno。版本与摘要
+      # 都从那个常量/表里读出来，避免 workflow 里再抄一份、两边悄悄漂移。
+      - name: Resolve the pinned Deno version and digest
+        id: deno
+        run: |
+          set -euo pipefail
+          version=$(grep -oP 'DENO_VERSION: &str = "\K[0-9.]+' server/src/plugin/asset.rs)
+          digest=$(grep -A2 '"linux", "x86_64"' server/src/plugin/asset.rs \
+            | grep -oE '"[0-9a-f]{64}"' | head -1 | tr -d '"')
+          test -n "$version" && test -n "$digest"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install Deno ${{ steps.deno.outputs.version }}
+        run: |
+          set -euo pipefail
+          version='${{ steps.deno.outputs.version }}'
+          url="https://github.com/denoland/deno/releases/download/v${version}/deno-x86_64-unknown-linux-gnu.zip"
+          curl -fsSL --retry 3 -o /tmp/deno.zip "$url"
+          echo '${{ steps.deno.outputs.digest }}  /tmp/deno.zip' | sha256sum -c -
+          unzip -q -o /tmp/deno.zip -d /tmp/deno-bin
+          chmod +x /tmp/deno-bin/deno
+          echo "/tmp/deno-bin" >> "$GITHUB_PATH"
+          /tmp/deno-bin/deno --version
+
+      # 每个内置插件自带 deno.json（import map 指到 src/plugin/sdk），所以 `deno test` 直接
+      # 在插件目录里跑：不给任何 --allow-* 权限，用例必须完全离线（导入图由
+      # `plugin::catalog::tests::built_in_plugin_imports_resolve_within_the_repository` 守着）。
+      # "0 个用例"也要算失败：`deno test` 找不到用例时是绿的，那正是这条门禁要防的假绿。
+      - name: Run the built-in plugin suites
+        run: |
+          set -euo pipefail
+          for plugin in server/plugins/build-in/*/; do
+            echo "::group::deno test $plugin"
+            output=$(cd "$plugin" && deno test --no-lock)
+            echo "$output"
+            echo "::endgroup::"
+            if ! grep -qE '[0-9]+ passed' <<<"$output"; then
+              echo "::error::$plugin 的 deno test 没有跑出任何用例"
+              exit 1
+            fi
+          done
+
+      # 真的起一次 worker 求值内置插件的定义：这条用例需要 pin 住的运行时，本机默认
+      # `#[ignore]`（不写成没有运行时也绿的假用例），所以在装好运行时的这里用 --ignored 跑。
+      - name: Run the plugin worker smoke test against the pinned runtime
+        env:
+          CURSOR_SERVER_DENO: /tmp/deno-bin/deno
+        run: "cargo test --locked -p cursor-server --lib plugin:: -- --ignored"
 
   records-guard:
     name: Public repo hygiene

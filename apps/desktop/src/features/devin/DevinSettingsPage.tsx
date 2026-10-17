@@ -11,7 +11,11 @@ import { StatusHero } from "../../shared/ui/StatusHero";
 import { PageContent } from "../../shell/layout/PageContent";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
+import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
 import { devinConnectionView } from "./devinConnectionView";
+import { applyDevinHostPatch } from "./devinPatchApply";
+import { getUiPreferences, saveUiPreferences, useUiPreferences } from "../../shared/store/uiPreferences";
+import { probeHostPath } from "./hostPathProbe";
 import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
@@ -28,25 +32,14 @@ const emptySettings: DevinSettings = {
 const legacyRouteId = "primary";
 
 /** 宿主文件路径必须记住：状态面板、检查、打补丁全靠它，刷新即丢会让人以为功能坏了。 */
-const hostPathStorageKey = "haxsd-byok.devin.host-path";
-
-/** 读取上次记住的宿主路径；只在初始化时调用。 */
+/** 存在服务端（原来在 localStorage：端口一变路径就没了），见 shared/store/uiPreferences.ts。 */
 function readHostPath(): string {
-  try {
-    return localStorage.getItem(hostPathStorageKey) ?? "";
-  } catch {
-    // Storage may be unavailable; the field simply stays empty.
-    return "";
-  }
+  return getUiPreferences().devinHostPath ?? "";
 }
 
-/** 记住宿主路径；持久化失败不影响当前会话。 */
+/** 记住宿主路径；写失败不影响当前会话。 */
 function writeHostPath(path: string) {
-  try {
-    if (path.trim()) localStorage.setItem(hostPathStorageKey, path);
-  } catch {
-    // Persisting the path is best effort.
-  }
+  if (path.trim()) void saveUiPreferences({ devinHostPath: path });
 }
 
 function routesForDisplay(binding: DevinModelBinding): DevinRoute[] {
@@ -80,9 +73,23 @@ function nextRouteId(routes: DevinRoute[]): string {
 function nextModelUid(bindings: DevinModelBinding[], choices: DevinModelChoice[]): string {
   const fallback = "swe-1-6-slow";
   if (!choices.length) return fallback;
-  const used = new Set(bindings.map((binding) => binding.model_uid.trim()));
+  const used = new Set(bindings.map((binding) => String(binding.model_uid ?? "").trim()));
   const free = choices.find((choice) => !used.has(choice.uid));
   return (free ?? choices[0]).uid;
+}
+
+/**
+ * 一行映射在无障碍名称里的身份：Devin 侧的模型标识最能说明"这一行是哪一条"，
+ * 没填标识时退回显示名称或哈希。同一页上「更多」「移除」这类按钮会重复出现多次，
+ * 不带上身份就只能听到一串一样的按钮名。
+ */
+function bindingName(binding: DevinModelBinding): string {
+  return String(binding.model_uid ?? "").trim() || binding.display_name || binding.model_hash || "";
+}
+
+/** 一条候选路由的身份：路由名优先，其次路由本身。 */
+function routeName(route: DevinRoute): string {
+  return String(route.label ?? "").trim() || route.route_id;
 }
 
 export function DevinSettingsPage() {
@@ -100,6 +107,7 @@ export function DevinSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [hostPath, setHostPath] = useState(readHostPath);
   const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
+  const [hostFailure, setHostFailure] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
   // Which mapping rows are showing their optional fields. Collapsed by default: the
   // page should read as two decisions per mapping, not as a form of five fields.
@@ -107,12 +115,18 @@ export function DevinSettingsPage() {
   const [gatewayPortsUp, setGatewayPortsUp] = useState<boolean | null>(null);
   const [devinCalls, setDevinCalls] = useState<number | null>(null);
 
+  // 偏好是启动时异步读回来的：值到了之后补上宿主路径（用户没在这期间自己填过才算）。
+  const rememberedHostPath = useUiPreferences().devinHostPath ?? "";
+  useEffect(() => {
+    if (rememberedHostPath) setHostPath((current) => current || rememberedHostPath);
+  }, [rememberedHostPath]);
+
   useEffect(() => {
     void Promise.all([api.devinSettings(), api.models()]).then(([nextSettings, nextModels]) => {
       setSettings(nextSettings);
       setSaved(nextSettings);
       setModels(nextModels);
-    }).catch((cause) => message.error(cause)).finally(() => setLoading(false));
+    }).catch((cause) => message.error(clientErrorText(cause))).finally(() => setLoading(false));
   }, [message]);
 
   // 模型 UID 只能从 Devin 自己认识的标识里选：手打的标识永远不会被请求。列表读不到
@@ -159,27 +173,26 @@ export function DevinSettingsPage() {
   // 这里刻意只跑一次，用的是"打开页面时记住的那条路径"：把 hostPath 列进依赖会让
   // 用户每敲一个字符就打一次探测请求。路径本身由 useState 的初始值给出，所以闭包里
   // 拿到的就是该用的值，而不是某个中间状态。
+  //
+  // 记住的路径失效（卸载、换盘、搬到别处）不是用户的操作错误，因此不弹红条：先按它
+  // 试一次，失败就退回自动探测；两次都不成才把原因写在卡片里。
   useEffect(() => {
     if (loading) return;
     let cancelled = false;
-    const remembered = hostPath.trim();
-    void api.devinHostStatus(remembered || undefined)
-      .then((status) => {
+    void probeHostPath(hostPath, api.devinHostStatus)
+      .then((probe) => {
         if (cancelled) return;
-        setHostStatus(status);
-        if (!remembered) {
-          setHostPath(status.path);
-          writeHostPath(status.path);
+        setHostStatus(probe.status);
+        setHostFailure(probe.failure);
+        if (probe.status && probe.status.path !== hostPath.trim()) {
+          setHostPath(probe.status.path);
+          writeHostPath(probe.status.path);
         }
-      })
-      .catch((cause) => {
-        // 探测失败要说出原因，不能静默成"未知"。
-        if (!cancelled) message.error(cause);
       });
     return () => {
       cancelled = true;
     };
-  }, [loading, message]);
+  }, [loading]);
 
   const rememberHostPath = (value: string) => {
     setHostPath(value);
@@ -232,20 +245,40 @@ export function DevinSettingsPage() {
     try {
       setHostBusy(true);
       setHostStatus(await api.devinHostStatus(hostPath));
+      setHostFailure(null);
     } catch (cause) {
-      message.error(cause);
+      // 用户主动点"检查宿主"，路径无效就要立刻说清楚（说法由界面给，不显示服务端英文原句）。
+      message.error(clientErrorText(cause));
+      setHostFailure(clientErrorText(cause));
+      setHostStatus(null);
     } finally {
       setHostBusy(false);
     }
   };
   const applyHostPatch = async () => {
+    setHostBusy(true);
     try {
-      setHostBusy(true);
-      await api.applyDevinHostPatch(hostPath);
-      setHostStatus(await api.devinHostStatus(hostPath));
+      const outcome = await applyDevinHostPatch(hostPath);
+      if (outcome.kind === "write-failed") {
+        // 补丁没写下去：文件保持原样，"应用补丁"仍然可用。
+        const text = writeFailureText(outcome.cause);
+        message.error(text);
+        setHostFailure(text);
+        return;
+      }
+      if (outcome.kind === "status-unreadable") {
+        // 补丁已经写进文件，是读状态失败。这里不能说"应用失败"——那会诱导用户再点一次，
+        // 而第二次会被服务端以"已经是打过补丁的版本"拒绝。清掉旧状态并指向「检查宿主」。
+        setHostStatus(null);
+        const text = t("补丁已写入宿主文件，但状态没能读回来：点「检查宿主」确认结果，不要重复应用。");
+        setHostFailure(text);
+        message.error(text, { duration: 8_000 });
+        return;
+      }
+      setHostStatus(outcome.status);
+      setHostFailure(null);
+      // 成功消息只在状态读回来之后才发：补丁落盘和"界面知道补丁落盘了"是两件事。
       message(t("Devin 宿主补丁已应用；重启 Devin 后生效"), { duration: 5_000 });
-    } catch (cause) {
-      message.error(cause);
     } finally {
       setHostBusy(false);
     }
@@ -256,9 +289,10 @@ export function DevinSettingsPage() {
       setHostBusy(true);
       await api.restoreDevinHostPatch(hostStatus.path);
       setHostStatus(await api.devinHostStatus(hostPath));
+      setHostFailure(null);
       message(t("Devin 宿主文件已恢复"));
     } catch (cause) {
-      message.error(cause);
+      message.error(writeFailureText(cause));
     } finally {
       setHostBusy(false);
     }
@@ -271,7 +305,7 @@ export function DevinSettingsPage() {
       setSaved(next);
       message(t("Devin 设置已保存，重启软件后监听端口生效"), { duration: 5_000 });
     } catch (cause) {
-      message.error(cause);
+      message.error(clientErrorText(cause));
     } finally {
       setSaving(false);
     }
@@ -294,6 +328,25 @@ export function DevinSettingsPage() {
     { value: "standard" as DevinBindingKind, label: t("标准") },
     { value: "context_compression" as DevinBindingKind, label: t("上下文压缩") },
   ];
+  // 「应用补丁」被禁用的原因：没有一行说明，用户只看到一个点不动的按钮。判断顺序
+  // 与按钮的 disabled 表达式一致；读不到宿主文件时上面那句说明已经解释了按钮为什么
+  // 不可用，这里就不再补一句。
+  const patchDisabled = !hostStatus?.clean || !saved.enabled || view.pendingChanges || hostBusy;
+  const patchReason = !patchDisabled
+    ? null
+    : hostBusy
+      ? t("正在检查或写入，稍候。")
+      : !saved.enabled
+        ? t("先启用并保存 Devin 网关，再应用补丁。")
+        : view.pendingChanges
+          ? t("有未保存的改动：先保存设置，再应用补丁。")
+          : hostStatus
+            ? t("当前宿主文件不是可打补丁的原版；按上面的说明恢复或改用其他路径。")
+            : null;
+  // 「恢复原文件」只在补丁由本应用落下、且记录未被改动时可用。
+  const restoreReason = hostStatus?.patched && !hostStatus.restore_receipt
+    ? t("恢复记录不可用：补丁不是本应用打的，或记录已被改动；只能手工用旁边的备份文件恢复。")
+    : null;
   const content = loading ? <div className={styles.loading}>{t("加载中…")}</div> : <div className={styles.page}>
     <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
       <StatusHero
@@ -311,20 +364,23 @@ export function DevinSettingsPage() {
       collapsible={false}
     >
       <div className={styles.settingRow}>
-        <div><strong>{t("启用 Devin 网关")}</strong><small>{t("关闭时不会打开任何 Devin 端口，也不会影响 Cursor。")}</small></div>
+        <div><strong>{t("启用 Devin 网关")}</strong><small>{t("关闭时不会打开任何 Devin 端口，也不会影响其他接入模块。")}</small></div>
         <Switch checked={settings.enabled} label={t("启用 Devin 网关")} onChange={(enabled) => update("enabled", enabled)} />
       </div>
       <div className={styles.settingRow}>
         <div><strong>{t("模型映射")}</strong><small>{t("把 Devin 的模型标识指向模型库里的模型；Devin 只会用到这里配置的映射。")}</small></div>
         <Button size="small" disabled={!models.length} onClick={addBinding}>{t("添加映射")}</Button>
       </div>
+      {/* 模型库为空时「添加映射」是灰的：把原因写在按钮下面，而不是让用户猜。 */}
+      {!models.length && <small className={styles.reason}>{t("模型库还是空的：先在模型库添加模型，再回来添加映射。")}</small>}
       <div className={styles.bindings}>
-        {!settings.bindings.length && <small className={styles.empty}>{t("还没有映射。添加一个 haxsd byok 模型后，Devin 才能使用它。")}</small>}
+        {!settings.bindings.length && <small className={styles.empty}>{t("还没有映射。添加一条映射后，Devin 才能请求模型库里的模型。")}</small>}
         {settings.bindings.map((binding, index) => {
           const routes = routesForDisplay(binding);
           const activeRouteId = activeRouteIdForDisplay(binding);
           const hasRoutes = binding.routes.length > 0;
           const isCompression = binding.kind === "context_compression";
+          const name = bindingName(binding);
           // 行的 key 不能随输入变化：原来用的是 `model_uid-index`，于是每敲一个字符 key
           // 就变一次，React 把整行卸载重建，输入框随即失焦——UID 只能"敲一个字点一次"。
           // 下标在编辑期间是稳定的，只有增删行时才会移动。
@@ -337,16 +393,16 @@ export function DevinSettingsPage() {
           return <div className={styles.binding} key={rowKey}>
             <div className={styles.bindingRow}>
               <FormField label={t("Devin 模型")} hint={t("从 Devin 的模型列表里选；也可以直接填写标识。")}><Combobox value={binding.model_uid} options={uidOptions} onChange={(model_uid) => updateBinding(index, { model_uid })} /></FormField>
-              <FormField label={t("haxsd byok 模型")}><Select value={binding.model_hash} options={modelOptions} ariaLabel={t("haxsd byok 模型")} onChange={(model_hash) => {
+              <FormField label={t("模型库模型")}><Select value={binding.model_hash} options={modelOptions} ariaLabel={t("模型库模型")} onChange={(model_hash) => {
                 const model = models.find((item) => item.model_hash === model_hash);
                 updateBinding(index, { model_hash, display_name: model?.display_name ?? binding.display_name, context_window_tokens: model?.context_window_tokens ?? null });
               }} /></FormField>
               <div className={styles.bindingRowActions}>
                 {!binding.enabled && <span className={styles.bindingPaused}>{t("已停用")}</span>}
-                <button type="button" className={styles.more} aria-expanded={expanded} onClick={() => setExpandedBindings((current) => ({ ...current, [rowKey]: !expanded }))}>
+                <button type="button" className={styles.more} aria-expanded={expanded} aria-label={t("{model} 的更多设置", { model: name })} onClick={() => setExpandedBindings((current) => ({ ...current, [rowKey]: !expanded }))}>
                   {expanded ? t("收起") : t("更多")}
                 </button>
-                <button type="button" className={styles.remove} onClick={() => removeBinding(index)}>{t("移除")}</button>
+                <button type="button" className={styles.remove} aria-label={t("移除映射：{model}", { model: name })} onClick={() => removeBinding(index)}>{t("移除")}</button>
               </div>
             </div>
             {expanded && <div className={styles.bindingExtra}>
@@ -372,16 +428,16 @@ export function DevinSettingsPage() {
                     <FormField label={t("路由名称")}><TextInput value={route.label} onChange={(event) => updateRoute(index, binding, routes, routeIndex, { label: event.target.value })} /></FormField>
                   </div>
                   <div className={styles.routeFooter}>
-                    <Switch checked={route.enabled} label={t("启用此路由")} onChange={(enabled) => updateRoute(index, binding, routes, routeIndex, { enabled })} />
+                    <Switch checked={route.enabled} label={t("启用路由：{route}", { route: routeName(route) })} onChange={(enabled) => updateRoute(index, binding, routes, routeIndex, { enabled })} />
                     <div className={styles.routeActions}>
-                      <Button size="small" variant={route.route_id === activeRouteId ? "primary" : "secondary"} disabled={!route.enabled || route.route_id === activeRouteId} onClick={() => commitRoutes(index, routes, route.route_id)}>{route.route_id === activeRouteId ? t("当前路由") : t("设为当前路由")}</Button>
-                      <button type="button" className={styles.remove} disabled={!hasRoutes} onClick={() => removeRoute(index, binding, routes, routeIndex)}>{t("移除")}</button>
+                      <Button size="small" variant={route.route_id === activeRouteId ? "primary" : "secondary"} aria-label={route.route_id === activeRouteId ? t("{route} 是当前路由", { route: routeName(route) }) : t("把 {route} 设为当前路由", { route: routeName(route) })} disabled={!route.enabled || route.route_id === activeRouteId} onClick={() => commitRoutes(index, routes, route.route_id)}>{route.route_id === activeRouteId ? t("当前路由") : t("设为当前路由")}</Button>
+                      <button type="button" className={styles.remove} aria-label={t("移除路由：{route}", { route: routeName(route) })} disabled={!hasRoutes} onClick={() => removeRoute(index, binding, routes, routeIndex)}>{t("移除")}</button>
                     </div>
                   </div>
                 </div>)}
               </div>}
               <div className={styles.bindingFooter}>
-                <Switch checked={binding.enabled} label={t("启用此模型映射")} onChange={(enabled) => updateBinding(index, { enabled })} />
+                <Switch checked={binding.enabled} label={t("启用模型映射：{model}", { model: name })} onChange={(enabled) => updateBinding(index, { enabled })} />
                 <span />
               </div>
             </div>}
@@ -405,13 +461,23 @@ export function DevinSettingsPage() {
         <Button size="small" disabled={!hostStatus?.restore_receipt || hostBusy} onClick={() => void restoreHostPatch()}>{t("恢复原文件")}</Button>
       </div>}
     >
-      {hostStatus
-        ? <p className={styles.note}>{hostStatus.patched && hostStatus.ports
-          ? t("已接入：API {api} · 推理 {inference} · Local API {local}", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
-          : hostStatus.patched
-            ? hostStatus.message
-            : hostStatus.clean ? t("兼容版本，尚未应用补丁") : hostStatus.message}</p>
-        : <p className={styles.note}>{t("宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。")}</p>}
+      {/* 状态说明与「按钮为什么点不了」都在卡片正文里：禁用是唯一的反馈，原因不写出来
+          就只剩一个灰按钮。 */}
+      <div className={styles.hostNotes}>
+        {hostStatus
+          ? <p>{hostStatus.patched && hostStatus.ports
+            /* 文件是打过补丁的，不代表它指向本应用当前的端口：另一个路由器留下的补丁
+               也会让这里显示"已打补丁"。端口不一致时说清楚，别让"已接入"读成"接好了"。 */
+            ? hostStatus.ports.api_port === saved.api_port
+              ? t("已接入：API {api} · 推理 {inference} · 本地 API {local}", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
+              : t("宿主文件里的端口与当前设置不同（{api} · {inference} · {local}）：保存设置后重新应用补丁。", { api: hostStatus.ports.api_port, inference: hostStatus.ports.inference_port, local: hostStatus.ports.local_api_port })
+            : hostStatus.patched
+              ? clientErrorText(hostStatus.message)
+              : hostStatus.clean ? t("兼容版本，尚未应用补丁") : clientErrorText(hostStatus.message)}</p>
+          : <p role={hostFailure ? "alert" : undefined}>{hostFailure ? clientErrorText(hostFailure) : t("宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。")}</p>}
+        {patchReason && <p>{patchReason}</p>}
+        {restoreReason && <p>{restoreReason}</p>}
+      </div>
     </TitledCard>
     <TitledCard
       title={t("高级")}
@@ -420,17 +486,18 @@ export function DevinSettingsPage() {
       storageKey="devin-advanced"
     >
       <div className={styles.fields}>
-        <FormField label={t("控制令牌")} hint={t("可选；Devin 请求可通过 x-devin-router-token 或 Bearer 令牌认证。")}>
+        <FormField label={t("控制令牌")} hint={t("可选；填了之后，Devin 的请求要带同一个令牌（请求头 x-devin-router-token，或 Authorization: Bearer）。")}>
           <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
         </FormField>
-        <FormField label={t("API 端口")}><TextInput type="number" value={settings.api_port} onChange={(event) => update("api_port", Number(event.target.value))} /></FormField>
-        <FormField label={t("推理端口")}><TextInput type="number" value={settings.inference_port} onChange={(event) => update("inference_port", Number(event.target.value))} /></FormField>
-        <FormField label={t("本地 API 端口")}><TextInput type="number" value={settings.local_api_port} onChange={(event) => update("local_api_port", Number(event.target.value))} /></FormField>
+        {/* 端口是整数：空值或非数字交给服务端拒绝（它会说不清是哪种错），超范围的在这里夹住。 */}
+        <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portValue(event.target.value))} /></FormField>
+        <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portValue(event.target.value))} /></FormField>
+        <FormField label={t("本地 API 端口")}><TextInput type="number" min={1} max={65535} value={settings.local_api_port} onChange={(event) => update("local_api_port", portValue(event.target.value))} /></FormField>
         <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
           <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.self-serve.windsurf.com" />
         </FormField>
       </div>
-      <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，haxsd byok 负责模型调用和事件转发。")}</p>
+      <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，本机网关负责模型调用和事件转发。")}</p>
       <div className={styles.fields}>
         <FormField label={t("Devin / Windsurf extension.js 路径")} hint={t("留空即自动探测；也可以填安装目录，或 extension.js 的完整路径。")}>
           <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
@@ -450,4 +517,16 @@ export function DevinSettingsPage() {
     />}
     sections={[{ key: "devin", estimatedHeight: 900, content }]}
   />;
+}
+
+/**
+ * 端口输入框的取值：空输入按 0 交给服务端拒绝（它会说"端口不能为 0"），超范围的夹到 1..65535。
+ *
+ * 原来直接用 `Number(...)`：输入框清空时 `Number("")` 是 0、乱输是 `NaN`（JSON 里会变成
+ * `null`），服务端只能回一句英文的 422，界面看起来就是"保存没反应"。
+ */
+function portValue(raw: string): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(65_535, Math.max(0, Math.trunc(value)));
 }

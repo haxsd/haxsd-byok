@@ -1,4 +1,5 @@
 import type { LlmCall } from "../../shared/api";
+import { callClientLabel } from "../../shared/utils/callStatus";
 import { useAppStore } from "../../shared/store/appStore";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
@@ -24,29 +25,29 @@ export function CallFacts({ call }: { call: LlmCall }) {
     ["Call ID", call.call_id],
     ["Run ID", call.run_id],
     ["Conversation ID", call.conversation_id],
-    [t("上游调用序号"), String(call.provider_call_index)],
+    [t("上游调用序号"), numberText(call.provider_call_index)],
     ["Model Hash", call.model_hash ?? "-"],
-    ["Created At", `${call.created_at_ms} · ${new Date(call.created_at_ms).toLocaleString()}`],
+    ["Created At", Number.isFinite(call.created_at_ms) ? `${call.created_at_ms} · ${new Date(call.created_at_ms).toLocaleString()}` : "-"],
   ] : [];
   const timing: Array<[string, string]> = developerMode ? [
-    [t("客户端来源"), call.client_source],
+    [t("客户端来源"), callClientLabel(call.client_source)],
     ["TTFB", formatDuration(call.ttfb_ms)],
     ["TTFR", formatDuration(call.ttfr_ms)],
     ["TTFT", formatDuration(call.ttft_ms)],
     [t("总耗时"), formatDuration(call.duration_ms)],
-    ["HTTP", call.http_status === null ? "-" : String(call.http_status)],
+    ["HTTP", numberText(call.http_status)],
     ["Finish Reason", call.finish_reason ?? "-"],
   ] : [
-    [t("客户端来源"), call.client_source],
+    [t("客户端来源"), callClientLabel(call.client_source)],
     [t("总耗时"), formatDuration(call.duration_ms)],
   ];
   const usage: Array<[string, string]> = [
-    [t("输入 Token"), call.input_tokens === null ? "-" : String(call.input_tokens)],
-    [t("输出 Token"), call.output_tokens === null ? "-" : String(call.output_tokens)],
-    [t("缓存读取"), call.cache_read_tokens === null ? "-" : String(call.cache_read_tokens)],
-    [t("缓存写入"), call.cache_write_tokens === null ? "-" : String(call.cache_write_tokens)],
-    [t("推理 Token"), call.reasoning_tokens === null ? "-" : String(call.reasoning_tokens)],
-    ...(developerMode ? [[t("消息 / 工具数"), `${call.message_count} / ${call.tool_count}`] as [string, string]] : []),
+    [t("输入 Token"), numberText(call.input_tokens)],
+    [t("输出 Token"), numberText(call.output_tokens)],
+    [t("缓存读取"), numberText(call.cache_read_tokens)],
+    [t("缓存写入"), numberText(call.cache_write_tokens)],
+    [t("推理 Token"), numberText(call.reasoning_tokens)],
+    ...(developerMode ? [[t("消息 / 工具数"), `${numberText(call.message_count)} / ${numberText(call.tool_count)}`] as [string, string]] : []),
   ];
   const context: Array<[string, string]> = developerMode ? [
     [t("上游类型"), call.provider_type],
@@ -68,6 +69,16 @@ export function CallFacts({ call }: { call: LlmCall }) {
       {!developerMode && call.provider_url && <p>{t("上游地址：{url}", { url: call.provider_url })}</p>}
     </div>}
   </div>;
+}
+
+/**
+ * 可选数值的统一呈现。
+ *
+ * 只判断 `=== null` 是不够的：服务端少给一个字段时值是 undefined，卡片上就会印出
+ * "undefined"/"Invalid Date"——看起来像应用坏了，而不是这一行缺数据。
+ */
+function numberText(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "-" : String(value);
 }
 
 function FactGroup({ title, rows }: { title: string; rows: Array<[string, string]> }) {

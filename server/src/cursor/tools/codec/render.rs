@@ -504,16 +504,6 @@ pub fn render_tool_call(call: &ToolCall, completed: bool) -> Result<pb::ToolCall
                 completed_subtitle: optional("completed_subtitle"),
             })
         }
-        Some(pb::tool_call::Tool::WriteShellStdinToolCall(tool)) => {
-            tool.args = Some(pb::WriteShellStdinArgs {
-                shell_id: call
-                    .arguments
-                    .get("shell_id")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default() as u32,
-                chars: string("chars"),
-            })
-        }
         Some(pb::tool_call::Tool::GetMcpToolsToolCall(tool)) => {
             tool.args = Some(pb::GetMcpToolsArgs {
                 server: optional("server"),

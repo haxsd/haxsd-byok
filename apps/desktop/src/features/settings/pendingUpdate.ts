@@ -1,16 +1,19 @@
 import { useSyncExternalStore } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import type { PendingUpdateRecord } from "../../shared/api";
 import { message } from "../../shared/ui/message";
+import { getUiPreferences, loadUiPreferences, saveUiPreferences } from "../../shared/store/uiPreferences";
 
 /**
  * 上一次应用内升级的期望值与复核结果。
  *
  * Windows 上 `install()` 启动安装器之后就结束本进程，装没装上只能由下一次启动回答；
- * 安装前把"期望升到哪个版本"写进 localStorage，启动时用实际版本比对一次。
+ * 安装前把"期望升到哪个版本"记下来，启动时用实际版本比对一次。
+ *
+ * 这条记录也存在服务端（原来在 localStorage，而那份值绑在管理端口 origin 上：端口一变，
+ * "装没装上"的判定就永远看不到记录了）。写入是即发即忘的——安装器一启动进程就没了，
+ * 等不到响应；`saveUiPreferences` 会先把值放进内存快照，所以本进程内的判定仍然正确。
  */
-const PENDING_UPDATE_KEY = "haxsd-byok.pending-update";
-
-type PendingUpdate = { from: string; to: string };
 
 export type PendingUpdateOutcome = {
   from: string;
@@ -21,12 +24,12 @@ export type PendingUpdateOutcome = {
 
 /** 安装前调用：记录本次期望升到哪个版本。 */
 export function rememberPendingUpdate(from: string, to: string) {
-  localStorage.setItem(PENDING_UPDATE_KEY, JSON.stringify({ from, to }));
+  void saveUiPreferences({ pendingUpdate: { from, to } });
 }
 
 /** 安装明确失败时调用：不需要等到下次启动再判定。 */
 export function forgetPendingUpdate() {
-  localStorage.removeItem(PENDING_UPDATE_KEY);
+  void saveUiPreferences({ pendingUpdate: null });
 }
 
 let outcome: PendingUpdateOutcome | null = null;
@@ -45,6 +48,13 @@ export function usePendingUpdateOutcome() {
 
 /** 启动时核对上一次升级；没有待核对的记录时什么也不做。 */
 export async function verifyPendingUpdate() {
+  // 偏好是异步读回来的：先等它，否则刚启动时会看不到待核对的记录。
+  try {
+    await loadUiPreferences();
+  } catch {
+    // 服务不可达：这次启动读不到记录，留给下一次。
+    return;
+  }
   const pending = readPendingUpdate();
   if (!pending) return;
   let actual: string;
@@ -65,15 +75,7 @@ export async function verifyPendingUpdate() {
   }
 }
 
-function readPendingUpdate(): PendingUpdate | null {
-  const raw = localStorage.getItem(PENDING_UPDATE_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<PendingUpdate>;
-    return typeof parsed.from === "string" && typeof parsed.to === "string"
-      ? { from: parsed.from, to: parsed.to }
-      : null;
-  } catch {
-    return null;
-  }
+function readPendingUpdate(): PendingUpdateRecord | null {
+  const pending = getUiPreferences().pendingUpdate;
+  return pending && typeof pending.from === "string" && typeof pending.to === "string" ? pending : null;
 }

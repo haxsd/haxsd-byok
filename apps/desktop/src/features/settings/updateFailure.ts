@@ -45,7 +45,7 @@ export const NOT_APPLIED: UpdateFailure = { kind: "policy", raw: "" };
 /** 分类对应的原因与下一步；在渲染路径里调用，所以切换语言后会跟着变。 */
 export function describeUpdateFailure(failure: UpdateFailure): string {
   if (failure.kind === "policy") {
-    return t("安装包被 Windows 系统策略拦下了（Smart App Control／代码完整性）；未签名的安装器会被直接拒绝执行。要装这个版本，需要关闭“智能应用控制”（不可逆），或改用带签名的安装包。");
+    return t("安装包被 Windows 系统策略拦下了（Smart App Control，即「智能应用控制」）。这个开关一旦关闭就无法再打开，关闭后未签名的安装器才能运行；也可以等带签名的安装包。");
   }
   if (failure.kind === "permission") {
     return t("安装程序没有写入权限。请手动下载安装包并以管理员身份运行，或检查安装目录的权限。");

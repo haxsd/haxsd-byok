@@ -1,23 +1,62 @@
 @use "../../styles/typography" as type;
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 680px;
-}
+/* 与 Devin 接入页同一套排版：卡片之间的间距来自全局节奏令牌，卡片内部的行距由
+   每行自己的 padding 给出，说明文字统一用 xs 的次要色。 */
+.page { display: grid; gap: var(--oa-section-gap); }
 
-.switchRow {
+.form { display: grid; }
+
+.settingRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
+  padding: 16px;
 }
 
-.hint {
+.settingRow > div { display: grid; gap: 5px; }
+.settingRow small, .note { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+
+/* The four settings are one group of fields, so they read as labels with controls
+   rather than as four stacked section headings. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.note { display: block; margin: 0; padding: 16px; }
+
+/* 字段内的说明：跟着它解释的那个控件走，不改字段原有的间距。 */
+.fieldNote {
+  display: block;
+  margin-top: 6px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
+.notes {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.notes p {
   margin: 0;
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
+}
+
+/* 冲突条目是「字段：接管时 X → 现在 Y」的清单：用列表缩进，别和上下说明混成一段。 */
+.conflictList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  overflow-wrap: anywhere;
 }
 
 .error {
@@ -31,4 +70,8 @@
   flex-wrap: wrap;
   gap: 16px;
   color: var(--vscode-descriptionForeground);
+}
+
+@media (max-width: 700px) {
+  .fields { grid-template-columns: 1fr; }
 }

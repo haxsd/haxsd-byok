@@ -1,10 +1,10 @@
 //! Machine-readable comparison report structures and Markdown rendering.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::metrics::{EffectMetrics, LatencyMetrics};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BenchmarkReport {
     pub schema_version: u32,
     pub generated_at_unix_seconds: u64,
@@ -14,14 +14,14 @@ pub struct BenchmarkReport {
     pub suites: Vec<SuiteReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Environment {
     pub os: String,
     pub architecture: String,
     pub rustc: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Configuration {
     pub top_k: usize,
     pub repetitions: usize,
@@ -29,14 +29,14 @@ pub struct Configuration {
     pub relevance: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OverallReport {
     pub system: String,
     pub track: String,
     pub effect: EffectMetrics,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SuiteReport {
     pub name: String,
     pub repository: String,
@@ -44,7 +44,7 @@ pub struct SuiteReport {
     pub systems: Vec<SystemReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SystemReport {
     pub system: String,
     pub version: String,
@@ -54,7 +54,7 @@ pub struct SystemReport {
     pub tracks: Vec<TrackReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IndexMetrics {
     pub cold_ready_ms: f64,
     pub cold_index_ms: f64,
@@ -74,7 +74,7 @@ pub struct IndexMetrics {
     pub source_mib_per_second: Option<f64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TrackReport {
     pub name: String,
     pub effect: EffectMetrics,
@@ -82,7 +82,7 @@ pub struct TrackReport {
     pub queries: Vec<QueryReport>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct QueryReport {
     pub id: String,
     pub query: String,
@@ -92,7 +92,7 @@ pub struct QueryReport {
     pub results: Vec<ResultSummary>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ResultSummary {
     pub rank: usize,
     pub path: String,

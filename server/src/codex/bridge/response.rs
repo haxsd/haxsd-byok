@@ -195,6 +195,14 @@ impl BridgeStream {
         }
     }
 
+    /// 当前槽已经认下的上游 call_id；还没有就是 `None`。
+    fn tool_call_id(&self, slot: usize) -> Option<&str> {
+        match self.slots.get(slot) {
+            Some(Slot::Tool { call_id, .. }) if !call_id.is_empty() => Some(call_id),
+            _ => None,
+        }
+    }
+
     // ===================== Chat =====================
 
     fn chat(&mut self, chunk: &Value, out: &mut Vec<Value>) -> Result<()> {
@@ -274,13 +282,28 @@ impl BridgeStream {
         index
     }
 
+    /// 归并一条 Chat 工具分片。
+    ///
+    /// 判据不能只看上游的 `index`：有的上游每次调用都从 0 重新编号，只按 index 归并
+    /// 会把两次调用并成一个、参数被拼在一起；也有的分片不带 index，按原样整轮失败。
+    /// 所以"新调用"的判据是"带非空 id，且与当前槽已有的 call_id 不同"；没有 id 的
+    /// 分片退回按 index 追加，index 缺失按 0 处理。
     fn chat_tool_delta(&mut self, call: &Value, out: &mut Vec<Value>) -> Result<()> {
-        let index = call
-            .get("index")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| Error::Protocol("Chat tool call delta is missing its index".into()))?;
-        let slot = match self.tool_slots.get(&index) {
-            Some(slot) => *slot,
+        let index = call.get("index").and_then(Value::as_u64).unwrap_or(0);
+        let incoming_id = call
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty());
+        let current = self.tool_slots.get(&index).copied();
+        let starts_new_call = match (incoming_id, current) {
+            (Some(id), Some(slot)) => self
+                .tool_call_id(slot)
+                .is_some_and(|existing| existing != id),
+            _ => false,
+        };
+        let slot = match current.filter(|_| !starts_new_call) {
+            Some(slot) => slot,
             None => {
                 let slot = self.push_slot(Slot::Tool {
                     id: self.new_id("fc"),
@@ -307,11 +330,7 @@ impl BridgeStream {
             else {
                 return Ok(());
             };
-            if let Some(id) = call
-                .get("id")
-                .and_then(Value::as_str)
-                .filter(|id| !id.is_empty())
-            {
+            if let Some(id) = incoming_id {
                 if call_id.is_empty() {
                     call_id.push_str(id);
                 }
@@ -883,14 +902,23 @@ fn replayable_thinking_block(block: &Value) -> bool {
     }
 }
 
+/// Chat 的 `finish_reason`：只把"确定是失败"的值当失败，其余都按完成处理。
+///
+/// 以前这里是成功白名单（`stop` / `tool_calls`），不在表里的值一律 `Err`：上游换用
+/// 旧取值（`function_call`）或自造成功值（`eos`）时，一整轮明明产出正常的回答被判成
+/// 失败。真正的失败不会因此被放过——这一轮没有任何可用输出时，`finish()` 仍会报错。
 fn chat_terminal(reason: &str) -> Result<Terminal> {
-    match reason {
+    match reason.to_ascii_lowercase().as_str() {
         "length" => Ok(Terminal::Incomplete("max_output_tokens")),
         "content_filter" => Ok(Terminal::Incomplete("content_filter")),
-        "stop" | "tool_calls" => Ok(Terminal::Completed),
-        other => Err(Error::Protocol(format!(
-            "unsupported Chat finish_reason: {other}"
-        ))),
+        failed
+            if failed.contains("fail") || failed.contains("error") || failed.contains("cancel") =>
+        {
+            Err(Error::Protocol(format!(
+                "the Chat upstream reported a failed turn: {reason}"
+            )))
+        }
+        _ => Ok(Terminal::Completed),
     }
 }
 
@@ -898,9 +926,197 @@ fn anthropic_terminal(reason: &str) -> Result<Terminal> {
     match reason {
         "max_tokens" => Ok(Terminal::Incomplete("max_output_tokens")),
         "refusal" => Ok(Terminal::Incomplete("content_filter")),
-        "end_turn" | "tool_use" | "stop_sequence" => Ok(Terminal::Completed),
+        // `pause_turn` 是上游"这一轮先停在这里"的正常取值，不是失败。
+        "end_turn" | "tool_use" | "stop_sequence" | "pause_turn" => Ok(Terminal::Completed),
         other => Err(Error::Protocol(format!(
             "unsupported Anthropic stop_reason: {other}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 上游用旧取值（`function_call`）或自造成功值（`eos`）命名成功的轮次时，不能被判成
+    /// 失败；失败值仍然报错（`codex_bridge_safety` 里那条 `vendor_failed` 断言就是这条边界）。
+    #[test]
+    fn legacy_and_unknown_chat_finish_reasons_complete_the_turn() {
+        for reason in [
+            "stop",
+            "tool_calls",
+            "function_call",
+            "eos",
+            "vendor_specific",
+        ] {
+            assert!(
+                matches!(chat_terminal(reason).unwrap(), Terminal::Completed),
+                "{reason}"
+            );
+        }
+        assert!(matches!(
+            chat_terminal("length").unwrap(),
+            Terminal::Incomplete("max_output_tokens")
+        ));
+        assert!(matches!(
+            chat_terminal("content_filter").unwrap(),
+            Terminal::Incomplete("content_filter")
+        ));
+        for reason in ["vendor_failed", "error", "cancelled", "CANCELED"] {
+            assert!(chat_terminal(reason).is_err(), "{reason}");
+        }
+        // Anthropic 的 `pause_turn` 是"这一轮先停在这里"，不是失败。
+        assert!(matches!(
+            anthropic_terminal("pause_turn").unwrap(),
+            Terminal::Completed
+        ));
+    }
+
+    fn shell_tools() -> ToolMap {
+        ToolMap::parse(Some(&json!([{
+            "type": "function", "name": "shell",
+            "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}}
+        }])))
+        .unwrap()
+    }
+
+    fn chat_chunk(delta: Value, finish: Value) -> Value {
+        json!({"id": "chatcmpl-1", "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    }
+
+    fn added_calls(events: &[Value]) -> Vec<(String, String)> {
+        events
+            .iter()
+            .filter(|event| event["type"] == "response.output_item.added")
+            .filter(|event| event["item"]["type"] == "function_call")
+            .map(|event| {
+                (
+                    event["item"]["call_id"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                    event["item"]["name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    fn arguments_of(events: &[Value]) -> String {
+        events
+            .iter()
+            .filter(|event| event["type"] == "response.function_call_arguments.delta")
+            .map(|event| event["delta"].as_str().unwrap_or_default())
+            .collect()
+    }
+
+    /// 上游复用同一个 index 连发两次调用：它们是两次调用，不能被并成一个。
+    #[test]
+    fn chat_tool_deltas_that_reuse_an_index_stay_separate_calls() {
+        let mut bridge = BridgeStream::new(UpstreamFormat::Chat, "vendor".into(), shell_tools());
+        let mut events = bridge
+            .push(&chat_chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_a", "type": "function",
+                    "function": {"name": "shell", "arguments": "{\"cmd\":\"ls\"}"}}]}),
+                Value::Null,
+            ))
+            .unwrap();
+        events.extend(
+            bridge
+                .push(&chat_chunk(
+                    json!({"tool_calls": [{"index": 0, "id": "call_b", "type": "function",
+                        "function": {"name": "shell", "arguments": "{\"cmd\":\"pwd\"}"}}]}),
+                    json!("tool_calls"),
+                ))
+                .unwrap(),
+        );
+        events.extend(bridge.finish().unwrap());
+
+        assert_eq!(
+            added_calls(&events),
+            vec![
+                ("call_a".to_string(), "shell".to_string()),
+                ("call_b".to_string(), "shell".to_string()),
+            ],
+            "复用 index 的两次调用必须各自成为一个 function_call 条目：{events:?}"
+        );
+        let output = bridge.output();
+        let calls = output
+            .iter()
+            .filter(|item| item["type"] == "function_call")
+            .collect::<Vec<_>>();
+        assert_eq!(
+            calls.len(),
+            2,
+            "两个条目都要出现在最终 output 里: {output:?}"
+        );
+        assert_eq!(calls[0]["arguments"], "{\"cmd\":\"ls\"}");
+        assert_eq!(
+            calls[1]["arguments"], "{\"cmd\":\"pwd\"}",
+            "参数不能被拼到前一次调用上"
+        );
+    }
+
+    /// 缺 index 的分片以前整轮失败：按 0 处理，参数照常累积。
+    #[test]
+    fn chat_tool_deltas_without_an_index_are_appended() {
+        let mut bridge = BridgeStream::new(UpstreamFormat::Chat, "vendor".into(), shell_tools());
+        let mut events = bridge
+            .push(&chat_chunk(
+                json!({"tool_calls": [{"id": "call_a", "type": "function",
+                    "function": {"name": "shell", "arguments": "{\"cmd\":"}}]}),
+                Value::Null,
+            ))
+            .unwrap();
+        events.extend(
+            bridge
+                .push(&chat_chunk(
+                    json!({"tool_calls": [{"function": {"arguments": "\"ls\"}"}}]}),
+                    json!("tool_calls"),
+                ))
+                .unwrap(),
+        );
+        events.extend(bridge.finish().unwrap());
+
+        assert_eq!(
+            added_calls(&events),
+            vec![("call_a".to_string(), "shell".to_string())]
+        );
+        assert_eq!(
+            arguments_of(&events),
+            "{\"cmd\":\"ls\"}",
+            "同一个 index（缺省 0）的分片必须继续累积到同一个调用上"
+        );
+    }
+
+    /// 同一调用的后续分片会重复带上 id：重复的 id 不能又开一个新调用。
+    #[test]
+    fn repeated_ids_stay_in_one_call() {
+        let mut bridge = BridgeStream::new(UpstreamFormat::Chat, "vendor".into(), shell_tools());
+        let mut events = bridge
+            .push(&chat_chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_a", "type": "function",
+                    "function": {"name": "shell", "arguments": "{\"cmd\":"}}]}),
+                Value::Null,
+            ))
+            .unwrap();
+        events.extend(
+            bridge
+                .push(&chat_chunk(
+                    json!({"tool_calls": [{"index": 0, "id": "call_a",
+                        "function": {"arguments": "\"ls\"}"}}]}),
+                    json!("tool_calls"),
+                ))
+                .unwrap(),
+        );
+        events.extend(bridge.finish().unwrap());
+
+        assert_eq!(
+            added_calls(&events),
+            vec![("call_a".to_string(), "shell".to_string())]
+        );
+        assert_eq!(bridge.output().len(), 1);
     }
 }

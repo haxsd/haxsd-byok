@@ -102,7 +102,8 @@ let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", mode
 let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
-    configured: codexConfigured, config_conflict: false, home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
+    configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
+    home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
 }
 
 let devinSettings: DevinSettings = {
@@ -139,7 +140,18 @@ let proxySettings: ProxySettings = {
   has_password: false,
 };
 let tabSettings: TabSettings = { mode: "public", address: "" };
-let storage: StatisticsStorage = { bytes: 26_004_480, call_count: calls.length, trace_count: calls.length };
+// 演示数据：数据库文件比可清理的观测数据大得多，正好演示两种"大"的区别；抓取缓存再单列一个
+// 较小的数字，演示它与库内占用是分开统计、分开清理的。
+// `conversation_retention_days` 与真实服务端的回收常量一致（见 server/src/store/retention.rs）。
+let storage: StatisticsStorage = {
+  bytes: 26_004_480,
+  database_bytes: 1_212_334_080,
+  call_count: calls.length,
+  trace_count: calls.length,
+  conversation_retention_days: 3,
+  web_cache_bytes: 8_912_896,
+  web_cache_files: 412,
+};
 
 export function installDemoApi() {
   const nativeFetch = window.fetch.bind(window);
@@ -191,14 +203,19 @@ export function installDemoApi() {
       return json(harnessStatus);
     }
     if (path === "/codex/status") return json(codexStatus());
-    if (path === "/codex/settings" && method === "GET") return json(codexSettings);
-    if (path === "/codex/settings" && method === "PUT") {
-      if (codexConfigured) return json({ error: { message: "Restore Codex configuration before editing" } }, 409);
+    if (path === "/codex/settings" && method === "GET") return json(codexSettings);    if (path === "/codex/settings" && method === "PUT") {
+      // 原句、前缀与状态码都照抄服务端（server/src/error.rs:12 的 `configuration error: {0}` +
+      // gateway.rs:201；`Error::Config` → 400 `invalid_argument`），这样演示里的失败提示也能命中
+      // harnessErrorText 的映射。
+      if (codexConfigured) return json(errorBody(400, "configuration error: restore the applied Codex configuration before changing gateway settings"), 400);
       codexSettings = body as CodexSettings;
       return json(codexSettings);
     }
     if (path === "/codex/apply" && method === "POST") {
-      if (!codexSettings.enabled || !codexSettings.default_model_hash) return json({ error: { message: "Enable Codex and select a model first" } }, 400);
+      // 服务端 apply 的两个前置条件各有一句原话（gateway.rs:258-262 / :277-281），不能合并成
+      // 一句自造的"Enable Codex and select a model first"：既不像产品文案，也认不出是哪一条。
+      if (!codexSettings.enabled) return json(errorBody(400, "configuration error: enable the Codex gateway before applying configuration"), 400);
+      if (!codexSettings.default_model_hash) return json(errorBody(400, "configuration error: select a default Codex model"), 400);
       codexConfigured = true;
       return json(codexStatus());
     }
@@ -208,9 +225,39 @@ export function installDemoApi() {
       devinSettings = body as DevinSettings;
       return json(devinSettings);
     }
+    // 演示里也要有这几条：缺了它们，演示页面会在顶栏弹一条红色「部分数据刷新失败」，
+    // 并在 Devin / 插件页显示"未处理的端点"，看起来像产品坏了。
+    if (path === "/devin/status") return json({ enabled: devinSettings.enabled, listening: devinSettings.enabled, calls: 0 });
+    if (path === "/harness/devin/model-uids") {
+      return json({
+        path: "/demo/resources/app/extensions/windsurf/extension.js",
+        choices: [
+          { name: "SWE-1.6 Slow", uid: "swe-1-6-slow" },
+          { name: "SWE-1.5", uid: "swe-1-5" },
+          { name: "Claude Sonnet 4", uid: "claude-sonnet-4" },
+          { name: "GPT-5.1", uid: "gpt-5-1" },
+        ],
+      });
+    }
+    if (path === "/plugins/runtime") {
+      return json({ state: "ready", version: "0.1.0-demo", target: null, phase: null, downloaded_bytes: 0, total_bytes: null, error: null });
+    }
+    if (path === "/plugins") return json([]);
+    if (path === "/settings/commit" && method === "GET") {
+      return json({ model_id: "", prompt: "", prompt_locale: "zh-CN", default_prompt: "Write a commit message for the staged changes." });
+    }
+    if (path === "/settings/commit") {
+      const next = body as { model_id?: string; prompt?: string; prompt_locale?: "zh-CN" | "en-US" } | null;
+      return json({
+        model_id: next?.model_id ?? "",
+        prompt: next?.prompt ?? "",
+        prompt_locale: next?.prompt_locale ?? "zh-CN",
+        default_prompt: "Write a commit message for the staged changes.",
+      });
+    }
     if (path === "/harness/devin/host/status" && method === "GET") {
       const hostPath = url.searchParams.get("path") || "";
-      if (!hostPath) return json({ message: "请输入宿主文件路径" }, 400);
+      if (!hostPath) return json(errorBody(400, "Devin host file path must be absolute"), 400);
       devinHostStatus ??= {
         path: hostPath,
         compatible: true,
@@ -235,7 +282,7 @@ export function installDemoApi() {
     }
     if (path === "/harness/devin/host/restore" && method === "POST") {
       if (!devinHostReceipt || (body as { path?: string } | null)?.path !== devinHostReceipt.path) {
-        return json({ message: "No matching persisted restore receipt" }, 400);
+        return json(errorBody(400, "no usable Devin host restore receipt"), 400);
       }
       devinHostReceipt = null;
       devinHostStatus = null;
@@ -246,7 +293,7 @@ export function installDemoApi() {
       const modelHash = decodeURIComponent(path.slice("/settings/pricing/".length));
       if (method === "PUT") pricingSettings.models[modelHash] = body as ModelTokenPricing;
       else if (method === "DELETE") delete pricingSettings.models[modelHash];
-      else return json({ message: "Unsupported pricing method" }, 405);
+      else return json(errorBody(405, "Unsupported pricing method"), 405);
       return json(pricingSettings);
     }
     if (path === "/settings/observability" && method === "GET") return json({ detailed });
@@ -262,9 +309,13 @@ export function installDemoApi() {
     if (path === "/settings/storage/statistics" && method === "GET") return json(storage);
     if (path === "/settings/storage/statistics") {
       const scope = (body as { scope?: string } | null)?.scope ?? "details";
+      // 清理不会缩小数据库文件（SQLite 复用释放页），演示里也照这个事实来。抓取缓存是文件系统
+      // 里的东西，只有 web_cache 作用域清它——两者分开，与真实服务端一致。
       storage = scope === "all"
-        ? { bytes: 0, call_count: 0, trace_count: 0 }
-        : { ...storage, bytes: 0 };
+        ? { ...storage, bytes: 0, call_count: 0, trace_count: 0 }
+        : scope === "web_cache"
+          ? { ...storage, web_cache_bytes: 0, web_cache_files: 0 }
+          : { ...storage, bytes: 0 };
       return json(storage);
     }
     if (path === "/settings/proxy" && method === "GET") return json(proxySettings);
@@ -295,7 +346,7 @@ export function installDemoApi() {
     }
     if (path.endsWith("/dismissals")) return empty();
 
-    return json({ message: `Unhandled demo endpoint: ${method} ${path}` }, 404);
+    return json(errorBody(404, `Unhandled demo endpoint: ${method} ${path}`), 404);
   };
 }
 
@@ -432,4 +483,24 @@ function json(value: unknown, status = 200) {
 
 function empty() {
   return new Response(null, { status: 204 });
+}
+
+/**
+ * 演示里的错误响应：与真实服务端**同形**（server/src/error.rs 的 IntoResponse）。
+ *
+ * 这里以前写的是 `{error:{message}}`，而 `shared/api.ts` 读的是 `parsed.message`——读不到
+ * 就把整段正文当成提示条内容，于是演示里的错误提示是一串原始 JSON。真实服务端的形状是
+ * `{code,message}`，code 由状态码映射（与 error.rs 同一张表），演示要能替身就得一模一样。
+ */
+export function errorCode(status: number): string {
+  if (status === 400) return "invalid_argument";
+  if (status === 404) return "not_found";
+  if (status === 409) return "aborted";
+  if (status === 502) return "unavailable";
+  return "internal";
+}
+
+/** 错误正文：`{code,message}`，与 error.rs 一致。 */
+export function errorBody(status: number, message: string) {
+  return { code: errorCode(status), message };
 }

@@ -4,7 +4,7 @@ use crate::{
         protocol::{events, proto::agent::v1 as pb},
         tools::{
             compat, edit,
-            runtime::{CursorToolRuntime, ExecStage, PendingExec},
+            runtime::{CursorToolRuntime, ExecStage, ExecTake, PendingExec},
             tool_call_result::{self as result, ToolCompletion},
         },
     },
@@ -49,7 +49,9 @@ pub async fn client_event(
         return Ok(ClientExecEvent::Pending);
     };
     let pb::exec_client_message::Message::ShellStream(stream) = wire_result else {
-        let entry = take(message.id, pending).await?;
+        let Some(entry) = take(message.id, pending).await else {
+            return Ok(ClientExecEvent::Pending);
+        };
         return match entry.stage {
             ExecStage::EditRead => advance_edit(entry, wire_result, pending).await,
             ExecStage::Direct | ExecStage::DynamicMcp(_) | ExecStage::EditWrite(_) => {
@@ -75,12 +77,16 @@ pub async fn client_event(
         }
         Some(Event::Start(_)) | Some(Event::HookContext(_)) => ClientExecEvent::Pending,
         Some(Event::Exit(exit)) => {
-            let entry = take(message.id, pending).await?;
+            let Some(entry) = take(message.id, pending).await else {
+                return Ok(ClientExecEvent::Pending);
+            };
             let result = shell_exit_result(message, exit, &entry.stdout, &entry.stderr);
             completed(entry, pb::exec_client_message::Message::ShellResult(result))?
         }
         Some(Event::Backgrounded(backgrounded)) => {
-            let entry = take(message.id, pending).await?;
+            let Some(entry) = take(message.id, pending).await else {
+                return Ok(ClientExecEvent::Pending);
+            };
             let result = shell_backgrounded_result(
                 backgrounded,
                 &entry.stdout,
@@ -246,11 +252,15 @@ async fn advance_edit(
             entry.started_at_ms,
         )
         .await?;
-    Ok(ClientExecEvent::Message(Box::new(edit_write_request(
-        id,
-        &entry.call,
-        &write,
-    )?)))
+    let request = match edit_write_request(id, &entry.call, &write) {
+        Ok(request) => request,
+        Err(error) => {
+            // 写请求编码失败时同样要摘掉登记(见 tool_call_dispatch/exec.rs 的 encode)。
+            registry.discard_exec(id).await;
+            return Err(error);
+        }
+    };
+    Ok(ClientExecEvent::Message(Box::new(request)))
 }
 
 async fn complete(
@@ -258,14 +268,27 @@ async fn complete(
     pending: &CursorToolRuntime,
     result: pb::exec_client_message::Message,
 ) -> Result<ClientExecEvent> {
-    completed(take(id, pending).await?, result)
+    let Some(entry) = take(id, pending).await else {
+        return Ok(ClientExecEvent::Pending);
+    };
+    completed(entry, result)
 }
 
-async fn take(id: u32, pending: &CursorToolRuntime) -> Result<PendingExec> {
-    pending
-        .take_exec(id)
-        .await
-        .ok_or_else(|| Error::Protocol(format!("unknown terminal Exec id: {id}")))
+/// 取走终态事件对应的 exec。"已打断"与"未知 id"都只记日志、不返回错误:
+/// 客户端的终态事件可能与用户插话抢时序(`take_exec_unless_interrupted` 说明),把它当
+/// 致命协议错误会让整轮失败,而这条事件本身没有任何非法之处。
+async fn take(id: u32, pending: &CursorToolRuntime) -> Option<PendingExec> {
+    match pending.take_exec_unless_interrupted(id).await {
+        ExecTake::Taken(entry) => Some(entry),
+        ExecTake::Interrupted => None,
+        ExecTake::Missing => {
+            tracing::warn!(
+                id,
+                "ignoring terminal response for an unknown tool execution"
+            );
+            None
+        }
+    }
 }
 
 fn completed(
@@ -369,4 +392,60 @@ fn shell_delta(call: &ToolCall, stdout: bool, content: &str) -> pb::AgentServerM
             model_call_id: call.model_call_id.clone(),
         },
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cursor::tools::runtime::ExecContext;
+
+    fn terminal_message(id: u32) -> pb::ExecClientMessage {
+        pb::ExecClientMessage {
+            id,
+            message: Some(pb::exec_client_message::Message::ShellResult(
+                pb::ShellResult::default(),
+            )),
+            ..Default::default()
+        }
+    }
+
+    /// 取不到 exec 曾经是 `Error::Protocol("unknown terminal Exec id")`,一路传到 run 结果里
+    /// 变成整轮失败;现在只记日志并忽略这条终态事件。
+    #[tokio::test]
+    async fn taking_an_unknown_exec_is_not_an_error() {
+        let runtime = CursorToolRuntime::default();
+        assert!(take(9, &runtime).await.is_none());
+    }
+
+    /// 迟到的终态事件(客户端推来、服务端已经没有这条 exec)同样只是被忽略。
+    #[tokio::test]
+    async fn a_terminal_event_without_a_pending_exec_is_ignored() {
+        let runtime = CursorToolRuntime::default();
+        let event = client_event(&terminal_message(42), &runtime).await.unwrap();
+        assert!(matches!(event, ClientExecEvent::Pending));
+    }
+
+    /// 用户插话摘掉 exec 之后到达的终态事件:保持"忽略",不冒泡成错误。
+    #[tokio::test]
+    async fn a_terminal_event_for_an_interrupted_exec_is_ignored() {
+        let runtime = CursorToolRuntime::default();
+        let call = ToolCall {
+            index: 0,
+            call_id: "shell-call".into(),
+            model_call_id: "model-shell-call".into(),
+            name: "Shell".into(),
+            arguments_text: String::new(),
+            arguments: serde_json::json!({"command": "echo hi"}),
+            argument_error: None,
+        };
+        let id = runtime
+            .reserve_exec(&call, &ExecContext::default())
+            .await
+            .unwrap();
+        runtime.interrupt_for_message().await;
+
+        let event = client_event(&terminal_message(id), &runtime).await.unwrap();
+
+        assert!(matches!(event, ClientExecEvent::Pending));
+    }
 }

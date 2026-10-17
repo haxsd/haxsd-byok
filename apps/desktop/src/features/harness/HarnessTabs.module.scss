@@ -1,0 +1,102 @@
+@use "../../styles/typography" as type;
+
+/*
+ * 接入模块的客户端切换。
+ *
+ * 它占导航条下面那条切换带（AppLayout 的 .harnessBar）：带高由 --app-harness-band
+ * 给出，标题带与页面内容都跟着这条带下移，所以切换项不覆盖页面标题与说明。这里
+ * 只负责把切换项铺满那条带——高度交给带，自己不写死数字。
+ *
+ * 窄窗口下参考顶栏的做法：先收起状态词，再收起图标。
+ */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tab {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  color: var(--vscode-descriptionForeground);
+  text-decoration: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--oa-radius-md);
+  font: inherit;
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--oa-transition-fast),
+    background var(--oa-transition-fast),
+    border-color var(--oa-transition-fast);
+
+  &:hover {
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--oa-focus-ring);
+  }
+
+  /* 当前客户端与顶栏的当前入口用同一种信号：实心药丸 + 自己的强调色。 */
+  &[aria-current="page"] {
+    color: var(--vscode-foreground);
+    background: var(--oa-accent-soft);
+    border-color: color-mix(in srgb, var(--oa-accent) 45%, transparent);
+  }
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 与顶栏同一套状态词样式：圆点 + 词，颜色由 tone 决定。 */
+.status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-weight: type.$font-weight-regular;
+
+  &::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    background: currentColor;
+    border-radius: 50%;
+  }
+
+  &[data-tone="ok"] { color: var(--oa-ok); }
+  &[data-tone="warn"] { color: var(--oa-warn); }
+  &[data-tone="bad"] { color: var(--oa-bad); }
+}
+
+/* 状态词在窄窗口收起，客户端名称与顺序保留（与顶栏的让位顺序一致）。 */
+@media (max-width: 1120px) {
+  .status { display: none; }
+}
+
+@media (max-width: 900px) {
+  .tab { gap: 5px; padding: 0 7px; }
+  .tab > div { display: none; }
+}

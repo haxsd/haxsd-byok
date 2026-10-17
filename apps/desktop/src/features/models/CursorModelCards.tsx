@@ -325,10 +325,14 @@ function ModelGrid({
 
 /** 上下文、输出上限和思考强度：决定一个模型能不能接住这个活的三个数字。 */
 function ModelChips({ model }: { model: Model }) {
-  const maxOutput = model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens;
+  // 数字要按"有没有"判断（服务端少给一个字段时是 undefined），不能只和 null 比：
+  // 那样坏数据会把「上下文 undefined」印在卡片上，看起来像坏了。
+  const contextTokens = Number.isFinite(model.context_window_tokens) ? model.context_window_tokens : null;
+  const rawMaxOutput = model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens;
+  const maxOutput = Number.isFinite(rawMaxOutput) ? rawMaxOutput : null;
   return <>
-    {model.context_window_tokens !== null && <span className={styles.chip}>
-      {t("上下文 {tokens}", { tokens: formatTokens(model.context_window_tokens) })}
+    {contextTokens !== null && <span className={styles.chip}>
+      {t("上下文 {tokens}", { tokens: formatTokens(contextTokens) })}
     </span>}
     {maxOutput !== null && <span className={styles.chip}>
       {t("输出上限 {tokens}", { tokens: formatTokens(maxOutput) })}
@@ -353,12 +357,13 @@ function endpointLabel(model: Model) {
 
 function providerGroup(model: Model) {
   const key = providerDomain(model.base_url);
-  const label = model.group_name?.trim() || key;
+  const label = String(model.group_name ?? "").trim() || key;
   return { key, label, icon: flatColorOrganizationIcon };
 }
 
 function providerDomain(baseUrl: string) {
-  const value = baseUrl.trim();
+  // 服务端少给一个地址时按空串处理：分组名退化成一个空标签，页面照常渲染。
+  const value = String(baseUrl ?? "").trim();
   try {
     return new URL(value).hostname.toLowerCase() || value;
   } catch {

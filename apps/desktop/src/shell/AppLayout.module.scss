@@ -4,9 +4,22 @@
   --app-toolbar-height: 34px;
   --app-page-max-width: 1280px;
   --app-page-padding: var(--app-page-gutter);
+  /* 接入模块在导航条与标题带之间多一条客户端切换带；别的页面这一条为 0，
+     所以下面这条内容偏移公式对所有页面都成立（接入页的取值见 .harnessModule）。 */
+  --app-harness-band: 0px;
   /* Header, then the navigation bar, then the band that holds the page title. */
-  --app-content-top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-title-band));
+  --app-content-top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-harness-band) + var(--app-title-band));
   background: var(--vscode-editor-background);
+}
+
+/*
+ * 接入页（三个客户端共用 /harness/* 前缀）：切换带占一条自己的高度，标题带、页面
+ * 动作区与页面内容都顺着内容偏移公式一起下移，谁都不压在谁身上。
+ *
+ * 带高借用标题带的令牌：两条带上下相邻，等高才读成同一段窗口顶部。
+ */
+.root.harnessModule {
+  --app-harness-band: var(--app-title-band);
 }
 
 /*
@@ -241,12 +254,30 @@
   }
 }
 
+/*
+ * 接入模块的客户端切换带：导航条之下、标题带之上的一条自己的高度。
+ *
+ * 切换不在标题带上叠加（那会把标题与说明盖住），而是占一条自己的带；标题带、
+ * 页面动作区与页面内容都因为 --app-harness-band 一起下移。
+ */
+.harnessBar {
+  position: absolute;
+  z-index: 12500;
+  top: calc(var(--window-safe-top) + var(--app-nav-height));
+  left: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
+  height: var(--app-harness-band);
+  max-width: calc(100% - var(--app-page-padding) * 2);
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
 /* Sits in the title band, right-aligned with the page content, so the navigation bar
    keeps its full width for the items. */
 .actionRegion {
   position: absolute;
   z-index: 12500;
-  top: calc(var(--window-safe-top) + var(--app-nav-height));
+  top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-harness-band));
   right: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
   height: var(--app-title-band);
   display: flex;

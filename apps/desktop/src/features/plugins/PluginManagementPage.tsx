@@ -15,6 +15,8 @@ import { StatusPill, type StatusTone } from "../../shared/ui/StatusPill";
 import { useMessage } from "../../shared/ui/message";
 import { alertCircleIcon, downloadIcon, puzzleIcon, uploadIcon } from "../../shared/ui/icons";
 import { PluginAddPanel, PluginSettingsPanel } from "./PluginResourcePanels";
+import { writeFailureText } from "../harness/harnessErrorText";
+import { importBatches, importSizeProblem, MAX_IMPORT_FILE_BYTES, MAX_IMPORT_TOTAL_BYTES } from "./importLimits";
 import styles from "./PluginManagementPage.module.scss";
 import toolbar from "../../shared/ui/Toolbar.module.scss";
 
@@ -240,29 +242,68 @@ function PluginCard({ plugin, onOpen }: {
   const configured = plugin.providers.some((provider) => provider.configured);
   const accountCount = plugin.resources.reduce((count, resource) => count + resource.resources.length, 0);
   const modelCount = plugin.providers.reduce((count, provider) => count + provider.models.length, 0);
+  // 模型总数会把停用的算进去：管理开关的效果要在这里就看得见，不然只能打开弹窗逐个比对。
+  const enabledModelCount = plugin.providers.reduce(
+    (count, provider) => count + provider.models.filter((model) => model.enabled).length,
+    0,
+  );
   const subtitle = plugin.providers.map((provider) => pluginText(provider.displayName, locale)).join(" · ") || plugin.id;
   const importResource = plugin.resources.find((resource) => resource.import);
   const exportResource = plugin.resources.find((resource) => resource.resources.length > 0);
 
   const importFiles = async (files: FileList | null) => {
     if (!files?.length || !importResource) return;
+    const selected = [...files];
+    const problem = importSizeProblem(selected);
+    if (problem) {
+      // 在读任何文件之前说清楚：导入失败的原因是体积，不是格式或账号。
+      message.error(problem.kind === "file-too-large"
+        ? t("单个导入文件不能超过 {limit}（{name} 超了）。", { limit: formatBytes(MAX_IMPORT_FILE_BYTES), name: problem.name })
+        : t("一次导入的总大小不能超过 {limit}；请分批导入。", { limit: formatBytes(MAX_IMPORT_TOTAL_BYTES) }),
+      { duration: 8_000 });
+      if (importInput.current) importInput.current.value = "";
+      return;
+    }
     setImporting(true);
     try {
-      const entries: PluginImportFile[] = await Promise.all(
-        [...files].map(async (file) => ({ name: file.name, content: await file.text() })),
-      );
-      const result = await api.importPluginResources(plugin.id, importResource.type, entries);
+      // 分批提交：一次请求体过大同样会被服务端拒绝。中途失败时前面几批已经落库，
+      // 提示里要说清"已导入到第几个文件"，否则用户会以为整批都没生效。
+      const batches = importBatches(selected);
+      const totals = { added: 0, updated: 0, warnings: [] as string[], modelSyncError: null as string | null };
+      let done = 0;
+      for (const batch of batches) {
+        let result;
+        try {
+          const entries: PluginImportFile[] = await Promise.all(
+            batch.map(async (file) => ({ name: file.name, content: await file.text() })),
+          );
+          result = await api.importPluginResources(plugin.id, importResource.type, entries);
+        } catch (cause) {
+          // 写超时要说"结果未知"：导入是分批 POST，超时那一批可能已经在服务端落库了，
+          // 直接说"失败"会让人原样重来一次。
+          const reason = writeFailureText(cause);
+          const partial = done > 0
+            ? t("已导入 {count} 个文件后失败：{error}", { count: done, error: reason })
+            : reason;
+          throw new Error(partial);
+        }
+        done += batch.length;
+        totals.added += result.added;
+        totals.updated += result.updated;
+        totals.warnings.push(...result.warnings);
+        totals.modelSyncError ??= result.modelSyncError;
+      }
       await appStore.refreshPlugins();
-      const summary = t("导入完成：新增 {added}，更新 {updated}", { added: result.added, updated: result.updated });
-      if (result.modelSyncError) {
-        message(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }), { duration: 5000 });
-      } else if (result.warnings.length > 0) {
-        message(`${summary} · ${result.warnings.join("; ")}`, { duration: 5000 });
+      const summary = t("导入完成：新增 {added}，更新 {updated}", { added: totals.added, updated: totals.updated });
+      if (totals.modelSyncError) {
+        message(t("账号已保存，但同步模型失败：{error}", { error: totals.modelSyncError }), { duration: 5000 });
+      } else if (totals.warnings.length > 0) {
+        message(`${summary} · ${totals.warnings.join("; ")}`, { duration: 5000 });
       } else {
         message(summary);
       }
     } catch (cause) {
-      message.error(cause, { duration: 5000 });
+      message.error(cause, { duration: 8000 });
     } finally {
       setImporting(false);
       if (importInput.current) importInput.current.value = "";
@@ -309,6 +350,7 @@ function PluginCard({ plugin, onOpen }: {
       <div className={styles.pluginStats}>
         <span><strong>{accountCount}</strong>{t("个账号")}</span>
         <span><strong>{modelCount}</strong>{t("个模型")}</span>
+        <span><strong>{enabledModelCount}</strong>{t("个已启用")}</span>
         {plugin.version && <span className={styles.pluginVersion}>v{plugin.version}</span>}
       </div>
       {plugin.author && <div className={styles.pluginAuthor}>{plugin.author}</div>}

@@ -231,54 +231,55 @@ impl PluginStateStore {
             .data
             .read(plugin_id, &resource_key(resource_type))
             .await?;
-        if value.is_null() {
-            return Ok(Vec::new());
-        }
-        Ok(serde_json::from_value(value)?)
+        decode_records(value)
     }
 
+    /// 用插件上报的草稿合并资源。整段读改写在一个临界区里（`PluginDataStore::modify`）：
+    /// 宿主会并发调用同一插件，分两次加锁会让后写的用旧快照盖掉先写的。
     pub async fn upsert_resources(
         &self,
         plugin_id: &str,
         resource_type: &str,
         drafts: Vec<ResourceDraft>,
     ) -> Result<UpsertOutcome> {
-        let mut records = self.resources(plugin_id, resource_type).await?;
-        let now = now_ms();
-        let mut outcome = UpsertOutcome {
-            added: 0,
-            updated: 0,
-        };
-        for draft in drafts {
-            if draft.key.trim().is_empty() {
-                return Err(Error::Protocol("plugin resource draft requires key".into()));
-            }
-            let state = draft
-                .state
-                .map_or(ResourceState::Ready, ResourceState::from);
-            match records.iter_mut().find(|record| record.key == draft.key) {
-                Some(existing) => {
-                    existing.private_data = draft.private_data;
-                    existing.state = state;
-                    existing.updated_at_ms = now;
-                    outcome.updated += 1;
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |current| {
+                let mut records = decode_records::<ResourceRecord>(current)?;
+                let now = now_ms();
+                let mut outcome = UpsertOutcome {
+                    added: 0,
+                    updated: 0,
+                };
+                for draft in drafts {
+                    if draft.key.trim().is_empty() {
+                        return Err(Error::Protocol("plugin resource draft requires key".into()));
+                    }
+                    let state = draft
+                        .state
+                        .map_or(ResourceState::Ready, ResourceState::from);
+                    match records.iter_mut().find(|record| record.key == draft.key) {
+                        Some(existing) => {
+                            existing.private_data = draft.private_data;
+                            existing.state = state;
+                            existing.updated_at_ms = now;
+                            outcome.updated += 1;
+                        }
+                        None => {
+                            records.push(ResourceRecord {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                key: draft.key,
+                                private_data: draft.private_data,
+                                state,
+                                created_at_ms: now,
+                                updated_at_ms: now,
+                            });
+                            outcome.added += 1;
+                        }
+                    }
                 }
-                None => {
-                    records.push(ResourceRecord {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        key: draft.key,
-                        private_data: draft.private_data,
-                        state,
-                        created_at_ms: now,
-                        updated_at_ms: now,
-                    });
-                    outcome.added += 1;
-                }
-            }
-        }
-        self.save_resources(plugin_id, resource_type, &records)
-            .await?;
-        Ok(outcome)
+                Ok((serde_json::to_value(records)?, outcome))
+            })
+            .await
     }
 
     pub async fn apply_patch(
@@ -288,19 +289,22 @@ impl PluginStateStore {
         resource_id: &str,
         patch: ResourcePatch,
     ) -> Result<()> {
-        let mut records = self.resources(plugin_id, resource_type).await?;
-        let record = records
-            .iter_mut()
-            .find(|record| record.id == resource_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
-        if let Some(private_data) = patch.private_data {
-            record.private_data = private_data;
-        }
-        if let Some(state) = patch.state {
-            record.state = state.into();
-        }
-        record.updated_at_ms = now_ms();
-        self.save_resources(plugin_id, resource_type, &records)
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |current| {
+                let mut records = decode_records::<ResourceRecord>(current)?;
+                let record = records
+                    .iter_mut()
+                    .find(|record| record.id == resource_id)
+                    .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
+                if let Some(private_data) = patch.private_data {
+                    record.private_data = private_data;
+                }
+                if let Some(state) = patch.state {
+                    record.state = state.into();
+                }
+                record.updated_at_ms = now_ms();
+                Ok((serde_json::to_value(records)?, ()))
+            })
             .await
     }
 
@@ -310,48 +314,46 @@ impl PluginStateStore {
         resource_type: &str,
         resource_id: &str,
     ) -> Result<ResourceRecord> {
-        let mut records = self.resources(plugin_id, resource_type).await?;
-        let index = records
-            .iter()
-            .position(|record| record.id == resource_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
-        let removed = records.remove(index);
-        self.save_resources(plugin_id, resource_type, &records)
-            .await?;
-        Ok(removed)
+        self.data
+            .modify(plugin_id, &resource_key(resource_type), |current| {
+                let mut records = decode_records::<ResourceRecord>(current)?;
+                let index = records
+                    .iter()
+                    .position(|record| record.id == resource_id)
+                    .ok_or_else(|| Error::RunNotFound(format!("plugin resource {resource_id}")))?;
+                let removed = records.remove(index);
+                Ok((serde_json::to_value(&records)?, removed))
+            })
+            .await
     }
 
     pub async fn models(&self, plugin_id: &str, provider_id: &str) -> Result<Vec<StoredModel>> {
         let value = self.data.read(plugin_id, &model_key(provider_id)).await?;
-        if value.is_null() {
-            return Ok(Vec::new());
-        }
-        Ok(serde_json::from_value(value)?)
+        decode_records(value)
     }
 
+    /// 整体替换模型目录，但保留本地已有的启用开关。读改写同样在一个临界区里。
     pub async fn replace_models(
         &self,
         plugin_id: &str,
         provider_id: &str,
         models: &[StoredModel],
     ) -> Result<()> {
-        let previous = self.models(plugin_id, provider_id).await?;
-        let models = models
-            .iter()
-            .cloned()
-            .map(|mut model| {
-                if let Some(old) = previous.iter().find(|old| old.id == model.id) {
-                    model.enabled = old.enabled;
-                }
-                model
-            })
-            .collect::<Vec<_>>();
         self.data
-            .update(
-                plugin_id,
-                &model_key(provider_id),
-                &serde_json::to_value(models)?,
-            )
+            .modify(plugin_id, &model_key(provider_id), |current| {
+                let previous = decode_records::<StoredModel>(current)?;
+                let models = models
+                    .iter()
+                    .cloned()
+                    .map(|mut model| {
+                        if let Some(old) = previous.iter().find(|old| old.id == model.id) {
+                            model.enabled = old.enabled;
+                        }
+                        model
+                    })
+                    .collect::<Vec<_>>();
+                Ok((serde_json::to_value(models)?, ()))
+            })
             .await
     }
 
@@ -362,39 +364,30 @@ impl PluginStateStore {
         model_id: &str,
         enabled: bool,
     ) -> Result<()> {
-        let mut models = self.models(plugin_id, provider_id).await?;
-        let model = models
-            .iter_mut()
-            .find(|model| model.id == model_id)
-            .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
-        model.enabled = enabled;
         self.data
-            .update(
-                plugin_id,
-                &model_key(provider_id),
-                &serde_json::to_value(models)?,
-            )
+            .modify(plugin_id, &model_key(provider_id), |current| {
+                let mut models = decode_records::<StoredModel>(current)?;
+                let model = models
+                    .iter_mut()
+                    .find(|model| model.id == model_id)
+                    .ok_or_else(|| Error::RunNotFound(format!("plugin model {model_id}")))?;
+                model.enabled = enabled;
+                Ok((serde_json::to_value(models)?, ()))
+            })
             .await
     }
 
     pub async fn clear(&self, plugin_id: &str) -> Result<()> {
         self.data.clear(plugin_id).await
     }
+}
 
-    async fn save_resources(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        records: &[ResourceRecord],
-    ) -> Result<()> {
-        self.data
-            .update(
-                plugin_id,
-                &resource_key(resource_type),
-                &serde_json::to_value(records)?,
-            )
-            .await
+/// 存储里的 JSON 解成记录列表：文件缺失（`Null`）等于空表。
+fn decode_records<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<Vec<T>> {
+    if value.is_null() {
+        return Ok(Vec::new());
     }
+    Ok(serde_json::from_value(value)?)
 }
 
 pub fn now_ms() -> i64 {
@@ -493,5 +486,147 @@ mod tests {
         assert_eq!(models.len(), 1);
         assert!(models[0].images);
         assert_eq!(models[0].private_data["reasoningEfforts"][0], "low");
+    }
+
+    /// 整体替换目录时要保留本地已有的启用开关：插件的刷新不该把用户的停用选择改回去。
+    #[tokio::test]
+    async fn replacing_models_keeps_the_enabled_switch() {
+        let (_root, store) = store();
+        let model = StoredModel::from_definition(&serde_json::json!({
+            "id": "gpt-test",
+            "displayName": "GPT Test",
+        }))
+        .unwrap();
+        store
+            .replace_models("dev.example", "codex", std::slice::from_ref(&model))
+            .await
+            .unwrap();
+        store
+            .set_model_enabled("dev.example", "codex", "gpt-test", false)
+            .await
+            .unwrap();
+
+        store
+            .replace_models("dev.example", "codex", std::slice::from_ref(&model))
+            .await
+            .unwrap();
+
+        let models = store.models("dev.example", "codex").await.unwrap();
+        assert!(!models[0].enabled, "刷新目录不能把用户停用的模型改回启用");
+    }
+
+    /// 并发补丁不能互相覆盖：读改写必须在一个临界区里。这条在旧实现（读一次、写一次，
+    /// 两次加锁）下会丢更新——每个任务都读到同一份快照，最后一个写回的把其他补丁盖掉。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_patches_on_one_plugin_do_not_lose_updates() {
+        let (_root, store) = store();
+        let drafts = (0..16)
+            .map(|index| ResourceDraft {
+                key: format!("acct-{index}"),
+                private_data: serde_json::json!({"token": "initial"}),
+                state: None,
+            })
+            .collect::<Vec<_>>();
+        store
+            .upsert_resources("dev.example", "account", drafts)
+            .await
+            .unwrap();
+        let ids = store
+            .resources("dev.example", "account")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids.len(), 16);
+
+        let tasks = ids
+            .into_iter()
+            .map(|id| {
+                let store = store.clone();
+                tokio::spawn(async move {
+                    store
+                        .apply_patch(
+                            "dev.example",
+                            "account",
+                            &id,
+                            ResourcePatch {
+                                private_data: Some(serde_json::json!({"token": "patched"})),
+                                state: None,
+                            },
+                        )
+                        .await
+                })
+            })
+            .collect::<Vec<_>>();
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+
+        let records = store.resources("dev.example", "account").await.unwrap();
+        let patched = records
+            .iter()
+            .filter(|record| record.private_data["token"] == "patched")
+            .count();
+        assert_eq!(patched, 16, "每个补丁都要落盘，不能被并发写覆盖掉");
+    }
+
+    /// 确定性版本：第一个 modify 卡在闭包里时，第二个 modify 必须拿不到锁——
+    /// 也就是说它不会读到"读了一半"的快照。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_second_modify_cannot_enter_between_read_and_write() {
+        let (_root, store) = store();
+        let data = store.data.clone();
+        data.update("dev.example", "counter", &serde_json::json!({"n": 0}))
+            .await
+            .unwrap();
+        let (entered, entered_rx) = std::sync::mpsc::channel();
+        let (release, release_rx) = std::sync::mpsc::channel();
+        let first = {
+            let data = data.clone();
+            tokio::spawn(async move {
+                data.modify("dev.example", "counter", move |current| {
+                    entered.send(()).unwrap();
+                    release_rx
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap();
+                    let next = current["n"].as_i64().unwrap() + 1;
+                    Ok((serde_json::json!({"n": next}), next))
+                })
+                .await
+            })
+        };
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("第一个 modify 要进到闭包里");
+
+        let second = {
+            let data = data.clone();
+            tokio::spawn(async move {
+                data.modify("dev.example", "counter", |current| {
+                    let next = current["n"].as_i64().unwrap() + 1;
+                    Ok((serde_json::json!({"n": next}), next))
+                })
+                .await
+            })
+        };
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), second)
+                .await
+                .is_err(),
+            "第一个读改写还没结束时，第二个不能进临界区"
+        );
+
+        release.send(()).unwrap();
+        assert_eq!(first.await.unwrap().unwrap(), 1);
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), {
+                let data = data.clone();
+                async move { data.read("dev.example", "counter").await.unwrap() }
+            })
+            .await
+            .unwrap()["n"],
+            2
+        );
     }
 }

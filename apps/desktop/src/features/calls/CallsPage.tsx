@@ -9,6 +9,7 @@ import { Segmented } from "../../shared/ui/Segmented";
 import { Select } from "../../shared/ui/Select";
 import { ServiceOfflineState } from "../../shared/ui/ServiceOfflineState";
 import { Card } from "../../shared/ui/Card";
+import { callClientLabel } from "../../shared/utils/callStatus";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
 import toolbar from "../../shared/ui/Toolbar.module.scss";
@@ -67,8 +68,9 @@ export function CallsPage() {
       if (route === "official" && call.route !== "cursor_official") return false;
       if (model !== "all" && (call.model_hash ?? call.model_id) !== model) return false;
       if (!query) return true;
+      // 字段缺失时按空串比对：服务端少给一个字段不该让整张表抛错。
       return [call.display_name, call.model_id, call.call_id, call.conversation_id, call.status]
-        .some((field) => field.toLowerCase().includes(query));
+        .some((field) => String(field ?? "").toLowerCase().includes(query));
     });
   }, [calls, client, model, route, search, status]);
 
@@ -91,7 +93,7 @@ export function CallsPage() {
         <Fact label="Token" value={formatCompactInteger(summary.tokens)} />
       </div>
       {truncated && <small className={styles.summaryNote}>
-        {t("以上只统计已加载的最新 {loaded} 条，共 {total} 条；更早的记录不在这里。", { loaded, total: totalCalls })}
+        {t("只统计已加载的最新 {loaded} 条，一共 {total} 条；更早的记录不计入。", { loaded, total: totalCalls })}
       </small>}
     </Card>
     <div className={styles.toolbar}>
@@ -104,8 +106,8 @@ export function CallsPage() {
       />
       <Select ariaLabel={t("客户端来源")} value={client} onChange={setClient} options={[
         { value: "all", label: t("全部客户端") },
-        { value: "cursor", label: "Cursor" }, { value: "devin", label: "Devin" },
-        { value: "codex", label: "Codex" }, { value: "internal", label: t("内部调用") },
+        { value: "cursor", label: callClientLabel("cursor") }, { value: "devin", label: callClientLabel("devin") },
+        { value: "codex", label: callClientLabel("codex") }, { value: "internal", label: callClientLabel("internal") },
       ]} />
       <Segmented
         ariaLabel={t("按状态筛选")}
@@ -146,7 +148,7 @@ export function CallsPage() {
     <div className={styles.tableRegion}>
       {offline && calls.length === 0
         ? <div className={styles.offline}><ServiceOfflineState /></div>
-        : <CallTable calls={filtered} onDetails={(call) => void appStore.openCallDetails(call.call_id)} />}
+        : <CallTable calls={filtered} noCallsYet={loaded === 0} onDetails={(call) => void appStore.openCallDetails(call.call_id)} />}
     </div>
   </div>;
 

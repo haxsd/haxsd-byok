@@ -139,8 +139,11 @@ fn uid_regex() -> Regex {
 
 pub fn read(path: &Path) -> Result<Vec<String>> {
     let content = std::fs::read_to_string(path).map_err(|error| {
+        // "cannot read the Devin client" 是界面的匹配片段（`apps/desktop` 的
+        // `harnessErrorText.ts` 按它换成中文），改文案要连着那张表一起改。
         Error::Config(format!(
-            "cannot read the Devin client at {}: {error}",
+            "cannot read the Devin client at {}: {error}; check that the file still exists and is \
+             readable",
             path.display()
         ))
     })?;

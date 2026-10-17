@@ -84,16 +84,23 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
     } else {
         ContextTokenSource::Estimate
     };
+    // Devin 没声明用量时按**共享**实现估算（`model::estimate_context_tokens`）：这里以前
+    // 另有一份「序列化整段历史再除以 4」，于是同一个会话在 Cursor 与 Devin 两条路上会报出
+    // 两个不同的上下文数，而且每轮都要序列化一遍历史。
+    let prompt = PromptSpec {
+        instructions: system,
+        tools,
+    };
     let context_tokens = if declared_context_tokens > 0 {
         declared_context_tokens
     } else {
-        estimate_context_tokens(&system, &history, &tools)
+        crate::model::estimate_context_tokens(&prompt, &history)
     };
 
     Ok(DevinChatRequest {
-        system,
+        system: prompt.instructions,
         history,
-        tools,
+        tools: prompt.tools,
         requested_model,
         cascade_id,
         prompt_id,
@@ -117,15 +124,24 @@ pub fn to_invocation(
     let model_hash = binding.effective_model_hash();
     if model_hash != model.model_hash {
         return Err(Error::Config(format!(
-            "Devin binding for '{}' points to unknown cursor-byok model hash {}",
-            binding.model_uid, model_hash
+            "the model bound to Devin model {} is no longer in the model library; \
+             re-select it on the Devin page",
+            binding.model_uid
         )));
     }
 
+    // 每次请求都要有自己的一行调用记录：`call_id` 是 `llm_calls` 的主键，而客户端的
+    // execution 会在重试、断线续跑、用户再点一次时重复出现——直接拿 execution_id 当
+    // call_id，第二次就撞主键、整轮失败。执行身份照旧留在 `run_id` 里（界面按它归组），
+    // call_id 在执行身份后面接一个每次请求唯一的后缀。
     let call_id = if request.execution_id.is_empty() {
         format!("{DEVIN_CALL_ID_PREFIX}{}", Uuid::new_v4())
     } else {
-        format!("{DEVIN_EXECUTION_ID_PREFIX}{}", request.execution_id)
+        format!(
+            "{DEVIN_EXECUTION_ID_PREFIX}{}:{}",
+            request.execution_id,
+            Uuid::new_v4().simple()
+        )
     };
     let conversation_id = if request.cascade_id.is_empty() {
         call_id.clone()
@@ -287,17 +303,6 @@ fn append_text_parts(output: &mut String, parts: &[ContentPart]) {
             output.push_str(text);
         }
     }
-}
-
-fn estimate_context_tokens(
-    system: &str,
-    history: &[ProjectedMessage],
-    tools: &[ToolDefinition],
-) -> u64 {
-    let bytes = serde_json::to_vec(&(system, history, tools))
-        .map(|value| value.len() as u64)
-        .unwrap_or_default();
-    bytes.saturating_add(3) / 4
 }
 
 fn bytes_value(field: &super::wire::Field) -> Result<&[u8]> {
@@ -513,8 +518,29 @@ mod tests {
         };
         let model = model_config("0123abcd");
 
-        let named = to_invocation(request, &binding, &model).unwrap();
-        assert_eq!(named.call_id, format!("{DEVIN_EXECUTION_ID_PREFIX}exec-1"));
+        let named = to_invocation(request.clone(), &binding, &model).unwrap();
+        assert!(
+            named
+                .call_id
+                .starts_with(&format!("{DEVIN_EXECUTION_ID_PREFIX}exec-1:")),
+            "执行身份仍要能从 call_id 前缀认出来: {}",
+            named.call_id
+        );
+        // 同一次执行重发（客户端重试、断线续跑）：run 还是同一个，但每次请求都必须
+        // 是独立的一行调用记录，否则第二次 start_llm_call 直接撞主键。
+        let resent = to_invocation(request, &binding, &model).unwrap();
+        assert_eq!(resent.run_id, named.run_id);
+        assert_eq!(resent.conversation_id, named.conversation_id);
+        assert_ne!(
+            resent.call_id, named.call_id,
+            "重发同一 execution 不能复用同一个 call_id"
+        );
+        let mut ids = std::collections::HashSet::new();
+        let source = parse_chat_request(&fixture()).unwrap();
+        for _ in 0..32 {
+            let invocation = to_invocation(source.clone(), &binding, &model).unwrap();
+            assert!(ids.insert(invocation.call_id), "call_id 必须每次请求唯一");
+        }
 
         let anonymous = parse_chat_request(
             &serialize_fields(&[Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK")]).unwrap(),
@@ -523,6 +549,52 @@ mod tests {
         let anonymous = to_invocation(anonymous, &binding, &model).unwrap();
         assert!(anonymous.call_id.starts_with(DEVIN_CALL_ID_PREFIX));
         assert!(anonymous.conversation_id.starts_with(DEVIN_CALL_ID_PREFIX));
+    }
+
+    /// 回传的思考文本与签名（字段 11/12）必须重新拼成 Anthropic 的回放状态，否则带
+    /// 工具的思考轮次没有签名块可续，每轮都要重新生成思考。
+    ///
+    /// 注意字段号：请求方向的 `ChatMessage` 用 11/12，网关发出的 `ChatMessageDelta`
+    /// 用 9/10（见 `response::thinking_delta`）。两侧是不同的消息类型，真实客户端把
+    /// delta 落到哪个字段上只有抓包能确认，所以这里只锁"读侧读到什么就拼出什么"。
+    #[test]
+    fn a_replayed_assistant_message_keeps_its_thinking_signature() {
+        let request = parse_chat_request(&fixture()).unwrap();
+        let ProjectedContent::Assistant {
+            thinking,
+            replay_state,
+            ..
+        } = &request.history[1].content
+        else {
+            panic!("assistant message must stay an assistant message");
+        };
+        assert_eq!(thinking, "thinking");
+        let replay = replay_state.as_ref().expect("签名齐全时必须给出回放状态");
+        assert_eq!(replay.provider_kind, "anthropic");
+        assert_eq!(
+            replay.value["blocks"][0],
+            json!({"type": "thinking", "thinking": "thinking", "signature": "signature"})
+        );
+
+        // 只有思考没有签名：不能冒充可回放的 thinking 块。
+        let unsigned = parse_chat_request(
+            &serialize_fields(&[
+                Field::bytes(2, b"system instructions"),
+                message(vec![
+                    Field::bytes(1, b"assistant-1"),
+                    Field::varint(2, 2),
+                    Field::bytes(3, b"text"),
+                    Field::bytes(11, b"thinking"),
+                ]),
+                Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+        let ProjectedContent::Assistant { replay_state, .. } = &unsigned.history[0].content else {
+            panic!("assistant message must stay an assistant message");
+        };
+        assert!(replay_state.is_none());
     }
 
     #[test]
@@ -561,5 +633,42 @@ mod tests {
         let legacy_invocation =
             to_invocation(request, &legacy, &model_config("legacy-hash")).unwrap();
         assert_eq!(legacy_invocation.request.model.model_id, "legacy-hash");
+    }
+
+    /// Devin 不声明用量时走**共享**估算（`model::estimate_context_tokens`），不再有自己的
+    /// 第二套实现：同一个会话在 Cursor 与 Devin 两条路上报出的上下文数必须一致。
+    #[test]
+    fn the_context_estimate_comes_from_the_shared_implementation() {
+        // 与 fixture 相同，但去掉消息字段 4（Devin 声明的已用 token）。
+        let payload = fixture();
+        let fields = super::super::wire::parse_fields(&payload).unwrap();
+        let without_declared = fields
+            .into_iter()
+            .map(|field| match (field.number, field.value) {
+                (3, super::super::wire::FieldValue::Bytes(inner)) => {
+                    let kept = super::super::wire::parse_fields(&inner)
+                        .unwrap()
+                        .into_iter()
+                        .filter(|nested| nested.number != 4)
+                        .collect::<Vec<_>>();
+                    Field::bytes(3, serialize_fields(&kept).unwrap())
+                }
+                (number, value) => super::super::wire::Field { number, value },
+            })
+            .collect::<Vec<_>>();
+        let payload = serialize_fields(&without_declared).unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+
+        assert_eq!(request.context_token_source, ContextTokenSource::Estimate);
+        let expected = crate::model::estimate_context_tokens(
+            &PromptSpec {
+                instructions: request.system.clone(),
+                tools: request.tools.clone(),
+            },
+            &request.history,
+        );
+        assert_eq!(request.context_tokens, expected);
+        assert!(request.context_tokens > 0);
     }
 }

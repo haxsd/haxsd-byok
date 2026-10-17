@@ -196,12 +196,41 @@ async fn checkpoint_dependencies_are_content_addressed_without_a_persistent_stre
         .unwrap();
     assert_eq!(root, BlobId::digest(b"checkpoint"));
     assert_eq!(store.get_blob(&child).await.unwrap().unwrap(), b"message");
-    let closure = store
-        .blob_closure(std::slice::from_ref(&root))
+
+    // 依赖关系由**回收路径**自己看见：把所有内容块推到无根窗口之外，只把根登记成会话根，
+    // 再跑一趟保留回收——根、以及经 `blob_edges` 可达的子块必须活下来，没有任何引用的
+    // 那块必须被回收。以前这里用 `store.blob_closure()` 在 Rust 里重算一遍闭包，那是只有
+    // 这个用例在用的死代码（10/P3-6）；真正决定生死的，是回收路径里那段递归 SQL。
+    let orphan = store.put_blob(b"orphan", &[]).await.unwrap();
+    sqlx::query("INSERT INTO conversation_blob_roots(conversation_id, blob_id) VALUES (?, ?)")
+        .bind("checkpoint-conversation")
+        .bind(root.as_bytes().as_slice())
+        .execute(store.pool())
         .await
         .unwrap();
-    assert!(closure.contains(&root));
-    assert!(closure.contains(&child));
+    // 三个块都过了无根窗口（`last_used_at_ms` 归零 = 很久没用过）；任取一个固定时刻即可，
+    // 判据只看"比它早一个窗口"。
+    sqlx::query("UPDATE blobs SET last_used_at_ms = 0")
+        .execute(store.pool())
+        .await
+        .unwrap();
+    store
+        .prune_inactive_storage(1_700_000_000_000)
+        .await
+        .unwrap();
+
+    assert!(
+        store.get_blob(&root).await.unwrap().is_some(),
+        "被会话根钉住的根块必须活下来"
+    );
+    assert!(
+        store.get_blob(&child).await.unwrap().is_some(),
+        "根经 blob_edges 可达的子块必须跟着活下来"
+    );
+    assert!(
+        store.get_blob(&orphan).await.unwrap().is_none(),
+        "没有任何引用的块必须被回收，否则这趟回收等于没跑"
+    );
 
     let outbox: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'outbox'",
@@ -616,7 +645,7 @@ fn read_result(id: u32) -> pb::AgentClientMessage {
 }
 
 async fn next_message(
-    output: &mut tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>,
+    output: &mut tokio::sync::mpsc::Receiver<bytes::Bytes>,
 ) -> pb::AgentServerMessage {
     let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
         .await

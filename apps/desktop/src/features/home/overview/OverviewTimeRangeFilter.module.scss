@@ -118,6 +118,12 @@
   min-width: 0;
 }
 
+/* 「应用」为什么点不了：写在两个输入框下面，和它们同宽。 */
+.rangeProblem {
+  color: var(--vscode-errorForeground, #f14c4c);
+  font-size: type.$font-size-2xs;
+}
+
 .popoverActions {
   display: flex;
   justify-content: flex-end;

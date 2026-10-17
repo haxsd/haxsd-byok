@@ -223,21 +223,37 @@ pub(super) fn glob(result: &pb::GrepResult) -> Result<pb::GlobToolResult> {
     use pb::{glob_tool_result::Result as Output, grep_result::Result as Input};
     let result = match result.result.as_ref() {
         Some(Input::Success(success)) => {
-            let files = success
+            // `workspace_results` 是 HashMap,迭代顺序不稳定:以前 `find_map` 等于"随便挑一个
+            // workspace",卡片上的文件列表会和模型看到的那份(`output::grep_success` 已把
+            // active editor 与全部 workspace 合起来)对不上。这里用同一顺序合并全部 Files
+            // 分支:active editor 在前,workspace 按 key 排序。
+            let mut files = Vec::new();
+            let mut total_files: i32 = 0;
+            let mut client_truncated = false;
+            let mut ripgrep_truncated = false;
+            let mut workspaces = success.workspace_results.iter().collect::<Vec<_>>();
+            workspaces.sort_unstable_by_key(|(name, _)| *name);
+            let unions = success
                 .active_editor_result
                 .iter()
-                .chain(success.workspace_results.values())
-                .find_map(|result| match result.result.as_ref() {
-                    Some(pb::grep_union_result::Result::Files(files)) => Some(files),
-                    _ => None,
-                });
+                .chain(workspaces.into_iter().map(|(_, result)| result));
+            for union in unions {
+                let Some(pb::grep_union_result::Result::Files(value)) = union.result.as_ref()
+                else {
+                    continue;
+                };
+                files.extend(value.files.iter().cloned());
+                total_files = total_files.saturating_add(value.total_files);
+                client_truncated |= value.client_truncated;
+                ripgrep_truncated |= value.ripgrep_truncated;
+            }
             Output::Success(pb::GlobToolSuccess {
                 pattern: success.pattern.clone(),
                 path: success.path.clone(),
-                files: files.map(|value| value.files.clone()).unwrap_or_default(),
-                total_files: files.map_or(0, |value| value.total_files),
-                client_truncated: files.is_some_and(|value| value.client_truncated),
-                ripgrep_truncated: files.is_some_and(|value| value.ripgrep_truncated),
+                files,
+                total_files,
+                client_truncated,
+                ripgrep_truncated,
             })
         }
         Some(Input::Error(value)) => Output::Error(pb::GlobToolError {
@@ -252,4 +268,45 @@ pub(super) fn glob(result: &pb::GrepResult) -> Result<pb::GlobToolResult> {
 
 fn missing(name: &str) -> Error {
     Error::Protocol(format!("{name} returned no result"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn files(files: &[&str]) -> pb::GrepUnionResult {
+        pb::GrepUnionResult {
+            result: Some(pb::grep_union_result::Result::Files(pb::GrepFilesResult {
+                files: files.iter().map(|file| (*file).to_string()).collect(),
+                total_files: files.len() as i32,
+                ..Default::default()
+            })),
+        }
+    }
+
+    /// 卡片必须包含所有 workspace 的结果,顺序固定(active editor 在前,其余按 key 排序),
+    /// 且与模型可见那份文本同源;以前 HashMap 迭代顺序决定挑哪一份。
+    #[test]
+    fn glob_merges_every_workspace_in_a_stable_order() {
+        let mut workspace_results = std::collections::HashMap::new();
+        workspace_results.insert("zeta".to_string(), files(&["z1", "z2"]));
+        workspace_results.insert("alpha".to_string(), files(&["a1"]));
+        let result = pb::GrepResult {
+            result: Some(pb::grep_result::Result::Success(pb::GrepSuccess {
+                pattern: "**/*.rs".into(),
+                path: ".".into(),
+                active_editor_result: Some(files(&["editor1"])),
+                workspace_results,
+                ..Default::default()
+            })),
+        };
+
+        let glob = glob(&result).unwrap();
+        let Some(pb::glob_tool_result::Result::Success(success)) = glob.result else {
+            panic!("expected GlobToolSuccess")
+        };
+
+        assert_eq!(success.files, ["editor1", "a1", "z1", "z2"]);
+        assert_eq!(success.total_files, 4);
+    }
 }

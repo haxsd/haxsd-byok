@@ -4,7 +4,10 @@ mod catalog;
 mod engine;
 mod federation;
 mod fetch;
+mod outbound;
 mod search_provider;
+#[cfg(test)]
+mod test_support;
 
 pub use cache::{WebCache, WebCacheEntry};
 pub use engine::{HtmlEngine, JsonEngine, SearchEngine, SearchHit};

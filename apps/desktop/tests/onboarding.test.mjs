@@ -1,7 +1,7 @@
 // Behavior tests for the tutorial onboarding checklist.
 //
-// The checklist follows the client the user picked: only Cursor or Devin is
-// counted, and the progress denominator contains the displayed steps only. A
+// The checklist follows the client the user picked: only Cursor, Devin, or Codex
+// is counted, and the progress denominator contains the displayed steps only. A
 // client the user did not select must never appear as an unfinished step.
 
 import assert from "node:assert/strict";
@@ -24,6 +24,7 @@ function input(overrides = {}) {
     modelCount: 0,
     cursor: null,
     devin: null,
+    codex: null,
     hostPatched: false,
     callCount: 0,
     ...overrides,
@@ -41,6 +42,10 @@ function cursorHarness(overrides = {}) {
 
 function devinStatus(overrides = {}) {
   return { enabled: true, listening: true, ...overrides };
+}
+
+function codexStatus(overrides = {}) {
+  return { enabled: true, listening: true, configured: true, ...overrides };
 }
 
 test("before a client is picked the checklist holds only the shared first step", async () => {
@@ -123,10 +128,45 @@ test("the Devin step is done only when the gateway runs and the host is patched"
   }
 });
 
+test("picking Codex adds the Codex step and never counts the other clients", async () => {
+  const buildOnboarding = await loadOnboarding();
+
+  const view = buildOnboarding(input({
+    client: "codex",
+    modelCount: 1,
+    cursor: cursorHarness({ mode: "official" }),
+    devin: devinStatus({ enabled: false, listening: false }),
+    codex: codexStatus(),
+    callCount: 2,
+  }));
+
+  assert.deepEqual(view.steps.map((step) => step.key), ["model", "codex", "verify"]);
+  assert.equal(view.total, 3, "the untouched Cursor and Devin modules are not in the denominator");
+  assert.equal(view.completed, 3);
+});
+
+test("the Codex step is done only when the gateway runs and the config is applied", async () => {
+  const buildOnboarding = await loadOnboarding();
+
+  const rows = [
+    { status: codexStatus({ enabled: false, listening: false, configured: false }), done: false, why: "the gateway is off" },
+    { status: codexStatus({ listening: false }), done: false, why: "the saved gateway is waiting for a restart" },
+    { status: codexStatus({ configured: false }), done: false, why: "the client config has not been applied yet" },
+    { status: codexStatus(), done: true, why: "gateway and client config are both in place" },
+    { status: null, done: false, why: "no status has been read yet" },
+  ];
+
+  for (const row of rows) {
+    const view = buildOnboarding(input({ client: "codex", modelCount: 1, codex: row.status }));
+    const step = view.steps.find((item) => item.key === "codex");
+    assert.equal(step.done, row.done, row.why);
+  }
+});
+
 test("every displayed step carries the fields the checklist renders", async () => {
   const buildOnboarding = await loadOnboarding();
 
-  for (const client of ["cursor", "devin"]) {
+  for (const client of ["cursor", "devin", "codex"]) {
     const view = buildOnboarding(input({ client }));
     const keys = view.steps.map((step) => step.key);
     assert.equal(new Set(keys).size, keys.length, "step keys are unique");

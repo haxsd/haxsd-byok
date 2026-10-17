@@ -176,6 +176,9 @@ const PLUGINS: &[(&str, &[(&str, &str)])] = &[
 
 /// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
 /// 版本一致时零写盘;版本变化时整目录同步并清理旧版本残留文件。
+///
+/// **改动任何内置插件的内容都必须同时升 `plugin.json` 的 version**, 否则已有安装永远
+/// 保留旧副本（版本一致即跳过写盘）——曾因此让"新增授权域"在旧安装上不生效。
 pub(super) fn install(installed: &Path) -> Result<()> {
     for (name, files) in PLUGINS {
         let directory = installed.join(name);

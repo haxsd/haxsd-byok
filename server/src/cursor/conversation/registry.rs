@@ -1,8 +1,9 @@
 //! Maps conversation IDs to active conversation runtimes.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use tokio::sync::{mpsc, Mutex, Notify};
@@ -35,16 +36,32 @@ pub(crate) struct ConversationDependencies {
 
 struct RegistryInner {
     current: Mutex<HashMap<ConversationId, ActiveRun>>,
-    pending: Mutex<HashMap<ConversationId, PendingMessages>>,
-    /// 用户按停止（客户端断开）结束过运行、此后还没有新运行的会话。
+    /// 活跃 run 结束后到达的消息：按会话排队，等下一次 run 开头吃进去。
+    /// 时间戳是"这个会话最早一条待投递消息"的入队时刻，用于超上限时丢最久的会话。
+    pending: Mutex<HashMap<ConversationId, (Instant, PendingMessages)>>,
+    /// 用户按停止（客户端断开）结束过运行、此后还没有新运行的会话 → 记下的时刻。
     ///
     /// 停止只取消在跑的那一轮，它派出去的后台子代理还在跑；子代理随后完成时，完成
     /// 通知不能把已停止的会话重新拉起来（实测里"停了自己醒"就是这么来的）。新运行
-    /// 一开始就说明会话又被用户打开了，这一标记随之清掉。
-    stopped: Mutex<HashSet<ConversationId>>,
+    /// 一开始就说明会话又被用户打开了，这一标记随之清掉；超过 `STOPPED_TTL` 也失效，
+    /// 免得长驻进程里按会话累积。
+    stopped: Mutex<HashMap<ConversationId, Instant>>,
     changed: Notify,
     pub dependencies: ConversationDependencies,
 }
+
+/// `pending` 里最多同时挂多少个会话：超上限丢挂得最久的那个。
+///
+/// 排队等待的是"下一次 run"——客户端再也不开那个会话时，谁也不会来取。单个会话内的
+/// 条数上限在 `PendingMessages` 里。
+const MAX_PENDING_CONVERSATIONS: usize = 64;
+
+/// "用户停止过"这条标记的有效期。
+///
+/// 后台子代理可以跑很久，但标记本身没有天然终点。窗口内保持严格抑制；超过窗口的完成
+/// 通知允许重新唤醒（用户早就不在这个会话上了），代价是一次多余唤醒，换来的是这张表
+/// 有界。
+const STOPPED_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 #[derive(Clone)]
 struct ActiveRun {
@@ -68,7 +85,7 @@ impl ConversationRegistry {
             inner: Arc::new(RegistryInner {
                 current: Mutex::new(HashMap::new()),
                 pending: Mutex::new(HashMap::new()),
-                stopped: Mutex::new(HashSet::new()),
+                stopped: Mutex::new(HashMap::new()),
                 changed: Notify::new(),
                 dependencies: ConversationDependencies {
                     store,
@@ -116,16 +133,31 @@ impl ConversationRegistry {
     /// 只有"断开时这一轮还在跑"才调用（见 runtime 的断开分支）：断开本身不等于停止，
     /// 轮次已收尾时的流断开不能被记成停止，否则合法的完成通知会被丢掉。
     pub(crate) async fn mark_stopped(&self, conversation_id: &ConversationId) {
-        self.inner
-            .stopped
-            .lock()
-            .await
-            .insert(conversation_id.clone());
+        let now = Instant::now();
+        let mut stopped = self.inner.stopped.lock().await;
+        stopped.retain(|_, at| now.duration_since(*at) < STOPPED_TTL);
+        stopped.insert(conversation_id.clone(), now);
     }
 
     /// 客户端又在这个会话里开口了：停止标记失效，唤醒恢复。
     pub(crate) async fn clear_stopped(&self, conversation_id: &ConversationId) {
         self.inner.stopped.lock().await.remove(conversation_id);
+    }
+
+    /// 这个会话是不是"用户停过、窗口内还没开口"。
+    ///
+    /// 过期的标记顺手删掉：判断本身就是回收点，不需要额外的清扫任务。
+    async fn is_stopped(&self, conversation_id: &ConversationId) -> bool {
+        let now = Instant::now();
+        let mut stopped = self.inner.stopped.lock().await;
+        match stopped.get(conversation_id) {
+            Some(at) if now.duration_since(*at) < STOPPED_TTL => true,
+            Some(_) => {
+                stopped.remove(conversation_id);
+                false
+            }
+            None => false,
+        }
     }
 
     /// 后台子代理的完成通知：用户明确停止过的会话不再被唤醒。
@@ -139,10 +171,34 @@ impl ConversationRegistry {
         conversation_id: &ConversationId,
         compiled: CompiledMessages,
     ) -> CommandResult {
-        if self.inner.stopped.lock().await.contains(conversation_id) {
+        if self.is_stopped(conversation_id).await {
             return CommandResult::Suppressed;
         }
         self.deliver(conversation_id, compiled).await
+    }
+
+    /// 把消息排进"等下一次 run"的队列，顺带维持会话数上限。
+    async fn queue_pending(&self, conversation_id: &ConversationId, compiled: CompiledMessages) {
+        let mut pending = self.inner.pending.lock().await;
+        if !pending.contains_key(conversation_id) && pending.len() >= MAX_PENDING_CONVERSATIONS {
+            if let Some(oldest) = pending
+                .iter()
+                .min_by_key(|(_, (queued_at, _))| *queued_at)
+                .map(|(conversation_id, _)| conversation_id.clone())
+            {
+                pending.remove(&oldest);
+                tracing::warn!(
+                    conversation_id = oldest.as_str(),
+                    limit = MAX_PENDING_CONVERSATIONS,
+                    "dropping the conversation that has waited longest for its next Run"
+                );
+            }
+        }
+        pending
+            .entry(conversation_id.clone())
+            .or_insert_with(|| (Instant::now(), PendingMessages::default()))
+            .1
+            .push(compiled);
     }
 
     pub async fn deliver(
@@ -161,13 +217,7 @@ impl ConversationRegistry {
             .get(conversation_id)
             .cloned();
         let Some(active) = active else {
-            self.inner
-                .pending
-                .lock()
-                .await
-                .entry(conversation_id.clone())
-                .or_default()
-                .push(compiled);
+            self.queue_pending(conversation_id, compiled).await;
             return CommandResult::RunEnded;
         };
         if compiled
@@ -194,13 +244,7 @@ impl ConversationRegistry {
             }
         };
         if matches!(result, CommandResult::RunClosing | CommandResult::RunEnded) {
-            self.inner
-                .pending
-                .lock()
-                .await
-                .entry(conversation_id.clone())
-                .or_default()
-                .push(pending);
+            self.queue_pending(conversation_id, pending).await;
         }
         result
     }
@@ -243,7 +287,7 @@ impl ConversationRegistry {
             .lock()
             .await
             .remove(conversation_id)
-            .map(|mut pending| pending.drain().collect())
+            .map(|(_, mut pending)| pending.drain().collect())
             .unwrap_or_default()
     }
 

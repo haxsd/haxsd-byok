@@ -177,19 +177,20 @@ pub fn request(id: u32, call: &ToolCall, context: &ExecContext) -> Result<pb::Ag
             )))
         }
     };
-    let accept_hook_additional_contexts =
-        if matches!(&message, pb::exec_server_message::Message::SubagentArgs(_)) {
-            Some(false)
-        } else {
-            Some(true)
-        };
     Ok(server_message(
         id,
         call,
         message,
-        accept_hook_additional_contexts,
+        ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
     ))
 }
+
+/// 出站 Exec 请求一律明确回答"不接受 hook 附加上下文"。
+///
+/// 服务端从来没有消费过它:入站的 `HookContext` 事件在 `client_event` 里被忽略,回填卡片时
+/// `ToolCall.hook_additional_contexts` 也永远是空列表。以前除 MCP 状态请求外都回答
+/// `Some(true)`,等于向客户端索要一份我们不看的数据(客户端还要为此多跑一遍 hook 收尾)。
+const ACCEPT_HOOK_ADDITIONAL_CONTEXTS: Option<bool> = Some(false);
 
 pub(crate) fn edit_read_request(id: u32, call: &ToolCall) -> Result<pb::AgentServerMessage> {
     Ok(server_message(
@@ -200,7 +201,7 @@ pub(crate) fn edit_read_request(id: u32, call: &ToolCall) -> Result<pb::AgentSer
             tool_call_id: call.call_id.clone(),
             ..Default::default()
         }),
-        Some(true),
+        ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
     ))
 }
 
@@ -220,7 +221,7 @@ pub(super) fn edit_write_request(
             file_bytes: Vec::new(),
             encoding_hint: None,
         }),
-        Some(true),
+        ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
     ))
 }
 
@@ -261,7 +262,7 @@ pub fn mcp_request(
                 id,
                 exec_id: call.call_id.clone(),
                 span_context: None,
-                accept_hook_additional_contexts: None,
+                accept_hook_additional_contexts: ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
                 message: Some(pb::exec_server_message::Message::McpArgs(pb::McpArgs {
                     name: definition.name.clone(),
                     args,
@@ -324,7 +325,7 @@ pub(crate) fn mcp_meta_request(
             skip_approval: false,
             server_identifier: server_identifier.into(),
         }),
-        Some(true),
+        ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
     ))
 }
 
@@ -342,7 +343,7 @@ pub fn mcp_state_request(id: u32, call: &ToolCall) -> pb::AgentServerMessage {
             server_identifiers,
             kick_only: false,
         }),
-        Some(false),
+        ACCEPT_HOOK_ADDITIONAL_CONTEXTS,
     )
 }
 
@@ -565,5 +566,60 @@ mod tests {
             panic!("expected ShellStreamArgs");
         };
         assert_eq!(args.command, "ls -la");
+    }
+
+    /// 服务端不消费 hook 附加上下文,所以出站请求必须明确说"不接受";
+    /// 以前这里回答 Some(true),等于向客户端索要一份从不使用的内容。
+    #[test]
+    fn exec_requests_do_not_ask_for_hook_additional_contexts() {
+        let context = ExecContext::default();
+        let read = ToolCall {
+            index: 0,
+            call_id: "call-read".into(),
+            model_call_id: "model-read".into(),
+            name: "Read".into(),
+            arguments_text: String::new(),
+            arguments: json!({ "path": "/tmp/a.rs" }),
+            argument_error: None,
+        };
+        let task = ToolCall {
+            index: 1,
+            call_id: "call-task".into(),
+            model_call_id: "model-task".into(),
+            name: "Task".into(),
+            arguments_text: String::new(),
+            arguments: json!({ "description": "d", "prompt": "p", "model": "m" }),
+            argument_error: None,
+        };
+
+        for call in [&read, &task] {
+            let message = request(1, call, &context).unwrap();
+            let Some(pb::agent_server_message::Message::ExecServerMessage(exec)) = message.message
+            else {
+                panic!("expected an ExecServerMessage");
+            };
+            assert_eq!(
+                exec.accept_hook_additional_contexts,
+                Some(false),
+                "{} 不该向客户端索取 hook 上下文",
+                call.name
+            );
+        }
+
+        let edit = ToolCall {
+            index: 2,
+            call_id: "call-edit".into(),
+            model_call_id: "model-edit".into(),
+            name: "Read".into(),
+            arguments_text: String::new(),
+            arguments: json!({ "path": "/tmp/a.rs" }),
+            argument_error: None,
+        };
+        let Some(pb::agent_server_message::Message::ExecServerMessage(exec)) =
+            super::edit_read_request(7, &edit).unwrap().message
+        else {
+            panic!("expected an ExecServerMessage");
+        };
+        assert_eq!(exec.accept_hook_additional_contexts, Some(false));
     }
 }

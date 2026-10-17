@@ -213,31 +213,45 @@ impl Store {
     ///
     /// 用于把 `SubagentRunState` 从派发时的 `Backgrounded` 纠正成终态——客户端
     /// 靠这个状态把任务气泡标成完成。
+    ///
+    /// 一次查完：checkpoint 构建会带着整批待决的父工具调用进来，逐个 id 发一条 SELECT
+    /// 就是 N+1（每轮 checkpoint 一次），窗口函数按父调用分组取最新一条，语义与逐条
+    /// `ORDER BY updated_at_ms DESC LIMIT 1` 相同。
     pub async fn finished_child_runs(
         &self,
         parent_tool_call_ids: &[String],
     ) -> Result<Vec<(String, RunStatus, u64)>> {
-        let mut finished = Vec::new();
+        if parent_tool_call_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = std::iter::repeat_n("?", parent_tool_call_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT parent_tool_call_id, status, updated_at_ms FROM (
+                 SELECT parent_tool_call_id, status, updated_at_ms,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY parent_tool_call_id ORDER BY updated_at_ms DESC
+                        ) AS rank
+                   FROM runs
+                  WHERE parent_tool_call_id IN ({placeholders})
+                    AND run_kind = 'subagent'
+                    AND status IN ('completed', 'failed', 'cancelled')
+             ) WHERE rank = 1"
+        );
+        let mut query = sqlx::query_as::<_, (String, String, i64)>(&sql);
         for tool_call_id in parent_tool_call_ids {
-            let row: Option<(String, i64)> = sqlx::query_as(
-                "SELECT status, updated_at_ms FROM runs
-                 WHERE parent_tool_call_id = ?
-                   AND run_kind = 'subagent'
-                   AND status IN ('completed', 'failed', 'cancelled')
-                 ORDER BY updated_at_ms DESC
-                 LIMIT 1",
-            )
-            .bind(tool_call_id)
-            .fetch_optional(&self.pool)
-            .await?;
-            if let Some((status, updated_at_ms)) = row {
-                let status = match status.as_str() {
-                    "completed" => RunStatus::Completed,
-                    "failed" => RunStatus::Failed,
-                    _ => RunStatus::Cancelled,
-                };
-                finished.push((tool_call_id.clone(), status, updated_at_ms.max(0) as u64));
-            }
+            query = query.bind(tool_call_id);
+        }
+        let rows = query.fetch_all(&self.pool).await?;
+        let mut finished = Vec::with_capacity(rows.len());
+        for (tool_call_id, status, updated_at_ms) in rows {
+            let status = match status.as_str() {
+                "completed" => RunStatus::Completed,
+                "failed" => RunStatus::Failed,
+                _ => RunStatus::Cancelled,
+            };
+            finished.push((tool_call_id, status, updated_at_ms.max(0) as u64));
         }
         Ok(finished)
     }
@@ -352,8 +366,9 @@ impl Store {
     /// 清算上一个进程留下的 `running` 行。
     ///
     /// 崩溃、`taskkill /F`、断电都没人来得及收尾，而这些行会让存储回收停摆
-    /// （`prune_inactive_storage` 见到 3 天内的 running 就直接放弃）、让调用列表永远显示
-    /// "进行中"。实例锁保证同一份数据目录同时只有一个进程在写，所以只处理**严格早于**
+    /// （`prune_inactive_storage` 见到 `CONVERSATION_RETENTION_MS`（当前 24 小时）内还有
+    /// 更新的 running 行就整趟放弃）、让调用列表永远显示"进行中"。实例锁保证同一份数据目录
+    /// 同时只有一个进程在写，所以只处理**严格早于**
     /// `process_started_at_ms`（本进程取得实例锁的时刻）的行；本进程启动后创建的 running
     /// 行——包括正在跑的长会话——永远不会被误伤。返回被清算的行数。
     pub(crate) async fn reconcile_interrupted_runs(
@@ -791,5 +806,144 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(run, (String::from("completed"), Some(1)));
+    }
+
+    /// 一次查完整批的语义与逐条查一致：每个父工具调用取最新的一条**终态**子 run。
+    ///
+    /// checkpoint 构建带着整批待决的父工具调用进来，逐个 id 发一条 SELECT 就是 N+1；
+    /// 这条用例同时钉住"取最新"（同一个 id 有多条终态）与"只认终态"（还有 running 时不算
+    /// 结束），再加一条反例：run_kind 不是 subagent 的同名行不许被算进来。
+    #[tokio::test]
+    async fn finished_child_runs_picks_the_latest_terminal_per_parent_call() {
+        let (_directory, store) = fixture().await;
+        let conversation = crate::model::ConversationId("conv".into());
+        let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
+        for (run_id, parent, kind, status, updated_at_ms) in [
+            ("a-old", "call-a", "subagent", "failed", 10_i64),
+            ("a-new", "call-a", "subagent", "completed", 20),
+            ("b-running", "call-b", "subagent", "running", 30),
+            ("b-done", "call-b", "subagent", "cancelled", 5),
+            ("root-a", "call-a", "root", "completed", 999),
+        ] {
+            sqlx::query(
+                "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,
+                     parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+                 VALUES (?,?,?,?,?,?,?,1,?)",
+            )
+            .bind(run_id)
+            .bind(conversation.as_str())
+            .bind(checkpoint.0)
+            .bind(checkpoint.0)
+            .bind(parent)
+            .bind(kind)
+            .bind(status)
+            .bind(updated_at_ms)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        }
+
+        let mut finished = store
+            .finished_child_runs(&["call-a".into(), "call-b".into(), "call-missing".into()])
+            .await
+            .unwrap();
+        finished.sort_by(|left, right| left.0.cmp(&right.0));
+
+        assert_eq!(
+            finished,
+            vec![
+                ("call-a".to_string(), RunStatus::Completed, 20_u64),
+                ("call-b".to_string(), RunStatus::Cancelled, 5_u64),
+            ]
+        );
+        assert!(
+            store.finished_child_runs(&[]).await.unwrap().is_empty(),
+            "空批次不该发查询"
+        );
+    }
+
+    async fn plan_of(store: &Store, sql: &str, binds: &[&str]) -> String {
+        let explain = format!("EXPLAIN QUERY PLAN {sql}");
+        let mut query = sqlx::query(&explain);
+        for value in binds {
+            query = query.bind(*value);
+        }
+        query
+            .fetch_all(store.pool())
+            .await
+            .unwrap()
+            .iter()
+            .map(|row| row.try_get::<String, _>("detail").unwrap())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// 按父反查必须走索引；不按父反查时不该用这两个索引。
+    ///
+    /// 两条都是热路径：父轮收尾判定子代理在跑时每 5 秒问一次（`parent_run_id`），
+    /// checkpoint 构建每轮问一次整批子代理终态（`parent_tool_call_id`）。它们以前都是
+    /// 全表扫——`runs` 只随会话回收连带删除，扫描量随对话历史单调增长。
+    #[tokio::test]
+    async fn parent_lookups_search_their_indexes() {
+        let (_directory, store) = fixture().await;
+        // 造点数据再 ANALYZE：空表上规划器没有统计，计划会随启发式摇摆。
+        let conversation = crate::model::ConversationId("conv".into());
+        let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
+        for index in 0..200_i64 {
+            sqlx::query(
+                "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,
+                     parent_run_id,parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+                 VALUES (?,?,?,?,?,?,'subagent','running',1,1)",
+            )
+            .bind(format!("run-{index}"))
+            .bind(conversation.as_str())
+            .bind(checkpoint.0)
+            .bind(checkpoint.0)
+            .bind(format!("parent-{}", index % 7))
+            .bind(format!("call-{}", index % 11))
+            .execute(store.pool())
+            .await
+            .unwrap();
+        }
+        sqlx::query("ANALYZE").execute(store.pool()).await.unwrap();
+
+        let by_parent_run = plan_of(
+            &store,
+            "SELECT EXISTS(
+                 SELECT 1 FROM runs child
+                 JOIN tool_round_calls call ON call.call_id = child.parent_tool_call_id
+                 WHERE child.parent_run_id = ? AND child.status = 'running'
+                   AND call.status = 'completed'
+             )",
+            &["parent-1"],
+        )
+        .await;
+        assert!(by_parent_run.contains("runs_parent_run"), "{by_parent_run}");
+        assert!(!by_parent_run.contains("SCAN runs"), "{by_parent_run}");
+
+        let by_parent_call = plan_of(
+            &store,
+            "SELECT parent_tool_call_id, status, updated_at_ms FROM runs
+              WHERE parent_tool_call_id = ? AND run_kind = 'subagent'
+                AND status IN ('completed', 'failed', 'cancelled')",
+            &["call-1"],
+        )
+        .await;
+        assert!(
+            by_parent_call.contains("runs_parent_tool_call"),
+            "{by_parent_call}"
+        );
+        assert!(!by_parent_call.contains("SCAN runs"), "{by_parent_call}");
+
+        let without_parent = plan_of(
+            &store,
+            "SELECT run_id FROM runs WHERE status = 'running'",
+            &[],
+        )
+        .await;
+        assert!(
+            !without_parent.contains("runs_parent_"),
+            "不按父反查时不该用父索引：{without_parent}"
+        );
     }
 }

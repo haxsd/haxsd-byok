@@ -86,6 +86,15 @@ impl CheckpointBuilder {
             root_ids.iter().map(|id| id.as_bytes().to_vec()).collect();
         self.base.turns = turn_ids.iter().map(|id| id.as_bytes().to_vec()).collect();
         self.base.pending_tool_calls.clear();
+        // 压缩把逐字历史换成摘要，而客户端带上来的文件状态基线描述的是**已经被摘要掉的
+        // 那段历史**（`file_states_v2` 的 blob 里存的是压缩前的文件内容）。原样写回去，
+        // Cursor 侧会按这份基线把文件显示成压缩前的样子（审计 05/P2-1：用户看到"文件内容
+        // 回到压缩前"）。压缩后的基线里这两张表必须清空：内容块仍然挂在会话根上、不会被
+        // 回收，而"当前文件状态"要由压缩之后新的 Read/Edit 重新建立。
+        // todos / plan 不走这条：它们由 `build_derived_state` 从消息折叠出来，没有折叠
+        // 结果时沿用基线（derived.rs）。
+        self.base.file_states.clear();
+        self.base.file_states_v2.clear();
         self.base.mode = Some(mode);
         self.base.summary = Some(summary_id.as_bytes().to_vec());
         self.base.summary_archive = Some(archive_id.as_bytes().to_vec());
@@ -105,15 +114,15 @@ impl CheckpointBuilder {
             tools: self.tool_definitions.clone(),
         };
         self.record_context_tokens(Some(estimate_context_tokens(&prompt, &projected)));
+        let statics = self.static_measures()?;
         if let Some(details) = self.base.token_details.as_mut() {
             details.breakdown = Some(crate::cursor::services::usage::breakdown(
                 details.used_tokens,
                 details.max_tokens,
                 details.breakdown.as_ref(),
-                &self.instructions,
-                &self.tool_definitions,
-                &self.dynamic_tools,
+                statics,
                 messages,
+                &mut self.measure_cache,
             )?);
         }
         Ok(self.base.clone())

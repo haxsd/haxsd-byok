@@ -49,7 +49,7 @@ impl Store {
             return Ok(CheckpointId(current));
         }
 
-        let digest = super::checkpoints::message_digest(&[])?;
+        let digest = super::checkpoints::root_digest();
         let root = sqlx::query(
             "INSERT INTO conversation_checkpoints
              (conversation_id, parent_checkpoint_id, state_digest, created_at_ms)

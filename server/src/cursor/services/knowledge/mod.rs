@@ -140,14 +140,18 @@ pub async fn add(
                 if let Ok(reply) = connect::decode_unary::<KnowledgeBaseAddResponse>(&response.body)
                 {
                     if reply.success && !reply.id.is_empty() {
-                        store.upsert(&RuleRecord {
-                            id: reply.id,
-                            knowledge: message.knowledge,
-                            title: message.title,
-                            created_at: now(),
-                            is_generated: false,
-                            git_origin: message.git_origin,
-                        })?;
+                        // 上游已经建成这条规则了：本地镜像写失败只能记警告，不能回错。
+                        // 用户看到 500 会重试，而上游那条规则已经存在，重试就是重复新增。
+                        mirror_accepted_add(
+                            store,
+                            &reply.id,
+                            KnowledgeBaseAddRequest {
+                                knowledge: message.knowledge,
+                                title: message.title,
+                                git_origin: message.git_origin,
+                                composer_id: None,
+                            },
+                        );
                     }
                 }
                 return Ok(response.into_response());
@@ -172,6 +176,28 @@ pub async fn add(
     })?;
     store.record_add(&id)?;
     proto(KnowledgeBaseAddResponse { success: true, id })
+}
+
+/// 上游已接受新增之后的本地镜像写入。
+///
+/// 刻意不返回 `Result`：上游那条规则已经建好了，本地镜像写失败只能是警告。以前这里用 `?`
+/// 把本地失败变成 500，用户重试就会在上游产生第二条同样的规则。
+fn mirror_accepted_add(store: &RuleStore, upstream_id: &str, message: KnowledgeBaseAddRequest) {
+    let record = RuleRecord {
+        id: upstream_id.into(),
+        knowledge: message.knowledge,
+        title: message.title,
+        created_at: now(),
+        is_generated: false,
+        git_origin: message.git_origin,
+    };
+    if let Err(error) = store.upsert(&record) {
+        tracing::warn!(
+            rule_id = upstream_id,
+            %error,
+            "rules upstream accepted the add but the local mirror could not be written"
+        );
+    }
 }
 
 pub async fn list(
@@ -353,4 +379,50 @@ fn proto(message: impl Message) -> Result<Response<Body>> {
             .expect("body length is always a valid header value"),
     );
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn add_request(knowledge: &str) -> KnowledgeBaseAddRequest {
+        KnowledgeBaseAddRequest {
+            knowledge: knowledge.into(),
+            title: "title".into(),
+            git_origin: "https://github.com/acme/repo".into(),
+            composer_id: None,
+        }
+    }
+
+    /// 上游已接受新增之后，本地镜像写失败不能变成错误：函数签名里就没有 `Result` 这条
+    /// 出路，失败只能记警告。以前这里用 `?`，于是本地写不进去会回 500，用户重试就在上游
+    /// 多出一条同样的规则。
+    #[test]
+    fn a_failed_local_mirror_after_an_accepted_add_cannot_fail_the_request() {
+        let root = tempfile::tempdir().unwrap();
+        let rules = root.path().join("rules");
+        let store = RuleStore::open(rules.clone()).unwrap();
+        // 目录被删掉之后写入必然失败，而读回来只是"没有这条规则"。
+        std::fs::remove_dir(&rules).unwrap();
+
+        mirror_accepted_add(&store, "42", add_request("from cursor"));
+
+        assert!(
+            store.get("42").unwrap().is_none(),
+            "写不进去就是没有本地镜像，但调用方不该被打断"
+        );
+    }
+
+    /// 正常路径：上游接受之后条目按上游 id 落进本地镜像。
+    #[test]
+    fn an_accepted_add_lands_in_the_local_mirror_under_the_upstream_id() {
+        let root = tempfile::tempdir().unwrap();
+        let store = RuleStore::open(root.path().join("rules")).unwrap();
+
+        mirror_accepted_add(&store, "42", add_request("from cursor"));
+
+        let record = store.get("42").unwrap().expect("镜像里要有这条规则");
+        assert_eq!(record.knowledge, "from cursor");
+        assert_eq!(record.git_origin, "https://github.com/acme/repo");
+    }
 }

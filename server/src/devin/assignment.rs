@@ -192,6 +192,22 @@ pub fn find_model_reference(
     })
 }
 
+/// 会话令牌是 UUID 的字符串形态（36 字符，8-4-4-4-12）。
+///
+/// 先按形状过滤，只有像令牌的字段才去取会话锁（`uid_for_token` 会在锁里 prune 一遍）：
+/// 以前每个 protobuf bytes 字段都会字符串化并进一次锁，而请求里绝大多数 bytes 是
+/// 嵌套子消息或模型 UID。
+fn looks_like_assignment_token(value: &[u8]) -> bool {
+    value.len() == 36
+        && value.iter().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+}
+
 fn scan_fields(
     fields: &[wire::Field],
     candidates: &HashSet<String>,
@@ -204,11 +220,17 @@ fn scan_fields(
         let wire::FieldValue::Bytes(value) = &field.value else {
             continue;
         };
-        let text = String::from_utf8_lossy(value).into_owned();
-        let match_info = if candidates.contains(&text) {
-            Some((text, "uid"))
+        // 非 UTF-8 的 bytes 是嵌套子消息：它既不是 UID 也不是令牌，跳过即可
+        // （以前这里先 `from_utf8_lossy` 分配一个字符串再比对，二者都不可能命中）。
+        let Ok(text) = std::str::from_utf8(value) else {
+            continue;
+        };
+        let match_info = if candidates.contains(text) {
+            Some((text.to_owned(), "uid"))
+        } else if looks_like_assignment_token(value) {
+            sessions.uid_for_token(text).map(|uid| (uid, "assignment"))
         } else {
-            sessions.uid_for_token(&text).map(|uid| (uid, "assignment"))
+            None
         };
         if let Some((uid, source)) = match_info {
             output.push(Candidate {
@@ -272,6 +294,22 @@ mod tests {
 
         *now.lock().unwrap() += Duration::from_secs(61);
         assert_eq!(sessions.uid_for_token(&assignment.token), None);
+    }
+
+    /// 只有 UUID 形状的字段才值得当令牌查一次会话表：模型 UID 与二进制子消息都不该进锁。
+    #[test]
+    fn only_uuid_shaped_fields_are_looked_up_as_tokens() {
+        assert!(looks_like_assignment_token(
+            b"2f1c8f7e-1c2b-4a5d-9e6f-0a1b2c3d4e5f"
+        ));
+        assert!(!looks_like_assignment_token(b"model-a"));
+        assert!(!looks_like_assignment_token(&[0xff, 0xfe, 0x00, 0x01]));
+        assert!(!looks_like_assignment_token(
+            b"2f1c8f7e1c2b4a5d9e6f0a1b2c3d4e5f"
+        ));
+        assert!(!looks_like_assignment_token(
+            b"2f1c8f7e-1c2b-4a5d-9e6f-0a1b2c3d4e5g"
+        ));
     }
 
     #[test]

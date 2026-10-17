@@ -12,20 +12,75 @@ pub(crate) struct EditWrite {
     pub after: String,
 }
 
+/// 路径字段的别名表。Claude 系模型常按 Claude Code 习惯输出 `file_path`/`filePath`;
+/// 执行侧(`path`)与流式卡片(`stream::EditProjection`)**共用这一份**,否则模型写别名时
+/// 编辑能成功、流式卡片却一个字段都认不出来(路径与正文都不显示)。
+pub(crate) const PATH_FIELDS: &[&str] = &["path", "file_path", "filePath"];
+/// EditNotebook 的参数名与其余编辑工具不同。
+pub(crate) const NOTEBOOK_PATH_FIELDS: &[&str] = &["target_notebook"];
+/// 整文件写入的正文别名(Claude Code 习惯用 `content`)。
+pub(crate) const CONTENT_FIELDS: &[&str] = &["contents", "content"];
+
 pub(crate) fn path(call: &ToolCall) -> Result<String> {
     if normalized(&call.name) == "editnotebook" {
-        string(call, "target_notebook")
+        string_any(call, NOTEBOOK_PATH_FIELDS)
     } else {
-        // Claude 系模型常按 Claude Code 习惯输出 file_path/filePath,做别名兼容。
-        string_any(call, &["path", "file_path", "filePath"])
+        string_any(call, PATH_FIELDS)
     }
 }
 
-pub(crate) fn execution_path(call: &ToolCall) -> Result<Option<String>> {
+pub(crate) fn execution_path(
+    call: &ToolCall,
+    workspace_paths: &[String],
+) -> Result<Option<String>> {
     match normalized(&call.name).as_str() {
-        "write" | "strreplace" | "editnotebook" => path(call).map(Some),
+        "write" | "strreplace" | "editnotebook" => {
+            path(call).map(|path| Some(schedule_key(&path, workspace_paths)))
+        }
         _ => Ok(None),
     }
+}
+
+/// 编辑串行化的 key。
+///
+/// 这个 key 曾经就是模型给的原始路径串,于是同一个文件的不同写法(`D:\Repo\x` 与
+/// `d:/repo/x`、`\` 与 `/` 混用、`./` 前缀、盘符大小写、相对路径)各自成为一条独立队列:
+/// 两条流水线同时基于同一份旧内容算出 after(服务端两段式 Read → WriteArgs),客户端又没有
+/// 前置内容校验,后到的写整文件覆盖前一条,而历史里两个编辑都显示成功 —— 静默丢改动。
+///
+/// 规范化只服务于"同一个文件必须落进同一条队列",不改变下发给客户端的路径(那一路仍是
+/// `path()` 的原始串):有 workspace 根时先绝对化,统一分隔符、去掉 `.` 段并做词法 `..`
+/// 折叠,Windows 上再折叠大小写。规范化后仍不相等的两个串按"不同文件"处理(保守方向:
+/// 最坏是多串行化一次,不会并发写同一个文件)。
+fn schedule_key(path: &str, workspace_paths: &[String]) -> String {
+    let rooted = match workspace_paths
+        .iter()
+        .map(|root| root.trim())
+        .find(|root| !root.is_empty())
+    {
+        Some(root) if !std::path::Path::new(path.trim()).is_absolute() => {
+            format!("{}/{}", root.trim_end_matches(['/', '\\']), path.trim())
+        }
+        _ => path.trim().to_string(),
+    };
+    let mut components: Vec<&str> = Vec::new();
+    for component in rooted.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." => match components.last() {
+                Some(last) if *last != ".." => {
+                    components.pop();
+                }
+                _ => components.push(".."),
+            },
+            other => components.push(other),
+        }
+    }
+    let key = components.join("/");
+    if cfg!(windows) {
+        return key.to_lowercase();
+    }
+    key
 }
 
 pub(crate) fn after_read(
@@ -65,7 +120,7 @@ pub(crate) fn after_read(
         "write" => {
             // Claude Code 习惯的 content 作为 contents 的别名兼容。
             normalize_newlines(
-                &string_any(call, &["contents", "content"]).map_err(|error| error.to_string())?,
+                &string_any(call, CONTENT_FIELDS).map_err(|error| error.to_string())?,
             )
         }
         "strreplace" => replace_string(call, &before)?,
@@ -260,7 +315,7 @@ fn normalized(value: &str) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::edit_notebook;
+    use super::{edit_notebook, execution_path};
     use crate::model::ToolCall;
 
     fn notebook_call(old_string: &str) -> ToolCall {
@@ -300,5 +355,94 @@ mod tests {
     fn edit_notebook_replaces_a_unique_old_string() {
         let edited = edit_notebook(&notebook_call("hi"), &single_cell_notebook()).unwrap();
         assert!(edited.contains("print('replacement')"));
+    }
+
+    fn write_call(path: &str) -> ToolCall {
+        ToolCall {
+            index: 0,
+            call_id: "call".into(),
+            model_call_id: "model".into(),
+            name: "Write".into(),
+            arguments_text: String::new(),
+            arguments: json!({"path": path, "contents": "x"}),
+            argument_error: None,
+        }
+    }
+
+    /// 同一文件的不同写法必须落进同一条编辑队列,否则两条流水线会互相覆盖。
+    #[test]
+    fn equivalent_path_spellings_share_one_edit_queue_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let with_root = |path: &str| {
+            execution_path(&write_call(path), &[root.to_string_lossy().into_owned()])
+                .unwrap()
+                .unwrap()
+        };
+        let canonical = with_root(&format!("{}/src/a.ts", root.display()));
+
+        for spelling in [
+            format!("{}\\src\\a.ts", root.display()),
+            format!("{}/./src/a.ts", root.display()),
+            format!("{}/src/../src/a.ts", root.display()),
+            "src/a.ts".to_string(),
+            "./src/a.ts".to_string(),
+            "src\\a.ts".to_string(),
+        ] {
+            assert_eq!(
+                with_root(&spelling),
+                canonical,
+                "{spelling} 与规范写法不同队"
+            );
+        }
+
+        assert_ne!(with_root("src/b.ts"), canonical);
+        assert_ne!(
+            with_root(&format!("{}/other/a.ts", root.display())),
+            canonical
+        );
+    }
+
+    /// 没有 workspace 根时退化为"分隔符 + `.`/`..`"的保守归一化;Windows 上还折叠大小写。
+    #[test]
+    fn path_normalization_works_without_a_workspace_root() {
+        let key = |path: &str| execution_path(&write_call(path), &[]).unwrap().unwrap();
+        let canonical = key("lib/src/a.ts");
+
+        assert_eq!(key("lib\\src\\a.ts"), canonical);
+        assert_eq!(key("lib\\.\\src\\a.ts"), canonical);
+        assert_eq!(key("lib/src/../src/a.ts"), canonical);
+        if cfg!(windows) {
+            assert_eq!(key("Lib\\Src\\A.ts"), canonical);
+        }
+    }
+
+    /// Windows 盘符大小写与混合分隔符指向同一个文件;POSIX 上大小写不同就是不同文件。
+    #[cfg(windows)]
+    #[test]
+    fn windows_spellings_of_the_same_path_collapse_to_one_key() {
+        let root = vec!["D:\\Repo".to_string()];
+        let key = |path: &str| execution_path(&write_call(path), &root).unwrap().unwrap();
+        let canonical = key("D:\\Repo\\src\\a.ts");
+
+        for spelling in [
+            "d:\\repo\\src\\a.ts",
+            "D:/Repo/src/a.ts",
+            "D:\\Repo\\.\\src\\a.ts",
+            "D:\\Repo\\src\\..\\src\\a.ts",
+        ] {
+            assert_eq!(key(spelling), canonical, "{spelling} 与规范写法不同队");
+        }
+
+        assert_ne!(key("D:\\Repo\\src\\b.ts"), canonical);
+        assert_ne!(key("D:\\Other\\src\\a.ts"), canonical);
+    }
+
+    /// 非编辑工具不参与编辑队列。
+    #[test]
+    fn only_edit_tools_have_a_schedule_key() {
+        let mut call = write_call("D:\\Repo\\src\\a.ts");
+        call.name = "Read".into();
+        assert!(execution_path(&call, &[]).unwrap().is_none());
     }
 }

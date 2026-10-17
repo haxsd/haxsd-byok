@@ -14,6 +14,8 @@ import {
 } from "../../shared/api";
 import { useI18n } from "../../i18n/store";
 import { appStore } from "../../shared/store/appStore";
+import { runBatchedWrites } from "../../shared/utils/batchWrite";
+import { startOAuthPoll } from "./oauthPoll";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
@@ -63,7 +65,9 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
   const [begun, setBegun] = useState<PluginOAuthBegin | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const stopped = useRef(false);
+  // 回调进 ref：父组件每次重渲染都会给一个新的函数，直接列进依赖会让轮询 effect 跟着重启。
+  const configuredRef = useRef(onConfigured);
+  configuredRef.current = onConfigured;
 
   const copyCode = async (code: string) => {
     await api.copyCursorText(code).catch(() => undefined);
@@ -71,42 +75,34 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
     window.setTimeout(() => setCopied(false), 2000);
   };
 
-  useEffect(() => () => { stopped.current = true; }, []);
-
   useEffect(() => {
     if (!begun || status !== "polling") return;
-    let timer = 0;
-    const poll = async (intervalMs: number) => {
-      if (stopped.current) return;
-      try {
-        const result = await api.pluginOAuthPoll(begun.sessionId);
-        if (stopped.current) return;
-        if (result.status === "pending") {
-          timer = window.setTimeout(() => void poll(result.pollIntervalMs), Math.max(1000, result.pollIntervalMs));
-          return;
-        }
-        if (result.status === "completed") {
+    const sessionId = begun.sessionId;
+    // 轮询链在 oauthPoll.ts 里：递归 setTimeout + 取消位（清定时器挡不住在途那一次的续排）。
+    return startOAuthPoll({
+      poll: () => api.pluginOAuthPoll(sessionId),
+      // 上一次失败的红字要在下一次轮询成功时撤掉：否则授权成功后界面上会同时留着
+      // "账号已保存"和一条旧错误，看起来仍然是坏的。
+      onPending: () => setError(null),
+      onCompleted: (modelSyncError) => {
+        void (async () => {
           await appStore.refreshPlugins();
-          if (result.modelSyncError) {
+          if (modelSyncError) {
             setStatus("error");
-            setError(t("账号已保存，但同步模型失败：{error}", { error: result.modelSyncError }));
+            setError(t("账号已保存，但同步模型失败：{error}", { error: modelSyncError }));
             return;
           }
           setStatus("success");
-          onConfigured();
-          return;
-        }
+          configuredRef.current();
+        })();
+      },
+      onFailed: (message) => {
         setStatus("error");
-        setError(result.message || t("授权被拒绝或已失败。"));
-      } catch (cause) {
-        if (stopped.current) return;
-        setError(errorText(cause));
-        timer = window.setTimeout(() => void poll(intervalMs), Math.max(1000, intervalMs));
-      }
-    };
-    timer = window.setTimeout(() => void poll(begun.pollIntervalMs), Math.max(1000, begun.pollIntervalMs));
-    return () => window.clearTimeout(timer);
-  }, [begun, onConfigured, status]);
+        setError(message || t("授权被拒绝或已失败。"));
+      },
+      onTransportError: (cause) => setError(errorText(cause)),
+    }, begun.pollIntervalMs);
+  }, [begun, status]);
 
   const start = async () => {
     setStatus("starting");
@@ -149,6 +145,8 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
+  // 模型开关保存的失败明细单独记：那条通用错误提示在弹窗后面，用户看不见。
+  const [modelError, setModelError] = useState<string | null>(null);
   const [resourceAction, setResourceAction] = useState<{
     resource: PluginResourceDescriptor;
     item: PluginResourceView;
@@ -165,6 +163,36 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
       await appStore.refreshPlugins();
     } catch (cause) {
       setError(errorText(cause));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * 保存模型开关。
+   *
+   * 原来是一条一条 `await`：N 个模型排队等，中间任意一条失败就中断，剩下的一个都不提交，
+   * 界面只弹一条通用错误。现在有限并发、全部尝试，失败项按名字列出来；已经成功的项照样
+   * 提交并刷新，用户重试时不会再提交一遍。
+   */
+  const saveModelSelection = async (enabledByModel: Record<string, boolean>) => {
+    if (!modelProvider) return;
+    setBusy("models");
+    setModelError(null);
+    try {
+      const changed = modelProvider.models.filter((model) => model.enabled !== (enabledByModel[model.id] ?? model.enabled));
+      const failures = await runBatchedWrites(changed, (model) =>
+        api.setPluginModelEnabled(plugin.id, modelProvider.id, model.modelId, enabledByModel[model.id] ?? model.enabled));
+      await appStore.refreshPlugins();
+      if (failures.length > 0) {
+        setModelError(t("已保存 {saved} 个模型，{failed} 个失败：{models}", {
+          saved: changed.length - failures.length,
+          failed: failures.length,
+          models: failures.map((failure) => failure.item.displayName).join("、"),
+        }));
+      }
+    } catch (cause) {
+      setModelError(errorText(cause));
     } finally {
       setBusy(null);
     }
@@ -208,7 +236,7 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
       provider={provider}
       busy={busy !== null}
       syncing={busy === `sync:${provider.id}`}
-      onManageModels={() => setModelProviderId(provider.id)}
+      onManageModels={() => { setModelError(null); setModelProviderId(provider.id); }}
       onSync={() => void run(`sync:${provider.id}`, async () => {
         await api.syncPluginModels(plugin.id, provider.id);
       })}
@@ -229,13 +257,9 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
     {modelProvider && <ModelManagementModal
       provider={modelProvider}
       busy={busy !== null}
+      error={modelError}
       onClose={() => setModelProviderId(null)}
-      onSubmit={(enabledByModel) => void run("models", async () => {
-        for (const model of modelProvider.models) {
-          const enabled = enabledByModel[model.id] ?? model.enabled;
-          if (model.enabled !== enabled) await api.setPluginModelEnabled(plugin.id, modelProvider.id, model.modelId, enabled);
-        }
-      })}
+      onSubmit={(enabledByModel) => void saveModelSelection(enabledByModel)}
     />}
     {resourceAction && <ResourceActionModal
       action={resourceAction.resource.actions.find((item) => item.target === "resource") ?? null}
@@ -263,7 +287,12 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
       <span>
         {provider.providerType}
         {" · "}
-        {provider.models.length > 0 ? t("{count} 个模型", { count: provider.models.length }) : t("尚未同步模型")}
+        {provider.models.length > 0
+          ? t("{count} 个模型 · 已启用 {enabled}", {
+            count: provider.models.length,
+            enabled: provider.models.filter((model) => model.enabled).length,
+          })
+          : t("尚未同步模型")}
         {" · "}
         {provider.configured ? t("可调用") : t("未就绪")}
       </span>
@@ -277,18 +306,19 @@ function ProviderRow({ provider, busy, syncing, onManageModels, onSync }: {
   </Card>;
 }
 
-function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
+function ModelManagementModal({ provider, busy, error, onClose, onSubmit }: {
   provider: PluginProviderDescriptor;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onSubmit: (enabledByModel: Record<string, boolean>) => void;
 }) {
   const { locale } = useI18n();
-  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])));
-  }, [provider.models]);
+  // 草稿只在弹窗打开时初始化一次(关掉就卸载,下次打开重新取)。不能跟着
+  // provider.models 走:插件每次刷新都会给出新数组,那样会把用户刚勾的改动静默
+  // 重置回服务端旧值——界面上看起来像保存成功,实际什么都没改。
+  const [enabledByModel, setEnabledByModel] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(provider.models.map((model) => [model.id, model.enabled])));
 
   const setAll = (enabled: boolean) => {
     setEnabledByModel(Object.fromEntries(provider.models.map((model) => [model.id, enabled])));
@@ -307,6 +337,10 @@ function ModelManagementModal({ provider, busy, onClose, onSubmit }: {
       <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(true)}>{t("全选")}</Button>
       <Button size="small" disabled={busy || provider.models.length === 0} onClick={() => setAll(false)}>{t("全不选")}</Button>
     </div>
+    {/* 保存失败的明细必须写在弹窗里：面板底部那条提示被这个 portal 盖住，用户看不到。 */}
+    {error && <span className={styles.error} role="alert">{error}</span>}
+    {/* 开关的作用范围要说清：本应用的列表与调用立刻跟着变，客户端那边的模型列表要它自己重新读一次。 */}
+    <p className={styles.modelNote}>{t("停用的模型会从模型列表里消失，指向它的请求也会被拒绝；Cursor 要重启一次才会看到新列表。")}</p>
     <div className={styles.modelTableWrap}>
       <table className={styles.modelTable}>
         <thead><tr><th scope="col">{t("模型名称")}</th><th scope="col">{t("启用")}</th></tr></thead>

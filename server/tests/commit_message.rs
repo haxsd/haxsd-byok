@@ -1,4 +1,6 @@
 //! Verifies the local WriteGitCommitMessage engine end to end on the wire.
+#[path = "support/cursor_official.rs"]
+mod cursor_official;
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
 #[path = "support/fixtures.rs"]
@@ -20,7 +22,7 @@ use cursor_server::{
     model::{ContentPart, ModelConfigInput, ModelType, ProjectedContent, OPENAI_CHAT_ENDPOINT},
     network::NetworkClients,
     provider::{FinishReason, ModelEvent},
-    store::{CommitPromptLocale, CommitSettings, DEFAULT_COMMIT_PROMPT_ZH_CN},
+    store::{CommitPromptLocale, CommitSettings, ProxyMode, DEFAULT_COMMIT_PROMPT_ZH_CN},
 };
 use tower::ServiceExt;
 
@@ -249,4 +251,41 @@ async fn unconfigured_model_is_rejected() {
     let body = to_bytes(response.into_body(), 4096).await.unwrap();
     let text = std::str::from_utf8(&body).unwrap();
     assert!(text.contains("missing-hash"));
+}
+
+/// 「直连」必须走 Cursor 官方上游,不能借 Tab 补全服务的地址:提交信息请求里带着
+/// staged diff(用户的私有代码),发给第三方主机就是泄露。
+///
+/// 这里把 Tab 服务指向一个**活着**的桩(旧实现会直接连上它,环回目的地还会绕过
+/// 出网代理),再把官方上游的出网代理指到死端口,让官方那条路必然失败:修复后桩
+/// 一次都不该被连上。
+#[tokio::test]
+async fn direct_commit_message_never_goes_to_the_tab_service() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let stub = cursor_official::Stub::start().await;
+    cursor_official::set_tab_service(&store, &stub.origin).await;
+    let dead = cursor_official::dead_address().await;
+    cursor_official::set_proxy(&store, ProxyMode::Custom, &format!("http://{dead}")).await;
+    store
+        .set_commit_settings(CommitSettings {
+            model_id: String::new(),
+            prompt: String::new(),
+            prompt_locale: CommitPromptLocale::ZhCn,
+        })
+        .await
+        .unwrap();
+    let router = commit_router(store, fake_provider::FakeProvider::default()).await;
+
+    let response = post_commit_message(router, diff_request("diff --git a/engine.rs")).await;
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_GATEWAY,
+        "官方上游走不通(代理是死的)时应报 502,而不是把请求改发别处"
+    );
+    assert_eq!(
+        stub.attempts(),
+        0,
+        "带 staged diff 的提交信息请求绝不能发到 Tab 补全服务"
+    );
 }

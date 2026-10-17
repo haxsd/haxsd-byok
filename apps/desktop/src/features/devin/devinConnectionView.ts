@@ -137,7 +137,7 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
       key: "connect",
       done: devinPointsHere,
       label: t("把 Devin 指到本机网关"),
-      hint: devinPointsHere ? t("已接入") : t("用下面的宿主接入完成"),
+      hint: devinPointsHere ? t("补丁已应用") : t("用下面的宿主接入完成"),
     },
     {
       key: "verify",

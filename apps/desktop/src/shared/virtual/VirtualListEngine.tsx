@@ -143,15 +143,11 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
     renderItem,
     overscan = 0,
     itemGap = 0,
-    deferInitialRender = false,
     scrollbarSize,
-    minThumbSize,
-    scrollbarVisibility,
     scrollbarInsetTop,
     className,
     contentClassName,
     style,
-    onRangeChange,
     onReady,
   } = props
 
@@ -181,9 +177,6 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
     bottom: 0,
   })
   const renderRangeRef = useRef<RenderRange>({ start: 0, end: 0 })
-  const [initialRenderReady, setInitialRenderReady] = useState(
-    () => !deferInitialRender
-  )
   const [scrollState, setScrollState] = useState<ScrollAreaState>({
     scrollTop: 0,
     viewportHeight: 0,
@@ -233,26 +226,6 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
     scrollStateRef.current = scrollState
   }
 
-  useEffect(() => {
-    if (!deferInitialRender) {
-      setInitialRenderReady(true)
-      return
-    }
-
-    let firstFrame = 0
-    let secondFrame = 0
-    firstFrame = requestAnimationFrame(() => {
-      secondFrame = requestAnimationFrame(() => {
-        setInitialRenderReady(true)
-      })
-    })
-
-    return () => {
-      cancelAnimationFrame(firstFrame)
-      cancelAnimationFrame(secondFrame)
-    }
-  }, [deferInitialRender])
-
   if (itemSignatureRef.current !== itemSignature) {
     const estimatedSizes = itemSnapshot.map((item) => item.estimatedSize)
     rangeMapRef.current.reset(estimatedSizes)
@@ -269,13 +242,8 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
 
   const rangeMap = rangeMapRef.current
   const initialRenderCount = Math.max(1, overscan * 2 + 1)
-  const canRenderItems =
-    initialRenderReady &&
-    (!deferInitialRender || scrollState.viewportHeight > 0)
   let renderRange: RenderRange
-  if (!canRenderItems) {
-    renderRange = { start: 0, end: 0 }
-  } else if (scrollState.viewportHeight > 0) {
+  if (scrollState.viewportHeight > 0) {
     renderRange = getRenderRange(
       rangeMap,
       Math.max(0, scrollState.scrollTop - contentInsetTop),
@@ -289,12 +257,6 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
     }
   }
   renderRangeRef.current = renderRange
-
-  useEffect(() => {
-    if (renderRange.end > renderRange.start) {
-      onRangeChange?.({ start: renderRange.start, end: renderRange.end - 1 })
-    }
-  }, [onRangeChange, renderRange.end, renderRange.start])
 
   const measure = useCallback((index: number, node: HTMLElement | null) => {
     if (!node) return
@@ -417,8 +379,6 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
       }}
       onScroll={handleScroll}
       scrollbarSize={scrollbarSize}
-      minThumbSize={minThumbSize}
-      scrollbarVisibility={scrollbarVisibility}
       scrollbarInsetTop={scrollbarInsetTop}
     >
       <div

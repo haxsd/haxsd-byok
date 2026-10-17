@@ -11,6 +11,7 @@ import { Combobox, Select, type ComboboxHandle } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import { claudeIcon, chevronRightIcon, openAiIcon } from "../../shared/ui/icons";
 import { CursorPresetChips } from "./CursorPresetChips";
+import { numberFieldValue } from "./modelNumberInput";
 import styles from "./CursorSettings.module.scss";
 
 export type CursorModelDraft = {
@@ -91,7 +92,8 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
       customHeadersText: endpoint?.customHeaders ? JSON.stringify(endpoint.customHeaders, null, 2) : draft.customHeadersText,
     });
   };
-  const numberValue = (value: string) => value === "" ? null : Math.trunc(Number(value));
+  // 非有限值当作"没填"：NaN 进草稿会让输入框看着是空的、保存却报"必须是大于 0 的整数"。
+  const numberValue = numberFieldValue;
   const canDiscover = Boolean(draft.model.base_url.trim() && (draft.model.api_key.trim() || hasStoredKey));
   // 选中预设后，把该服务商已知的模型 id 并入下拉，方便直接选（仍可用「获取模型」发现）
   const presetModelOptions = modelPresets

@@ -1,8 +1,8 @@
 //! Retrieval metrics and latency summaries used by the benchmark report.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EffectMetrics {
     pub query_count: usize,
     pub recall_at_1: f64,
@@ -13,7 +13,7 @@ pub struct EffectMetrics {
     pub ndcg_at_10: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LatencyMetrics {
     pub samples: usize,
     pub min_ms: f64,

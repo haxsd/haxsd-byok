@@ -36,9 +36,15 @@
      identically under the navigation bar. */
   top: calc(var(--app-content-top) - var(--app-title-band));
   left: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
+  /* 标题行与动作区是同一行的两列：右边界让出动作区实测宽度与一档间距，页面说明
+     在窗口变窄时自己省略（PageTitle 的 .meta 已有 ellipsis），而不是被按钮横向盖住。
+     --app-title-actions 由 AppLayout 写在根元素上；取值处给兜底，避免在 .shell 里
+     再声明一次把实测值盖住。 */
+  right: calc(max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2)) + var(--app-title-actions, 0px) + var(--app-title-band-gap));
   height: var(--app-title-band);
   display: flex;
   align-items: center;
+  min-width: 0;
   margin: 0;
   padding-left: 0;
   /* Type is owned by PageTitle, which also carries the page's status line. */

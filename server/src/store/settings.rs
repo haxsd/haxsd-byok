@@ -1,5 +1,11 @@
 //! Persists application settings.
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -236,9 +242,9 @@ pub struct TabSettings {
     pub address: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(default)]
 pub struct DesktopSettings {
-    #[serde(default)]
     pub silent_start: bool,
     #[serde(default = "default_true")]
     pub show_dock_icon: bool,
@@ -246,8 +252,27 @@ pub struct DesktopSettings {
     ///
     /// 默认关。它只决定"显示多少信息"，不隐藏功能；日志过滤在启动早期由
     /// 数据目录里的 `dev-mode.json` 镜像决定（`config::write_dev_mode_mirror`）。
-    #[serde(default)]
     pub developer_mode: bool,
+    /// 界面偏好（前端的 `DesktopUiPreferences`）：字段**缺席** = 服务端还没有值（旧版本服务端，
+    /// 或从没设置过）；`null` = 显式清空回默认。
+    ///
+    /// 这些以前只存在 webview 的 localStorage 里，而 localStorage 按 origin 隔离、origin 里带着
+    /// 管理端口——端口一变（产品明说的行为）偏好就全读不到了。第 31 批裁定：服务端是唯一权威。
+    /// 取值词汇表（`midnight` / `default-dark` / `system` / `zh-CN`…）由前端拥有，服务端只存不判。
+    pub theme: Option<String>,
+    pub locale: Option<String>,
+    pub tutorial_read: Option<bool>,
+    pub pending_update: Option<PendingUpdate>,
+    pub devin_host_path: Option<String>,
+    /// 折叠状态：卡片键 → 是否展开。见 [`DesktopSettingsPatch::disclosure`] 的合并语义。
+    pub disclosure: BTreeMap<String, bool>,
+}
+
+/// 待核对的升级记录（前端的 `PendingUpdateRecord`）。
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct PendingUpdate {
+    pub from: String,
+    pub to: String,
 }
 
 impl Default for DesktopSettings {
@@ -256,16 +281,26 @@ impl Default for DesktopSettings {
             silent_start: false,
             show_dock_icon: true,
             developer_mode: false,
+            theme: None,
+            locale: None,
+            tutorial_read: None,
+            pending_update: None,
+            devin_host_path: None,
+            disclosure: BTreeMap::new(),
         }
     }
 }
 
-/// 桌面设置的一次按字段更新：只改动值为 `Some` 的字段。
+/// 桌面设置的一次按字段更新：只提交改动的字段。
 ///
-/// 界面上的每个开关各发一次修订，携带的只有自己那一个字段。服务端在全局写锁内
-/// 读回已保存的设置、合并这次修订再写回，所以两个控件先后保存时不会各自拿着
-/// 同一个旧快照互相撤销——整对象读改写（前端先 GET 再 PUT）正是丢更新的来源。
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
+/// 界面上的每个控件各发一次修订，携带的只有自己那几个字段。服务端在全局写锁内读回已保存的
+/// 设置、合并这次修订再写回（并把保存后的整份设置回显给前端），所以两个控件先后保存时不会
+/// 各自拿着同一个旧快照互相撤销——整对象读改写（前端先 GET 再 PUT）正是丢更新的来源。
+///
+/// 三态语义：字段**缺席** = 不改；`null` = 清空回默认；有值 = 设置。可清空的字段因此写成
+/// `Option<Option<T>>`：serde 默认把 `null` 和缺席都解成 `None`，那样前端点"清空"会被当成
+/// "不改"——正好相反。
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct DesktopSettingsPatch {
     #[serde(default)]
     pub silent_start: Option<bool>,
@@ -273,6 +308,28 @@ pub struct DesktopSettingsPatch {
     pub show_dock_icon: Option<bool>,
     #[serde(default)]
     pub developer_mode: Option<bool>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub theme: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub locale: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub tutorial_read: Option<Option<bool>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub pending_update: Option<Option<PendingUpdate>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub devin_host_path: Option<Option<String>>,
+    /// 折叠状态：**按卡片键合并**，不是整份替换——两个卡片先后折叠不会互相撤销。`null` 清空整份。
+    #[serde(default, deserialize_with = "double_option")]
+    pub disclosure: Option<Option<BTreeMap<String, bool>>>,
+}
+
+/// 区分"字段缺席"与"显式 `null`"：缺席 → `None`（不改），`null` → `Some(None)`（清空）。
+fn double_option<'de, D, T>(deserializer: D) -> std::result::Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 impl DesktopSettingsPatch {
@@ -285,6 +342,27 @@ impl DesktopSettingsPatch {
         }
         if let Some(developer_mode) = self.developer_mode {
             settings.developer_mode = developer_mode;
+        }
+        if let Some(theme) = self.theme {
+            settings.theme = theme;
+        }
+        if let Some(locale) = self.locale {
+            settings.locale = locale;
+        }
+        if let Some(tutorial_read) = self.tutorial_read {
+            settings.tutorial_read = tutorial_read;
+        }
+        if let Some(pending_update) = self.pending_update {
+            settings.pending_update = pending_update;
+        }
+        if let Some(devin_host_path) = self.devin_host_path {
+            settings.devin_host_path = devin_host_path;
+        }
+        if let Some(disclosure) = self.disclosure {
+            match disclosure {
+                Some(entries) => settings.disclosure.extend(entries),
+                None => settings.disclosure.clear(),
+            }
         }
     }
 }
@@ -409,21 +487,81 @@ fn read_proxy_settings(value: &str) -> ProxySettingsSecret {
     })
 }
 
+/// Devin 设置的解析缓存。
+///
+/// 网关每个请求都要读一次设置（[`Store::devin_settings`]），而解析与校验
+/// （`serde_json::from_str` + `validate`）只需要在设置真的变了之后重做一次。缓存按**版本号**
+/// 判定：`set_devin_settings` 写成功后 `+1`，读侧先取版本、命中就直接返回已解析的值。
+///
+/// 为什么只靠进程内版本号就够：`service_settings` 只有进程内的 `Store` 会写（没有绕过它的
+/// 写路径），而实例锁保证同一份数据目录同时只有一个进程在写（`store::runs` 的同一前提）。
+///
+/// 读侧的顺序很要紧：**先取版本号再查库**。并发写入只会让版本号变得更新，于是这次读到的东西
+/// 会被标在一个更旧的版本上、下次必然不命中（最多多解析一次，绝不会给出旧设置）；反过来先查库
+/// 再取版本号，就可能把旧内容标在新版本上，缓存从此永远返回旧设置。
+#[derive(Default)]
+pub(crate) struct DevinSettingsCache {
+    version: AtomicU64,
+    cached: Mutex<Option<(u64, crate::devin::DevinSettings)>>,
+    /// 真正解析过多少次；用例用它钉住"连续两次读取只解析一次"。
+    parses: AtomicU64,
+}
+
+impl DevinSettingsCache {
+    fn version(&self) -> u64 {
+        self.version.load(Ordering::Acquire)
+    }
+
+    fn bump(&self) {
+        self.version.fetch_add(1, Ordering::Release);
+    }
+
+    fn hit(&self, version: u64) -> Option<crate::devin::DevinSettings> {
+        let cached = self
+            .cached
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        cached
+            .as_ref()
+            .filter(|(cached_version, _)| *cached_version == version)
+            .map(|(_, settings)| settings.clone())
+    }
+
+    fn store(&self, version: u64, settings: crate::devin::DevinSettings) {
+        let mut cached = self
+            .cached
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *cached = Some((version, settings));
+    }
+
+    fn count_parse(&self) {
+        self.parses.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 impl Store {
     pub async fn devin_settings(&self) -> Result<crate::devin::DevinSettings> {
+        let version = self.devin_settings_cache.version();
+        if let Some(settings) = self.devin_settings_cache.hit(version) {
+            return Ok(settings);
+        }
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
         )
         .bind(DEVIN_SETTINGS_KEY)
         .fetch_optional(&self.pool)
         .await?;
-        let settings = value
-            .map(|value| {
+        let settings = match value {
+            Some(value) => {
+                self.devin_settings_cache.count_parse();
                 serde_json::from_str::<crate::devin::DevinSettings>(&value)
-                    .map_err(crate::Error::Json)
-            })
-            .unwrap_or_else(|| Ok(crate::devin::DevinSettings::default()))?;
+                    .map_err(crate::Error::Json)?
+            }
+            None => crate::devin::DevinSettings::default(),
+        };
         settings.validate()?;
+        self.devin_settings_cache.store(version, settings.clone());
         Ok(settings)
     }
 
@@ -440,6 +578,8 @@ impl Store {
             .bind(now_ms())
             .execute(&self.pool)
             .await?;
+        // 写进去之后才 +1：先加会让并发读把"还没落库的旧行"标在新版本上。
+        self.devin_settings_cache.bump();
         Ok(settings)
     }
 
@@ -592,8 +732,48 @@ impl Store {
     }
 
     pub async fn set_port_settings(&self, settings: PortSettings) -> Result<()> {
-        let value_json = serde_json::to_string(&settings)?;
         let _write = self.writes.lock().await;
+        self.write_port_settings(&settings).await
+    }
+
+    /// 只改服务端口，保留代理端口。
+    ///
+    /// 快路径（值没变）不碰写锁：启动早期写实际端口时可能正赶上后台回收，那一段
+    /// 长时间持锁，而这一步不该排在它后面。真的需要写时，读回、合并、写回都在同一
+    /// 把写锁内完成（与桌面设置、按模型价格同一套路）：这一行有两个写入方——启动时
+    /// 写实际服务端口、接管启动代理时写实际代理端口——各自只改自己那一个字段，谁都
+    /// 不该把对方刚写进去的值抹掉，也不该撤销用户在设置页刚保存的那份。
+    pub async fn set_service_port(&self, port: u16) -> Result<()> {
+        if self.port_settings().await?.service_port == port {
+            return Ok(());
+        }
+        let _write = self.writes.lock().await;
+        let mut settings = self.port_settings().await?;
+        if settings.service_port == port {
+            return Ok(());
+        }
+        settings.service_port = port;
+        self.write_port_settings(&settings).await
+    }
+
+    /// 只改代理端口，保留服务端口。理由同 `set_service_port`。
+    pub async fn set_proxy_port(&self, port: u16) -> Result<()> {
+        // Starting on the saved port must not wait behind background collection.
+        if self.port_settings().await?.proxy_port == port {
+            return Ok(());
+        }
+        let _write = self.writes.lock().await;
+        let mut settings = self.port_settings().await?;
+        if settings.proxy_port == port {
+            return Ok(());
+        }
+        settings.proxy_port = port;
+        self.write_port_settings(&settings).await
+    }
+
+    /// 写入整行端口设置；调用方必须已经持有写锁。
+    async fn write_port_settings(&self, settings: &PortSettings) -> Result<()> {
+        let value_json = serde_json::to_string(settings)?;
         sqlx::query(
             "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
         )
@@ -603,22 +783,6 @@ impl Store {
         .execute(&self.pool)
         .await?;
         Ok(())
-    }
-
-    pub async fn set_service_port(&self, port: u16) -> Result<()> {
-        let mut settings = self.port_settings().await?;
-        settings.service_port = port;
-        self.set_port_settings(settings).await
-    }
-
-    pub async fn set_proxy_port(&self, port: u16) -> Result<()> {
-        let mut settings = self.port_settings().await?;
-        // Starting on the saved port must not wait behind background collection.
-        if settings.proxy_port == port {
-            return Ok(());
-        }
-        settings.proxy_port = port;
-        self.set_port_settings(settings).await
     }
 
     pub async fn desktop_settings(&self) -> Result<DesktopSettings> {
@@ -641,20 +805,26 @@ impl Store {
         &self,
         patch: DesktopSettingsPatch,
     ) -> Result<DesktopSettings> {
-        let _write = self.writes.lock().await;
-        let mut settings = self.desktop_settings().await?;
-        patch.apply_to(&mut settings);
-        let value_json = serde_json::to_string(&settings)?;
-        sqlx::query(
-            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
-        )
-        .bind(DESKTOP_SETTINGS_KEY)
-        .bind(value_json)
-        .bind(now_ms())
-        .execute(&self.pool)
-        .await?;
+        let settings = {
+            let _write = self.writes.lock().await;
+            let mut settings = self.desktop_settings().await?;
+            patch.apply_to(&mut settings);
+            let value_json = serde_json::to_string(&settings)?;
+            sqlx::query(
+                "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+            )
+            .bind(DESKTOP_SETTINGS_KEY)
+            .bind(value_json)
+            .bind(now_ms())
+            .execute(&self.pool)
+            .await?;
+            settings
+        };
         // 日志过滤在下一次启动的数据库之前初始化，只能靠数据目录里的镜像读这个开关。
         // 镜像写不进去时设置仍然生效（界面按数据库读），所以只记一条警告。
+        //
+        // 写在锁外：这是同步文件 I/O，持写锁做会让所有写入方排队等一次磁盘写（写锁是整个
+        // 进程唯一的写入通道，包括每个工具轮的落库）。
         if let Err(error) = crate::config::write_dev_mode_mirror(settings.developer_mode) {
             tracing::warn!(%error, "failed to mirror the developer mode setting");
         }
@@ -832,8 +1002,8 @@ mod tests {
 
     use super::{
         migrate_cursor_mode, read_proxy_settings, CommitPromptLocale, CommitSettings,
-        CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing, PricingMode,
-        ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TokenPrice,
+        CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing, PendingUpdate,
+        PricingMode, ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TokenPrice,
         TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
         LEGACY_CURSOR_TAKEOVER_KEY, MODEL_PRICING_SETTINGS_KEY, PROXY_SETTINGS_KEY,
     };
@@ -880,6 +1050,44 @@ mod tests {
         result.unwrap().unwrap();
         store.set_proxy_port(9062).await.unwrap();
         assert_eq!(store.port_settings().await.unwrap().proxy_port, 9062);
+    }
+
+    /// 服务端有两个写入方各改一个字段（启动写服务端口、接管启动代理写代理端口）：
+    /// 谁都不许把对方那半行抹掉。值没变的那条路径同样不碰写锁。
+    #[tokio::test]
+    async fn partial_port_updates_keep_the_other_field_and_skip_the_write_lock_when_unchanged() {
+        let (_directory, store) = temp_store().await;
+        store
+            .set_port_settings(super::PortSettings {
+                proxy_port: 41_000,
+                service_port: 56_321,
+            })
+            .await
+            .unwrap();
+
+        // 值没变：不等待写锁（后台回收可能长时间持锁）。
+        let maintenance = store.writes.lock().await;
+        let unchanged = tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            store.set_service_port(56321),
+        )
+        .await;
+        drop(maintenance);
+        assert!(
+            unchanged.is_ok(),
+            "an unchanged port must not take the lock"
+        );
+        unchanged.unwrap().unwrap();
+
+        store.set_service_port(56_400).await.unwrap();
+        store.set_proxy_port(41_100).await.unwrap();
+        assert_eq!(
+            store.port_settings().await.unwrap(),
+            super::PortSettings {
+                proxy_port: 41_100,
+                service_port: 56_400,
+            }
+        );
     }
 
     /// The `outbound_proxy` row exactly as builds before the `system` -> `default`
@@ -1139,6 +1347,190 @@ mod tests {
         let settings = store.desktop_settings().await.unwrap();
         assert!(settings.silent_start);
         assert!(!settings.show_dock_icon);
+    }
+
+    /// 三个开关与界面偏好一起按字段保存：改一个不能撤销别的，PUT 回显整份设置。
+    ///
+    /// 前端只有看到回显才删旧的 localStorage 键（"回显确认"），所以 PUT 的返回值必须是
+    /// 保存后的完整设置——这条用例同时钉住"部分更新保留其余字段"和"回显完整"。
+    #[tokio::test]
+    async fn desktop_settings_round_trip_and_partial_updates_keep_the_other_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        let saved = store
+            .update_desktop_settings(patch(
+                r#"{"theme":"midnight","locale":"zh-CN","tutorial_read":true,
+                    "pending_update":{"from":"1.0.0","to":"1.1.0"},
+                    "devin_host_path":"/usr/local/bin/devin",
+                    "disclosure":{"models":true,"storage":false}}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(saved.theme.as_deref(), Some("midnight"));
+        assert_eq!(saved.locale.as_deref(), Some("zh-CN"));
+        assert_eq!(saved.tutorial_read, Some(true));
+        assert_eq!(
+            saved.pending_update,
+            Some(PendingUpdate {
+                from: "1.0.0".into(),
+                to: "1.1.0".into()
+            })
+        );
+        assert_eq!(
+            saved.devin_host_path.as_deref(),
+            Some("/usr/local/bin/devin")
+        );
+        assert_eq!(saved.disclosure.get("models"), Some(&true));
+        assert_eq!(
+            store.desktop_settings().await.unwrap(),
+            saved,
+            "回显 = 落库的样子"
+        );
+
+        // 只改一个开关与一个偏好字段：其余原样保留。
+        let later = store
+            .update_desktop_settings(patch(r#"{"silent_start":true,"locale":"en-US"}"#))
+            .await
+            .unwrap();
+        assert!(later.silent_start);
+        assert_eq!(later.locale.as_deref(), Some("en-US"));
+        assert_eq!(later.theme.as_deref(), Some("midnight"), "别的字段保持原值");
+        assert_eq!(later.tutorial_read, Some(true));
+        assert_eq!(later.disclosure.get("storage"), Some(&false));
+        assert_eq!(store.desktop_settings().await.unwrap(), later);
+    }
+
+    /// `null` = 清空回默认，缺席 = 不改；两者必须分得开。
+    ///
+    /// serde 默认把 `null` 和缺席都解成 `None`，那样前端点"清空"会被当成"不改"——正好相反。
+    #[tokio::test]
+    async fn a_null_field_is_cleared_and_an_absent_field_is_left_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        store
+            .update_desktop_settings(patch(
+                r#"{"theme":"midnight","locale":"zh-CN","tutorial_read":true}"#,
+            ))
+            .await
+            .unwrap();
+
+        let cleared = store
+            .update_desktop_settings(patch(r#"{"theme":null}"#))
+            .await
+            .unwrap();
+
+        assert_eq!(cleared.theme, None, "null 清空");
+        assert_eq!(cleared.locale.as_deref(), Some("zh-CN"), "缺席不改");
+        assert_eq!(cleared.tutorial_read, Some(true), "缺席不改");
+    }
+
+    /// `disclosure` 按卡片键合并：两个卡片先后折叠不会互相撤销；`null` 才是清空整份。
+    #[tokio::test]
+    async fn disclosure_merges_per_card_key_and_null_clears_everything() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        store
+            .update_desktop_settings(patch(r#"{"disclosure":{"models":true}}"#))
+            .await
+            .unwrap();
+        let merged = store
+            .update_desktop_settings(patch(r#"{"disclosure":{"storage":false}}"#))
+            .await
+            .unwrap();
+        assert_eq!(
+            merged.disclosure.get("models"),
+            Some(&true),
+            "合并保留别的卡片"
+        );
+        assert_eq!(merged.disclosure.get("storage"), Some(&false));
+
+        let overridden = store
+            .update_desktop_settings(patch(r#"{"disclosure":{"models":false}}"#))
+            .await
+            .unwrap();
+        assert_eq!(overridden.disclosure.get("models"), Some(&false));
+        assert_eq!(overridden.disclosure.get("storage"), Some(&false));
+
+        let cleared = store
+            .update_desktop_settings(patch(r#"{"disclosure":null}"#))
+            .await
+            .unwrap();
+        assert!(cleared.disclosure.is_empty(), "null 清空整份折叠状态");
+    }
+
+    /// 旧库（这一版之前写下的设置 JSON）读出来必须是"还没有值"，而不是解析失败。
+    ///
+    /// 设置是一行 JSON（`service_settings.value_json`），新增字段靠 `#[serde(default)]` 补齐：
+    /// 旧行里没有 `theme` 等键 → `None`（前端据此判定"服务端没有值、用本地默认"），
+    /// `disclosure` → 空表。所以这一版不需要迁移，但必须有用例证明旧行仍可读。
+    #[tokio::test]
+    async fn an_old_settings_row_reads_absent_ui_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        // 这一版之前落库的形状：只有三个开关。
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms)
+             VALUES (?, ?, ?)",
+        )
+        .bind("desktop_lifecycle")
+        .bind(r#"{"silent_start":true,"show_dock_icon":false,"developer_mode":true}"#)
+        .bind(now_ms())
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        let settings = store.desktop_settings().await.unwrap();
+        assert!(settings.silent_start && settings.developer_mode);
+        assert!(!settings.show_dock_icon);
+        assert_eq!(settings.theme, None);
+        assert_eq!(settings.locale, None);
+        assert_eq!(settings.tutorial_read, None);
+        assert_eq!(settings.pending_update, None);
+        assert_eq!(settings.devin_host_path, None);
+        assert!(settings.disclosure.is_empty());
+
+        // 旧行被改一个开关后写回去，界面偏好仍然是"没有值"。
+        let saved = store
+            .update_desktop_settings(patch(r#"{"developer_mode":false}"#))
+            .await
+            .unwrap();
+        assert!(!saved.developer_mode && saved.silent_start);
+        assert_eq!(saved.theme, None);
+        assert!(saved.disclosure.is_empty());
+    }
+
+    /// 两个控件同时保存时各自生效：界面偏好也在同一把写锁里读-改-写。
+    #[tokio::test]
+    async fn concurrent_ui_preference_updates_keep_every_field() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        let (theme, locale, disclosure) = tokio::join!(
+            store.update_desktop_settings(patch(r#"{"theme":"midnight"}"#)),
+            store.update_desktop_settings(patch(r#"{"locale":"en-US"}"#)),
+            store.update_desktop_settings(patch(r#"{"disclosure":{"models":true}}"#)),
+        );
+        theme.unwrap();
+        locale.unwrap();
+        disclosure.unwrap();
+
+        let settings = store.desktop_settings().await.unwrap();
+        assert_eq!(settings.theme.as_deref(), Some("midnight"));
+        assert_eq!(settings.locale.as_deref(), Some("en-US"));
+        assert_eq!(settings.disclosure.get("models"), Some(&true));
+    }
+
+    /// 把一段 PUT 正文解成修订：用例走真实的 serde 形状（缺席 / `null` / 有值）。
+    fn patch(json: &str) -> DesktopSettingsPatch {
+        serde_json::from_str(json).unwrap()
     }
 
     /// 一条只写了人民币固定单价的规则；美元没有配置，是未定价而不是 0 元。
@@ -1531,6 +1923,62 @@ mod tests {
 
         let error = settings.validate().unwrap_err().to_string();
         assert!(error.contains("duplicate Devin model UID"));
+    }
+
+    /// 连续两次读取只解析一次：版本没变就直接用缓存（Devin 网关每个请求读一次设置）。
+    ///
+    /// 逆变检查：把版本号判据去掉（每次读都重新解析）→ 这条用例必红（解析次数变成 2）。
+    #[tokio::test]
+    async fn reading_devin_settings_twice_parses_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                bindings: vec![DevinModelBinding::new("deven-model", "0123abcd")],
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let parses_before = store
+            .devin_settings_cache
+            .parses
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        let first = store.devin_settings().await.unwrap();
+        let second = store.devin_settings().await.unwrap();
+        assert_eq!(first, second);
+        assert!(first.enabled);
+        assert_eq!(
+            store
+                .devin_settings_cache
+                .parses
+                .load(std::sync::atomic::Ordering::Relaxed)
+                - parses_before,
+            1,
+            "第二次读取必须命中缓存，不能再解析一遍"
+        );
+
+        // 写一次设置 → 版本号变 → 下一次读取必须重新解析，缓存不会给出旧设置。
+        let changed = DevinSettings {
+            enabled: false,
+            bindings: vec![DevinModelBinding::new("deven-model", "0123abcd")],
+            ..first.clone()
+        };
+        store.set_devin_settings(changed.clone()).await.unwrap();
+        let reloaded = store.devin_settings().await.unwrap();
+        assert_eq!(reloaded, changed, "写后必须读到新设置");
+        assert!(!reloaded.enabled);
+        assert_eq!(
+            store
+                .devin_settings_cache
+                .parses
+                .load(std::sync::atomic::Ordering::Relaxed)
+                - parses_before,
+            2,
+            "设置变了要重新解析一次"
+        );
     }
 
     #[tokio::test]

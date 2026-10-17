@@ -132,7 +132,15 @@ pub struct ConnectError {
     pub message: String,
 }
 
-pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<Vec<u8>> {
+/// 解出来的请求：`enveloped` 表示请求体确实是一个 Connect 信封，响应必须照同样的
+/// 封装回给客户端。
+#[derive(Debug)]
+pub struct UnwrappedRequest {
+    pub payload: Vec<u8>,
+    pub enveloped: bool,
+}
+
+pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<UnwrappedRequest> {
     if body.len() > MAX_BODY_SIZE + 5 {
         return Err(Error::Protocol("Devin request body exceeds 24 MiB".into()));
     }
@@ -161,7 +169,10 @@ pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<Vec
             if payload.len() > MAX_BODY_SIZE {
                 return Err(Error::Protocol("Devin request body exceeds 24 MiB".into()));
             }
-            return Ok(payload);
+            return Ok(UnwrappedRequest {
+                payload,
+                enveloped: true,
+            });
         }
         if declared == buffer.len() - 5 && flags == 2 {
             return Err(Error::Protocol(
@@ -172,7 +183,10 @@ pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<Vec
     if buffer.len() > MAX_BODY_SIZE {
         return Err(Error::Protocol("Devin request body exceeds 24 MiB".into()));
     }
-    Ok(buffer)
+    Ok(UnwrappedRequest {
+        payload: buffer,
+        enveloped: false,
+    })
 }
 
 pub fn is_connect_envelope(body: &[u8]) -> bool {
@@ -311,7 +325,8 @@ mod tests {
         for compress in [false, true] {
             let frame = super::frame(payload, compress).unwrap();
             let unwrapped = super::unwrap_request(&frame, None).unwrap();
-            assert_eq!(unwrapped, payload);
+            assert_eq!(unwrapped.payload, payload);
+            assert!(unwrapped.enveloped, "Connect 信封必须被认出来");
         }
     }
 
@@ -321,9 +336,11 @@ mod tests {
         let frame = super::frame(payload, false).unwrap();
         let http_body = super::gzip(&frame).unwrap();
 
-        assert_eq!(
-            super::unwrap_request(&http_body, Some("gzip")).unwrap(),
-            payload
+        let unwrapped = super::unwrap_request(&http_body, Some("gzip")).unwrap();
+        assert_eq!(unwrapped.payload, payload);
+        assert!(
+            unwrapped.enveloped,
+            "HTTP gzip 包着的 Connect 信封同样是信封"
         );
     }
 

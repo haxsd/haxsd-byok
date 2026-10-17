@@ -70,7 +70,9 @@ Resolution rules:
   that route is missing, disabled, or has an empty hash, the legacy primary hash
   is used instead.
 - `AssignModel` still issues its token for the Devin model UID, not for a route
-  ID, and the catalog still exposes exactly one Devin UID per binding.
+  ID, and the catalog still exposes exactly one Devin UID per binding. It is
+  answered locally together with `GetChatMessage` and `GetCliModelConfigs`;
+  every other method is forwarded to the Devin service untouched.
 - `kind` is control-plane metadata only. A context-compression binding is an
   ordinary Devin UID mapping at runtime, but it is single-line: it must not
   define candidate routes, and switching a binding to compression clears them.
@@ -114,7 +116,7 @@ desktop product and never against real Devin traffic:
 | Enabled gateway after restart | all three ports listen on `127.0.0.1` only |
 | `/health` on each port | `{"ok":true,"service":"devin"}` |
 | Non-POST on an RPC path | HTTP 405, `Devin gateway accepts POST only` |
-| Unknown RPC method | HTTP 404, `unsupported Devin RPC method` |
+| Unknown RPC method | forwarded to the Devin service untouched (sign-in, account state and telemetry keep reaching Devin) |
 | Missing or wrong token | Connect end-frame `unauthenticated` |
 | `GetCliModelConfigs` | returns the enabled binding's UID, display name and the local API URL |
 | `AssignModel` with the mapped UID | returns a fresh UUID session token scoped to the UID |

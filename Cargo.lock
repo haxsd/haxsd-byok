@@ -1219,6 +1219,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "url",
  "uuid",
@@ -2563,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "haxsd-byok-desktop"
-version = "1.5.0-beta.1"
+version = "1.5.0"
 dependencies = [
  "axum",
  "cursor-server",

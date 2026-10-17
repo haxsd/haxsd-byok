@@ -1,8 +1,6 @@
-import { useEffect, useRef } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { TooltipProvider } from "./shared/ui/Tooltip";
-import { MessageProvider } from "./shared/ui/MessageProvider";
-import { useMessage } from "./shared/ui/message";
+import { AppErrorBoundary } from "./shell/AppErrorBoundary";
 import { AppFrame } from "./shell/AppFrame";
 import { AppLayout } from "./shell/AppLayout";
 import { CallsPage } from "./features/calls/CallsPage";
@@ -15,44 +13,33 @@ import { HomePage } from "./features/home/HomePage";
 import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { TutorialPage } from "./features/tutorial/TutorialPage";
-import { useAppStore } from "./shared/store/appStore";
 
 export function App() {
   return (
-    <TooltipProvider>
-      <HashRouter>
-        <Routes>
-          <Route path="calls/:callId" element={<CallDetailsPage />} />
-          <Route element={<AppFrame />}>
-            <Route element={<AppLayout />}>
-              <Route index element={<HomePage />} />
-              <Route path="calls" element={<CallsPage />} />
-              <Route path="models" element={<ModelLibraryPage />} />
-              <Route path="harness/cursor" element={<CursorSettingsPage />} />
-              <Route path="harness/devin" element={<DevinSettingsPage />} />
-              <Route path="harness/codex" element={<CodexSettingsPage />} />
-              <Route path="plugins" element={<PluginManagementPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="tutorial" element={<TutorialPage />} />
+    /* 兜底必须在最外层：外壳里的任何一处抛错（导航、命令面板、状态条）都不该
+       让整个窗口变成空白，见 AppErrorBoundary 的说明。 */
+    <AppErrorBoundary>
+      <TooltipProvider>
+        <HashRouter>
+          <Routes>
+            <Route path="calls/:callId" element={<CallDetailsPage />} />
+            <Route element={<AppFrame />}>
+              <Route element={<AppLayout />}>
+                <Route index element={<HomePage />} />
+                <Route path="calls" element={<CallsPage />} />
+                <Route path="models" element={<ModelLibraryPage />} />
+                <Route path="harness/cursor" element={<CursorSettingsPage />} />
+                <Route path="harness/devin" element={<DevinSettingsPage />} />
+                <Route path="harness/codex" element={<CodexSettingsPage />} />
+                <Route path="plugins" element={<PluginManagementPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route path="tutorial" element={<TutorialPage />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </HashRouter>
-      <AppMessages />
-    </TooltipProvider>
+          </Routes>
+        </HashRouter>
+      </TooltipProvider>
+    </AppErrorBoundary>
   );
-}
-
-function AppMessages() {
-  const { error } = useAppStore();
-  const previousError = useRef<string | null>(null);
-  const showMessage = useMessage();
-
-  useEffect(() => {
-    if (error && error !== previousError.current) showMessage(error, { tone: "error" });
-    previousError.current = error;
-  }, [error, showMessage]);
-
-  return <MessageProvider />;
 }

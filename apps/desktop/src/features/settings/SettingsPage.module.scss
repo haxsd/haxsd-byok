@@ -117,6 +117,8 @@
 .portValue { min-width: 0; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: var(--oa-space-4); span { color: var(--vscode-descriptionForeground); font-family: var(--oa-number-font); font-variant-numeric: tabular-nums; } }
 .cardActions { display: flex; align-items: center; gap: 6px; }
 .empty { display: grid; justify-items: start; gap: var(--oa-space-3); padding: var(--oa-card-padding); }
+/* 阈值提示：比设置项正文弱一级，读起来是"解释"而不是"报错"。 */
+.storageHint { margin: 0; padding: 0 var(--oa-card-padding) var(--oa-card-padding); color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 
 @media (max-width: 1000px) {
   .category { padding-inline: 8px; }

@@ -7,6 +7,7 @@ mod harness;
 mod models;
 mod overview;
 mod plugins;
+mod ports;
 mod service;
 mod settings;
 
@@ -16,6 +17,8 @@ use axum::{
     body::{to_bytes, Body},
     extract::State,
     http::{header, header::CONTENT_TYPE, HeaderValue, Method, Request, Response, StatusCode},
+    middleware::{self, Next},
+    response::IntoResponse,
     routing::{any, get, post, put},
     Router,
 };
@@ -46,6 +49,16 @@ pub fn proxy_web_router(service: ControlService, target: Url) -> Router {
     frontend_proxy_router(target).merge(api_router(service))
 }
 
+/// 开发期前端反代的请求体上限。
+///
+/// 只为挡住"把开发代理当成上传通道"这一种情况；超限的错误文案要说清这是开发代理，
+/// 免得用户以为是产品行为。
+const FRONTEND_PROXY_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
+/// 开发期把前端路径转发给 Vite（`CURSOR_CONSOLE_PROXY` / `ConsoleSource::Proxy`）。
+///
+/// **仅开发用**：目标地址来自环境变量，请求头（含 `authorization` / `cookie`）原样转发，
+/// 所以别把它指向不受信任的地址。响应侧按上游的分片流式转发，不再整段读进内存。
 fn frontend_proxy_router(target: Url) -> Router {
     let state = FrontendProxy {
         client: reqwest::Client::new(),
@@ -81,9 +94,14 @@ async fn proxy_frontend(
             upstream = upstream.header(name, value);
         }
     }
-    let body = match to_bytes(body, 64 * 1024 * 1024).await {
+    let body = match to_bytes(body, FRONTEND_PROXY_BODY_LIMIT).await {
         Ok(body) => body,
-        Err(error) => return proxy_error(error),
+        Err(error) => {
+            return proxy_error(format_args!(
+                "development proxy request body exceeds {} bytes: {error}",
+                FRONTEND_PROXY_BODY_LIMIT
+            ))
+        }
     };
     let upstream = match upstream.body(body).send().await {
         Ok(response) => response,
@@ -91,18 +109,18 @@ async fn proxy_frontend(
     };
     let status = upstream.status();
     let headers = upstream.headers().clone();
-    let body = match upstream.bytes().await {
-        Ok(body) => body,
-        Err(error) => return proxy_error(error),
-    };
-    let mut response = Response::new(Body::from(body));
+    // 响应体流式转发：开发期的资源（大 bundle、chunked 的 HMR 流）不再先整段落进
+    // 服务端内存——上游分片到一段就往下传一段。少了 `Content-Length` 由 hyper 用
+    // chunked 收尾。
+    let mut response = Response::new(Body::from_stream(upstream.bytes_stream()));
     *response.status_mut() = status;
     for (name, value) in &headers {
         if name != header::CONNECTION
             && name != header::TRANSFER_ENCODING
             && name != header::CONTENT_LENGTH
         {
-            response.headers_mut().insert(name, value.clone());
+            // 同名多值头（多个 `Set-Cookie` 最典型）必须逐条 append：insert 只留最后一条。
+            response.headers_mut().append(name, value.clone());
         }
     }
     response
@@ -265,6 +283,7 @@ pub fn api_router(service: ControlService) -> Router {
         )
         .with_state(service)
         .layer(desktop_cors())
+        .layer(middleware::from_fn(reject_cross_site))
 }
 
 /// Whether Devin can already work, answered by the server because the gateway
@@ -274,6 +293,34 @@ pub fn devin_status_router(service: ControlService, listening: DevinListening) -
         .route("/__byok-api__/api/devin/status", get(devin::status))
         .with_state(Arc::new(devin::DevinStatusState { service, listening }))
         .layer(desktop_cors())
+        .layer(middleware::from_fn(reject_cross_site))
+}
+
+/// 管理面的来源准入。CORS 只在**响应**上把关:跨站页面发一个"简单请求"(表单 POST、
+/// 无 body)时请求照样会执行,只是读不到响应——对 `ca/initialize`、`host/apply` 这类
+/// 有副作用的接口,这等于任意网页都能触发本机管理动作。所以进 handler 之前就先拒掉
+/// 非本机来源的浏览器请求。不带 Origin / Sec-Fetch-Site 的是本机其它客户端(curl、
+/// 桌面壳的原生调用),照常放行。
+async fn reject_cross_site(request: Request<Body>, next: Next) -> Response<Body> {
+    if cross_site_request(request.headers()) {
+        return (StatusCode::FORBIDDEN, "cross-site request rejected").into_response();
+    }
+    next.run(request).await
+}
+
+fn cross_site_request(headers: &axum::http::HeaderMap) -> bool {
+    if headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("cross-site"))
+    {
+        return true;
+    }
+    // 带 Origin 但不是本机页面:跨站表单、跨站 fetch、被沙箱化的 iframe(`Origin: null`)
+    // 都属于这种。
+    headers
+        .get(header::ORIGIN)
+        .is_some_and(|origin| !local_origin(origin))
 }
 
 fn desktop_cors() -> CorsLayer {
@@ -347,7 +394,79 @@ fn local_origin(origin: &HeaderValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::StreamExt;
     use tower::ServiceExt;
+
+    /// 跨站页面(或沙箱 iframe)的请求必须在进 handler 之前被拒:否则一个表单 POST 就能
+    /// 触发本机管理动作,CORS 拦不住副作用。
+    #[tokio::test]
+    async fn cross_site_requests_are_refused_before_the_handler_runs() {
+        let router = Router::new()
+            .route("/write", post(|| async { "done" }))
+            .layer(middleware::from_fn(reject_cross_site));
+
+        for (name, value) in [
+            ("origin", "https://evil.example"),
+            ("origin", "null"),
+            ("origin", "http://192.168.1.10"),
+            ("sec-fetch-site", "cross-site"),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/write")
+                        .header(name, value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::FORBIDDEN,
+                "{name}: {value} 不是本机来源"
+            );
+        }
+    }
+
+    /// 本机页面(curl 式无来源请求、`tauri://localhost`、动态端口的回环页面)照常放行。
+    #[tokio::test]
+    async fn local_callers_keep_management_access() {
+        let router = Router::new()
+            .route("/write", post(|| async { "done" }))
+            .layer(middleware::from_fn(reject_cross_site));
+
+        let without_origin = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/write")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(without_origin.status(), StatusCode::OK);
+
+        for value in ["tauri://localhost", "http://127.0.0.1:49234"] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/write")
+                        .header(header::ORIGIN, value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{value} 是本机来源");
+        }
+    }
 
     #[tokio::test]
     async fn another_loopback_origin_cannot_read_credentials_from_this_service() {
@@ -427,6 +546,120 @@ mod tests {
 
     fn origin(value: &'static str) -> HeaderValue {
         HeaderValue::from_static(value)
+    }
+
+    /// 开发反代的端到端夹具：一个真的监听回环端口的"Vite"，带两条路由——
+    /// `/__byok-api__/cookies` 回两个同名 `Set-Cookie`，`/__byok-api__/stream`
+    /// 先发第一段、等测试放行、再发第二段。
+    async fn frontend_proxy_fixture() -> (Url, tokio::sync::oneshot::Sender<()>) {
+        let (release, released) = tokio::sync::oneshot::channel::<()>();
+        // handler 必须是 `Fn`：把接收端放进共享槽位，每次调用取一次（测试只会请求一次）。
+        let released = std::sync::Arc::new(parking_lot::Mutex::new(Some(released)));
+        let app = Router::new()
+            .route(
+                "/__byok-api__/cookies",
+                get(|| async {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::SET_COOKIE, "first=1; Path=/")
+                        .header(header::SET_COOKIE, "second=2; Path=/")
+                        .body(Body::from("cookies"))
+                        .unwrap()
+                }),
+            )
+            .route(
+                "/__byok-api__/stream",
+                get(move || {
+                    let released = released.clone();
+                    async move {
+                        let receiver = released.lock().take();
+                        let chunks = futures_util::stream::once(async { "first " })
+                            .chain(futures_util::stream::once(async move {
+                                if let Some(receiver) = receiver {
+                                    let _ = receiver.await;
+                                }
+                                "second"
+                            }))
+                            .map(|chunk| Ok::<_, std::io::Error>(axum::body::Bytes::from(chunk)));
+                        Response::new(Body::from_stream(chunks))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        (Url::parse(&format!("http://{address}")).unwrap(), release)
+    }
+
+    /// 同名多值响应头（多个 `Set-Cookie`）在反代之后必须都还在。
+    #[tokio::test]
+    async fn the_development_proxy_keeps_repeated_response_headers() {
+        let (target, _release) = frontend_proxy_fixture().await;
+        let response = frontend_proxy_router(target)
+            .oneshot(
+                Request::builder()
+                    .uri("/__byok-api__/cookies")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookies = response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|value| value.to_str().unwrap().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            cookies,
+            vec!["first=1; Path=/".to_owned(), "second=2; Path=/".to_owned()],
+            "insert 只会留下最后一条 Set-Cookie"
+        );
+    }
+
+    /// 响应是流式转发的：上游第二段还在等放行时，第一段必须已经到达客户端——
+    /// 整段缓冲的实现会在这里挂到超时。
+    #[tokio::test]
+    async fn the_development_proxy_forwards_the_response_as_a_stream() {
+        let (target, release) = frontend_proxy_fixture().await;
+        // 这一层超时是断言的一部分：缓冲实现下 handler 要等上游整段结束才返回，而上游
+        // 正等着测试放行——没有它，用例会挂住而不是变红。
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            frontend_proxy_router(target).oneshot(
+                Request::builder()
+                    .uri("/__byok-api__/stream")
+                    .body(Body::empty())
+                    .unwrap(),
+            ),
+        )
+        .await
+        .expect("整段缓冲的实现会在这里挂住：上游第二段还在等放行")
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let mut frames = response.into_body().into_data_stream();
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), frames.next())
+            .await
+            .expect("第一段必须在放行之前到达")
+            .expect("body 还有第一段")
+            .unwrap();
+        assert_eq!(first, "first ");
+
+        release.send(()).unwrap();
+        let mut rest = Vec::new();
+        while let Some(frame) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), frames.next())
+                .await
+                .expect("放行之后 body 必须收尾")
+        {
+            rest.extend_from_slice(&frame.unwrap());
+        }
+        assert_eq!(String::from_utf8_lossy(&rest), "second");
     }
 
     #[test]

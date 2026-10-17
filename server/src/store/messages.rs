@@ -2,7 +2,7 @@
 use sqlx::{Row, Sqlite, Transaction};
 
 use crate::{
-    model::{CanonicalMessage, ConversationId},
+    model::{CanonicalMessage, ConversationId, MessageContent},
     Error, Result,
 };
 
@@ -49,6 +49,7 @@ impl Store {
         .rows_affected()
             == 1;
         if inserted {
+            Self::register_message_image_tx(tx, conversation_id, message).await?;
             return Ok(());
         }
 
@@ -72,6 +73,31 @@ impl Store {
                 message.message_id
             ))),
         }
+    }
+
+    /// 登记消息里的工具图片，作为"这个内容块还在被会话使用"的一条钉子。
+    ///
+    /// 图片内容块（Read 工具读进来的图片）没有边、也不在 `conversation_blob_roots` 里，
+    /// 回收趟过去只能每 60 秒扫一遍整张 `messages`、逐行 `json_extract` 才认得出它们还在用
+    /// （库一大就长时间占住写锁）。引用在写消息时就是确定的，这里顺手记进
+    /// `message_image_blobs`；存的是 payload 里那份 base64 文本，需要与 `blobs.blob_id`
+    /// 比较的地方（回收趟、清理详细记录）在 Rust 里解一次。
+    async fn register_message_image_tx(
+        tx: &mut Transaction<'_, Sqlite>,
+        conversation_id: &ConversationId,
+        message: &CanonicalMessage,
+    ) -> Result<()> {
+        let Some(image) = message_image_blob_id(message) else {
+            return Ok(());
+        };
+        sqlx::query(
+            "INSERT OR IGNORE INTO message_image_blobs(conversation_id, blob_id) VALUES (?, ?)",
+        )
+        .bind(conversation_id.as_str())
+        .bind(image)
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
     }
 
     pub(crate) async fn load_checkpoint_messages_tx(
@@ -119,5 +145,15 @@ fn origin_name(origin: &crate::model::Origin) -> &'static str {
         crate::model::Origin::Runtime => "runtime",
         crate::model::Origin::Assistant => "assistant",
         crate::model::Origin::Tool => "tool",
+    }
+}
+
+/// 工具结果里的图片内容块（序列化路径是 `$.content.image.blob_id`）。
+fn message_image_blob_id(message: &CanonicalMessage) -> Option<&str> {
+    match &message.content {
+        MessageContent::ToolResult(result) => {
+            result.image.as_ref().map(|image| image.blob_id.as_str())
+        }
+        MessageContent::Parts { .. } | MessageContent::Assistant { .. } => None,
     }
 }
