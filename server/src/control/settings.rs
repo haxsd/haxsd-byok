@@ -8,9 +8,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::store::{
-    CommitPromptLocale, CommitSettings, DesktopSettings, DesktopSettingsPatch, ModelTokenPricing,
-    PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage, StatisticsStorageScope,
-    TabSettings, TokenPricingSettings,
+    CommitPromptLocale, CommitSettings, CompactionSettings, DesktopSettings, DesktopSettingsPatch,
+    ModelTokenPricing, PortSettings, ProxySettings, ProxySettingsInput, StatisticsStorage,
+    StatisticsStorageScope, TabSettings, TokenPricingSettings,
 };
 
 use super::{ControlService, ObservabilitySettings};
@@ -148,6 +148,21 @@ pub async fn get_pricing_settings(
     State(service): State<ControlService>,
 ) -> Result<Json<TokenPricingSettings>> {
     Ok(Json(service.pricing_settings().await?))
+}
+
+/// Context-compaction policy: auto compaction, retention/reserve budgets and
+/// the independent summarize model.
+pub async fn get_compaction(
+    State(service): State<ControlService>,
+) -> Result<Json<CompactionSettings>> {
+    Ok(Json(service.compaction_settings().await?))
+}
+
+pub async fn update_compaction(
+    State(service): State<ControlService>,
+    Json(settings): Json<CompactionSettings>,
+) -> Result<Json<CompactionSettings>> {
+    Ok(Json(service.set_compaction_settings(settings).await?))
 }
 
 pub async fn update_model_pricing(

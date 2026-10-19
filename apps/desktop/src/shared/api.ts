@@ -370,6 +370,16 @@ export interface CommitSettings {
   prompt_locale: CommitPromptLocale;
 }
 
+/** Context-compaction policy; `null` numeric fields mean "use the shipped default". */
+export interface CompactionSettings {
+  auto: boolean;
+  summary_model_hash: string;
+  summary_output_tokens: number | null;
+  reserve_percent: number | null;
+  retention_percent: number | null;
+  max_retained_tokens: number | null;
+}
+
 export interface CommitSettingsView extends CommitSettings {
   default_prompt: string;
 }
@@ -1127,6 +1137,8 @@ export const api = {
   setDesktopSettings: (patch: DesktopSettingsPatch) => request<DesktopSettings>("/settings/desktop", { method: "PUT", body: JSON.stringify(patch) }),
   commitSettings: (locale: Locale) => request<CommitSettingsView>("/settings/commit", { headers: { "accept-language": locale } }),
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
+  compactionSettings: () => request<CompactionSettings>("/settings/compaction"),
+  setCompactionSettings: (settings: CompactionSettings) => request<CompactionSettings>("/settings/compaction", { method: "PUT", body: JSON.stringify(settings) }),
   pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }).then(usablePricing),
   setModelPricing: (modelHash: string, pricing: ModelTokenPricing) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "PUT", body: JSON.stringify(pricing) }).then(usablePricing),
   removeModelPricing: (modelHash: string) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "DELETE" }).then(usablePricing),

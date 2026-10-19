@@ -1,5 +1,5 @@
 export type SettingsSectionId = "general" | "network" | "usage" | "advanced" | "about";
-export type SettingsItemId = "appearance" | "app" | "proxy" | "recording" | "pricing" | "storage" | "developer" | "ports" | "diagnostics" | "update";
+export type SettingsItemId = "appearance" | "app" | "proxy" | "recording" | "pricing" | "storage" | "compaction" | "developer" | "ports" | "diagnostics" | "update";
 export type SettingsSection = {
   id: SettingsSectionId;
   label: string;
@@ -19,6 +19,7 @@ export function settingsSections(developerMode: boolean): SettingsSection[] {
     { id: "usage", label: t("记录与用量"), items: [
       { id: "recording", label: t("调用记录"), keywords: "详细 请求 响应 隐私 detailed recording request response" },
       { id: "pricing", label: t("模型定价"), keywords: "价格 定价 费用 币种 高峰 低谷 token pricing cost currency" },
+      { id: "compaction", label: t("上下文压缩"), keywords: "压缩 上下文 摘要 保留 compact compression summary context" },
       { id: "storage", label: t("存储管理"), keywords: "存储 空间 清理 删除 磁盘 storage cleanup disk" },
     ] },
     { id: "advanced", label: t("高级与诊断"), items: [

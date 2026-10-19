@@ -281,6 +281,11 @@
           "column": 121
         },
         {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 111,
+          "column": 60
+        },
+        {
           "file": "features/settings/PortSettingsCard.tsx",
           "line": 32,
           "column": 183
@@ -815,7 +820,7 @@
         },
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 39,
+          "line": 40,
           "column": 14
         }
       ]
@@ -895,7 +900,7 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 22,
+          "line": 23,
           "column": 31
         },
         {
@@ -1076,7 +1081,7 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 24,
+          "line": 25,
           "column": 30
         }
       ]
@@ -1151,7 +1156,7 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 29,
+          "line": 30,
           "column": 27
         }
       ]
@@ -1283,6 +1288,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 219,
           "column": 14
+        }
+      ]
+    },
+    "16267fb060589a2e": {
+      "source": "摘要输出上限",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 87,
+          "column": 77
         }
       ]
     },
@@ -1958,7 +1975,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 54,
+          "line": 55,
           "column": 37
         }
       ]
@@ -2032,6 +2049,18 @@
           "file": "shell/CommandPalette.tsx",
           "line": 116,
           "column": 26
+        }
+      ]
+    },
+    "239eca2f4648c7f0": {
+      "source": "留空表示只按比例；填写后限制逐字保留的绝对上限。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 125,
+          "column": 54
         }
       ]
     },
@@ -2335,7 +2364,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 105,
+          "line": 107,
           "column": 82
         }
       ]
@@ -2527,6 +2556,11 @@
           "column": 70
         },
         {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 109,
+          "column": 62
+        },
+        {
           "file": "features/settings/PortSettingsCard.tsx",
           "line": 30,
           "column": 100
@@ -2699,6 +2733,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 147,
+          "column": 118
+        },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 107,
@@ -3090,6 +3129,11 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 446,
           "column": 25
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 148,
+          "column": 21
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -3668,12 +3712,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 52,
+          "line": 53,
           "column": 18
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 53,
+          "line": 54,
           "column": 87
         }
       ]
@@ -3699,6 +3743,18 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 113,
           "column": 45
+        }
+      ]
+    },
+    "3e09981bd8142d41": {
+      "source": "保留上限（tokens）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 125,
+          "column": 29
         }
       ]
     },
@@ -3786,6 +3842,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 457,
           "column": 82
+        }
+      ]
+    },
+    "3ffdfcc8416f9a47": {
+      "source": "每次模型请求前检查压力；关闭后只保留溢出恢复与手动总结。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 115,
+          "column": 52
         }
       ]
     },
@@ -3921,7 +3989,7 @@
         },
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 27,
+          "line": 28,
           "column": 35
         }
       ]
@@ -3933,13 +4001,25 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 61,
+          "line": 62,
           "column": 116
         },
         {
           "file": "shell/commandPaletteCommands.ts",
           "line": 111,
           "column": 10
+        }
+      ]
+    },
+    "4260f169df0348d3": {
+      "source": "留空使用默认 20%。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 122,
+          "column": 49
         }
       ]
     },
@@ -4736,7 +4816,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 67,
+          "line": 68,
           "column": 35
         },
         {
@@ -4917,6 +4997,20 @@
         }
       ]
     },
+    "50b4da5efdc0722a": {
+      "source": "{name} 必须在 1–50 之间",
+      "kind": "template",
+      "placeholders": [
+        "name"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 41,
+          "column": 55
+        }
+      ]
+    },
     "51242f0b2c6df093": {
       "source": "最近一次成功：{time}；失败时官方模型会从列表里消失，这里会显示原因。",
       "kind": "template",
@@ -5051,6 +5145,23 @@
         }
       ]
     },
+    "534b23a8d695bb50": {
+      "source": "保留上限",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 90,
+          "column": 73
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 147,
+          "column": 52
+        }
+      ]
+    },
     "535083c5e5432079": {
       "source": "有未保存的改动",
       "kind": "text",
@@ -5082,7 +5193,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 100,
+          "line": 102,
           "column": 177
         }
       ]
@@ -5123,7 +5234,7 @@
         },
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 26,
+          "line": 27,
           "column": 59
         },
         {
@@ -5540,6 +5651,28 @@
         }
       ]
     },
+    "5c8f67f0721e29b7": {
+      "source": "自动压缩",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 115,
+          "column": 25
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 116,
+          "column": 65
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 144,
+          "column": 52
+        }
+      ]
+    },
     "5cbf391fdf46fd3a": {
       "source": "已指向本机代理",
       "kind": "text",
@@ -5719,6 +5852,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 123,
           "column": 17
+        }
+      ]
+    },
+    "601ed303089b51f2": {
+      "source": "留空时复用会话当前模型。独立模型可降低压缩成本。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 131,
+          "column": 46
         }
       ]
     },
@@ -5977,12 +6122,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 766,
+          "line": 776,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 839,
+          "line": 849,
           "column": 29
         }
       ]
@@ -6052,6 +6197,18 @@
         }
       ]
     },
+    "643aad27ea0017af": {
+      "source": "保留比例（%）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 122,
+          "column": 29
+        }
+      ]
+    },
     "643e671f44c25eb6": {
       "source": "三件事：初始化本地 CA 并把证书装进系统信任库（用来读取 Cursor 的 HTTPS 请求）、在 Cursor 页选择模型来源（本地只用自己的模型，混合还能同时用官方模型）、再重启一次 Cursor。",
       "kind": "text",
@@ -6085,7 +6242,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1079,
+          "line": 1089,
           "column": 43
         }
       ]
@@ -6138,7 +6295,7 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 30,
+          "line": 31,
           "column": 30
         },
         {
@@ -6192,7 +6349,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 101,
+          "line": 103,
           "column": 210
         },
         {
@@ -6235,6 +6392,11 @@
           "file": "features/devin/devinConnectionView.ts",
           "line": 99,
           "column": 11
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 144,
+          "column": 105
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -6413,12 +6575,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 774,
+          "line": 784,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 839,
+          "line": 849,
           "column": 41
         }
       ]
@@ -6671,6 +6833,23 @@
         }
       ]
     },
+    "6f4b1437a6ae7585": {
+      "source": "跟随会话模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 106,
+          "column": 96
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 136,
+          "column": 37
+        }
+      ]
+    },
     "6f5d56ff54679268": {
       "source": "出网代理",
       "kind": "text",
@@ -6887,6 +7066,18 @@
         }
       ]
     },
+    "778686cc7b7b00f0": {
+      "source": "上下文压缩设置已保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 97,
+          "column": 17
+        }
+      ]
+    },
     "77c30e62fbac3631": {
       "source": "立即重试",
       "kind": "text",
@@ -6978,7 +7169,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 58,
+          "line": 59,
           "column": 18
         }
       ]
@@ -7014,7 +7205,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1074,
+          "line": 1084,
           "column": 43
         }
       ]
@@ -7183,7 +7374,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 46,
+          "line": 47,
           "column": 64
         }
       ]
@@ -7209,6 +7400,40 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 84,
           "column": 41
+        }
+      ]
+    },
+    "7e963d9ae21a7ad5": {
+      "source": "摘要模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 131,
+          "column": 29
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 134,
+          "column": 26
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 145,
+          "column": 52
+        }
+      ]
+    },
+    "7f329568f46a7c24": {
+      "source": "预留比例（%）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 119,
+          "column": 29
         }
       ]
     },
@@ -7299,6 +7524,18 @@
         }
       ]
     },
+    "8085eb8dfb6ba550": {
+      "source": "留空使用默认 10%。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 119,
+          "column": 49
+        }
+      ]
+    },
     "80a57e03f0717f91": {
       "source": "未配置",
       "kind": "text",
@@ -7323,7 +7560,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 718,
+          "line": 728,
           "column": 11
         },
         {
@@ -7848,6 +8085,18 @@
         }
       ]
     },
+    "8a4ef3e48e4e8a5a": {
+      "source": "已开启",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 144,
+          "column": 94
+        }
+      ]
+    },
     "8a8542f6964852dc": {
       "source": "下一页",
       "kind": "text",
@@ -7935,7 +8184,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 77,
+          "line": 79,
           "column": 53
         }
       ]
@@ -8580,6 +8829,18 @@
         }
       ]
     },
+    "997ff12ae387e2f0": {
+      "source": "保留比例",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 89,
+          "column": 69
+        }
+      ]
+    },
     "9a5316ad01ad2956": {
       "source": "连通性测试已取消：成功 {successful}，失败 {failed}，未开始 {skipped}",
       "kind": "template",
@@ -8627,7 +8888,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 731,
+          "line": 741,
           "column": 11
         }
       ]
@@ -8774,7 +9035,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 101,
+          "line": 103,
           "column": 98
         }
       ]
@@ -8959,6 +9220,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 92,
           "column": 22
+        }
+      ]
+    },
+    "9f8151645496ebd1": {
+      "source": "预留 / 保留",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 146,
+          "column": 52
         }
       ]
     },
@@ -9181,6 +9454,11 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 462,
           "column": 195
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 110,
+          "column": 122
         },
         {
           "file": "features/settings/PortSettingsCard.tsx",
@@ -10063,6 +10341,18 @@
         }
       ]
     },
+    "b0987b2ae5ee5431": {
+      "source": "摘要输出上限（tokens）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 128,
+          "column": 29
+        }
+      ]
+    },
     "b09ced5e14040254": {
       "source": "官方模型列表上一次抓取失败，模型列表可能只有本机的模型",
       "kind": "text",
@@ -10213,7 +10503,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 61,
+          "line": 62,
           "column": 68
         },
         {
@@ -10812,7 +11102,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 61,
+          "line": 62,
           "column": 104
         },
         {
@@ -10855,7 +11145,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1090,
+          "line": 1100,
           "column": 43
         }
       ]
@@ -10912,12 +11202,12 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 69,
+          "line": 70,
           "column": 23
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 70,
+          "line": 71,
           "column": 70
         }
       ]
@@ -10974,6 +11264,20 @@
         }
       ]
     },
+    "bdbd1f70fbe84efe": {
+      "source": "{name} 必须是正整数",
+      "kind": "template",
+      "placeholders": [
+        "name"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 35,
+          "column": 65
+        }
+      ]
+    },
     "bddc29ad011a93a6": {
       "source": "上下文压缩",
       "kind": "text",
@@ -10983,6 +11287,16 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 329,
           "column": 64
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 108,
+          "column": 29
+        },
+        {
+          "file": "features/settings/settingsNavigation.ts",
+          "line": 22,
+          "column": 34
         }
       ]
     },
@@ -11082,6 +11396,18 @@
           "file": "shell/AppErrorBoundary.tsx",
           "line": 61,
           "column": 20
+        }
+      ]
+    },
+    "bf55720586625a46": {
+      "source": "留空使用默认 8192，并受摘要模型自身上限约束。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 128,
+          "column": 56
         }
       ]
     },
@@ -11365,7 +11691,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 69,
+          "line": 70,
           "column": 53
         }
       ]
@@ -11475,7 +11801,7 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 41,
+          "line": 42,
           "column": 14
         }
       ]
@@ -11893,17 +12219,17 @@
       "refs": [
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 25,
+          "line": 26,
           "column": 33
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 75,
+          "line": 77,
           "column": 35
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 78,
+          "line": 80,
           "column": 75
         }
       ]
@@ -12398,7 +12724,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 50,
+          "line": 51,
           "column": 36
         }
       ]
@@ -13041,7 +13367,7 @@
         },
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 106,
+          "line": 108,
           "column": 49
         },
         {
@@ -13087,7 +13413,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 89,
+          "line": 91,
           "column": 52
         }
       ]
@@ -13364,6 +13690,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 459,
           "column": 109
+        }
+      ]
+    },
+    "e35a6de7a206f72c": {
+      "source": "预留比例",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 88,
+          "column": 65
         }
       ]
     },
@@ -14161,7 +14499,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 105,
+          "line": 107,
           "column": 106
         }
       ]
@@ -14462,7 +14800,7 @@
       "refs": [
         {
           "file": "features/settings/SettingsPage.tsx",
-          "line": 77,
+          "line": 79,
           "column": 23
         }
       ]
@@ -14716,7 +15054,7 @@
         },
         {
           "file": "features/settings/settingsNavigation.ts",
-          "line": 40,
+          "line": 41,
           "column": 14
         }
       ]
@@ -14912,6 +15250,11 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 509,
           "column": 102
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 110,
+          "column": 110
         },
         {
           "file": "features/settings/PortSettingsCard.tsx",

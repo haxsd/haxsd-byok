@@ -13,6 +13,7 @@ import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { ScrollableContent } from "../../shared/virtual/ScrollableContent";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
+import { CompactionSettingsCard } from "./CompactionSettingsCard";
 import { DiagnosticsCard } from "./DiagnosticsCard";
 import { NetworkSettingsCard } from "./NetworkSettingsCard";
 import { PortSettingsCard } from "./PortSettingsCard";
@@ -71,6 +72,7 @@ export function SettingsPage() {
       </div>
     </TitledCard>,
     pricing: <PricingSettingsCard />,
+    compaction: <CompactionSettingsCard visible={visibleItems.has("compaction")} />,
     storage: <StorageSettingsCard visible={visibleItems.has("storage")} />,
     developer: <TitledCard title={t("开发者模式")}>
       <div className={styles.settingRow}>

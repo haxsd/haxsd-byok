@@ -878,6 +878,17 @@ impl ControlService {
         self.store.set_commit_settings(settings).await
     }
 
+    pub async fn compaction_settings(&self) -> Result<crate::store::CompactionSettings> {
+        self.store.compaction_settings().await
+    }
+
+    pub async fn set_compaction_settings(
+        &self,
+        settings: crate::store::CompactionSettings,
+    ) -> Result<crate::store::CompactionSettings> {
+        self.store.set_compaction_settings(settings).await
+    }
+
     pub async fn pricing_settings(&self) -> Result<TokenPricingSettings> {
         self.store.pricing_settings().await
     }
