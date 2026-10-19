@@ -6,6 +6,21 @@ const TOKENS_PER_MESSAGE_OVERHEAD: u64 = 8;
 const TOKENS_PER_TOOL_CALL_OVERHEAD: u64 = 6;
 const TOKENS_PER_IMAGE: u64 = 1_024;
 
+/// ASCII text density for English prose, code, and JSON: about four characters
+/// per token on the tokenizers in use.
+const ASCII_CHARS_PER_TOKEN: u64 = 4;
+
+/// CJK text density. Provider tokenizers disagree here (roughly 0.4 tokens per
+/// character for DeepSeek's vocabulary and up to 1 token per character for
+/// Anthropic), so the base estimate takes a middle value and the compaction
+/// path corrects the remainder from provider-reported usage
+/// (`run::compaction::estimate_calibration`).
+const CJK_CHARS_PER_TOKEN: u64 = 2;
+
+/// Non-CJK, non-ASCII text (accented Latin, Cyrillic, emoji, ...): half the
+/// character density of ASCII so mixed-script history is never silently cheap.
+const OTHER_CHARS_PER_TOKEN: u64 = 2;
+
 pub(crate) fn estimate_context_tokens(prompt: &PromptSpec, messages: &[ProjectedMessage]) -> u64 {
     let instructions = estimate_text_tokens(&prompt.instructions);
     let tools = prompt.tools.iter().fold(0_u64, |total, tool| {
@@ -82,16 +97,60 @@ fn estimate_json_tokens(value: &impl serde::Serialize) -> u64 {
         .unwrap_or_default()
 }
 
+/// Prices text by script instead of by character count alone.
+///
+/// The old `chars / 4 + newlines` estimate was accurate for English/code but
+/// underpriced CJK by 2-3x (a Chinese-heavy 628,726-token conversation was
+/// estimated at roughly 410,000). Compaction triggers, summary-input trimming,
+/// and retention budgets all floor on this function, so a script-aware split
+/// keeps every downstream decision on the same side of the real window.
 fn estimate_text_tokens(text: &str) -> u64 {
     let text = text.trim();
     if text.is_empty() {
         return 0;
     }
-    let characters = text.chars().count() as u64;
-    characters
-        .div_ceil(4)
-        .saturating_add(text.bytes().filter(|byte| *byte == b'\n').count() as u64)
+    let mut ascii = 0_u64;
+    let mut cjk = 0_u64;
+    let mut other = 0_u64;
+    let mut newlines = 0_u64;
+    for character in text.chars() {
+        if character == '\n' {
+            newlines += 1;
+        }
+        if character.is_ascii() {
+            ascii += 1;
+        } else if is_cjk(character) {
+            cjk += 1;
+        } else {
+            other += 1;
+        }
+    }
+    ascii
+        .div_ceil(ASCII_CHARS_PER_TOKEN)
+        .saturating_add(cjk.div_ceil(CJK_CHARS_PER_TOKEN))
+        .saturating_add(other.div_ceil(OTHER_CHARS_PER_TOKEN))
+        .saturating_add(newlines)
         .max(1)
+}
+
+/// CJK ideographs, kana, hangul, and full-width forms.
+fn is_cjk(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x2E80..=0x2FFF       // CJK radicals, Kangxi radicals
+        | 0x3000..=0x303F     // CJK punctuation
+        | 0x3040..=0x30FF     // Hiragana, Katakana
+        | 0x3100..=0x312F     // Bopomofo
+        | 0x3400..=0x4DBF     // CJK Extension A
+        | 0x4E00..=0x9FFF     // CJK Unified Ideographs
+        | 0xA960..=0xA97F     // Hangul Jamo Extended-A
+        | 0xAC00..=0xD7AF     // Hangul syllables
+        | 0xF900..=0xFAFF     // CJK Compatibility Ideographs
+        | 0xFE10..=0xFE1F     // Vertical forms
+        | 0xFE30..=0xFE4F     // CJK Compatibility Forms
+        | 0xFF00..=0xFFEF     // Halfwidth and Fullwidth Forms
+        | 0x20000..=0x2FA1F   // CJK Extensions B-F and compatibility supplement
+    )
 }
 
 pub(crate) fn parse_token_count(value: &str) -> Option<u64> {
@@ -244,5 +303,42 @@ mod tests {
             estimate_projected_messages_tokens(&[without_replay]),
             estimate_projected_messages_tokens(&[with_replay])
         );
+    }
+
+    #[test]
+    fn cjk_text_prices_at_least_twice_as_high_as_ascii_of_the_same_length() {
+        let ascii = estimate_text_tokens(&"a".repeat(8_000));
+        let cjk = estimate_text_tokens(&"中".repeat(8_000));
+        let japanese = estimate_text_tokens(&"あ".repeat(8_000));
+
+        // 4 ASCII characters/token vs 2 CJK characters/token.
+        assert_eq!(ascii, 2_000);
+        assert_eq!(cjk, 4_000);
+        assert_eq!(japanese, 4_000);
+    }
+
+    #[test]
+    fn mixed_script_text_does_not_collapse_to_the_ascii_density() {
+        // Half English code, half Chinese: the old chars/4 estimate priced the
+        // whole string as ASCII, which is exactly the case that under-triggered
+        // compaction on CJK-heavy conversations.
+        let mixed = format!(
+            "{}{}",
+            "fn main() {}\n".repeat(1_000),
+            "中文内容".repeat(2_000)
+        );
+        let ascii_only = estimate_text_tokens(&"x".repeat(mixed.chars().count()));
+        assert!(
+            estimate_text_tokens(&mixed) > ascii_only,
+            "mixed-script text must price above pure-ASCII text of the same length"
+        );
+    }
+
+    #[test]
+    fn one_chinese_character_is_cheaper_than_one_token_but_not_four_to_one() {
+        // The base weight is deliberately a compromise across tokenizers; the
+        // compaction calibration corrects it with provider usage.
+        let tokens = estimate_text_tokens("中文内容");
+        assert_eq!(tokens, 2, "four CJK characters estimate as two tokens");
     }
 }

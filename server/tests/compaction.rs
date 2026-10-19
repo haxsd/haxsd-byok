@@ -1014,6 +1014,9 @@ async fn failed_summary_slot_states_the_compaction_and_keeps_the_turns() {
     provider.push_error(cursor_server::Error::Provider(
         "Anthropic 500 Internal Server Error: upstream unavailable".into(),
     ));
+    provider.push_error(cursor_server::Error::Provider(
+        "Anthropic 500 Internal Server Error: upstream unavailable".into(),
+    ));
     provider.push(text_response("answer after fallback", 20_000, 12));
     let registry = registry(store, &provider);
 
@@ -1060,11 +1063,12 @@ async fn failed_summary_slot_states_the_compaction_and_keeps_the_turns() {
     let requests = provider.requests();
     assert_eq!(
         requests.len(),
-        4,
-        "two turns, failed summary call, continued turn"
+        5,
+        "two turns, two failed summary attempts, continued turn"
     );
     assert!(requests[2].prompt.tools.is_empty());
-    let history = &requests[3].history;
+    assert!(requests[3].prompt.tools.is_empty());
+    let history = &requests[4].history;
     assert!(
         history.iter().all(|message| !message_text(message)
             .unwrap_or_default()
@@ -1081,9 +1085,28 @@ async fn failed_summary_slot_states_the_compaction_and_keeps_the_turns() {
         slot.contains("summary call failed"),
         "the slot states the failure instead of pretending to summarize"
     );
-    let retained =
-        text_message(history, "KEEPME-FALLBACK").expect("the newest turn is replayed verbatim");
-    let original = text_message(&requests[1].history, "KEEPME-FALLBACK")
+    assert!(
+        slot.contains("Deterministic digest of the dropped history"),
+        "the fallback keeps a deterministic digest instead of a bare sentence"
+    );
+    assert!(
+        slot.contains("TAIL-BETA"),
+        "the digest keeps the newest assistant marker from the dropped history"
+    );
+    // The summary digest also quotes the marker, so select the retained user
+    // turn itself rather than the first text match in the replacement.
+    let retained = history
+        .iter()
+        .find_map(|message| {
+            message_text(message).filter(|text| {
+                !text.contains("<conversation_summary>") && text.contains("KEEPME-FALLBACK")
+            })
+        })
+        .expect("the newest turn is replayed verbatim");
+    let original = requests[1]
+        .history
+        .iter()
+        .find_map(|message| message_text(message).filter(|text| text.contains("KEEPME-FALLBACK")))
         .expect("the newest turn was sent before the compaction");
     assert_eq!(
         retained, original,
@@ -1290,11 +1313,12 @@ fn archive_of(
 }
 
 #[tokio::test]
-async fn a_second_overflow_refusal_compacts_without_the_recent_turns() {
+async fn a_second_overflow_refusal_reuses_the_summary_and_drops_the_recent_turns() {
     // The ladder that keeps the worst case equal to 1.0.22: the retained
     // compaction is attempted first, and if the provider still refuses because
     // the real prompt is larger than the estimator thought, the next compaction
-    // drops the recent turns and sends the summary alone.
+    // reuses the existing summary, drops the retained turns, and does not pay
+    // for a second summarize call over nearly the same history.
     let (_directory, store) = fixtures::temp_store().await;
     let model = store
         .create_model(&windowed_model("ladder-model", Some(200_000)))
@@ -1319,7 +1343,6 @@ async fn a_second_overflow_refusal_compacts_without_the_recent_turns() {
          200000 maximum\"}}"
             .into(),
     ));
-    provider.push(text_response("second summary", 30_000, 20));
     provider.push(text_response("answer after compacting twice", 20_000, 12));
     let registry = registry(store, &provider);
 
@@ -1356,14 +1379,10 @@ async fn a_second_overflow_refusal_compacts_without_the_recent_turns() {
     let requests = provider.requests();
     assert_eq!(
         requests.len(),
-        6,
-        "turn, refused retry, retained compaction, refused retry, summary-only compaction, answer"
+        5,
+        "turn, refused retry, retained compaction, refused retry, answer"
     );
     assert!(requests[2].prompt.tools.is_empty(), "retained compaction");
-    assert!(
-        requests[4].prompt.tools.is_empty(),
-        "summary-only compaction"
-    );
     assert!(
         requests[3]
             .history
@@ -1372,19 +1391,33 @@ async fn a_second_overflow_refusal_compacts_without_the_recent_turns() {
         "the first compaction keeps the newest turn verbatim"
     );
     assert!(
-        requests[5]
+        requests[4]
             .history
             .iter()
             .all(|message| !assistant_text(message)
                 .unwrap_or_default()
                 .contains("BIG-TAIL")),
-        "the second compaction drops it, exactly like the 1.0.22 replacement"
+        "the summary-only step drops the retained turns"
     );
-    assert!(requests[5]
+    let summary_slot = requests[4]
         .history
         .iter()
-        .any(|message| message_text(message).is_some_and(|text| text.contains("second summary"))));
-    assert!(text_message(&requests[5].history, "continue").is_some());
+        .filter_map(message_text)
+        .find(|text| text.contains("<conversation_summary>"))
+        .expect("the reused summary slot is in the compacted history");
+    assert!(
+        summary_slot.contains("first summary"),
+        "the existing summary is reused instead of being re-generated"
+    );
+    assert!(
+        summary_slot.contains("BIG-TAIL"),
+        "the digest keeps the newest marker from the dropped retained turns"
+    );
+    assert!(
+        !summary_slot.contains("second summary"),
+        "no second summarize call ran"
+    );
+    assert!(text_message(&requests[4].history, "continue").is_some());
 }
 
 #[derive(Default)]

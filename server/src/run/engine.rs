@@ -148,6 +148,8 @@ struct CompactionRequest<'a> {
     client: &'a mut RunPort,
     cancellation: &'a CancellationToken,
     retention: super::compaction::Retention,
+    /// Actual provider tokens per estimated token for the anchored prefix.
+    calibration: f64,
     accounted_tool_results: &'a HashSet<String>,
 }
 
@@ -441,10 +443,10 @@ impl RunEngine {
                     super::compaction::compaction_estimate(prepared, &history, context_usage_anchor)
                 })
                 .flatten();
-            if let Some(estimated_tokens) = compaction_estimate {
+            if let Some(estimate) = compaction_estimate {
                 if emit(
                     client,
-                    RunEvent::UsageSnapshot(context_usage_snapshot(estimated_tokens)),
+                    RunEvent::UsageSnapshot(context_usage_snapshot(estimate.tokens)),
                 )
                 .await
                 .is_err()
@@ -459,6 +461,7 @@ impl RunEngine {
                         client: &mut *client,
                         cancellation,
                         retention: super::compaction::Retention::Window,
+                        calibration: estimate.calibration,
                         accounted_tool_results: &accounted_tool_results,
                     })
                     .await
@@ -484,6 +487,14 @@ impl RunEngine {
                 "starting model call"
             );
             let mut history = history;
+            // The manual `/summarize` path trims its replayed history with the
+            // same calibrated budget as automatic compaction; keep the factor
+            // for the replacement validation below.
+            let manual_calibration = if prepared.action == RunAction::Compact {
+                super::compaction::estimate_calibration(prepared, &history, context_usage_anchor)
+            } else {
+                1.0
+            };
             if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
                 return (RunOutcome::Failed(error.into()), usage);
             }
@@ -491,10 +502,12 @@ impl RunEngine {
             // 不进库（`ModelInvocation::persisted_message_count` 按消息身份把它排除）。
             let anchored_messages = history.len();
             let history = if prepared.action == RunAction::Compact {
-                super::history::user_terminated(
+                // 手动 `/summarize` 与自动压缩用同一套按窗口裁剪的逻辑，否则大历史
+                // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。
+                super::compaction::compaction_history(
                     history,
-                    crate::model::COMPACTION_TAIL_MESSAGE_ID,
-                    super::compaction::INSTRUCTIONS,
+                    prepared.model.context_window_tokens,
+                    manual_calibration,
                 )
             } else {
                 super::history::user_terminated(history, CONTINUE_MESSAGE_ID, CONTINUE_INSTRUCTION)
@@ -666,16 +679,36 @@ impl RunEngine {
                             super::compaction::input_budget(prepared),
                         );
                         let overflow_retention = overflow.retention();
+                        // A provider error whose reported input usage already
+                        // reached the budget is an overflow even when its prose
+                        // matches none of the known phrases: some gateways wrap
+                        // or translate the upstream message.
+                        let provider_refusal = matches!(
+                            &cycle_failure.failure,
+                            RunFailure::Provider(message)
+                                if super::compaction::is_context_overflow(message)
+                        );
+                        let usage_exhausted =
+                            matches!(&cycle_failure.failure, RunFailure::Provider(_))
+                                && cycle_failure
+                                    .usage
+                                    .as_ref()
+                                    .and_then(|usage| {
+                                        usage.context_input_tokens.or(usage.input_tokens)
+                                    })
+                                    .is_some_and(|tokens| {
+                                        super::compaction::input_budget(prepared)
+                                            .is_some_and(|budget| tokens >= budget)
+                                    });
                         let overflow_refusal = prepared.action != RunAction::Compact
-                            && (window_exhausted
-                                || matches!(&cycle_failure.failure, RunFailure::Provider(message)
-                                    if super::compaction::is_context_overflow(message)));
+                            && (window_exhausted || provider_refusal || usage_exhausted);
                         if let Some(retention) = overflow_retention.filter(|_| overflow_refusal) {
                             tracing::warn!(
                                 provider_call_index,
                                 checkpoint_id = checkpoint.0,
                                 keep_recent_turns = retention == super::compaction::Retention::Window,
                                 window_exhausted,
+                                usage_exhausted,
                                 "provider rejected the prompt as over-limit; compacting and retrying"
                             );
                             overflow.provider_refused();
@@ -697,6 +730,16 @@ impl RunEngine {
                                     Ok(messages) => messages,
                                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                                 };
+                            let calibration = match crate::model::project_messages(&messages) {
+                                Ok(history) => super::compaction::estimate_calibration(
+                                    prepared,
+                                    &history,
+                                    context_usage_anchor,
+                                ),
+                                Err(error) => {
+                                    return (RunOutcome::Failed(error.into()), usage);
+                                }
+                            };
                             match self
                                 .auto_compact(CompactionRequest {
                                     prepared,
@@ -705,6 +748,7 @@ impl RunEngine {
                                     client: &mut *client,
                                     cancellation,
                                     retention,
+                                    calibration,
                                     accounted_tool_results: &accounted_tool_results,
                                 })
                                 .await
@@ -896,6 +940,7 @@ impl RunEngine {
                     &messages,
                     summary_message,
                     super::compaction::Retention::Window,
+                    manual_calibration,
                 ) {
                     Ok(replacement) => replacement,
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
@@ -1332,6 +1377,7 @@ impl RunEngine {
             client,
             cancellation,
             retention,
+            calibration,
             accounted_tool_results,
         } = request;
         let current_ids = prepared
@@ -1343,7 +1389,7 @@ impl RunEngine {
         if compactable.is_empty() {
             let projected = crate::model::project_messages(messages)
                 .map_err(|error| RunOutcome::Failed(error.into()))?;
-            let message = super::compaction::validate_compacted(prepared, &projected)
+            let message = super::compaction::validate_compacted(prepared, &projected, calibration)
                 .err()
                 .unwrap_or_else(|| {
                     "context overflow after compaction: no conversation history can be compacted"
@@ -1355,113 +1401,215 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
-        let provider_call_index = self
-            .store
-            .begin_provider_call(&prepared.run_id)
-            .await
-            .map_err(|error| RunOutcome::Failed(error.into()))?;
-        let history = crate::model::project_messages(&compactable)
-            .map(|history| {
-                super::compaction::compaction_history(history, prepared.model.context_window_tokens)
-            })
-            .map_err(|error| RunOutcome::Failed(error.into()))?;
-        let model = summary_model(&prepared.model, self.summary_output_tokens(prepared).await);
-        let invocation = crate::model::ModelInvocation {
-            client_source: crate::model::CallClient::Cursor,
-            call_id: format!("{}:{provider_call_index}", prepared.run_id),
-            run_id: prepared.run_id.to_string(),
-            conversation_id: prepared.conversation_id.to_string(),
-            provider_call_index,
-            request: crate::model::ModelRequest {
-                prompt: crate::model::PromptSpec {
-                    instructions: super::compaction::INSTRUCTIONS.into(),
-                    tools: Vec::new(),
-                },
-                model,
-                history,
-            },
-        };
-        let cycle_cancellation = cancellation.child_token();
-        let (silent_events, mut discarded_events) = tokio::sync::mpsc::channel(256);
-        let drain = tokio::spawn(async move { while discarded_events.recv().await.is_some() {} });
+        let summary_output_tokens = self.summary_output_tokens(prepared).await;
+        let model = summary_model(&prepared.model, summary_output_tokens);
         let mut pending_insertions = Vec::new();
         let mut break_messages = None;
-        let cycle = {
-            let cycle = consume_model_cycle(
-                self.provider.stream(invocation, cycle_cancellation.clone()),
-                &silent_events,
-                &cycle_cancellation,
+        // Second overflow step: when a summary slot already exists, drop the
+        // retained turns around it instead of paying for another summarize call
+        // over nearly the same history. The digest keeps the newest concrete
+        // messages that this step drops.
+        let reused_summary = if retention == super::compaction::Retention::None {
+            super::compaction::latest_summary_message(messages)
+                .and_then(super::compaction::summary_text)
+        } else {
+            None
+        };
+        let (summary, compaction_usage, event_id) = if let Some(existing) = reused_summary {
+            tracing::warn!(
+                "overflow ladder: reusing the existing summary and dropping the retained turns"
             );
-            tokio::pin!(cycle);
-            loop {
-                tokio::select! {
-                    biased;
-                    command = client.commands.recv() => match command {
-                        Some(RunCommand::InsertMessages(insertion)) => {
-                            pending_insertions.push(insertion);
-                        }
-                        Some(RunCommand::BreakMessages(messages)) => {
-                            cycle_cancellation.cancel();
-                            break_messages = Some(messages);
-                            break cycle.await;
-                        }
-                        Some(RunCommand::Cancel) => {
-                            cycle_cancellation.cancel();
-                            let _ = cycle.await;
-                            return Err(RunOutcome::Cancelled);
-                        }
-                        Some(RunCommand::ToolResult(result)) => {
-                            if late_tool_result(&result, accounted_tool_results) {
-                                continue;
-                            }
-                            cycle_cancellation.cancel();
-                            let _ = cycle.await;
-                            return Err(RunOutcome::Failed(RunFailure::Protocol(
-                                "received a tool result while automatic compaction was running".into(),
-                            )));
-                        }
-                        None => {
-                            cycle_cancellation.cancel();
-                            let _ = cycle.await;
-                            return Err(client_failure());
-                        }
-                    },
-                    result = &mut cycle => break result,
+            let summary = match super::compaction::digest_of(&compactable) {
+                Some(digest) => format!(
+                    "{existing}\n\nRecent context dropped by the summary-only compaction:\n{digest}"
+                ),
+                None => existing,
+            };
+            (
+                summary,
+                None,
+                format!("summary:auto:{}:reuse", prepared.run_id),
+            )
+        } else {
+            let mut summary_usage: Option<Usage> = None;
+            let mut summary_call_index: Option<u64> = None;
+            let mut attempts = 0_u8;
+            let (summary, compaction_usage) = 'summary: loop {
+                let retry = attempts > 0;
+                attempts = attempts.saturating_add(1);
+                // A provider call per attempt keeps each request observable.
+                let provider_call_index = self
+                    .store
+                    .begin_provider_call(&prepared.run_id)
+                    .await
+                    .map_err(|error| RunOutcome::Failed(error.into()))?;
+                if summary_call_index.is_none() {
+                    summary_call_index = Some(provider_call_index);
                 }
-            }
+                let history = crate::model::project_messages(&compactable)
+                    .map(|history| {
+                        // First attempt: the calibrated safe budget. Retry after a
+                        // failed summarize call: cut the replayed history roughly in
+                        // half so an estimator overshoot cannot repeat the failure.
+                        if retry {
+                            super::compaction::compaction_history_tight(
+                                history,
+                                prepared.model.context_window_tokens,
+                                calibration,
+                            )
+                        } else {
+                            super::compaction::compaction_history(
+                                history,
+                                prepared.model.context_window_tokens,
+                                calibration,
+                            )
+                        }
+                    })
+                    .map_err(|error| RunOutcome::Failed(error.into()))?;
+                let invocation = crate::model::ModelInvocation {
+                    client_source: crate::model::CallClient::Cursor,
+                    call_id: format!("{}:{provider_call_index}", prepared.run_id),
+                    run_id: prepared.run_id.to_string(),
+                    conversation_id: prepared.conversation_id.to_string(),
+                    provider_call_index,
+                    request: crate::model::ModelRequest {
+                        prompt: crate::model::PromptSpec {
+                            instructions: super::compaction::INSTRUCTIONS.into(),
+                            tools: Vec::new(),
+                        },
+                        model: model.clone(),
+                        history,
+                    },
+                };
+                let cycle_cancellation = cancellation.child_token();
+                let (silent_events, mut discarded_events) = tokio::sync::mpsc::channel(256);
+                let drain =
+                    tokio::spawn(async move { while discarded_events.recv().await.is_some() {} });
+                let cycle = {
+                    let cycle = consume_model_cycle(
+                        self.provider.stream(invocation, cycle_cancellation.clone()),
+                        &silent_events,
+                        &cycle_cancellation,
+                    );
+                    tokio::pin!(cycle);
+                    loop {
+                        tokio::select! {
+                            biased;
+                            command = client.commands.recv() => match command {
+                                Some(RunCommand::InsertMessages(insertion)) => {
+                                    pending_insertions.push(insertion);
+                                }
+                                Some(RunCommand::BreakMessages(messages)) => {
+                                    cycle_cancellation.cancel();
+                                    break_messages = Some(messages);
+                                    break cycle.await;
+                                }
+                                Some(RunCommand::Cancel) => {
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    return Err(RunOutcome::Cancelled);
+                                }
+                                Some(RunCommand::ToolResult(result)) => {
+                                    if late_tool_result(&result, accounted_tool_results) {
+                                        continue;
+                                    }
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    return Err(RunOutcome::Failed(RunFailure::Protocol(
+                                        "received a tool result while automatic compaction was running".into(),
+                                    )));
+                                }
+                                None => {
+                                    cycle_cancellation.cancel();
+                                    let _ = cycle.await;
+                                    return Err(client_failure());
+                                }
+                            },
+                            result = &mut cycle => break result,
+                        }
+                    }
+                };
+                drop(silent_events);
+                let _ = drain.await;
+                // A user interruption ends the compaction attempt: keep what was
+                // summarized so far and use the fallback slot, exactly as before.
+                if break_messages.is_some() {
+                    let outcome = match cycle {
+                        Ok(cycle) => cycle.usage,
+                        Err(failure) => failure.usage,
+                    };
+                    if let Some(usage) = outcome {
+                        accumulate_usage(&mut summary_usage, usage);
+                    }
+                    break 'summary (
+                        super::compaction::fallback_summary(&compactable),
+                        summary_usage,
+                    );
+                }
+                let outcome: Result<(), String> = match cycle {
+                    Ok(cycle) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
+                        let usage = cycle.usage;
+                        break 'summary (cycle.text.trim().to_string(), {
+                            if let Some(usage) = usage {
+                                accumulate_usage(&mut summary_usage, usage);
+                            }
+                            summary_usage
+                        });
+                    }
+                    Ok(cycle) => {
+                        if let Some(usage) = cycle.usage {
+                            accumulate_usage(&mut summary_usage, usage);
+                        }
+                        Err("automatic compaction returned no usable summary".to_string())
+                    }
+                    Err(failure) => {
+                        if let Some(usage) = failure.usage {
+                            accumulate_usage(&mut summary_usage, usage);
+                        }
+                        Err(format!(
+                            "automatic compaction model failed: {:?}",
+                            failure.failure
+                        ))
+                    }
+                };
+                if attempts < 2 {
+                    tracing::warn!(
+                        attempt = attempts,
+                        error = outcome.as_ref().err(),
+                        "automatic compaction failed; retrying once with a tighter history"
+                    );
+                    continue 'summary;
+                }
+                tracing::warn!(
+                    attempts,
+                    error = outcome.as_ref().err(),
+                    "automatic compaction failed twice; using the fallback summary"
+                );
+                break 'summary (
+                    super::compaction::fallback_summary(&compactable),
+                    summary_usage,
+                );
+            };
+            let event_id = format!(
+                "summary:auto:{}:{}",
+                prepared.run_id,
+                summary_call_index.unwrap_or(0)
+            );
+            (summary, compaction_usage, event_id)
         };
-        drop(silent_events);
-        let _ = drain.await;
-        let (summary, compaction_usage) = match (break_messages.is_some(), cycle) {
-            (true, Ok(cycle)) => (super::compaction::FALLBACK_SUMMARY.to_string(), cycle.usage),
-            (true, Err(failure)) => (
-                super::compaction::FALLBACK_SUMMARY.to_string(),
-                failure.usage,
-            ),
-            (false, Ok(cycle)) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
-                (cycle.text.trim().to_string(), cycle.usage)
-            }
-            (false, Ok(cycle)) => {
-                tracing::warn!("automatic compaction returned no usable summary; using fallback");
-                (super::compaction::FALLBACK_SUMMARY.to_string(), cycle.usage)
-            }
-            (false, Err(failure)) => {
-                tracing::warn!(error = ?failure.failure, "automatic compaction model failed; using fallback");
-                (
-                    super::compaction::FALLBACK_SUMMARY.to_string(),
-                    failure.usage,
-                )
-            }
-        };
-        let event_id = format!("summary:auto:{}:{provider_call_index}", prepared.run_id);
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();
-        let replacement =
-            super::compaction::replacement(prepared, messages, summary_message, retention)
-                .map_err(|error| RunOutcome::Failed(error.into()))?;
+        let replacement = super::compaction::replacement(
+            prepared,
+            messages,
+            summary_message,
+            retention,
+            calibration,
+        )
+        .map_err(|error| RunOutcome::Failed(error.into()))?;
         let projected_replacement = crate::model::project_messages(&replacement)
             .map_err(|error| RunOutcome::Failed(error.into()))?;
-        super::compaction::validate_compacted(prepared, &projected_replacement)
+        super::compaction::validate_compacted(prepared, &projected_replacement, calibration)
             .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
         let mut checkpoint = self
             .store

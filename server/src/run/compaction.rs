@@ -36,6 +36,22 @@ const CONTEXT_RESERVE_DIVISOR: u64 = 10;
 /// leave small windows with almost no room for the turns the model needs.
 const RETAIN_WINDOW_DIVISOR: u64 = 5;
 
+/// Safety factor applied to the summarizer input budget.
+///
+/// The trim budget is already the provider's usable window minus the summary
+/// output cap; keeping a further slice free absorbs the estimator's remaining
+/// error (especially CJK) so the summarize call itself does not overflow.
+const SUMMARY_INPUT_SAFETY_PERCENT: u64 = 90;
+
+/// Tighter input budget for the single retry after a failed summarize call.
+const SUMMARY_RETRY_PERCENT: u64 = 55;
+
+/// Clamp for the provider-anchored estimate correction. A lower ratio would
+/// shrink every downstream budget without bound; an upper one would turn a
+/// noisy anchor into an absurd reserve.
+const MIN_CALIBRATION: f64 = 0.5;
+const MAX_CALIBRATION: f64 = 4.0;
+
 /// Upper bound on one summary, in output tokens of the summarizer call.
 ///
 /// The summary stays provider-visible until the next compaction, so it competes
@@ -44,7 +60,7 @@ const RETAIN_WINDOW_DIVISOR: u64 = 5;
 /// handover state. Call sites clamp it to the configured model limit, because
 /// providers reject a `max_tokens` above the model's own output limit.
 pub(super) const OUTPUT_TOKENS: u64 = 8_192;
-pub(super) const INSTRUCTIONS: &str = "Summarize this conversation as a short handover state for the next model turn. Keep only durable state: the user's goal, what is already done or verified, the work in flight with the next concrete action, constraints and decisions that must not be reversed, key files, commands and values, and open errors or unfinished work. Prefer durable state over narration of recent turns; do not address the user, do not mention compaction or token limits, and do not call tools. Return plain text only, in short bullet-like lines.";
+pub(super) const INSTRUCTIONS: &str = "Summarize this conversation as a short handover state for the next model turn.\n\nReturn plain text with exactly these sections, in order, and keep every heading even when empty (write \"(none)\"):\n## Goal\n- [the user's original and evolving goal; quote exact wording where it matters]\n## Done and Verified\n- [what is already implemented, tested, or confirmed]\n## In Flight\n- [work currently in progress]\n## Next Action\n- [the single next concrete step]\n## Constraints and Decisions\n- [decisions that must not be reversed, user corrections, constraints]\n## Key Files, Commands, Values\n- [exact paths, commands, identifiers, numbers]\n## Open Errors / Unfinished Work\n- [errors, failing checks, explicitly requested work not done]\n## Earlier Summary\n- [merge still-true facts from a prior conversation_summary; do not copy it verbatim]\n\nRules:\n- Prefer durable state over narration of recent turns.\n- Do not address the user, do not mention compaction, summarization, or token limits, and do not call tools.\n- Preserve exact paths, commands, identifiers, numbers, and error strings.\n- Write in the language the user used in the conversation.\n- Return plain text only, in short bullet-like lines.";
 
 /// Summary slot content when the summarizer produced nothing usable.
 ///
@@ -57,6 +73,16 @@ pub(super) fn context_budget(context_window: u64) -> u64 {
     context_window.saturating_sub(context_window / CONTEXT_RESERVE_DIVISOR)
 }
 
+/// Converts a provider-token budget into the estimator's unit space.
+///
+/// `calibration` is actual tokens per estimated token for the anchored prefix:
+/// a value of 1.5 means the estimator reports two thirds of what the provider
+/// charges, so a budget expressed in estimated tokens must shrink to
+/// `provider_budget / 1.5` for the real request to fit.
+fn calibrate_budget(tokens: u64, calibration: f64) -> u64 {
+    (tokens as f64 / calibration).floor().max(0.0) as u64
+}
+
 pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
     prepared.model.context_window_tokens.map(context_budget)
 }
@@ -65,14 +91,26 @@ pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
 ///
 /// Providers report this as a plain 400 with prose, so there is nothing
 /// structured to match on. Anthropic says "prompt is too long"; OpenAI-style
-/// gateways use `context_length_exceeded` or "maximum context length".
+/// gateways use `context_length_exceeded` or "maximum context length". The
+/// remaining phrases cover the common gateway translations seen in practice;
+/// the run engine additionally treats provider errors whose reported input
+/// usage already reached the budget as overflow even when no phrase matches.
 pub(super) fn is_context_overflow(message: &str) -> bool {
     let lowered = message.to_ascii_lowercase();
     lowered.contains("prompt is too long")
         || lowered.contains("context window exceeded")
-        || lowered.contains("model_context_window_exceeded")
         || lowered.contains("context_length_exceeded")
-        || (lowered.contains("maximum context length") && lowered.contains("token"))
+        || lowered.contains("context length exceeded")
+        || lowered.contains("model_context_window_exceeded")
+        || lowered.contains("maximum context length")
+        || lowered.contains("exceeds the maximum context")
+        || lowered.contains("exceeds the maximum number of tokens")
+        || lowered.contains("too many tokens")
+        || lowered.contains("token limit exceeded")
+        || lowered.contains("reduce the length of the")
+        || lowered.contains("input length")
+        || lowered.contains("request is too large")
+        || lowered.contains("request too large")
 }
 
 /// Builds the history for a compaction call.
@@ -88,32 +126,66 @@ pub(super) fn is_context_overflow(message: &str) -> bool {
 ///    summarizer to accept a prompt that is already over the limit and the
 ///    call fails with "prompt is too long".
 ///
-/// Either failure falls back to the truncated summary, which is usually still
-/// too large, so the conversation stays over its window and cannot recover.
-///
 /// Trimming keeps the most recent turns and only ever cuts at a user-message
 /// boundary, so an assistant tool call is never separated from its results.
 pub(super) fn compaction_history(
     history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
+    calibration: f64,
+) -> Vec<ProjectedMessage> {
+    compact_history_at(
+        history,
+        context_window,
+        calibration,
+        SUMMARY_INPUT_SAFETY_PERCENT,
+    )
+}
+
+/// A tighter summarize history for the single retry after a failed call.
+pub(super) fn compaction_history_tight(
+    history: Vec<ProjectedMessage>,
+    context_window: Option<u64>,
+    calibration: f64,
+) -> Vec<ProjectedMessage> {
+    compact_history_at(history, context_window, calibration, SUMMARY_RETRY_PERCENT)
+}
+
+fn compact_history_at(
+    history: Vec<ProjectedMessage>,
+    context_window: Option<u64>,
+    calibration: f64,
+    percent: u64,
 ) -> Vec<ProjectedMessage> {
     super::history::user_terminated(
-        trim_to_context(history, context_window),
+        trim_to_context(
+            history,
+            summary_input_budget(context_window, calibration, percent),
+        ),
         "compaction:instruction",
         INSTRUCTIONS,
     )
 }
 
+/// Estimate-unit budget for the summarize call's replayed history.
+fn summary_input_budget(
+    context_window: Option<u64>,
+    calibration: f64,
+    percent: u64,
+) -> Option<u64> {
+    let window = context_window.filter(|window| *window > 0)?;
+    let usable = context_budget(window)
+        .saturating_sub(OUTPUT_TOKENS)
+        .saturating_mul(percent)
+        / 100;
+    let scaled = calibrate_budget(usable, calibration);
+    (scaled > 0).then_some(scaled)
+}
+
 fn trim_to_context(
     mut history: Vec<ProjectedMessage>,
-    context_window: Option<u64>,
+    budget: Option<u64>,
 ) -> Vec<ProjectedMessage> {
-    let Some(budget) = context_window
-        .filter(|window| *window > 0)
-        .map(context_budget)
-        .map(|budget| budget.saturating_sub(OUTPUT_TOKENS))
-        .filter(|budget| *budget > 0)
-    else {
+    let Some(budget) = budget else {
         return history;
     };
     if estimate_projected_messages_tokens(&history) <= budget {
@@ -146,6 +218,36 @@ fn is_turn_boundary(message: &ProjectedMessage) -> bool {
     message.role == Role::User && matches!(message.content, ProjectedContent::Parts(_))
 }
 
+/// Actual provider tokens per estimated token for the anchored prefix.
+///
+/// The provider reports what the previous request really cost; comparing that
+/// against the estimate for the same persisted prefix gives a per-conversation
+/// correction factor. It is applied to the messages added after the anchor and
+/// to every budget expressed in estimated tokens. Without an anchor (first
+/// request, model switch, just-compacted history) the uncalibrated estimate is
+/// the only information available and the factor stays 1.
+pub(super) fn estimate_calibration(
+    prepared: &PreparedRun,
+    projected_messages: &[ProjectedMessage],
+    anchor: Option<ContextUsageAnchor>,
+) -> f64 {
+    let Some(anchor) = anchor.filter(|anchor| {
+        anchor.message_count > 0 && anchor.message_count <= projected_messages.len()
+    }) else {
+        return 1.0;
+    };
+    if anchor.context_input_tokens == 0 {
+        return 1.0;
+    }
+    let estimated_prefix = estimate_context_tokens(
+        &prepared.prompt,
+        &projected_messages[..anchor.message_count],
+    )
+    .max(1);
+    (anchor.context_input_tokens as f64 / estimated_prefix as f64)
+        .clamp(MIN_CALIBRATION, MAX_CALIBRATION)
+}
+
 pub(super) fn estimated_tokens(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
@@ -154,23 +256,33 @@ pub(super) fn estimated_tokens(
     anchor
         .filter(|anchor| anchor.message_count <= projected_messages.len())
         .map(|anchor| {
-            anchor
-                .context_input_tokens
-                .saturating_add(estimate_projected_messages_tokens(
-                    &projected_messages[anchor.message_count..],
-                ))
+            let unanchored =
+                estimate_projected_messages_tokens(&projected_messages[anchor.message_count..]);
+            let calibration = estimate_calibration(prepared, projected_messages, Some(anchor));
+            let calibrated = (unanchored as f64 * calibration).ceil() as u64;
+            anchor.context_input_tokens.saturating_add(calibrated)
         })
         .unwrap_or_else(|| estimate_context_tokens(&prepared.prompt, projected_messages))
+}
+
+/// One pressure decision plus the calibration it was priced with.
+pub(super) struct CompactionEstimate {
+    pub tokens: u64,
+    pub calibration: f64,
 }
 
 pub(super) fn compaction_estimate(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
-) -> Option<u64> {
+) -> Option<CompactionEstimate> {
     let budget = input_budget(prepared)?;
-    let estimated = estimated_tokens(prepared, projected_messages, anchor);
-    (estimated > budget).then_some(estimated)
+    let calibration = estimate_calibration(prepared, projected_messages, anchor);
+    let tokens = estimated_tokens(prepared, projected_messages, anchor);
+    (tokens > budget).then_some(CompactionEstimate {
+        tokens,
+        calibration,
+    })
 }
 
 #[cfg(test)]
@@ -185,11 +297,13 @@ pub(super) fn should_compact(
 pub(super) fn validate_compacted(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
+    calibration: f64,
 ) -> std::result::Result<u64, String> {
     let estimated = estimate_context_tokens(&prepared.prompt, projected_messages);
     let Some(budget) = input_budget(prepared) else {
         return Ok(estimated);
     };
+    let budget = calibrate_budget(budget, calibration);
     if estimated <= budget {
         return Ok(estimated);
     }
@@ -236,10 +350,15 @@ pub(super) struct RetentionBudget {
 /// `head` is placed above the retained turns (the retained request context and
 /// the summary slot); `after` is placed below them (the run's own initial
 /// messages). Both are fixed costs of the compacted input.
+///
+/// `calibration` is the provider-anchored actual/estimated ratio: budgets are
+/// converted into the estimator's unit space so the retained tail's real token
+/// count stays inside the same share of the window, not just its estimate.
 pub(super) fn retention_budget(
     prepared: &PreparedRun,
     head: &[CanonicalMessage],
     after: &[CanonicalMessage],
+    calibration: f64,
 ) -> crate::Result<Option<RetentionBudget>> {
     let Some(window) = prepared
         .model
@@ -254,6 +373,8 @@ pub(super) fn retention_budget(
         return Ok(None);
     };
     let head_tokens = projected_tokens(head)?;
+    let window = calibrate_budget(window, calibration);
+    let input_budget = calibrate_budget(input_budget, calibration);
     let soft = (window / RETAIN_WINDOW_DIVISOR).saturating_sub(head_tokens);
     let hard = input_budget
         .saturating_sub(estimate_context_tokens(&prepared.prompt, &[]))
@@ -405,6 +526,7 @@ pub(super) fn replacement(
     messages: &[CanonicalMessage],
     summary: CanonicalMessage,
     retention: Retention,
+    calibration: f64,
 ) -> crate::Result<Vec<CanonicalMessage>> {
     let current_ids = prepared
         .initial_messages
@@ -415,7 +537,12 @@ pub(super) fn replacement(
     let mut replacement = retained_request_context.into_iter().collect::<Vec<_>>();
     replacement.push(summary);
     if retention == Retention::Window {
-        let tail = match retention_budget(prepared, &replacement, &prepared.initial_messages)? {
+        let tail = match retention_budget(
+            prepared,
+            &replacement,
+            &prepared.initial_messages,
+            calibration,
+        )? {
             Some(budget) => retained_tail(&compactable, budget)?,
             None => Vec::new(),
         };
@@ -423,6 +550,119 @@ pub(super) fn replacement(
     }
     replacement.extend(prepared.initial_messages.iter().cloned());
     Ok(replacement)
+}
+
+/// The text carried by a summary slot, with the checkpoint tags removed.
+pub(super) fn summary_text(message: &CanonicalMessage) -> Option<String> {
+    let MessageContent::Parts { parts } = &message.content else {
+        return None;
+    };
+    let mut text = String::new();
+    for part in parts {
+        if let ContentPart::Text { text: part } = part {
+            text.push_str(part);
+        }
+    }
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let text = text
+        .strip_prefix("<conversation_summary>")
+        .unwrap_or(text)
+        .strip_suffix("</conversation_summary>")
+        .unwrap_or(text)
+        .trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
+/// The newest summary slot in a replacement history, when one exists.
+pub(super) fn latest_summary_message(messages: &[CanonicalMessage]) -> Option<&CanonicalMessage> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| is_superseded_summary(message))
+}
+
+/// A deterministic digest of the history a failed summarize call would have
+/// covered, appended to the fallback slot.
+///
+/// The summary model is the only lossy step in compaction; when it fails, the
+/// fallback used to be a single sentence that dropped every concrete detail.
+/// This digest keeps the last user requests and assistant outputs (bounded, one
+/// line each) so the model can still resume instead of re-reading everything.
+pub(super) fn fallback_summary(compactable: &[CanonicalMessage]) -> String {
+    match digest_of(compactable) {
+        Some(digest) => {
+            format!("{FALLBACK_SUMMARY}\n\nDeterministic digest of the dropped history:\n{digest}")
+        }
+        None => FALLBACK_SUMMARY.to_string(),
+    }
+}
+
+/// The bounded, deterministic last-entries digest shared by the fallback slot
+/// and the summary-reuse path of the overflow ladder.
+pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
+    const MAX_ENTRIES: usize = 3;
+    const MAX_CHARS: usize = 400;
+    let mut digest = Vec::new();
+    for message in compactable.iter().rev() {
+        let label = match message.role {
+            Role::User if message.origin != Origin::Prompt => "User",
+            Role::Assistant => "Assistant",
+            _ => continue,
+        };
+        if digest.len() >= MAX_ENTRIES {
+            break;
+        }
+        let text = message_text(message);
+        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if text.is_empty() {
+            continue;
+        }
+        let text = truncate_chars_middle(&text, MAX_CHARS);
+        digest.push(format!("- {label}: {text}"));
+    }
+    if digest.is_empty() {
+        return None;
+    }
+    digest.reverse();
+    Some(digest.join("\n"))
+}
+
+fn message_text(message: &CanonicalMessage) -> String {
+    match &message.content {
+        MessageContent::Parts { parts } => parts
+            .iter()
+            .filter_map(|part| match part {
+                ContentPart::Text { text } => Some(text.clone()),
+                ContentPart::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        MessageContent::Assistant { text, .. } => text.clone(),
+        MessageContent::ToolResult(result) => result.content.clone(),
+    }
+}
+
+/// Keeps both ends of an over-long line: assistant output usually carries the
+/// conclusion (markers, file names, errors) at the end, while the beginning
+/// holds the task framing.
+fn truncate_chars_middle(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(limit * 2 / 3).collect();
+    let tail_count = limit.saturating_sub(head.chars().count() + 1);
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(tail_count)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{head}…{tail}")
 }
 
 #[cfg(test)]
@@ -450,6 +690,40 @@ mod tests {
             action: RunAction::Start,
             base_checkpoint_id: CheckpointId(1),
         }
+    }
+
+    // Unit-test conveniences for the uncalibrated path: the no-anchor
+    // calibration is 1.0, so these mirror the pre-calibration signatures.
+    // Calibration-specific tests call `super::` directly.
+    fn compaction_history(
+        history: Vec<ProjectedMessage>,
+        context_window: Option<u64>,
+    ) -> Vec<ProjectedMessage> {
+        super::compaction_history(history, context_window, 1.0)
+    }
+
+    fn validate_compacted(
+        prepared: &PreparedRun,
+        projected_messages: &[ProjectedMessage],
+    ) -> std::result::Result<u64, String> {
+        super::validate_compacted(prepared, projected_messages, 1.0)
+    }
+
+    fn retention_budget(
+        prepared: &PreparedRun,
+        head: &[CanonicalMessage],
+        after: &[CanonicalMessage],
+    ) -> crate::Result<Option<RetentionBudget>> {
+        super::retention_budget(prepared, head, after, 1.0)
+    }
+
+    fn replacement(
+        prepared: &PreparedRun,
+        messages: &[CanonicalMessage],
+        summary: CanonicalMessage,
+        retention: Retention,
+    ) -> crate::Result<Vec<CanonicalMessage>> {
+        super::replacement(prepared, messages, summary, retention, 1.0)
     }
 
     #[test]
@@ -629,7 +903,15 @@ mod tests {
             context_input_tokens: 103_904,
             message_count: 1,
         };
-        let expected = 103_904 + estimate_projected_messages_tokens(&projected[1..]);
+        // The anchor proves the estimator under-counted the ASCII prefix by
+        // 3.9%, so the delta after it is priced with the same correction.
+        let calibration = estimate_calibration(&prepared(200_000), &projected, Some(anchor));
+        assert!(
+            (calibration - 1.039).abs() < 0.001,
+            "calibration {calibration}"
+        );
+        let delta = estimate_projected_messages_tokens(&projected[1..]);
+        let expected = 103_904 + (delta as f64 * calibration).ceil() as u64;
 
         assert_eq!(
             estimated_tokens(&prepared(200_000), &projected, Some(anchor)),
@@ -640,6 +922,77 @@ mod tests {
             &projected,
             Some(anchor)
         ));
+    }
+
+    #[test]
+    fn cjk_anchor_calibration_prices_the_remaining_history_at_provider_density() {
+        // A provider-charged prefix far above the estimate (CJK-heavy content)
+        // must raise the estimate for messages added after the anchor too.
+        let messages = vec![
+            CanonicalMessage::text(
+                "old",
+                Role::User,
+                Origin::Runtime,
+                "中文内容".repeat(10_000),
+            ),
+            CanonicalMessage::text("new", Role::User, Origin::Runtime, "继续处理这个问题"),
+        ];
+        let projected = project_messages(&messages).unwrap();
+        let estimated_prefix = estimate_context_tokens(&prepared(200_000).prompt, &projected[..1]);
+        // Provider reports 1.8x the estimate for the Chinese prefix.
+        let anchor = ContextUsageAnchor {
+            context_input_tokens: estimated_prefix * 2 - estimated_prefix / 5,
+            message_count: 1,
+        };
+        let calibration = estimate_calibration(&prepared(200_000), &projected, Some(anchor));
+        assert!(calibration > 1.5, "calibration {calibration}");
+        assert!(
+            estimated_tokens(&prepared(200_000), &projected, Some(anchor))
+                > estimate_projected_messages_tokens(&projected)
+        );
+    }
+
+    #[test]
+    fn anchor_calibration_is_clamped_to_the_supported_range() {
+        let messages = vec![CanonicalMessage::text(
+            "old",
+            Role::User,
+            Origin::Runtime,
+            "tiny",
+        )];
+        let projected = project_messages(&messages).unwrap();
+        let out_of_range = ContextUsageAnchor {
+            context_input_tokens: 10_000_000,
+            message_count: 1,
+        };
+        assert_eq!(
+            estimate_calibration(&prepared(200_000), &projected, Some(out_of_range)),
+            MAX_CALIBRATION
+        );
+        let tiny = ContextUsageAnchor {
+            context_input_tokens: 1,
+            message_count: 1,
+        };
+        assert_eq!(
+            estimate_calibration(&prepared(200_000), &projected, Some(tiny)),
+            MIN_CALIBRATION
+        );
+    }
+
+    #[test]
+    fn calibrated_summary_history_trims_more_than_the_uncalibrated_estimate() {
+        let mut history = Vec::new();
+        for index in 1..=8 {
+            history.push(user(&format!("u{index}"), &"x".repeat(80_000)));
+            history.push(assistant(&format!("a{index}"), "ok"));
+        }
+        let uncalibrated = super::compaction_history(history.clone(), Some(200_000), 1.0);
+        let calibrated = super::compaction_history(history, Some(200_000), 2.0);
+        assert!(
+            estimate_projected_messages_tokens(&calibrated)
+                < estimate_projected_messages_tokens(&uncalibrated),
+            "a provider that charges twice the estimate must get a smaller summarize history"
+        );
     }
 
     #[test]
