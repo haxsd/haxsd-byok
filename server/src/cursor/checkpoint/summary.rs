@@ -3,7 +3,9 @@ use prost::Message;
 
 use crate::{
     cursor::{checkpoint::PendingSteps, protocol::proto::agent::v1 as pb},
-    model::{estimate_context_tokens, project_messages, CanonicalMessage, PromptSpec},
+    model::{
+        estimate_context_tokens, project_messages, CanonicalMessage, MessageContent, PromptSpec,
+    },
     store::{BlobEdge, BlobId},
     Error, Result,
 };
@@ -86,15 +88,19 @@ impl CheckpointBuilder {
             root_ids.iter().map(|id| id.as_bytes().to_vec()).collect();
         self.base.turns = turn_ids.iter().map(|id| id.as_bytes().to_vec()).collect();
         self.base.pending_tool_calls.clear();
-        // 压缩把逐字历史换成摘要，而客户端带上来的文件状态基线描述的是**已经被摘要掉的
-        // 那段历史**（`file_states_v2` 的 blob 里存的是压缩前的文件内容）。原样写回去，
-        // Cursor 侧会按这份基线把文件显示成压缩前的样子（审计 05/P2-1：用户看到"文件内容
-        // 回到压缩前"）。压缩后的基线里这两张表必须清空：内容块仍然挂在会话根上、不会被
-        // 回收，而"当前文件状态"要由压缩之后新的 Read/Edit 重新建立。
-        // todos / plan 不走这条：它们由 `build_derived_state` 从消息折叠出来，没有折叠
-        // 结果时沿用基线（derived.rs）。
-        self.base.file_states.clear();
-        self.base.file_states_v2.clear();
+        // 压缩把逐字历史换成摘要。客户端带上来的文件状态基线描述的是压缩前的会话，
+        // 原样写回去会让 Cursor 侧按旧 blob 把文件显示成压缩前的样子（审计 05/P2-1）。
+        // 但全部清空又会丢掉仍保留在近轮里的文件锚点，所以只保留 replacement 里仍有
+        // Read/Edit 工具调用引用的那些文件；被摘要掉的文件状态继续丢弃，由之后的
+        // Read/Edit 重新建立。todos / plan 不走这条：它们由 `build_derived_state`
+        // 从消息折叠，没有折叠结果时沿用基线（derived.rs）。
+        let retained_paths = retained_file_paths(messages);
+        self.base
+            .file_states
+            .retain(|path, _| retained_paths.contains(path));
+        self.base
+            .file_states_v2
+            .retain(|path, _| retained_paths.contains(path));
         self.base.mode = Some(mode);
         self.base.summary = Some(summary_id.as_bytes().to_vec());
         self.base.summary_archive = Some(archive_id.as_bytes().to_vec());
@@ -165,5 +171,108 @@ impl CheckpointBuilder {
             .ok_or_else(|| {
                 Error::Protocol("compaction summary message is not a checkpoint root".into())
             })
+    }
+}
+
+/// File paths that the post-compaction replacement still references.
+///
+/// Only file-tool calls in the retained messages count: a path that appears
+/// only in the summarized-away history has no live state to restore, and
+/// keeping its stale blob would make the client show pre-compaction contents.
+fn retained_file_paths(messages: &[CanonicalMessage]) -> std::collections::HashSet<String> {
+    let mut paths = std::collections::HashSet::new();
+    for message in messages {
+        let MessageContent::Assistant { tool_calls, .. } = &message.content else {
+            continue;
+        };
+        for call in tool_calls {
+            if let Some(path) = file_tool_path(&call.name, &call.arguments) {
+                paths.insert(path);
+            }
+        }
+    }
+    paths
+}
+
+fn file_tool_path(name: &str, arguments: &serde_json::Value) -> Option<String> {
+    let normalized: String = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    if !matches!(
+        normalized.as_str(),
+        "read"
+            | "readfile"
+            | "edit"
+            | "write"
+            | "strreplace"
+            | "patchedit"
+            | "patcheditlines"
+            | "patcheditspan"
+            | "editnotebook"
+            | "applypatch"
+            | "multiedit"
+            | "createfile"
+    ) {
+        return None;
+    }
+    for key in [
+        "path",
+        "file_path",
+        "target_file",
+        "absolute_path",
+        "filename",
+        "file",
+    ] {
+        if let Some(value) = arguments.get(key).and_then(|value| value.as_str()) {
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Origin, Role, ToolCallContent};
+
+    fn assistant(calls: Vec<ToolCallContent>) -> CanonicalMessage {
+        CanonicalMessage {
+            message_id: "a1".into(),
+            role: Role::Assistant,
+            origin: Origin::Assistant,
+            content: MessageContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                tool_round_id: None,
+                replay_state: None,
+                tool_calls: calls,
+            },
+            runtime_event_id: None,
+        }
+    }
+
+    #[test]
+    fn retained_paths_come_from_file_tool_calls_in_the_replacement() {
+        let messages = vec![
+            assistant(vec![ToolCallContent {
+                index: 0,
+                call_id: "c1".into(),
+                name: "Read".into(),
+                arguments: serde_json::json!({"path": "src/main.rs"}),
+            }]),
+            assistant(vec![ToolCallContent {
+                index: 0,
+                call_id: "c2".into(),
+                name: "Shell".into(),
+                arguments: serde_json::json!({"command": "ls"}),
+            }]),
+        ];
+        let paths = retained_file_paths(&messages);
+        assert!(paths.contains("src/main.rs"));
+        assert_eq!(paths.len(), 1, "non-file tools contribute no path");
     }
 }
