@@ -117,7 +117,61 @@ pub(super) fn input_budget(
     )
 }
 
-/// Whether a provider failure means the prompt did not fit.
+/// Extracts the provider's own context limit from an over-limit error.
+///
+/// Providers phrase the refusal as prose, but the number is usually present:
+/// `"prompt is too long: 210000 tokens > 200000 maximum"`, `"maximum context
+/// length is 128000 tokens"`, or `"context window is 200000"`. Learning the
+/// real limit for the rest of the run prevents the same estimator from
+/// re-triggering the same refusal when the configured window is larger than the
+/// provider's. Only numbers that look like token windows are accepted.
+pub(super) fn provider_context_limit(message: &str) -> Option<u64> {
+    let lowered = message.to_ascii_lowercase();
+    // "N tokens > M maximum" (Anthropic and several gateways).
+    if let Some(index) = lowered.find("> ") {
+        if let Some(limit) = first_number(&lowered[index + 2..]) {
+            if limit >= 1_000 {
+                return Some(limit);
+            }
+        }
+    }
+    for marker in [
+        "maximum context length is",
+        "maximum context window is",
+        "maximum context length of",
+        "context window is",
+        "context length is",
+        "token limit is",
+    ] {
+        if let Some(limit) = first_number_after(&lowered, marker) {
+            if limit >= 1_000 {
+                return Some(limit);
+            }
+        }
+    }
+    None
+}
+
+fn first_number_after(text: &str, marker: &str) -> Option<u64> {
+    let start = text.find(marker)? + marker.len();
+    first_number(&text[start..])
+}
+
+fn first_number(text: &str) -> Option<u64> {
+    let mut digits = String::new();
+    let mut started = false;
+    for character in text.chars() {
+        if character.is_ascii_digit() || (started && character == ',') {
+            started = true;
+            if character != ',' {
+                digits.push(character);
+            }
+        } else if started {
+            break;
+        }
+    }
+    digits.parse().ok()
+}
 ///
 /// Providers report this as a plain 400 with prose, so there is nothing
 /// structured to match on. Anthropic says "prompt is too long"; OpenAI-style
@@ -1915,5 +1969,26 @@ mod tests {
             "5% of 1M is 50k but the absolute cap wins"
         );
         assert_eq!(budget.hard, 20_000, "the cap bounds the hard limit too");
+    }
+
+    #[test]
+    fn provider_context_limits_are_learned_from_error_prose() {
+        assert_eq!(
+            provider_context_limit("prompt is too long: 210000 tokens > 200000 maximum"),
+            Some(200_000)
+        );
+        assert_eq!(
+            provider_context_limit("maximum context length is 128000 tokens"),
+            Some(128_000)
+        );
+        assert_eq!(
+            provider_context_limit("context window is 1,000,000 tokens"),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            provider_context_limit("401 Unauthorized: invalid api key"),
+            None
+        );
+        assert_eq!(provider_context_limit("prompt is too long"), None);
     }
 }

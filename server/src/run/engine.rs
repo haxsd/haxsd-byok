@@ -151,6 +151,10 @@ struct CompactionRequest<'a> {
     /// Actual provider tokens per estimated token for the anchored prefix.
     calibration: f64,
     settings: &'a crate::store::CompactionSettings,
+    /// Why this compaction ran, for the structured metric log.
+    trigger: &'static str,
+    /// Pressure estimate that opened the preflight path, when there was one.
+    estimated_tokens: Option<u64>,
     accounted_tool_results: &'a HashSet<String>,
 }
 
@@ -273,6 +277,10 @@ impl RunEngine {
             Ok(settings) => settings,
             Err(error) => return (RunOutcome::Failed(error.into()), usage),
         };
+        // Compaction budgets follow the provider's real limit when an
+        // over-limit refusal reveals it, without mutating the user's model
+        // configuration. The rest of the run keeps the routed model spec.
+        let mut compaction_run = prepared.clone();
         tracing::info!(
             checkpoint_id = checkpoint.0,
             "Run claimed conversation ownership"
@@ -447,7 +455,7 @@ impl RunEngine {
                 && compaction_settings.auto)
                 .then(|| {
                     super::compaction::compaction_estimate(
-                        prepared,
+                        &compaction_run,
                         &history,
                         context_usage_anchor,
                         &compaction_settings,
@@ -466,7 +474,7 @@ impl RunEngine {
                 }
                 match self
                     .auto_compact(CompactionRequest {
-                        prepared,
+                        prepared: &compaction_run,
                         checkpoint,
                         messages: &messages,
                         client: &mut *client,
@@ -474,6 +482,8 @@ impl RunEngine {
                         retention: super::compaction::Retention::Window,
                         calibration: estimate.calibration,
                         settings: &compaction_settings,
+                        trigger: "preflight",
+                        estimated_tokens: Some(estimate.tokens),
                         accounted_tool_results: &accounted_tool_results,
                     })
                     .await
@@ -503,7 +513,11 @@ impl RunEngine {
             // same calibrated budget as automatic compaction; keep the factor
             // for the replacement validation below.
             let manual_calibration = if prepared.action == RunAction::Compact {
-                super::compaction::estimate_calibration(prepared, &history, context_usage_anchor)
+                super::compaction::estimate_calibration(
+                    &compaction_run,
+                    &history,
+                    context_usage_anchor,
+                )
             } else {
                 1.0
             };
@@ -518,7 +532,7 @@ impl RunEngine {
                 // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。
                 super::compaction::compaction_history(
                     history,
-                    prepared.model.context_window_tokens,
+                    compaction_run.model.context_window_tokens,
                     manual_calibration,
                     &compaction_settings,
                 )
@@ -695,7 +709,7 @@ impl RunEngine {
                         let window_exhausted = exhausted_context_window(
                             &cycle_failure.failure,
                             cycle_failure.usage.as_ref(),
-                            super::compaction::input_budget(prepared, &compaction_settings),
+                            super::compaction::input_budget(&compaction_run, &compaction_settings),
                         );
                         let overflow_retention = overflow.retention();
                         // A provider error whose reported input usage already
@@ -707,6 +721,23 @@ impl RunEngine {
                             RunFailure::Provider(message)
                                 if super::compaction::is_context_overflow(message)
                         );
+                        // The provider is the authority on the real window; a
+                        // refused prompt often carries it as prose. Learning it
+                        // for this run keeps the next budget honest when the
+                        // configured window was larger than the provider's.
+                        if let RunFailure::Provider(message) = &cycle_failure.failure {
+                            if let Some(limit) = super::compaction::provider_context_limit(message)
+                            {
+                                if compaction_run.model.context_window_tokens != Some(limit) {
+                                    tracing::warn!(
+                                        previous = ?compaction_run.model.context_window_tokens,
+                                        provider_limit = limit,
+                                        "provider reported its real context limit; using it for compaction budgets"
+                                    );
+                                    compaction_run.model.context_window_tokens = Some(limit);
+                                }
+                            }
+                        }
                         let usage_exhausted =
                             matches!(&cycle_failure.failure, RunFailure::Provider(_))
                                 && cycle_failure
@@ -717,7 +748,7 @@ impl RunEngine {
                                     })
                                     .is_some_and(|tokens| {
                                         super::compaction::input_budget(
-                                            prepared,
+                                            &compaction_run,
                                             &compaction_settings,
                                         )
                                         .is_some_and(|budget| tokens >= budget)
@@ -754,7 +785,7 @@ impl RunEngine {
                                 };
                             let calibration = match crate::model::project_messages(&messages) {
                                 Ok(history) => super::compaction::estimate_calibration(
-                                    prepared,
+                                    &compaction_run,
                                     &history,
                                     context_usage_anchor,
                                 ),
@@ -764,7 +795,7 @@ impl RunEngine {
                             };
                             match self
                                 .auto_compact(CompactionRequest {
-                                    prepared,
+                                    prepared: &compaction_run,
                                     checkpoint,
                                     messages: &messages,
                                     client: &mut *client,
@@ -772,6 +803,8 @@ impl RunEngine {
                                     retention,
                                     calibration,
                                     settings: &compaction_settings,
+                                    trigger: "context-overflow",
+                                    estimated_tokens: None,
                                     accounted_tool_results: &accounted_tool_results,
                                 })
                                 .await
@@ -960,7 +993,7 @@ impl RunEngine {
                 let summary_message = super::compaction::summary_message(&event_id, &summary);
                 let summary_message_id = summary_message.message_id.clone();
                 let replacement = match super::compaction::replacement(
-                    prepared,
+                    &compaction_run,
                     &messages,
                     summary_message,
                     super::compaction::Retention::Window,
@@ -1450,6 +1483,8 @@ impl RunEngine {
             retention,
             calibration,
             settings,
+            trigger,
+            estimated_tokens,
             accounted_tool_results,
         } = request;
         let current_ids = prepared
@@ -1716,6 +1751,17 @@ impl RunEngine {
             settings,
         )
         .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
+        tracing::info!(
+            run_id = %prepared.run_id,
+            trigger,
+            estimated_tokens = estimated_tokens.unwrap_or(0),
+            calibration,
+            retention = ?retention,
+            compactable_messages = compactable.len(),
+            replacement_messages = replacement.len(),
+            summary_chars = summary.chars().count(),
+            "compaction committed"
+        );
         let mut checkpoint = self
             .store
             .replace_checkpoint(
