@@ -150,6 +150,7 @@ struct CompactionRequest<'a> {
     retention: super::compaction::Retention,
     /// Actual provider tokens per estimated token for the anchored prefix.
     calibration: f64,
+    settings: &'a crate::store::CompactionSettings,
     accounted_tool_results: &'a HashSet<String>,
 }
 
@@ -266,6 +267,10 @@ impl RunEngine {
             .await
         {
             Ok(anchor) => anchor,
+            Err(error) => return (RunOutcome::Failed(error.into()), usage),
+        };
+        let compaction_settings = match self.store.compaction_settings().await {
+            Ok(settings) => settings,
             Err(error) => return (RunOutcome::Failed(error.into()), usage),
         };
         tracing::info!(
@@ -438,7 +443,8 @@ impl RunEngine {
                 Ok(history) => history,
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
-            let compaction_estimate = (prepared.action != RunAction::Compact)
+            let compaction_estimate = (prepared.action != RunAction::Compact
+                && compaction_settings.auto)
                 .then(|| {
                     super::compaction::compaction_estimate(prepared, &history, context_usage_anchor)
                 })
@@ -462,6 +468,7 @@ impl RunEngine {
                         cancellation,
                         retention: super::compaction::Retention::Window,
                         calibration: estimate.calibration,
+                        settings: &compaction_settings,
                         accounted_tool_results: &accounted_tool_results,
                     })
                     .await
@@ -512,16 +519,22 @@ impl RunEngine {
             } else {
                 super::history::user_terminated(history, CONTINUE_MESSAGE_ID, CONTINUE_INSTRUCTION)
             };
+            let model = if prepared.action == RunAction::Compact {
+                self.summary_model_spec(prepared, &compaction_settings)
+                    .await
+            } else {
+                cycle_model(
+                    &prepared.action,
+                    &prepared.model,
+                    super::compaction::OUTPUT_TOKENS,
+                )
+            };
             let request = crate::model::ModelRequest {
                 prompt: prepared.prompt.clone(),
                 // 手动 `/summarize`（Compact）与自动压缩产出的是同一种东西——一段之后顶替
                 // 历史、对模型可见的摘要——所以两者用同一份摘要规格，不能走调用方原样的模型
                 // 规格（那会把思考打开并且不设输出上限）。
-                model: cycle_model(
-                    &prepared.action,
-                    &prepared.model,
-                    self.summary_output_tokens(prepared).await,
-                ),
+                model,
                 history,
             };
             let mut retries = 0_u32;
@@ -749,6 +762,7 @@ impl RunEngine {
                                     cancellation,
                                     retention,
                                     calibration,
+                                    settings: &compaction_settings,
                                     accounted_tool_results: &accounted_tool_results,
                                 })
                                 .await
@@ -1354,17 +1368,63 @@ impl RunEngine {
     /// capped well below what the model could produce. Providers reject a
     /// `max_tokens` above the model's own output limit, so the constant is
     /// clamped by the configured model limit when one is set.
-    async fn summary_output_tokens(&self, prepared: &PreparedRun) -> u64 {
-        let configured = self
+    async fn summary_output_tokens(
+        &self,
+        prepared: &PreparedRun,
+        settings: &crate::store::CompactionSettings,
+    ) -> u64 {
+        let summary_limit = self
+            .configured_model(&settings.summary_model_hash)
+            .await
+            .and_then(|model| model.max_output_tokens());
+        let run_limit = self
             .store
             .model(&prepared.model.model_id)
             .await
             .ok()
             .flatten()
             .and_then(|model| model.max_output_tokens());
-        configured.map_or(super::compaction::OUTPUT_TOKENS, |limit| {
-            limit.min(super::compaction::OUTPUT_TOKENS)
-        })
+        let requested = settings
+            .summary_output_tokens
+            .unwrap_or(super::compaction::OUTPUT_TOKENS);
+        summary_limit
+            .or(run_limit)
+            .map_or(requested, |limit| requested.min(limit))
+    }
+
+    async fn configured_model(&self, hash: &str) -> Option<crate::model::ModelConfig> {
+        let hash = hash.trim();
+        if hash.is_empty() {
+            return None;
+        }
+        match self.store.model(hash).await {
+            Ok(model) => model,
+            Err(error) => {
+                tracing::warn!(%error, model_hash = hash, "failed to load the summary model");
+                None
+            }
+        }
+    }
+
+    /// Model spec for summarize calls: the configured independent summary model
+    /// when present, otherwise the routed conversation model, with reasoning
+    /// explicitly off and the output cap applied.
+    async fn summary_model_spec(
+        &self,
+        prepared: &PreparedRun,
+        settings: &crate::store::CompactionSettings,
+    ) -> crate::model::ModelSpec {
+        let output_tokens = self.summary_output_tokens(prepared, settings).await;
+        let mut model = summary_model(&prepared.model, output_tokens);
+        if let Some(target) = self.configured_model(&settings.summary_model_hash).await {
+            // The router resolves built-in models by this stable hash.
+            model.model_id = target.model_hash.clone();
+            model.display_name = Some(target.display_name.clone());
+            if let Some(limit) = target.max_output_tokens() {
+                model.max_output_tokens = Some(output_tokens.min(limit));
+            }
+        }
+        model
     }
 
     async fn auto_compact(
@@ -1379,6 +1439,7 @@ impl RunEngine {
             cancellation,
             retention,
             calibration,
+            settings,
             accounted_tool_results,
         } = request;
         let current_ids = prepared
@@ -1402,8 +1463,7 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
-        let summary_output_tokens = self.summary_output_tokens(prepared).await;
-        let model = summary_model(&prepared.model, summary_output_tokens);
+        let model = self.summary_model_spec(prepared, settings).await;
         let mut pending_insertions = Vec::new();
         let mut break_messages = None;
         // Second overflow step: when a summary slot already exists, drop the

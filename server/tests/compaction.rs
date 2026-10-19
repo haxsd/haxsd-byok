@@ -474,6 +474,78 @@ async fn irreducibly_oversized_current_input_fails_before_provider_dispatch() {
     assert_eq!(output.summary_completed, 0);
 }
 
+#[tokio::test]
+async fn automatic_compaction_uses_the_configured_summary_model() {
+    // The summarize call may run on an independent (cheaper) model. It must
+    // resolve through the router by hash and stay inside the configured output
+    // cap without disturbing the conversation model.
+    let (_directory, store) = fixtures::temp_store().await;
+    let main = store
+        .create_model(&windowed_model("main-model", Some(100_000)))
+        .await
+        .unwrap();
+    let summary = store
+        .create_model(&windowed_model("summary-model", Some(128_000)))
+        .await
+        .unwrap();
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            auto: true,
+            summary_model_hash: summary.model_hash.clone(),
+            summary_output_tokens: Some(1_024),
+        })
+        .await
+        .unwrap();
+
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
+    provider.push(text_response("short durable summary", 100_000, 20));
+    provider.push(text_response("continued after compact", 20_000, 20));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "summary-model-first",
+        user_request(
+            "summary-model-conversation",
+            "summary-model-user-1",
+            "start",
+            &main.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "summary-model-second",
+        user_request(
+            "summary-model-conversation",
+            "summary-model-user-2",
+            "continue",
+            &main.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.summary_started, 1);
+
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[1].model.model_id, summary.model_hash,
+        "the summarize call must target the configured summary model"
+    );
+    assert_eq!(
+        requests[1].model.max_output_tokens,
+        Some(1_024),
+        "the summarize call must honor the configured output cap"
+    );
+    assert_eq!(
+        requests[2].model.model_id, main.model_hash,
+        "the conversation keeps running on the main model"
+    );
+}
+
 fn windowed_model(model_id: &str, context_window_tokens: Option<u64>) -> ModelConfigInput {
     ModelConfigInput {
         sort_order: 0,

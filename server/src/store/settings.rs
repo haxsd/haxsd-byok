@@ -28,6 +28,8 @@ const MODEL_PRICING_SETTINGS_KEY: &str = "model_token_pricing";
 /// 按模型规则后把它删掉，见 `Store::set_model_pricing`。
 const LEGACY_PRICING_SETTINGS_KEY: &str = "token_pricing";
 const DEVIN_SETTINGS_KEY: &str = "devin_router";
+/// Context-compaction policy: opt-out, independent summary model, output cap.
+const COMPACTION_SETTINGS_KEY: &str = "compaction";
 
 /// Embedded default system prompts for commit message generation.
 pub const DEFAULT_COMMIT_PROMPT_ZH_CN: &str = include_str!("../../prompt/cursor/commit/zh-CN.md");
@@ -441,6 +443,50 @@ impl CommitSettings {
         } else {
             trimmed
         }
+    }
+}
+
+/// User-facing context-compaction policy.
+///
+/// Every field is optional with a deployment default so an older row (or no row
+/// at all) keeps the shipped behaviour. The summary model is addressed by its
+/// stable model hash; an empty hash means "reuse the conversation's model".
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(default)]
+pub struct CompactionSettings {
+    /// Run the proactive between-request pressure check and compaction.
+    pub auto: bool,
+    /// Model hash used for summarize calls only. Empty reuses the run model.
+    pub summary_model_hash: String,
+    /// Output cap for the summarize call; clamped by that model's own limit.
+    pub summary_output_tokens: Option<u64>,
+}
+
+impl Default for CompactionSettings {
+    fn default() -> Self {
+        Self {
+            auto: true,
+            summary_model_hash: String::new(),
+            summary_output_tokens: None,
+        }
+    }
+}
+
+impl CompactionSettings {
+    pub fn validate(&self) -> Result<()> {
+        if let Some(tokens) = self.summary_output_tokens {
+            if tokens == 0 {
+                return Err(crate::Error::Config(
+                    "compaction.summary_output_tokens must be positive".into(),
+                ));
+            }
+        }
+        if self.summary_model_hash.len() > 256 {
+            return Err(crate::Error::Config(
+                "compaction.summary_model_hash is too long".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -862,6 +908,47 @@ impl Store {
         Ok(settings)
     }
 
+    /// Current context-compaction policy; a missing or unreadable row uses the
+    /// shipped defaults, so a broken manual edit can never disable compaction by
+    /// accident.
+    pub async fn compaction_settings(&self) -> Result<CompactionSettings> {
+        let value = sqlx::query_scalar::<_, String>(
+            "SELECT value_json FROM service_settings WHERE setting_key = ?",
+        )
+        .bind(COMPACTION_SETTINGS_KEY)
+        .fetch_optional(&self.pool)
+        .await?;
+        let settings = match value {
+            Some(value) => serde_json::from_str::<CompactionSettings>(&value)?,
+            None => CompactionSettings::default(),
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub async fn set_compaction_settings(
+        &self,
+        settings: CompactionSettings,
+    ) -> Result<CompactionSettings> {
+        let settings = CompactionSettings {
+            auto: settings.auto,
+            summary_model_hash: settings.summary_model_hash.trim().to_owned(),
+            summary_output_tokens: settings.summary_output_tokens,
+        };
+        settings.validate()?;
+        let value_json = serde_json::to_string(&settings)?;
+        let _write = self.writes.lock().await;
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(COMPACTION_SETTINGS_KEY)
+        .bind(value_json)
+        .bind(now_ms())
+        .execute(&self.pool)
+        .await?;
+        Ok(settings)
+    }
+
     /// 已定价模型的规则表。缺失、空对象、或旧版残留都读成空表。
     ///
     /// 读不出来时按空表处理：这个结构里有闭合枚举（`mode`）与可空币种，旧版本或
@@ -1002,9 +1089,9 @@ mod tests {
 
     use super::{
         migrate_cursor_mode, read_proxy_settings, CommitPromptLocale, CommitSettings,
-        CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing, PendingUpdate,
-        PricingMode, ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store, TokenPrice,
-        TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
+        CompactionSettings, CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing,
+        PendingUpdate, PricingMode, ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store,
+        TokenPrice, TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
         LEGACY_CURSOR_TAKEOVER_KEY, MODEL_PRICING_SETTINGS_KEY, PROXY_SETTINGS_KEY,
     };
     use crate::devin::{DevinModelBinding, DevinSettings};
@@ -2041,5 +2128,46 @@ mod tests {
         assert_eq!(reloaded.bindings[0].model_hash, "0123abcd");
         assert!(reloaded.bindings[0].routes.is_empty());
         assert_eq!(reloaded.bindings[0].effective_model_hash(), "0123abcd");
+    }
+
+    #[tokio::test]
+    async fn compaction_settings_default_round_trip_and_validation() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        let defaults = store.compaction_settings().await.unwrap();
+        assert!(defaults.auto);
+        assert!(defaults.summary_model_hash.is_empty());
+        assert_eq!(defaults.summary_output_tokens, None);
+
+        let saved = store
+            .set_compaction_settings(CompactionSettings {
+                auto: false,
+                summary_model_hash: " 0123abcd ".into(),
+                summary_output_tokens: Some(2_048),
+            })
+            .await
+            .unwrap();
+        assert!(!saved.auto);
+        assert_eq!(saved.summary_model_hash, "0123abcd");
+        assert_eq!(saved.summary_output_tokens, Some(2_048));
+        assert_eq!(store.compaction_settings().await.unwrap(), saved);
+
+        let invalid = store
+            .set_compaction_settings(CompactionSettings {
+                summary_output_tokens: Some(0),
+                ..CompactionSettings::default()
+            })
+            .await;
+        assert!(
+            matches!(invalid, Err(crate::Error::Config(_))),
+            "a zero summary cap must be rejected"
+        );
+        assert_eq!(
+            store.compaction_settings().await.unwrap(),
+            saved,
+            "a rejected save must not overwrite the stored policy"
+        );
     }
 }
