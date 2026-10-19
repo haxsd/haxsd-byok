@@ -97,10 +97,10 @@ impl CheckpointBuilder {
         let retained_paths = retained_file_paths(messages);
         self.base
             .file_states
-            .retain(|path, _| retained_paths.contains(path));
+            .retain(|path, _| retained_paths.contains(&normalize_path(path)));
         self.base
             .file_states_v2
-            .retain(|path, _| retained_paths.contains(path));
+            .retain(|path, _| retained_paths.contains(&normalize_path(path)));
         self.base.mode = Some(mode);
         self.base.summary = Some(summary_id.as_bytes().to_vec());
         self.base.summary_archive = Some(archive_id.as_bytes().to_vec());
@@ -187,11 +187,27 @@ fn retained_file_paths(messages: &[CanonicalMessage]) -> std::collections::HashS
         };
         for call in tool_calls {
             if let Some(path) = file_tool_path(&call.name, &call.arguments) {
-                paths.insert(path);
+                paths.insert(normalize_path(&path));
             }
         }
     }
     paths
+}
+
+/// Canonical comparison form for a file path.
+///
+/// `file_states` keys come from the Cursor client while the path comes from a
+/// model-authored tool argument. The two spellings can differ in separators
+/// (`src\\lib.rs` vs `src/lib.rs` on Windows) or in a leading `./` while naming
+/// the same file. Only those spelling differences are folded away: an absolute
+/// path and a relative one stay distinct, so a mismatch keeps dropping the
+/// stale state (the fail-safe behaviour) instead of guessing a different file.
+fn normalize_path(path: &str) -> String {
+    let mut normalized = path.trim().replace('\\', "/");
+    while let Some(rest) = normalized.strip_prefix("./") {
+        normalized = rest.to_string();
+    }
+    normalized
 }
 
 fn file_tool_path(name: &str, arguments: &serde_json::Value) -> Option<String> {
@@ -274,5 +290,25 @@ mod tests {
         let paths = retained_file_paths(&messages);
         assert!(paths.contains("src/main.rs"));
         assert_eq!(paths.len(), 1, "non-file tools contribute no path");
+    }
+
+    #[test]
+    fn retained_paths_match_state_keys_across_separator_spelling() {
+        // The client's `file_states` key and the model's tool argument can name
+        // the same file with `/` versus `\` or a leading `./`; the comparison
+        // folds only those spelling differences.
+        assert!(retained_file_paths(&[assistant(vec![ToolCallContent {
+            index: 0,
+            call_id: "c1".into(),
+            name: "Read".into(),
+            arguments: serde_json::json!({"path": "src\\lib.rs"}),
+        }])])
+        .contains(&normalize_path("./src/lib.rs")));
+        assert_eq!(normalize_path(" src/main.rs "), "src/main.rs");
+        assert_ne!(
+            normalize_path("C:/repo/src/lib.rs"),
+            normalize_path("src/lib.rs"),
+            "absolute and relative paths must stay distinct"
+        );
     }
 }
