@@ -434,21 +434,30 @@ async fn maintenance_leaves_a_turn_in_flight_alone() {
     client
         .append(&handle, user_request("working", "in-flight"))
         .await;
-    // 等到服务端已经把这个会话跑起来：运行行落库，模型那一轮还挂在闸门上。
-    // （不要在闸门打开前抢收帧——那样会把等待确认的 blob 写丢了，回收反而成了替罪羊。）
+    // 等到服务端已经把这个会话跑起来：运行行落库、本轮消息也已提交，模型那一轮
+    // 还挂在闸门上。（不要在闸门打开前抢收帧——那样会把等待确认的 blob 写丢了，
+    // 回收反而成了替罪羊。）两个条件都要等：`runs` 行由 claim 先写，初始消息是
+    // `RunEngine::run_claimed` 进来之后才追加的，慢机器上两者之间有一段真实窗口。
     let mut run_in_flight = false;
-    for _ in 0..200 {
+    for _ in 0..500 {
         let running: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM runs WHERE status = 'running'")
             .fetch_one(store.pool())
             .await
             .unwrap();
-        if running > 0 {
+        let messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages")
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        if running > 0 && messages > 0 {
             run_in_flight = true;
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    assert!(run_in_flight, "the run must be in flight before aging it");
+    assert!(
+        run_in_flight,
+        "the run and its initial messages must be in flight before aging it"
+    );
 
     age_conversation_past_the_window(&store).await;
     store.prune_inactive_storage(now_ms()).await.unwrap();
