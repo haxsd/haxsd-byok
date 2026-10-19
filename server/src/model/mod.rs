@@ -23,5 +23,7 @@ pub use projection::*;
 pub use run::*;
 pub(crate) use token_count::*;
 pub use tool::*;
-pub(crate) use tool_result_replay::{limit_tool_result_text_with_spill, tool_result_limit};
-pub(crate) use tool_result_spill::{archive_compaction_history, spill_tool_result};
+pub(crate) use tool_result_replay::limit_tool_result_text;
+#[cfg(test)]
+pub(crate) use tool_result_replay::limit_tool_result_text_in_dir;
+pub(crate) use tool_result_spill::archive_compaction_history;

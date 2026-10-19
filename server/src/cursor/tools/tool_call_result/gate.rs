@@ -1,7 +1,7 @@
 //! Correlates Tool completion events and gates final result delivery.
 use std::collections::BTreeMap;
 
-use crate::{cursor::protocol::proto::agent::v1 as pb, model::limit_tool_result_text_with_spill};
+use crate::{cursor::protocol::proto::agent::v1 as pb, model::limit_tool_result_text};
 
 const KIB: usize = 1024;
 const READ_CONTENT_LIMIT: usize = 64 * KIB;
@@ -27,33 +27,65 @@ const WEB_SEARCH_LIMIT: usize = 16 * KIB;
 const WEB_SEARCH_TITLE_LIMIT: usize = 512;
 const WEB_SEARCH_SNIPPET_LIMIT: usize = 2 * KIB;
 
+/// Where a spilled full result goes when the size gate omits bytes.
+enum SpillTarget<'a> {
+    /// No write: the provider copy carries no path.
+    #[cfg(test)]
+    None,
+    /// Runtime path: the managed data directory, named by the tool call id.
+    Call(&'a str),
+    /// Test path: an explicit directory.
+    #[cfg(test)]
+    Directory(&'a std::path::Path),
+}
+
 #[cfg(test)]
 pub(super) fn tool_completion(
     tool_name: &str,
     tool: &mut pb::tool_call::Tool,
     content: &mut String,
 ) {
-    tool_completion_with_spill(tool_name, tool, content, None);
+    gate_completion(tool_name, tool, content, SpillTarget::None);
 }
 
-/// Gate variant for ToolCompletion: `spill` points at the full rendered result
-/// written before the size gate, and the truncation notice carries that path.
+/// Gate variant for ToolCompletion: `call_id` names the spilled full result
+/// when the size gate omits bytes, and the truncation notice carries that path.
 pub(super) fn tool_completion_with_spill(
     tool_name: &str,
     tool: &mut pb::tool_call::Tool,
     content: &mut String,
-    spill: Option<&std::path::Path>,
+    call_id: &str,
 ) {
-    use pb::tool_call::Tool;
+    gate_completion(tool_name, tool, content, SpillTarget::Call(call_id));
+}
 
-    // 体积上限只认判别后的 pb 变体,不认模型写的原始名字。
-    //
-    // `tool_name` 是模型给的字符串,而派发、审批续跑、交互查询编码都按"去掉非字母数字再
-    // 小写"的归一化名判定,所以 `webfetch`/`web_fetch`/`Web-Fetch` 这类拼写会一路执行到这里。
-    // 上限表用的是 `WebFetch` 这种规范字面量,按原始名字精确匹配就等于给别名开后门:模型
-    // 可见文本不再被裁剪(不可信网页正文整段进上下文)。变体是判别后的结果,别名问题从构造
-    // 上消失;只有 `EditToolCall`/`McpToolCall` 两个变体内部还要按归一化名细分(见下)。
-    let replay_name = match tool {
+/// Test variant that spills into an explicit directory instead of the managed
+/// data directory.
+#[cfg(test)]
+pub(super) fn tool_completion_with_spill_in(
+    tool_name: &str,
+    tool: &mut pb::tool_call::Tool,
+    content: &mut String,
+    directory: &std::path::Path,
+) {
+    gate_completion(tool_name, tool, content, SpillTarget::Directory(directory));
+}
+
+/// The canonical name the gate uses for limits and for spilled file names.
+///
+/// `tool_name` is the string the model wrote, while dispatch, approval resume,
+/// and interaction encoding all resolve `webfetch`/`web_fetch`/`Web-Fetch`-style
+/// aliases by their normalized name. The size table uses canonical literals, so
+/// matching the raw name here would open an alias back door (untrusted page
+/// text entering the context uncut). The decoded pb variant is the dispatched
+/// result, so the alias problem disappears by construction; only
+/// `EditToolCall`/`McpToolCall` still need the name to pick a sub-limit below.
+///
+/// One resolver feeds both the truncation limit and the spill decision, so a
+/// truncated alias keeps pointing at its full result.
+pub(crate) fn replay_name(tool_name: &str, tool: &pb::tool_call::Tool) -> &'static str {
+    use pb::tool_call::Tool;
+    match tool {
         Tool::ShellToolCall(_) => "Shell",
         Tool::ReadToolCall(_) => "Read",
         Tool::GrepToolCall(_) => "Grep",
@@ -68,8 +100,18 @@ pub(super) fn tool_completion_with_spill(
         Tool::McpToolCall(_) => mcp_replay_name(tool_name),
         // 其余变体在上限表里没有条目 —— 与按名字查表"未命中即不裁剪"一致。
         _ => "",
-    };
+    }
+}
 
+fn gate_completion(
+    tool_name: &str,
+    tool: &mut pb::tool_call::Tool,
+    content: &mut String,
+    spill: SpillTarget<'_>,
+) {
+    use pb::tool_call::Tool;
+
+    let replay_name = replay_name(tool_name, tool);
     match tool {
         Tool::ShellToolCall(tool) => gate_shell(tool),
         Tool::GrepToolCall(tool) => gate_grep(tool),
@@ -85,7 +127,18 @@ pub(super) fn tool_completion_with_spill(
         Tool::GenerateImageToolCall(tool) => gate_generate_image(tool),
         _ => {}
     }
-    *content = limit_tool_result_text_with_spill(replay_name, content, spill);
+    *content = match spill {
+        #[cfg(test)]
+        SpillTarget::None => limit_tool_result_text(replay_name, content, None),
+        SpillTarget::Call(call_id) => limit_tool_result_text(replay_name, content, Some(call_id)),
+        #[cfg(test)]
+        SpillTarget::Directory(directory) => crate::model::limit_tool_result_text_in_dir(
+            replay_name,
+            content,
+            "test-call",
+            directory,
+        ),
+    };
 }
 
 /// `EditToolCall` 覆盖 write/strreplace/editnotebook 三个名字,上限表却按名字分两档
@@ -1045,5 +1098,79 @@ mod tests {
                 "{name} 的 diff 没有走 4 KiB 档"
             );
         }
+    }
+
+    /// 别名拼写必须和规范名走同一条溢出路径:闸门按变体解析出 WebFetch,截断提示和
+    /// 落盘文件名都用这个规范名,而不是模型的原始拼写。旧实现的溢出判定用原始名查表,
+    /// `web_fetch` 查到 None,于是截断后没有路径可回读。
+    #[test]
+    fn an_aliased_tool_name_spills_the_result_the_gate_truncated() {
+        let directory = tempfile::tempdir().unwrap();
+        let markdown = "x".repeat(64 * KIB);
+        for name in ["WebFetch", "webfetch", "web_fetch", "Web-Fetch"] {
+            let mut tool = pb::tool_call::Tool::WebFetchToolCall(pb::WebFetchToolCall {
+                args: None,
+                result: Some(pb::WebFetchResult {
+                    result: Some(pb::web_fetch_result::Result::Success(pb::WebFetchSuccess {
+                        url: "https://example.com".into(),
+                        markdown: markdown.clone(),
+                        output_location: None,
+                    })),
+                }),
+            });
+            let mut content = format!("<system_reminder>downloaded</system_reminder>\n{markdown}");
+            tool_completion_with_spill_in(name, &mut tool, &mut content, directory.path());
+
+            assert!(
+                content.len() <= WEB_FETCH_LIMIT,
+                "{name}: {} 字节",
+                content.len()
+            );
+            assert!(
+                content.contains("[truncated: WebFetch"),
+                "{name}: {content}"
+            );
+            assert!(
+                content.contains("full result stored at"),
+                "{name} 的截断提示没有溢出路径: {content}"
+            );
+        }
+        let files: Vec<_> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .flatten()
+            .collect();
+        assert_eq!(files.len(), 1, "the spilled full result is on disk");
+        let file_name = files[0].file_name().to_string_lossy().to_string();
+        assert!(
+            file_name.starts_with("WebFetch-test-call-"),
+            "文件名用规范名: {file_name}"
+        );
+    }
+
+    /// GenerateImage 的 base64 正文没有 grep 价值:不落盘,提示里也不带路径。
+    #[test]
+    fn generate_image_base64_is_not_spilled() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut tool =
+            pb::tool_call::Tool::GenerateImageToolCall(pb::GenerateImageToolCall::default());
+        let mut content = serde_json::json!({"image_data": "A".repeat(64 * KIB)}).to_string();
+
+        tool_completion_with_spill_in("GenerateImage", &mut tool, &mut content, directory.path());
+
+        assert!(content.contains("base64 image data omitted from replay"));
+        assert!(!content.contains("full result stored at"), "{content}");
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn replay_name_resolves_aliases_from_the_decoded_variant() {
+        let fetch = pb::tool_call::Tool::WebFetchToolCall(pb::WebFetchToolCall::default());
+        for name in ["WebFetch", "webfetch", "web_fetch", "Web-Fetch"] {
+            assert_eq!(replay_name(name, &fetch), "WebFetch");
+        }
+        let patch = pb::tool_call::Tool::EditToolCall(pb::EditToolCall::default());
+        assert_eq!(replay_name("str_replace", &patch), "StrReplace");
+        let shell = pb::tool_call::Tool::ShellToolCall(pb::ShellToolCall::default());
+        assert_eq!(replay_name("sh", &shell), "Shell");
     }
 }
