@@ -1,7 +1,7 @@
 //! Correlates Tool completion events and gates final result delivery.
 use std::collections::BTreeMap;
 
-use crate::{cursor::protocol::proto::agent::v1 as pb, model::limit_tool_result_text};
+use crate::{cursor::protocol::proto::agent::v1 as pb, model::limit_tool_result_text_with_spill};
 
 const KIB: usize = 1024;
 const READ_CONTENT_LIMIT: usize = 64 * KIB;
@@ -27,10 +27,22 @@ const WEB_SEARCH_LIMIT: usize = 16 * KIB;
 const WEB_SEARCH_TITLE_LIMIT: usize = 512;
 const WEB_SEARCH_SNIPPET_LIMIT: usize = 2 * KIB;
 
+#[cfg(test)]
 pub(super) fn tool_completion(
     tool_name: &str,
     tool: &mut pb::tool_call::Tool,
     content: &mut String,
+) {
+    tool_completion_with_spill(tool_name, tool, content, None);
+}
+
+/// Gate variant for ToolCompletion: `spill` points at the full rendered result
+/// written before the size gate, and the truncation notice carries that path.
+pub(super) fn tool_completion_with_spill(
+    tool_name: &str,
+    tool: &mut pb::tool_call::Tool,
+    content: &mut String,
+    spill: Option<&std::path::Path>,
 ) {
     use pb::tool_call::Tool;
 
@@ -73,7 +85,7 @@ pub(super) fn tool_completion(
         Tool::GenerateImageToolCall(tool) => gate_generate_image(tool),
         _ => {}
     }
-    *content = limit_tool_result_text(replay_name, content);
+    *content = limit_tool_result_text_with_spill(replay_name, content, spill);
 }
 
 /// `EditToolCall` 覆盖 write/strreplace/editnotebook 三个名字,上限表却按名字分两档

@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     cursor::protocol::proto::agent::v1 as pb,
-    model::{ToolCall, ToolImageReference, ToolResult},
+    model::{spill_tool_result, tool_result_limit, ToolCall, ToolImageReference, ToolResult},
     store::BlobId,
     Error, Result,
 };
@@ -90,10 +90,21 @@ impl ToolCompletion {
         mut result: ToolResult,
         mut tool: pb::tool_call::Tool,
     ) -> Self {
+        // The full rendered result is spilled before the gate removes its
+        // middle; the provider copy then carries the path so the model can
+        // recover the omitted bytes instead of re-running the tool.
+        let spill = tool_result_limit(&call.name)
+            .filter(|limit| result.content.len() > *limit)
+            .and_then(|_| spill_tool_result(&call.call_id, &call.name, &result.content));
         // Apply the model-visible size gate once, at the tool completion
         // boundary. Canonical history and every provider projection then
         // carry the same bounded result without reprocessing it.
-        gate::tool_completion(&call.name, &mut tool, &mut result.content);
+        gate::tool_completion_with_spill(
+            &call.name,
+            &mut tool,
+            &mut result.content,
+            spill.as_deref(),
+        );
         Self {
             result,
             tool_call: pb::ToolCall {

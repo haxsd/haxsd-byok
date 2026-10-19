@@ -3,7 +3,14 @@ use serde_json::Value;
 
 const KIB: usize = 1024;
 
-pub(crate) fn limit_tool_result_text(name: &str, content: &str) -> String {
+/// Bounded provider copy whose truncation notice points at the spilled full
+/// result. The gate uses this variant when the full output was written to the
+/// managed data directory.
+pub(crate) fn limit_tool_result_text_with_spill(
+    name: &str,
+    content: &str,
+    spill: Option<&std::path::Path>,
+) -> String {
     let Some(limit) = replay_limit(name) else {
         return content.to_string();
     };
@@ -16,7 +23,12 @@ pub(crate) fn limit_tool_result_text(name: &str, content: &str) -> String {
         _ => None,
     }
     .unwrap_or_else(|| content.to_string());
-    truncate_replay_text(name, &content, limit)
+    truncate_replay_text(name, &content, limit, spill)
+}
+
+/// The gate's size limit for one canonical tool name, if it has one.
+pub(crate) fn tool_result_limit(name: &str) -> Option<usize> {
+    replay_limit(name)
 }
 
 fn replay_limit(name: &str) -> Option<usize> {
@@ -33,16 +45,35 @@ fn replay_limit(name: &str) -> Option<usize> {
     }
 }
 
-fn truncate_replay_text(name: &str, content: &str, limit: usize) -> String {
+fn truncate_replay_text(
+    name: &str,
+    content: &str,
+    limit: usize,
+    spill: Option<&std::path::Path>,
+) -> String {
     if content.len() <= limit {
         return content.to_string();
     }
     let original = content.len();
     let mut shown = limit;
     loop {
-        let notice = format!(
-            "\n\n[truncated: {name} result exceeded {limit} bytes; showing {shown} of {original} bytes]"
-        );
+        let notice = match spill {
+            Some(path) => format!(
+                "\n\n[truncated: {name} result exceeded {limit} bytes; showing {shown} of {original} bytes; full result stored at: {}]",
+                path.display()
+            ),
+            None => format!(
+                "\n\n[truncated: {name} result exceeded {limit} bytes; showing {shown} of {original} bytes]"
+            ),
+        };
+        if notice.len() >= limit {
+            // The path notice alone is already over a very small budget; keep
+            // the notice so the full result remains discoverable.
+            return match spill {
+                Some(_) => notice.trim_start_matches('\n').to_string(),
+                None => utf8_prefix(content, limit).to_string(),
+            };
+        }
         let available = limit.saturating_sub(notice.len());
         let kept = utf8_prefix(content, available);
         if kept.len() == shown {
@@ -132,7 +163,7 @@ fn compact_edit(name: &str, content: &str) -> Option<String> {
         .or_else(|| success.get("diffString"))
         .and_then(Value::as_str)
         .filter(|text| !text.is_empty())
-        .map(|text| truncate_replay_text(name, text, edit_limit(name)));
+        .map(|text| truncate_replay_text(name, text, edit_limit(name), None));
     if let Some(diff) = diff {
         return Some(serde_json::json!({"success": {"diff_string": diff}}).to_string());
     }
@@ -141,7 +172,7 @@ fn compact_edit(name: &str, content: &str) -> Option<String> {
         .or_else(|| success.get("afterFullFileContent"))
         .and_then(Value::as_str)
         .filter(|text| !text.is_empty())
-        .map(|text| truncate_replay_text(name, text, edit_limit(name)));
+        .map(|text| truncate_replay_text(name, text, edit_limit(name), None));
     after
         .map(|after| serde_json::json!({"success": {"after_full_file_content": after}}).to_string())
 }

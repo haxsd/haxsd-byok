@@ -11,6 +11,7 @@ mod run;
 mod token_count;
 mod tool;
 mod tool_result_replay;
+mod tool_result_spill;
 
 pub use checkpoint::*;
 pub use configuration::*;
@@ -22,4 +23,5 @@ pub use projection::*;
 pub use run::*;
 pub(crate) use token_count::*;
 pub use tool::*;
-pub(crate) use tool_result_replay::limit_tool_result_text;
+pub(crate) use tool_result_replay::{limit_tool_result_text_with_spill, tool_result_limit};
+pub(crate) use tool_result_spill::spill_tool_result;
