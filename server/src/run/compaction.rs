@@ -51,6 +51,11 @@ const SUMMARY_TOOL_RESULT_LIMIT: usize = 8 * 1024;
 /// Upper bound on the deterministic file anchors attached to a summary slot.
 const MAX_ANCHOR_FILES: usize = 12;
 
+/// Images kept verbatim in the retained tail after a compaction. Older images
+/// become text placeholders: they rarely matter for the next step, cost
+/// provider-specific visual tokens, and the summary/archive keeps their paths.
+const MAX_RETAINED_IMAGES: usize = 2;
+
 /// Upper bound on one summary, in output tokens of the summarizer call.
 ///
 /// The summary stays provider-visible until the next compaction, so it competes
@@ -731,10 +736,54 @@ pub(super) fn replacement(
             Some(budget) => retained_tail(&compactable, budget)?,
             None => Vec::new(),
         };
-        replacement.extend(tail);
+        replacement.extend(offload_old_tail_images(tail));
     }
     replacement.extend(prepared.initial_messages.iter().cloned());
     Ok(replacement)
+}
+
+/// Keeps only the newest images in the retained tail visible to the provider.
+fn offload_old_tail_images(tail: Vec<CanonicalMessage>) -> Vec<CanonicalMessage> {
+    let mut remaining = MAX_RETAINED_IMAGES;
+    let mut offloaded: Vec<CanonicalMessage> = tail
+        .into_iter()
+        .rev()
+        .map(|mut message| {
+            match &mut message.content {
+                MessageContent::Parts { parts } => offload_parts(parts, &mut remaining),
+                MessageContent::ToolResult(result) => {
+                    if let Some(image) = result.image.take() {
+                        if remaining > 0 {
+                            remaining -= 1;
+                            result.image = Some(image);
+                        } else {
+                            result.content =
+                                format!("[image omitted during compaction: {}]", image.path);
+                        }
+                    }
+                    offload_parts(&mut result.provider_parts, &mut remaining);
+                }
+                MessageContent::Assistant { .. } => {}
+            }
+            message
+        })
+        .collect();
+    offloaded.reverse();
+    offloaded
+}
+
+fn offload_parts(parts: &mut [ContentPart], remaining: &mut usize) {
+    for part in parts.iter_mut().rev() {
+        if let ContentPart::Image { .. } = part {
+            if *remaining > 0 {
+                *remaining -= 1;
+            } else {
+                *part = ContentPart::Text {
+                    text: "[image omitted during compaction]".into(),
+                };
+            }
+        }
+    }
 }
 
 /// The text carried by a summary slot, with the checkpoint tags removed.
@@ -970,7 +1019,7 @@ mod tests {
     use super::*;
     use crate::model::{
         project_messages, CheckpointId, ContentPart, ConversationId, ModelSpec, Origin, PromptSpec,
-        Role, RunAction, RunId, RunKind, ToolCallContent, ToolResultContent,
+        Role, RunAction, RunId, RunKind, ToolCallContent, ToolImageReference, ToolResultContent,
     };
 
     fn prepared(context_window_tokens: u64) -> PreparedRun {
@@ -2024,5 +2073,39 @@ mod tests {
             "the archive anchor is not appended twice"
         );
         assert_eq!(with_archive_anchor("handover", None), "handover");
+    }
+
+    #[test]
+    fn tail_image_offload_keeps_only_the_newest_images() {
+        let image_message = |id: &str| CanonicalMessage {
+            message_id: id.into(),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: id.into(),
+                name: "Read".into(),
+                content: "Read image file".into(),
+                is_error: false,
+                image: Some(ToolImageReference {
+                    blob_id: "blob".into(),
+                    mime_type: "image/png".into(),
+                    path: format!("/tmp/{id}.png"),
+                }),
+                provider_parts: Vec::new(),
+            }),
+            runtime_event_id: None,
+        };
+        let tail = vec![image_message("a"), image_message("b"), image_message("c")];
+        let offloaded = offload_old_tail_images(tail);
+        fn result(message: &CanonicalMessage) -> &crate::model::ToolResultContent {
+            match &message.content {
+                MessageContent::ToolResult(result) => result,
+                _ => panic!("expected tool result"),
+            }
+        }
+        assert!(result(&offloaded[0]).image.is_none());
+        assert!(result(&offloaded[0]).content.contains("omitted"));
+        assert!(result(&offloaded[1]).image.is_some());
+        assert!(result(&offloaded[2]).image.is_some());
     }
 }
