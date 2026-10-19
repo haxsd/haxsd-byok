@@ -52,6 +52,17 @@ const SUMMARY_RETRY_PERCENT: u64 = 55;
 const MIN_CALIBRATION: f64 = 0.5;
 const MAX_CALIBRATION: f64 = 4.0;
 
+/// How many of the newest tool results the summarizer keeps verbatim when it
+/// replays an over-budget history. Everything older is head/tail pruned in the
+/// summarize request only; the checkpoint keeps the original content.
+const SUMMARY_RECENT_TOOL_RESULTS: usize = 2;
+
+/// Byte budget for one pruned tool result in the summarize replay.
+const SUMMARY_TOOL_RESULT_LIMIT: usize = 8 * 1024;
+
+/// Upper bound on the deterministic file anchors attached to a summary slot.
+const MAX_ANCHOR_FILES: usize = 12;
+
 /// Upper bound on one summary, in output tokens of the summarizer call.
 ///
 /// The summary stays provider-visible until the next compaction, so it competes
@@ -83,8 +94,25 @@ fn calibrate_budget(tokens: u64, calibration: f64) -> u64 {
     (tokens as f64 / calibration).floor().max(0.0) as u64
 }
 
+/// Output tokens the next routed request reserves inside the same window.
+///
+/// Providers that charge `max_tokens` against the context window need this
+/// subtracted before deciding whether the prompt still fits. Without a
+/// configured output cap the adapter's own default applies; treating it as zero
+/// here keeps the old proportional-reserve behaviour for models that do not
+/// declare one.
+pub(super) fn output_reservation(prepared: &PreparedRun) -> u64 {
+    prepared.model.max_output_tokens.unwrap_or(0)
+}
+
+/// Usable prompt budget: the window minus the proportional reserve and the
+/// next request's output reservation.
 pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
-    prepared.model.context_window_tokens.map(context_budget)
+    let window = prepared
+        .model
+        .context_window_tokens
+        .filter(|window| *window > 0)?;
+    Some(context_budget(window).saturating_sub(output_reservation(prepared)))
 }
 
 /// Whether a provider failure means the prompt did not fit.
@@ -191,6 +219,15 @@ fn trim_to_context(
     if estimate_projected_messages_tokens(&history) <= budget {
         return history;
     }
+    // Level B before level A: clear/prune old tool outputs without a model
+    // call. The pruned copy is provider-visible only - the checkpoint keeps the
+    // original tool result - so this cannot corrupt Cursor state, and when it
+    // makes the replay fit, the summarize prompt keeps whole turns instead of
+    // losing them to the turn-boundary trim below.
+    history = prune_replayed_tool_results(history);
+    if estimate_projected_messages_tokens(&history) <= budget {
+        return history;
+    }
     // Walk back from the newest turn, keeping whole user-delimited turns.
     let mut kept = 0;
     let mut newest_turn = None;
@@ -212,6 +249,68 @@ fn trim_to_context(
         return history.split_off(start);
     }
     history.split_off(history.len() - kept)
+}
+
+/// Head/tail prunes older tool results in the summarize replay.
+///
+/// The newest [`SUMMARY_RECENT_TOOL_RESULTS`] results stay verbatim: they carry
+/// the work in flight. Older over-budget results keep their head and tail so
+/// the summarizer still sees commands, paths, and error lines at both ends.
+fn prune_replayed_tool_results(mut history: Vec<ProjectedMessage>) -> Vec<ProjectedMessage> {
+    let mut seen = 0_usize;
+    for message in history.iter_mut().rev() {
+        let ProjectedContent::ToolResult(result) = &mut message.content else {
+            continue;
+        };
+        if seen < SUMMARY_RECENT_TOOL_RESULTS {
+            seen += 1;
+            continue;
+        }
+        if result.content.len() > SUMMARY_TOOL_RESULT_LIMIT {
+            result.content =
+                truncate_middle(&result.content, SUMMARY_TOOL_RESULT_LIMIT, &result.name);
+        }
+        seen += 1;
+    }
+    history
+}
+
+/// Keeps both ends of an over-long text within `limit` bytes.
+fn truncate_middle(content: &str, limit: usize, tool: &str) -> String {
+    if content.len() <= limit {
+        return content.to_string();
+    }
+    let original = content.len();
+    let mut shown = limit;
+    loop {
+        let notice = format!(
+            "\n\n[old {tool} result pruned for the summary: showing {shown} of {original} bytes]\n\n"
+        );
+        let available = limit.saturating_sub(notice.len());
+        let head = utf8_prefix(content, available / 2);
+        let tail = utf8_suffix(content, available.saturating_sub(head.len()));
+        let next_shown = head.len().saturating_add(tail.len());
+        if next_shown == shown {
+            return format!("{head}{notice}{tail}");
+        }
+        shown = next_shown;
+    }
+}
+
+fn utf8_prefix(value: &str, limit: usize) -> &str {
+    let mut end = limit.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
+}
+
+fn utf8_suffix(value: &str, limit: usize) -> &str {
+    let mut start = value.len().saturating_sub(limit);
+    while start < value.len() && !value.is_char_boundary(start) {
+        start += 1;
+    }
+    &value[start..]
 }
 
 fn is_turn_boundary(message: &ProjectedMessage) -> bool {
@@ -607,6 +706,11 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
     const MAX_CHARS: usize = 400;
     let mut digest = Vec::new();
     for message in compactable.iter().rev() {
+        if is_superseded_summary(message) {
+            // A prior summary is not dropped history; quoting it back into its
+            // own digest only duplicates tokens.
+            continue;
+        }
         let label = match message.role {
             Role::User if message.origin != Origin::Prompt => "User",
             Role::Assistant => "Assistant",
@@ -628,6 +732,99 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
     }
     digest.reverse();
     Some(digest.join("\n"))
+}
+
+/// Appends deterministic file anchors to a summary slot.
+///
+/// The compacted model loses the tool calls that read or edited files. The
+/// summary template asks the summarizer to list key files, but a small model or
+/// a failed summary drops them; the paths recovered from the shadowed tool
+/// calls are exact, ordered, and cost only a line, so the model can re-read
+/// them instead of rediscovering the repository.
+pub(super) fn with_context_anchors(summary: &str, messages: &[CanonicalMessage]) -> String {
+    if summary.contains("## Context Anchors") {
+        return summary.to_string();
+    }
+    match context_anchors(messages) {
+        Some(anchors) => format!("{summary}\n\n{anchors}"),
+        None => summary.to_string(),
+    }
+}
+
+fn context_anchors(messages: &[CanonicalMessage]) -> Option<String> {
+    let mut files: Vec<String> = Vec::new();
+    for message in messages.iter().rev() {
+        let MessageContent::Assistant { tool_calls, .. } = &message.content else {
+            continue;
+        };
+        for call in tool_calls.iter().rev() {
+            let Some(path) = anchor_path(&call.name, &call.arguments) else {
+                continue;
+            };
+            if files.iter().any(|existing| existing == &path) {
+                continue;
+            }
+            files.push(path);
+            if files.len() >= MAX_ANCHOR_FILES {
+                break;
+            }
+        }
+        if files.len() >= MAX_ANCHOR_FILES {
+            break;
+        }
+    }
+    if files.is_empty() {
+        return None;
+    }
+    files.reverse();
+    Some(format!(
+        "## Context Anchors\n- Recently referenced files (re-read them if the summary is not enough): {}",
+        files.join(", ")
+    ))
+}
+
+fn anchor_path(name: &str, arguments: &serde_json::Value) -> Option<String> {
+    if !is_file_tool(name) {
+        return None;
+    }
+    for key in [
+        "path",
+        "file_path",
+        "target_file",
+        "absolute_path",
+        "filename",
+        "file",
+    ] {
+        if let Some(value) = arguments.get(key).and_then(|value| value.as_str()) {
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn is_file_tool(name: &str) -> bool {
+    let normalized: String = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    matches!(
+        normalized.as_str(),
+        "read"
+            | "readfile"
+            | "edit"
+            | "write"
+            | "strreplace"
+            | "patchedit"
+            | "patcheditlines"
+            | "patcheditspan"
+            | "editnotebook"
+            | "applypatch"
+            | "multiedit"
+            | "createfile"
+    )
 }
 
 fn message_text(message: &CanonicalMessage) -> String {
@@ -670,7 +867,7 @@ mod tests {
     use super::*;
     use crate::model::{
         project_messages, CheckpointId, ContentPart, ConversationId, ModelSpec, Origin, PromptSpec,
-        Role, RunAction, RunId, RunKind,
+        Role, RunAction, RunId, RunKind, ToolCallContent, ToolResultContent,
     };
 
     fn prepared(context_window_tokens: u64) -> PreparedRun {
@@ -1513,5 +1710,125 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["runtime:summary:auto:run:1"]
         );
+    }
+
+    #[test]
+    fn output_reservation_shrinks_the_pressure_budget() {
+        let mut prepared = prepared(200_000);
+        prepared.model.max_output_tokens = Some(32_000);
+        assert_eq!(context_budget(200_000), 180_000);
+        assert_eq!(input_budget(&prepared), Some(148_000));
+
+        let history = vec![canonical_user("u1", &"x".repeat(600_000))];
+        let projected = project_messages(&history).unwrap();
+        assert!(
+            should_compact(&prepared, &projected, None),
+            "150k estimated input is over 200k - 20k reserve - 32k output"
+        );
+        prepared.model.max_output_tokens = None;
+        assert!(
+            !should_compact(&prepared, &projected, None),
+            "without an output reservation the same input fits the 90% budget"
+        );
+    }
+
+    #[test]
+    fn summary_replay_prunes_only_the_older_tool_results() {
+        let body = "x".repeat(100_000);
+        let tool_result = |id: &str| ProjectedMessage {
+            message_id: id.into(),
+            role: Role::Tool,
+            content: ProjectedContent::ToolResult(ToolResultContent {
+                call_id: format!("call-{id}"),
+                name: "Read".into(),
+                content: body.clone(),
+                is_error: false,
+                image: None,
+                provider_parts: Vec::new(),
+            }),
+        };
+        let history = vec![
+            tool_result("t1"),
+            tool_result("t2"),
+            tool_result("t3"),
+            tool_result("t4"),
+        ];
+        let pruned = super::prune_replayed_tool_results(history);
+
+        assert_eq!(pruned.len(), 4, "pruning never drops a message");
+        let content_len = |message: &ProjectedMessage| match &message.content {
+            ProjectedContent::ToolResult(result) => result.content.len(),
+            _ => 0,
+        };
+        assert_eq!(
+            content_len(&pruned[3]),
+            body.len(),
+            "the newest tool result stays verbatim"
+        );
+        assert_eq!(
+            content_len(&pruned[2]),
+            body.len(),
+            "the second-newest tool result stays verbatim"
+        );
+        for message in &pruned[..2] {
+            let ProjectedContent::ToolResult(result) = &message.content else {
+                panic!("expected a tool result");
+            };
+            assert!(
+                result.content.contains("pruned for the summary"),
+                "older results are pruned with a notice"
+            );
+            assert!(result.content.len() <= SUMMARY_TOOL_RESULT_LIMIT);
+        }
+    }
+
+    #[test]
+    fn context_anchors_come_from_the_shadowed_file_tool_calls() {
+        let assistant = |calls: Vec<ToolCallContent>| CanonicalMessage {
+            message_id: "a1".into(),
+            role: Role::Assistant,
+            origin: Origin::Assistant,
+            content: MessageContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                tool_round_id: None,
+                replay_state: None,
+                tool_calls: calls,
+            },
+            runtime_event_id: None,
+        };
+        let call = |id: &str, path: &str| ToolCallContent {
+            index: 0,
+            call_id: id.into(),
+            name: "Read".into(),
+            arguments: serde_json::json!({"path": path}),
+        };
+        let messages = vec![assistant(vec![
+            call("c1", "src/main.rs"),
+            call("c2", "src/main.rs"),
+            call("c3", "src/lib.rs"),
+        ])];
+
+        let summary = with_context_anchors("handover", &messages);
+        assert!(summary.starts_with("handover\n\n## Context Anchors"));
+        assert!(summary.contains("src/main.rs, src/lib.rs"));
+        assert_eq!(summary.matches("src/main.rs").count(), 1);
+        assert_eq!(
+            with_context_anchors(&summary, &messages),
+            summary,
+            "anchors are not appended twice"
+        );
+    }
+
+    #[test]
+    fn fallback_digest_skips_prior_summary_slots() {
+        let compactable = vec![
+            summary_message("summary:old", "OLD-SUMMARY-MARKER"),
+            canonical_user("u1", "continue the task"),
+            canonical_assistant("a1", "working on it"),
+        ];
+        let digest = super::digest_of(&compactable).expect("a digest for real messages");
+        assert!(!digest.contains("OLD-SUMMARY-MARKER"));
+        assert!(digest.contains("continue the task"));
     }
 }

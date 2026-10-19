@@ -933,6 +933,7 @@ impl RunEngine {
                     );
                 }
                 let event_id = format!("summary:{}", prepared.run_id);
+                let summary = super::compaction::with_context_anchors(&summary, &messages);
                 let summary_message = super::compaction::summary_message(&event_id, &summary);
                 let summary_message_id = summary_message.message_id.clone();
                 let replacement = match super::compaction::replacement(
@@ -1546,7 +1547,7 @@ impl RunEngine {
                         summary_usage,
                     );
                 }
-                let outcome: Result<(), String> = match cycle {
+                let outcome: Result<(), (String, bool)> = match cycle {
                     Ok(cycle) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
                         let usage = cycle.usage;
                         break 'summary (cycle.text.trim().to_string(), {
@@ -1560,30 +1561,49 @@ impl RunEngine {
                         if let Some(usage) = cycle.usage {
                             accumulate_usage(&mut summary_usage, usage);
                         }
-                        Err("automatic compaction returned no usable summary".to_string())
+                        Err((
+                            "automatic compaction returned no usable summary".to_string(),
+                            true,
+                        ))
                     }
                     Err(failure) => {
                         if let Some(usage) = failure.usage {
                             accumulate_usage(&mut summary_usage, usage);
                         }
-                        Err(format!(
-                            "automatic compaction model failed: {:?}",
-                            failure.failure
+                        // A tighter replay only helps when the prompt was over
+                        // the limit (which the normal retry policy classifies
+                        // as non-retryable). Transient provider failures stay
+                        // retryable; auth/quota/bad-request failures must not
+                        // buy a second summarize call just to fail again.
+                        let retryable = failure.retryable
+                            || matches!(
+                                &failure.failure,
+                                RunFailure::Provider(message)
+                                    if super::compaction::is_context_overflow(message)
+                            );
+                        Err((
+                            format!("automatic compaction model failed: {:?}", failure.failure),
+                            retryable,
                         ))
                     }
                 };
-                if attempts < 2 {
+                let retryable = outcome
+                    .as_ref()
+                    .err()
+                    .is_some_and(|(_, retryable)| *retryable);
+                if attempts < 2 && retryable {
                     tracing::warn!(
                         attempt = attempts,
-                        error = outcome.as_ref().err(),
+                        error = outcome.as_ref().err().map(|(message, _)| message),
                         "automatic compaction failed; retrying once with a tighter history"
                     );
                     continue 'summary;
                 }
                 tracing::warn!(
                     attempts,
-                    error = outcome.as_ref().err(),
-                    "automatic compaction failed twice; using the fallback summary"
+                    retryable,
+                    error = outcome.as_ref().err().map(|(message, _)| message),
+                    "automatic compaction failed; using the fallback summary"
                 );
                 break 'summary (
                     super::compaction::fallback_summary(&compactable),
@@ -1597,6 +1617,9 @@ impl RunEngine {
             );
             (summary, compaction_usage, event_id)
         };
+        // Exact file anchors recovered from the shadowed tool calls survive
+        // even when the summary model omitted them.
+        let summary = super::compaction::with_context_anchors(&summary, messages);
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();
         let replacement = super::compaction::replacement(
