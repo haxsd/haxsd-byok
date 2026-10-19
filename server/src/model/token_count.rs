@@ -83,12 +83,113 @@ fn estimate_parts_tokens(parts: &[ContentPart]) -> u64 {
     parts.iter().fold(0_u64, |total, part| {
         let tokens = match part {
             ContentPart::Text { text } => estimate_text_tokens(text),
-            ContentPart::Image { mime_type, .. } => {
-                TOKENS_PER_IMAGE.saturating_add(estimate_text_tokens(mime_type))
-            }
+            ContentPart::Image { mime_type, data } => estimate_image_tokens(mime_type, data)
+                .saturating_add(estimate_text_tokens(mime_type)),
         };
         total.saturating_add(tokens)
     })
+}
+
+/// Conservative image price for a provider-agnostic estimator.
+///
+/// Anthropic charges roughly one token per 750 pixels; the OpenAI high-detail
+/// rule is 85 tokens plus 170 per 512-pixel tile. Taking the larger of the two
+/// keeps mixed-provider history on the safe side of the window; a flat 1024
+/// undercounted full-size screenshots by 2-3x. The fallback stays 1024 for
+/// images whose bytes are unavailable (blob references) or whose header the
+/// parser does not recognize.
+fn estimate_image_tokens(mime_type: &str, data: &[u8]) -> u64 {
+    let Some((width, height)) = image_dimensions(mime_type, data) else {
+        return TOKENS_PER_IMAGE;
+    };
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    let anthropic = pixels.div_ceil(750).max(200);
+    let tiles = u64::from(width)
+        .div_ceil(512)
+        .saturating_mul(u64::from(height).div_ceil(512));
+    let openai = 85_u64.saturating_add(170_u64.saturating_mul(tiles));
+    anthropic.max(openai).min(20_000)
+}
+
+fn image_dimensions(mime_type: &str, data: &[u8]) -> Option<(u32, u32)> {
+    let mime = mime_type.to_ascii_lowercase();
+    if mime.contains("png") || data.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return png_dimensions(data);
+    }
+    if mime.contains("gif") || data.starts_with(b"GIF") {
+        return gif_dimensions(data);
+    }
+    if mime.contains("jpeg") || mime.contains("jpg") || data.starts_with(&[0xFF, 0xD8]) {
+        return jpeg_dimensions(data);
+    }
+    None
+}
+
+fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    // 8-byte signature, 4-byte chunk length, "IHDR", then width/height.
+    if data.len() < 24 || &data[12..16] != b"IHDR" {
+        return None;
+    }
+    let width = u32::from_be_bytes(data[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(data[20..24].try_into().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+fn gif_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    if data.len() < 10 {
+        return None;
+    }
+    let width = u32::from(u16::from_le_bytes(data[6..8].try_into().ok()?));
+    let height = u32::from(u16::from_le_bytes(data[8..10].try_into().ok()?));
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+fn jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    let mut index = 2_usize;
+    while index + 9 <= data.len() {
+        if data[index] != 0xFF {
+            index += 1;
+            continue;
+        }
+        let marker = data[index + 1];
+        // Start-of-frame markers carry the dimensions; C4/C8/CC are not SOF.
+        if matches!(
+            marker,
+            0xC0 | 0xC1
+                | 0xC2
+                | 0xC3
+                | 0xC5
+                | 0xC6
+                | 0xC7
+                | 0xC9
+                | 0xCA
+                | 0xCB
+                | 0xCD
+                | 0xCE
+                | 0xCF
+        ) {
+            let height = u32::from(u16::from_be_bytes(
+                data[index + 5..index + 7].try_into().ok()?,
+            ));
+            let width = u32::from(u16::from_be_bytes(
+                data[index + 7..index + 9].try_into().ok()?,
+            ));
+            return (width > 0 && height > 0).then_some((width, height));
+        }
+        // Standalone markers have no length payload.
+        if matches!(marker, 0xD8 | 0xD9 | 0x01 | 0xD0..=0xD7) {
+            index += 2;
+            continue;
+        }
+        let length = usize::from(u16::from_be_bytes(
+            data[index + 2..index + 4].try_into().ok()?,
+        ));
+        if length < 2 {
+            return None;
+        }
+        index += 2 + length;
+    }
+    None
 }
 
 fn estimate_json_tokens(value: &impl serde::Serialize) -> u64 {
@@ -340,5 +441,29 @@ mod tests {
         // compaction calibration corrects it with provider usage.
         let tokens = estimate_text_tokens("中文内容");
         assert_eq!(tokens, 2, "four CJK characters estimate as two tokens");
+    }
+
+    #[test]
+    fn image_tokens_follow_the_pixels_instead_of_a_flat_fee() {
+        let png = |width: u32, height: u32| {
+            let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+            bytes.extend_from_slice(&13_u32.to_be_bytes());
+            bytes.extend_from_slice(b"IHDR");
+            bytes.extend_from_slice(&width.to_be_bytes());
+            bytes.extend_from_slice(&height.to_be_bytes());
+            bytes
+        };
+        let small = estimate_image_tokens("image/png", &png(64, 64));
+        let screenshot = estimate_image_tokens("image/png", &png(1920, 1080));
+        assert!(small >= 200);
+        assert!(
+            screenshot > 2_000,
+            "a full-size screenshot must not be priced like a thumbnail"
+        );
+        assert!(screenshot > small);
+        assert_eq!(
+            estimate_image_tokens("image/png", b"not a png"),
+            TOKENS_PER_IMAGE
+        );
     }
 }
