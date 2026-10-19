@@ -30,6 +30,20 @@ const LEGACY_PRICING_SETTINGS_KEY: &str = "token_pricing";
 const DEVIN_SETTINGS_KEY: &str = "devin_router";
 /// Context-compaction policy: opt-out, independent summary model, output cap.
 const COMPACTION_SETTINGS_KEY: &str = "compaction";
+/// Upper bound on the summarize call's output cap. A summary competes with the
+/// retained turns for the window, so a cap above this is a configuration error,
+/// not a request the provider should be asked to accept.
+const SUMMARY_OUTPUT_TOKENS_MAX: u64 = 32_768;
+/// Upper bound on the absolute retained-tail cap. The percentage already scales
+/// with the window; this only stops a typo from disabling the retention limit.
+const MAX_RETAINED_TOKENS_MAX: u64 = 1_000_000;
+/// The reserve and the retention share the same window; their effective sum has
+/// to leave room for the prompt and for the next turn to happen at all.
+const RESERVE_RETENTION_PERCENT_MAX: u64 = 80;
+/// Shipped defaults, mirrored by `run::compaction`'s divisors. The getters below
+/// and the cross-field check use these so "unset" has one meaning.
+const RESERVE_PERCENT_DEFAULT: u64 = 10;
+const RETENTION_PERCENT_DEFAULT: u64 = 20;
 
 /// Embedded default system prompts for commit message generation.
 pub const DEFAULT_COMMIT_PROMPT_ZH_CN: &str = include_str!("../../prompt/cursor/commit/zh-CN.md");
@@ -484,12 +498,12 @@ impl Default for CompactionSettings {
 impl CompactionSettings {
     pub fn reserve_percent(&self) -> u64 {
         // Mirrors `run::compaction::CONTEXT_RESERVE_DIVISOR = 10`.
-        self.reserve_percent.unwrap_or(10)
+        self.reserve_percent.unwrap_or(RESERVE_PERCENT_DEFAULT)
     }
 
     pub fn retention_percent(&self) -> u64 {
         // Mirrors `run::compaction::RETAIN_WINDOW_DIVISOR = 5`.
-        self.retention_percent.unwrap_or(20)
+        self.retention_percent.unwrap_or(RETENTION_PERCENT_DEFAULT)
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -498,6 +512,11 @@ impl CompactionSettings {
                 return Err(crate::Error::Config(
                     "compaction.summary_output_tokens must be positive".into(),
                 ));
+            }
+            if tokens > SUMMARY_OUTPUT_TOKENS_MAX {
+                return Err(crate::Error::Config(format!(
+                    "compaction.summary_output_tokens must be at most {SUMMARY_OUTPUT_TOKENS_MAX} tokens"
+                )));
             }
         }
         if self.summary_model_hash.len() > 256 {
@@ -525,6 +544,22 @@ impl CompactionSettings {
                     "compaction.max_retained_tokens must be positive".into(),
                 ));
             }
+            if tokens > MAX_RETAINED_TOKENS_MAX {
+                return Err(crate::Error::Config(format!(
+                    "compaction.max_retained_tokens must be at most {MAX_RETAINED_TOKENS_MAX} tokens"
+                )));
+            }
+        }
+        // The reserve and the retained tail are carved out of the same window.
+        // Treating an unset field as its shipped default is what makes the rule
+        // meaningful for the `null` the desktop card sends: 10 + 20 is fine,
+        // 50 + 50 is not, and the message names the values actually in effect.
+        let reserve = self.reserve_percent();
+        let retention = self.retention_percent();
+        if reserve + retention > RESERVE_RETENTION_PERCENT_MAX {
+            return Err(crate::Error::Config(format!(
+                "compaction.reserve_percent + compaction.retention_percent must be at most {RESERVE_RETENTION_PERCENT_MAX} (effective values: reserve {reserve}%, retention {retention}%; unset fields use {RESERVE_PERCENT_DEFAULT}% and {RETENTION_PERCENT_DEFAULT}%)"
+            )));
         }
         Ok(())
     }
@@ -951,6 +986,13 @@ impl Store {
     /// Current context-compaction policy; a missing or unreadable row uses the
     /// shipped defaults, so a broken manual edit can never disable compaction by
     /// accident.
+    ///
+    /// The read side deliberately never fails: `validate` runs on write, and a
+    /// row that no longer parses or no longer validates (external edit, or a
+    /// row written by a build with different rules) falls back to the shipped
+    /// defaults with a warning. Propagating the error would be unrecoverable
+    /// rather than noisy: every run builds its budgets from this value and the
+    /// settings page could not load the row it needs to replace.
     pub async fn compaction_settings(&self) -> Result<CompactionSettings> {
         let value = sqlx::query_scalar::<_, String>(
             "SELECT value_json FROM service_settings WHERE setting_key = ?",
@@ -958,12 +1000,22 @@ impl Store {
         .bind(COMPACTION_SETTINGS_KEY)
         .fetch_optional(&self.pool)
         .await?;
-        let settings = match value {
-            Some(value) => serde_json::from_str::<CompactionSettings>(&value)?,
+        Ok(match value {
+            Some(value) => match serde_json::from_str::<CompactionSettings>(&value) {
+                Ok(settings) => match settings.validate() {
+                    Ok(()) => settings,
+                    Err(error) => {
+                        tracing::warn!(%error, "ignoring invalid compaction settings row");
+                        CompactionSettings::default()
+                    }
+                },
+                Err(error) => {
+                    tracing::warn!(%error, "ignoring unreadable compaction settings row");
+                    CompactionSettings::default()
+                }
+            },
             None => CompactionSettings::default(),
-        };
-        settings.validate()?;
-        Ok(settings)
+        })
     }
 
     pub async fn set_compaction_settings(
@@ -2218,5 +2270,141 @@ mod tests {
             saved,
             "a rejected save must not overwrite the stored policy"
         );
+    }
+
+    /// Writes the compaction row without going through the validating setter:
+    /// simulates an external edit or a row left by a build with older rules.
+    async fn write_raw_compaction_row(store: &Store, value_json: &str) {
+        sqlx::query(
+            "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms",
+        )
+        .bind(super::COMPACTION_SETTINGS_KEY)
+        .bind(value_json)
+        .bind(0_i64)
+        .execute(&store.pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn compaction_settings_tolerates_a_corrupt_or_invalid_row() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        // A good row still reads back as itself; the fallback must not erase it.
+        let saved = store
+            .set_compaction_settings(CompactionSettings {
+                auto: false,
+                summary_model_hash: "0123abcd".into(),
+                summary_output_tokens: Some(2_048),
+                reserve_percent: Some(15),
+                retention_percent: Some(12),
+                max_retained_tokens: Some(32_768),
+            })
+            .await
+            .unwrap();
+        assert_eq!(store.compaction_settings().await.unwrap(), saved);
+
+        // Unparseable JSON, a field out of range, a failing cross-field rule and
+        // an out-of-bounds cap all read as the shipped defaults instead of
+        // failing the settings page (and, through it, every run).
+        for bad_row in [
+            "not json at all",
+            r#"{"auto":false,"reserve_percent":0}"#,
+            r#"{"reserve_percent":50,"retention_percent":50}"#,
+            r#"{"summary_output_tokens":32769}"#,
+        ] {
+            write_raw_compaction_row(&store, bad_row).await;
+            assert_eq!(
+                store.compaction_settings().await.unwrap(),
+                CompactionSettings::default(),
+                "row {bad_row} must fall back to the shipped defaults"
+            );
+        }
+
+        // The next successful save repairs the row and is readable again.
+        assert_eq!(
+            store.set_compaction_settings(saved.clone()).await.unwrap(),
+            saved
+        );
+        assert_eq!(store.compaction_settings().await.unwrap(), saved);
+    }
+
+    #[tokio::test]
+    async fn compaction_settings_bounds_are_enforced_on_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+
+        // Boundaries that must be accepted.
+        let accepted = [
+            CompactionSettings {
+                reserve_percent: Some(50),
+                retention_percent: Some(30),
+                ..CompactionSettings::default()
+            },
+            CompactionSettings {
+                reserve_percent: None,
+                retention_percent: Some(50),
+                ..CompactionSettings::default()
+            },
+            CompactionSettings {
+                summary_output_tokens: Some(32_768),
+                max_retained_tokens: Some(1_000_000),
+                ..CompactionSettings::default()
+            },
+            CompactionSettings::default(),
+        ];
+        for settings in accepted {
+            assert!(
+                store
+                    .set_compaction_settings(settings.clone())
+                    .await
+                    .is_ok(),
+                "{settings:?} must be accepted"
+            );
+        }
+
+        // The cross-field rule reads unset fields as their shipped defaults:
+        // 50 + 31 = 81 is rejected, and the error names the effective values.
+        let over_sum = store
+            .set_compaction_settings(CompactionSettings {
+                reserve_percent: Some(50),
+                retention_percent: Some(31),
+                ..CompactionSettings::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(&over_sum, crate::Error::Config(_)));
+        let message = over_sum.to_string();
+        assert!(message.contains("at most 80"), "{message}");
+        assert!(message.contains("reserve 50%"), "{message}");
+        assert!(message.contains("retention 31%"), "{message}");
+
+        let rejected = [
+            CompactionSettings {
+                reserve_percent: Some(40),
+                retention_percent: Some(50),
+                ..CompactionSettings::default()
+            },
+            CompactionSettings {
+                summary_output_tokens: Some(32_769),
+                ..CompactionSettings::default()
+            },
+            CompactionSettings {
+                max_retained_tokens: Some(1_000_001),
+                ..CompactionSettings::default()
+            },
+        ];
+        for settings in rejected {
+            assert!(
+                matches!(
+                    store.set_compaction_settings(settings.clone()).await,
+                    Err(crate::Error::Config(_))
+                ),
+                "{settings:?} must be rejected"
+            );
+        }
     }
 }

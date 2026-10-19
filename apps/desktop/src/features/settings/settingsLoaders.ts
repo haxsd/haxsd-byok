@@ -1,7 +1,7 @@
-import { api, type AppInfo, type OutboundStatus, type ProxySettings, type StatisticsStorage } from "../../shared/api";
+import { api, type AppInfo, type CompactionSettings, type OutboundStatus, type ProxySettings, type StatisticsStorage } from "../../shared/api";
 
 /**
- * 设置页三张取数卡的数据读取。
+ * 设置页取数卡的数据读取。
  *
  * 单独放一个 `.ts` 模块（而不是塞在卡片里）：读取是行为，卡片只是画。这样这一层可以在
  * Node 里跑用例——`loadWhenVisible` 的门是不是真的拦住了请求，只有在这里才验得了。
@@ -26,4 +26,9 @@ export function loadStatisticsStorage(): Promise<StatisticsStorage> {
 /** 应用版本、路径与数据目录。 */
 export function loadAppInfo(): Promise<AppInfo> {
   return api.appInfo();
+}
+
+/** 上下文压缩策略（自动压缩、保留预算与独立摘要模型）。 */
+export function loadCompactionSettings(): Promise<CompactionSettings> {
+  return api.compactionSettings();
 }

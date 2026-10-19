@@ -282,7 +282,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 111,
+          "line": 235,
           "column": 60
         },
         {
@@ -723,6 +723,25 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 89,
           "column": 11
+        }
+      ]
+    },
+    "0ae09ee7b1d24e06": {
+      "source": "留空使用默认 {percent}%。",
+      "kind": "template",
+      "placeholders": [
+        "percent"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 148,
+          "column": 45
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 151,
+          "column": 45
         }
       ]
     },
@@ -1298,8 +1317,29 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 87,
+          "line": 69,
           "column": 77
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 128,
+          "column": 48
+        }
+      ]
+    },
+    "16659e8d07edbbae": {
+      "source": "预留比例与保留比例之和不能超过 {max}%（留空时分别按 {reserve}% 和 {retention}% 计算）。",
+      "kind": "template",
+      "placeholders": [
+        "max",
+        "reserve",
+        "retention"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 78,
+          "column": 21
         }
       ]
     },
@@ -2059,8 +2099,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 125,
-          "column": 54
+          "line": 154,
+          "column": 50
         }
       ]
     },
@@ -2557,7 +2597,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 109,
+          "line": 233,
           "column": 62
         },
         {
@@ -2735,8 +2775,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 147,
-          "column": 118
+          "line": 130,
+          "column": 114
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -3132,7 +3172,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 148,
+          "line": 241,
           "column": 21
         },
         {
@@ -3753,8 +3793,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 125,
-          "column": 29
+          "line": 154,
+          "column": 25
         }
       ]
     },
@@ -3852,8 +3892,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 115,
-          "column": 52
+          "line": 144,
+          "column": 48
         }
       ]
     },
@@ -4011,18 +4051,6 @@
         }
       ]
     },
-    "4260f169df0348d3": {
-      "source": "留空使用默认 20%。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 122,
-          "column": 49
-        }
-      ]
-    },
     "42655ed8e4108ae2": {
       "source": "输入（非缓存）",
       "kind": "text",
@@ -4143,6 +4171,25 @@
           "file": "shared/utils/modelPresets.ts",
           "line": 78,
           "column": 20
+        }
+      ]
+    },
+    "4476fd48d2a03f87": {
+      "source": "{hash}（已删除，将回退到会话模型）",
+      "kind": "template",
+      "placeholders": [
+        "hash"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 111,
+          "column": 40
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 120,
+          "column": 74
         }
       ]
     },
@@ -4377,6 +4424,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 105,
           "column": 15
+        }
+      ]
+    },
+    "48851fb1b87f0eff": {
+      "source": "已删除的摘要模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 111,
+          "column": 84
         }
       ]
     },
@@ -5006,8 +5065,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 41,
-          "column": 55
+          "line": 63,
+          "column": 75
         }
       ]
     },
@@ -5152,13 +5211,13 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 90,
+          "line": 72,
           "column": 73
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 147,
-          "column": 52
+          "line": 130,
+          "column": 48
         }
       ]
     },
@@ -5507,6 +5566,20 @@
         }
       ]
     },
+    "59b915b10e150af9": {
+      "source": "默认 {tokens}",
+      "kind": "template",
+      "placeholders": [
+        "tokens"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 128,
+          "column": 118
+        }
+      ]
+    },
     "5a3bd99fa69a40c1": {
       "source": "使用公益服务",
       "kind": "text",
@@ -5658,18 +5731,18 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 115,
-          "column": 25
-        },
-        {
-          "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 116,
-          "column": 65
+          "line": 126,
+          "column": 48
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 144,
-          "column": 52
+          "column": 21
+        },
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 145,
+          "column": 63
         }
       ]
     },
@@ -5862,8 +5935,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 131,
-          "column": 46
+          "line": 170,
+          "column": 15
         }
       ]
     },
@@ -6204,8 +6277,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 122,
-          "column": 29
+          "line": 151,
+          "column": 25
         }
       ]
     },
@@ -6395,8 +6468,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 144,
-          "column": 105
+          "line": 126,
+          "column": 101
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
@@ -6840,13 +6913,13 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 106,
-          "column": 96
+          "line": 102,
+          "column": 61
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 136,
-          "column": 37
+          "line": 118,
+          "column": 21
         }
       ]
     },
@@ -7018,6 +7091,20 @@
         }
       ]
     },
+    "7496d1f31440e855": {
+      "source": "留空使用默认 {tokens}，并受摘要模型自身上限约束。",
+      "kind": "template",
+      "placeholders": [
+        "tokens"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 157,
+          "column": 52
+        }
+      ]
+    },
     "74a20012e632f45a": {
       "source": "尚未登录官方账号",
       "kind": "text",
@@ -7073,7 +7160,7 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 97,
+          "line": 224,
           "column": 17
         }
       ]
@@ -7410,18 +7497,18 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 131,
-          "column": 29
+          "line": 102,
+          "column": 81
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 134,
-          "column": 26
+          "line": 127,
+          "column": 48
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 145,
-          "column": 52
+          "line": 164,
+          "column": 16
         }
       ]
     },
@@ -7432,8 +7519,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 119,
-          "column": 29
+          "line": 148,
+          "column": 25
         }
       ]
     },
@@ -7521,18 +7608,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 113,
           "column": 19
-        }
-      ]
-    },
-    "8085eb8dfb6ba550": {
-      "source": "留空使用默认 10%。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 119,
-          "column": 49
         }
       ]
     },
@@ -8092,8 +8167,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 144,
-          "column": 94
+          "line": 126,
+          "column": 90
         }
       ]
     },
@@ -8836,8 +8911,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 89,
-          "column": 69
+          "line": 71,
+          "column": 70
         }
       ]
     },
@@ -9230,8 +9305,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 146,
-          "column": 52
+          "line": 129,
+          "column": 48
         }
       ]
     },
@@ -9457,7 +9532,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 110,
+          "line": 234,
           "column": 122
         },
         {
@@ -10348,8 +10423,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 128,
-          "column": 29
+          "line": 157,
+          "column": 25
         }
       ]
     },
@@ -11273,7 +11348,7 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 35,
+          "line": 51,
           "column": 65
         }
       ]
@@ -11290,7 +11365,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 108,
+          "line": 232,
           "column": 29
         },
         {
@@ -11396,18 +11471,6 @@
           "file": "shell/AppErrorBoundary.tsx",
           "line": 61,
           "column": 20
-        }
-      ]
-    },
-    "bf55720586625a46": {
-      "source": "留空使用默认 8192，并受摘要模型自身上限约束。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 128,
-          "column": 56
         }
       ]
     },
@@ -13700,8 +13763,8 @@
       "refs": [
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 88,
-          "column": 65
+          "line": 70,
+          "column": 66
         }
       ]
     },
@@ -13774,6 +13837,21 @@
           "file": "shared/store/appStore.ts",
           "line": 193,
           "column": 7
+        }
+      ]
+    },
+    "e4cb90e1a992e725": {
+      "source": "{name} 不能超过 {max}",
+      "kind": "template",
+      "placeholders": [
+        "name",
+        "max"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 57,
+          "column": 56
         }
       ]
     },
@@ -15253,7 +15331,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 110,
+          "line": 234,
           "column": 110
         },
         {
