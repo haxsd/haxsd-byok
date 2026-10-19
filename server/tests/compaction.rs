@@ -1497,6 +1497,91 @@ async fn a_second_overflow_refusal_reuses_the_summary_and_drops_the_recent_turns
     assert!(text_message(&requests[4].history, "continue").is_some());
 }
 
+#[tokio::test]
+async fn a_preflight_compaction_advances_the_overflow_ladder() {
+    // A preflight compaction already wrote a summary slot. When the provider
+    // still refuses the compacted prompt, the ladder must reuse that summary
+    // instead of paying for a second summarize call over nearly the same
+    // history, and the reused slot must point at the archive of the span this
+    // step drops.
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("preflight-ladder-model", Some(100_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    // The first turn's huge assistant output makes the next run's estimate
+    // exceed the window, so it preflights a compaction before dispatching.
+    provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
+    // Preflight summarize call.
+    provider.push(text_response("preflight summary", 20_000, 20));
+    // The compacted prompt is still refused. No number in the prose, so the
+    // learned window stays the configured one.
+    provider.push_error(cursor_server::Error::Provider(
+        "Anthropic 400 Bad Request: prompt is too long".into(),
+    ));
+    provider.push(text_response("answer after reuse", 20_000, 12));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "preflight-ladder-first",
+        user_request(
+            "preflight-ladder-conversation",
+            "preflight-ladder-user-1",
+            "start",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(first.summary_started, 0);
+
+    let second = run(
+        &registry,
+        "preflight-ladder-second",
+        user_request(
+            "preflight-ladder-conversation",
+            "preflight-ladder-user-2",
+            "continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(second.turn_ended, 1);
+    assert_eq!(
+        second.summary_started, 2,
+        "preflight compaction plus the summary-only step"
+    );
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        4,
+        "first turn, preflight summary, refused call, answer"
+    );
+    let summarize_requests = requests
+        .iter()
+        .filter(|request| request.prompt.tools.is_empty())
+        .count();
+    assert_eq!(
+        summarize_requests, 1,
+        "the summary-only step after a preflight compaction must reuse the slot, not summarize again"
+    );
+    let summary_slot = requests[3]
+        .history
+        .iter()
+        .filter_map(message_text)
+        .find(|text| text.contains("<conversation_summary>"))
+        .expect("the reused summary slot is in the compacted history");
+    assert!(summary_slot.contains("preflight summary"));
+    assert!(
+        summary_slot.contains("- Additional archived span:"),
+        "the reused summary also references the archive written for this step: {summary_slot}"
+    );
+}
+
 #[derive(Default)]
 struct Output {
     checkpoints: Vec<pb::ConversationStateStructure>,

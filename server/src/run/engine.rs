@@ -135,6 +135,12 @@ impl OverflowEpisode {
     fn provider_refused(&mut self) {
         self.compactions = self.compactions.saturating_add(1);
     }
+
+    /// 一次预检压缩已经提交：下一次 provider 拒绝就是"压缩过仍放不下"，
+    /// 应当直接走只留摘要的复用步骤，而不是再付一次摘要调用。
+    fn preflight_compacted(&mut self) {
+        self.compactions = self.compactions.max(1);
+    }
 }
 
 /// `auto_compact` 的输入。
@@ -156,6 +162,14 @@ struct CompactionRequest<'a> {
     /// Pressure estimate that opened the preflight path, when there was one.
     estimated_tokens: Option<u64>,
     accounted_tool_results: &'a HashSet<String>,
+}
+
+/// Resolved summarize-call configuration: model spec, the provider window the
+/// call must fit, and the output cap actually requested.
+struct SummaryTarget {
+    model: crate::model::ModelSpec,
+    context_window: Option<u64>,
+    output_tokens: u64,
 }
 
 impl RunEngine {
@@ -491,6 +505,10 @@ impl RunEngine {
                     Ok((next_checkpoint, compaction_usage)) => {
                         checkpoint = next_checkpoint;
                         context_usage_anchor = None;
+                        // The summary slot is now in the history: a following
+                        // provider refusal must reuse it instead of paying for
+                        // another summarize call over the same span.
+                        overflow.preflight_compacted();
                         if let Some(compaction_usage) = compaction_usage {
                             accumulate_usage(&mut usage, compaction_usage);
                         }
@@ -509,9 +527,11 @@ impl RunEngine {
                 "starting model call"
             );
             let mut history = history;
-            // The manual `/summarize` path trims its replayed history with the
-            // same calibrated budget as automatic compaction; keep the factor
-            // for the replacement validation below.
+            // The manual `/summarize` path runs the summarize call on the same
+            // resolved target as automatic compaction (summary model, output
+            // cap, provider window) and trims its replayed history with the
+            // same calibrated budget; keep the factor for the replacement
+            // validation below.
             let manual_calibration = if prepared.action == RunAction::Compact {
                 super::compaction::estimate_calibration(
                     &compaction_run,
@@ -521,33 +541,44 @@ impl RunEngine {
             } else {
                 1.0
             };
+            let summary_target = if prepared.action == RunAction::Compact {
+                Some(
+                    self.summary_target(&compaction_run, &compaction_settings)
+                        .await,
+                )
+            } else {
+                None
+            };
             if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
                 return (RunOutcome::Failed(error.into()), usage);
             }
             // 观测层的上下文用量锚点只数持久化消息：下面追加的尾巴只对 provider 可见、
             // 不进库（`ModelInvocation::persisted_message_count` 按消息身份把它排除）。
             let anchored_messages = history.len();
-            let history = if prepared.action == RunAction::Compact {
+            let history = if let Some(target) = &summary_target {
                 // 手动 `/summarize` 与自动压缩用同一套按窗口裁剪的逻辑，否则大历史
-                // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。
+                // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。摘要请求自己还带着
+                // prepared.prompt（运行时提示 + 工具定义），也要从预算里扣掉。
                 super::compaction::compaction_history(
                     history,
-                    compaction_run.model.context_window_tokens,
-                    manual_calibration,
+                    &super::compaction::SummaryInput {
+                        context_window: target.context_window,
+                        output_tokens: target.output_tokens,
+                        prompt_tokens: crate::model::estimate_context_tokens(&prepared.prompt, &[]),
+                        calibration: manual_calibration,
+                    },
                     &compaction_settings,
                 )
             } else {
                 super::history::user_terminated(history, CONTINUE_MESSAGE_ID, CONTINUE_INSTRUCTION)
             };
-            let model = if prepared.action == RunAction::Compact {
-                self.summary_model_spec(prepared, &compaction_settings)
-                    .await
-            } else {
-                cycle_model(
+            let model = match summary_target {
+                Some(target) => target.model,
+                None => cycle_model(
                     &prepared.action,
                     &prepared.model,
                     super::compaction::OUTPUT_TOKENS,
-                )
+                ),
             };
             let request = crate::model::ModelRequest {
                 prompt: prepared.prompt.clone(),
@@ -721,23 +752,6 @@ impl RunEngine {
                             RunFailure::Provider(message)
                                 if super::compaction::is_context_overflow(message)
                         );
-                        // The provider is the authority on the real window; a
-                        // refused prompt often carries it as prose. Learning it
-                        // for this run keeps the next budget honest when the
-                        // configured window was larger than the provider's.
-                        if let RunFailure::Provider(message) = &cycle_failure.failure {
-                            if let Some(limit) = super::compaction::provider_context_limit(message)
-                            {
-                                if compaction_run.model.context_window_tokens != Some(limit) {
-                                    tracing::warn!(
-                                        previous = ?compaction_run.model.context_window_tokens,
-                                        provider_limit = limit,
-                                        "provider reported its real context limit; using it for compaction budgets"
-                                    );
-                                    compaction_run.model.context_window_tokens = Some(limit);
-                                }
-                            }
-                        }
                         let usage_exhausted =
                             matches!(&cycle_failure.failure, RunFailure::Provider(_))
                                 && cycle_failure
@@ -755,6 +769,19 @@ impl RunEngine {
                                     });
                         let overflow_refusal = prepared.action != RunAction::Compact
                             && (window_exhausted || provider_refusal || usage_exhausted);
+                        // The provider is the authority on the real window; a
+                        // refused prompt often carries it as prose. Learning it
+                        // for this run keeps the next budget honest when the
+                        // configured window was larger than the provider's.
+                        // Only real overflow evidence may teach a window: an
+                        // output-cap or unrelated 400 also contains limits, and
+                        // adopting one as the context window would shrink every
+                        // later compaction budget.
+                        learn_provider_window(
+                            &mut compaction_run,
+                            overflow_refusal,
+                            &cycle_failure.failure,
+                        );
                         if let Some(retention) = overflow_retention.filter(|_| overflow_refusal) {
                             tracing::warn!(
                                 provider_call_index,
@@ -1414,30 +1441,26 @@ impl RunEngine {
     ///
     /// The summary stays provider-visible until the next compaction, so it is
     /// capped well below what the model could produce. Providers reject a
-    /// `max_tokens` above the model's own output limit, so the constant is
-    /// clamped by the configured model limit when one is set.
-    async fn summary_output_tokens(
-        &self,
-        prepared: &PreparedRun,
+    /// `max_tokens` above the model's own output limit, so the requested value
+    /// is clamped by the limit of the model that actually runs the summarize
+    /// call: the configured summary model when one is configured, otherwise the
+    /// conversation model (legacy behaviour). A configured summary model that
+    /// declares no limit keeps the requested value; the conversation model's
+    /// limit is unrelated to it.
+    fn summary_output_tokens(
         settings: &crate::store::CompactionSettings,
+        configured: Option<&crate::model::ModelConfig>,
+        run_limit: Option<u64>,
     ) -> u64 {
-        let summary_limit = self
-            .configured_model(&settings.summary_model_hash)
-            .await
-            .and_then(|model| model.max_output_tokens());
-        let run_limit = self
-            .store
-            .model(&prepared.model.model_id)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|model| model.max_output_tokens());
         let requested = settings
             .summary_output_tokens
             .unwrap_or(super::compaction::OUTPUT_TOKENS);
-        summary_limit
-            .or(run_limit)
-            .map_or(requested, |limit| requested.min(limit))
+        match configured {
+            Some(model) => model
+                .max_output_tokens()
+                .map_or(requested, |limit| requested.min(limit)),
+            None => run_limit.map_or(requested, |limit| requested.min(limit)),
+        }
     }
 
     async fn configured_model(&self, hash: &str) -> Option<crate::model::ModelConfig> {
@@ -1454,25 +1477,49 @@ impl RunEngine {
         }
     }
 
-    /// Model spec for summarize calls: the configured independent summary model
-    /// when present, otherwise the routed conversation model, with reasoning
-    /// explicitly off and the output cap applied.
-    async fn summary_model_spec(
+    /// Resolved summarize-call configuration, shared by the request and its
+    /// replay budget so the history is sized for the model that receives it.
+    async fn summary_target(
         &self,
         prepared: &PreparedRun,
         settings: &crate::store::CompactionSettings,
-    ) -> crate::model::ModelSpec {
-        let output_tokens = self.summary_output_tokens(prepared, settings).await;
+    ) -> SummaryTarget {
+        let configured = self.configured_model(&settings.summary_model_hash).await;
+        // The conversation model's limit only matters when the summarize call
+        // falls back to it; querying it otherwise would clamp a configured
+        // summary model by an unrelated model's output cap.
+        let run_limit = if configured.is_some() {
+            None
+        } else {
+            self.store
+                .model(&prepared.model.model_id)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|model| model.max_output_tokens())
+        };
+        let output_tokens = Self::summary_output_tokens(settings, configured.as_ref(), run_limit);
         let mut model = summary_model(&prepared.model, output_tokens);
-        if let Some(target) = self.configured_model(&settings.summary_model_hash).await {
+        let mut context_window = prepared.model.context_window_tokens;
+        if let Some(target) = &configured {
             // The router resolves built-in models by this stable hash.
             model.model_id = target.model_hash.clone();
             model.display_name = Some(target.display_name.clone());
             if let Some(limit) = target.max_output_tokens() {
                 model.max_output_tokens = Some(output_tokens.min(limit));
             }
+            // The summarize call must fit the smaller of the learned
+            // conversation window and the summary model's own declared window.
+            context_window = match (context_window, target.context_window_tokens) {
+                (Some(conversation), Some(summary)) => Some(conversation.min(summary)),
+                (conversation, summary) => summary.or(conversation),
+            };
         }
-        model
+        SummaryTarget {
+            model,
+            context_window,
+            output_tokens,
+        }
     }
 
     async fn auto_compact(
@@ -1517,9 +1564,14 @@ impl RunEngine {
         emit(client, RunEvent::AutoCompactionStarted)
             .await
             .map_err(|_| client_failure())?;
-        let model = self.summary_model_spec(prepared, settings).await;
         let mut pending_insertions = Vec::new();
         let mut break_messages = None;
+        // Write the searchable archive before composing the summary slot: the
+        // reuse step appends a digest of the span it drops, so the slot must
+        // point at the archive written for this compaction, not only at the one
+        // referenced by the earlier summarized span.
+        let archive =
+            crate::model::archive_compaction_history(&prepared.run_id.to_string(), &compactable);
         // Second overflow step: when a summary slot already exists, drop the
         // retained turns around it instead of paying for another summarize call
         // over nearly the same history. The digest keeps the newest concrete
@@ -1546,6 +1598,17 @@ impl RunEngine {
                 format!("summary:auto:{}:reuse", prepared.run_id),
             )
         } else {
+            let target = self.summary_target(prepared, settings).await;
+            let summary_prompt = crate::model::PromptSpec {
+                instructions: super::compaction::instructions().into(),
+                tools: Vec::new(),
+            };
+            let summary_input = super::compaction::SummaryInput {
+                context_window: target.context_window,
+                output_tokens: target.output_tokens,
+                prompt_tokens: crate::model::estimate_context_tokens(&summary_prompt, &[]),
+                calibration,
+            };
             let mut summary_usage: Option<Usage> = None;
             let mut summary_call_index: Option<u64> = None;
             let mut attempts = 0_u8;
@@ -1569,17 +1632,11 @@ impl RunEngine {
                         if retry {
                             super::compaction::compaction_history_tight(
                                 history,
-                                prepared.model.context_window_tokens,
-                                calibration,
+                                &summary_input,
                                 settings,
                             )
                         } else {
-                            super::compaction::compaction_history(
-                                history,
-                                prepared.model.context_window_tokens,
-                                calibration,
-                                settings,
-                            )
+                            super::compaction::compaction_history(history, &summary_input, settings)
                         }
                     })
                     .map_err(|error| RunOutcome::Failed(error.into()))?;
@@ -1590,11 +1647,8 @@ impl RunEngine {
                     conversation_id: prepared.conversation_id.to_string(),
                     provider_call_index,
                     request: crate::model::ModelRequest {
-                        prompt: crate::model::PromptSpec {
-                            instructions: super::compaction::INSTRUCTIONS.into(),
-                            tools: Vec::new(),
-                        },
-                        model: model.clone(),
+                        prompt: summary_prompt.clone(),
+                        model: target.model.clone(),
                         history,
                     },
                 };
@@ -1736,8 +1790,6 @@ impl RunEngine {
         // Exact file anchors recovered from the shadowed tool calls survive
         // even when the summary model omitted them.
         let summary = super::compaction::with_context_anchors(&summary, messages);
-        let archive =
-            crate::model::archive_compaction_history(&prepared.run_id.to_string(), &compactable);
         let summary = super::compaction::with_archive_anchor(&summary, archive.as_deref());
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();
@@ -1968,6 +2020,39 @@ fn exhausted_context_window(
         .is_some_and(|tokens| tokens >= budget)
 }
 
+/// Adopts a provider-reported context limit for the rest of the run.
+///
+/// Called only with real overflow evidence (`overflow_refusal`): an unrelated
+/// 400, an output-cap rejection, or a rate limit may quote a number too, and
+/// treating it as the context window would shrink every later compaction
+/// budget. `provider_context_limit` additionally refuses messages that talk
+/// about output caps. The mutation stays on the run-local compaction spec; the
+/// routed model configuration and the rest of the run are untouched.
+fn learn_provider_window(
+    compaction_run: &mut PreparedRun,
+    overflow_refusal: bool,
+    failure: &RunFailure,
+) {
+    if !overflow_refusal {
+        return;
+    }
+    let RunFailure::Provider(message) = failure else {
+        return;
+    };
+    let Some(limit) = super::compaction::provider_context_limit(message) else {
+        return;
+    };
+    if compaction_run.model.context_window_tokens == Some(limit) {
+        return;
+    }
+    tracing::warn!(
+        previous = ?compaction_run.model.context_window_tokens,
+        provider_limit = limit,
+        "provider reported its real context limit; using it for compaction budgets"
+    );
+    compaction_run.model.context_window_tokens = Some(limit);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2184,5 +2269,149 @@ mod tests {
 
         assert!(late_tool_result(&result("call-1"), &accounted));
         assert!(!late_tool_result(&result("call-2"), &accounted));
+    }
+
+    fn prepared_run() -> PreparedRun {
+        let mut model = crate::model::ModelSpec::new("model");
+        model.context_window_tokens = Some(1_000_000);
+        PreparedRun {
+            run_id: crate::model::RunId::new("run"),
+            cursor_request_id: None,
+            conversation_id: crate::model::ConversationId::new("conversation"),
+            kind: crate::model::RunKind::Root,
+            model,
+            prompt: crate::model::PromptSpec {
+                instructions: String::new(),
+                tools: Vec::new(),
+            },
+            initial_messages: Vec::new(),
+            action: crate::model::RunAction::Start,
+            base_checkpoint_id: crate::model::CheckpointId(1),
+        }
+    }
+
+    fn summary_model_config(limit: Option<u64>) -> crate::model::ModelConfig {
+        crate::model::ModelConfig {
+            model_hash: "summary-hash".into(),
+            sort_order: 0,
+            display_name: "Summary".into(),
+            group_name: None,
+            model_type: crate::model::ModelType::OpenAi,
+            base_url: "https://example.com/v1/chat/completions".into(),
+            use_full_url: true,
+            api_key: "key".into(),
+            tooltip_data: String::new(),
+            model_id: "summary-model".into(),
+            reasoning_effort: None,
+            openai_endpoint: crate::model::OPENAI_CHAT_ENDPOINT.into(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(8_000),
+            max_completion_tokens: limit,
+            anthropic_max_tokens: None,
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+            created_at_ms: 0,
+            updated_at_ms: 0,
+        }
+    }
+
+    /// A6: a successful preflight compaction is already one rung down the
+    /// ladder, so a following provider refusal reuses the summary instead of
+    /// buying a second summarize call.
+    #[test]
+    fn a_preflight_compaction_advances_the_overflow_ladder() {
+        let mut episode = OverflowEpisode::default();
+        episode.preflight_compacted();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::None),
+            "a following refusal must reuse the summary slot"
+        );
+        // A successful model call still ends the episode.
+        episode.model_call_succeeded();
+        assert_eq!(
+            episode.retention(),
+            Some(crate::run::compaction::Retention::Window)
+        );
+    }
+
+    /// A4: only real overflow evidence may teach a provider window; an
+    /// output-cap rejection contains a limit too and must not be adopted.
+    #[test]
+    fn only_overflow_evidence_teaches_a_provider_window() {
+        let over_limit =
+            RunFailure::Provider("prompt is too long: 210000 tokens > 200000 maximum".into());
+
+        let mut unrelated = prepared_run();
+        learn_provider_window(&mut unrelated, false, &over_limit);
+        assert_eq!(
+            unrelated.model.context_window_tokens,
+            Some(1_000_000),
+            "a non-overflow failure never teaches a window"
+        );
+
+        let mut overflow = prepared_run();
+        learn_provider_window(&mut overflow, true, &over_limit);
+        assert_eq!(overflow.model.context_window_tokens, Some(200_000));
+
+        let mut output_cap = prepared_run();
+        learn_provider_window(
+            &mut output_cap,
+            true,
+            &RunFailure::Provider("max_tokens: 16384 > 8192 maximum for this model".into()),
+        );
+        assert_eq!(
+            output_cap.model.context_window_tokens,
+            Some(1_000_000),
+            "an output-cap limit is not a context window"
+        );
+    }
+
+    /// A9: the output cap follows the model that actually runs the summarize
+    /// call; only the no-summary-model path keeps the conversation clamp.
+    #[test]
+    fn summary_output_cap_follows_the_model_that_runs_the_summarize_call() {
+        let requested = |tokens: Option<u64>| crate::store::CompactionSettings {
+            summary_output_tokens: tokens,
+            ..Default::default()
+        };
+        let summary_model = summary_model_config(Some(16_000));
+
+        assert_eq!(
+            RunEngine::summary_output_tokens(
+                &requested(Some(32_000)),
+                Some(&summary_model),
+                Some(64_000)
+            ),
+            16_000,
+            "the summary model's own limit wins"
+        );
+
+        let unlimited = summary_model_config(None);
+        assert_eq!(
+            RunEngine::summary_output_tokens(
+                &requested(Some(32_000)),
+                Some(&unlimited),
+                Some(64_000)
+            ),
+            32_000,
+            "a summary model without a declared limit must not borrow the conversation limit"
+        );
+
+        assert_eq!(
+            RunEngine::summary_output_tokens(&requested(Some(32_000)), None, Some(8_192)),
+            8_192,
+            "without a summary model the conversation model still clamps"
+        );
+        assert_eq!(
+            RunEngine::summary_output_tokens(&requested(None), Some(&summary_model), None),
+            8_192,
+            "the default requested cap is OUTPUT_TOKENS"
+        );
     }
 }

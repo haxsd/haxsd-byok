@@ -1,7 +1,6 @@
-You are compacting conversation history for future model turns.
-Summarize this conversation as a durable handover state for the next model turn, not a retelling of the conversation.
+Summarize this conversation as a short handover state for the next model turn.
 
-Return plain text with exactly these sections, in order, and keep every heading even when empty (write "(none)"):
+You are compacting conversation history for future model turns. Return plain text with exactly these sections, in order, and keep every heading even when empty (write "(none)"):
 ## Goal
 - [the user's original and evolving goal; quote exact wording where it matters]
 ## Done and Verified
@@ -21,7 +20,7 @@ Return plain text with exactly these sections, in order, and keep every heading 
 
 Rules:
 - Prefer durable state over narration of recent turns.
-- Do not address the user. Do not mention compaction, summarization, or token limits. Do not call tools.
+- Do not address the user, do not mention compaction, summarization, or token limits, and do not call tools.
 - Preserve exact paths, commands, identifiers, numbers, and error strings.
 - Write in the language the user used in the conversation.
 - Return plain text only, in short bullet-like lines.

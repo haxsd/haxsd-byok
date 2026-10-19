@@ -64,7 +64,13 @@ const MAX_RETAINED_IMAGES: usize = 2;
 /// handover state. Call sites clamp it to the configured model limit, because
 /// providers reject a `max_tokens` above the model's own output limit.
 pub(super) const OUTPUT_TOKENS: u64 = 8_192;
-pub(super) const INSTRUCTIONS: &str = "Summarize this conversation as a short handover state for the next model turn.\n\nReturn plain text with exactly these sections, in order, and keep every heading even when empty (write \"(none)\"):\n## Goal\n- [the user's original and evolving goal; quote exact wording where it matters]\n## Done and Verified\n- [what is already implemented, tested, or confirmed]\n## In Flight\n- [work currently in progress]\n## Next Action\n- [the single next concrete step]\n## Constraints and Decisions\n- [decisions that must not be reversed, user corrections, constraints]\n## Key Files, Commands, Values\n- [exact paths, commands, identifiers, numbers]\n## Open Errors / Unfinished Work\n- [errors, failing checks, explicitly requested work not done]\n## Earlier Summary\n- [merge still-true facts from a prior conversation_summary; do not copy it verbatim]\n\nRules:\n- Prefer durable state over narration of recent turns.\n- Do not address the user, do not mention compaction, summarization, or token limits, and do not call tools.\n- Preserve exact paths, commands, identifiers, numbers, and error strings.\n- Write in the language the user used in the conversation.\n- Return plain text only, in short bullet-like lines.";
+/// Summarize-call instructions.
+///
+/// The template file is the single source of truth so the 8-section handover
+/// format cannot drift between the prompt asset and the code that sends it.
+pub(super) fn instructions() -> &'static str {
+    include_str!("../../prompt/cursor/compaction/prompt.md").trim_end()
+}
 
 /// Summary slot content when the summarizer produced nothing usable.
 ///
@@ -108,6 +114,13 @@ pub(super) fn output_reservation(prepared: &PreparedRun) -> u64 {
 
 /// Usable prompt budget: the window minus the configured proportional reserve
 /// and the next request's output reservation.
+///
+/// A non-positive result means the configured output cap alone already claims
+/// the whole usable window (or more). There is no honest prompt budget in that
+/// case, so the proactive check is disabled and the provider stays the
+/// authority on whether the request fits; aborting every run with a synthetic
+/// "context overflow after compaction" would be worse than the provider's own
+/// answer.
 pub(super) fn input_budget(
     prepared: &PreparedRun,
     settings: &crate::store::CompactionSettings,
@@ -116,10 +129,9 @@ pub(super) fn input_budget(
         .model
         .context_window_tokens
         .filter(|window| *window > 0)?;
-    Some(
-        context_budget_with(window, settings.reserve_percent())
-            .saturating_sub(output_reservation(prepared)),
-    )
+    let budget = context_budget_with(window, settings.reserve_percent())
+        .saturating_sub(output_reservation(prepared));
+    (budget > 0).then_some(budget)
 }
 
 /// Extracts the provider's own context limit from an over-limit error.
@@ -129,9 +141,26 @@ pub(super) fn input_budget(
 /// length is 128000 tokens"`, or `"context window is 200000"`. Learning the
 /// real limit for the rest of the run prevents the same estimator from
 /// re-triggering the same refusal when the configured window is larger than the
-/// provider's. Only numbers that look like token windows are accepted.
+/// provider's. Only messages about the context window qualify: an output-cap
+/// rejection (`"max_tokens: 16384 > 8192 maximum"`) also contains a limit, but
+/// learning the output cap as the context window would shrink every later
+/// budget to absurdity.
 pub(super) fn provider_context_limit(message: &str) -> Option<u64> {
     let lowered = message.to_ascii_lowercase();
+    const OUTPUT_CAP_MARKERS: [&str; 6] = [
+        "max_tokens",
+        "max output",
+        "max_output",
+        "max_completion",
+        "max completion",
+        "output tokens",
+    ];
+    if OUTPUT_CAP_MARKERS
+        .iter()
+        .any(|marker| lowered.contains(marker))
+    {
+        return None;
+    }
     // "N tokens > M maximum" (Anthropic and several gateways).
     if let Some(index) = lowered.find("> ") {
         if let Some(limit) = first_number(&lowered[index + 2..]) {
@@ -194,12 +223,30 @@ pub(super) fn is_context_overflow(message: &str) -> bool {
         || lowered.contains("maximum context length")
         || lowered.contains("exceeds the maximum context")
         || lowered.contains("exceeds the maximum number of tokens")
-        || lowered.contains("too many tokens")
-        || lowered.contains("token limit exceeded")
         || lowered.contains("reduce the length of the")
-        || lowered.contains("input length")
-        || lowered.contains("request is too large")
-        || lowered.contains("request too large")
+        || (lowered.contains("too many tokens") && mentions_request_context(&lowered))
+        || (lowered.contains("token limit exceeded") && mentions_request_context(&lowered))
+        || ((lowered.contains("request is too large") || lowered.contains("request too large"))
+            && lowered.contains("context"))
+        || (lowered.contains("input length") && input_length_overflow(&lowered))
+}
+
+/// Whether a generic "too many tokens" wording is about the request's context
+/// rather than, say, a rate limit or an output cap.
+fn mentions_request_context(lowered: &str) -> bool {
+    lowered.contains("context") || lowered.contains("request") || lowered.contains("window")
+}
+
+/// `input length` on its own is a generic validation phrase; only the overflow
+/// continuations mean the prompt did not fit.
+fn input_length_overflow(lowered: &str) -> bool {
+    let Some(index) = lowered.find("input length") else {
+        return false;
+    };
+    let rest = &lowered[index..];
+    ["too long", "too large", "exceed", "limit", "maximum"]
+        .iter()
+        .any(|marker| rest.contains(marker))
 }
 
 /// Builds the history for a compaction call.
@@ -217,68 +264,69 @@ pub(super) fn is_context_overflow(message: &str) -> bool {
 ///
 /// Trimming keeps the most recent turns and only ever cuts at a user-message
 /// boundary, so an assistant tool call is never separated from its results.
+/// What the summarize call itself costs, shared by its replay budget.
+pub(super) struct SummaryInput {
+    /// Provider window the summarize call must fit: the conversation's learned
+    /// window and the configured summary model's own window, whichever is
+    /// smaller.
+    pub context_window: Option<u64>,
+    /// `max_tokens` actually put on the summarize request.
+    pub output_tokens: u64,
+    /// Estimated tokens the summarize prompt alone consumes.
+    pub prompt_tokens: u64,
+    /// Provider-anchored actual/estimated ratio for the replayed history.
+    pub calibration: f64,
+}
+
 pub(super) fn compaction_history(
     history: Vec<ProjectedMessage>,
-    context_window: Option<u64>,
-    calibration: f64,
+    input: &SummaryInput,
     settings: &crate::store::CompactionSettings,
 ) -> Vec<ProjectedMessage> {
-    compact_history_at(
-        history,
-        context_window,
-        calibration,
-        settings,
-        SUMMARY_INPUT_SAFETY_PERCENT,
-    )
+    compact_history_at(history, input, settings, SUMMARY_INPUT_SAFETY_PERCENT)
 }
 
 /// A tighter summarize history for the single retry after a failed call.
 pub(super) fn compaction_history_tight(
     history: Vec<ProjectedMessage>,
-    context_window: Option<u64>,
-    calibration: f64,
+    input: &SummaryInput,
     settings: &crate::store::CompactionSettings,
 ) -> Vec<ProjectedMessage> {
-    compact_history_at(
-        history,
-        context_window,
-        calibration,
-        settings,
-        SUMMARY_RETRY_PERCENT,
-    )
+    compact_history_at(history, input, settings, SUMMARY_RETRY_PERCENT)
 }
 
 fn compact_history_at(
     history: Vec<ProjectedMessage>,
-    context_window: Option<u64>,
-    calibration: f64,
+    input: &SummaryInput,
     settings: &crate::store::CompactionSettings,
     percent: u64,
 ) -> Vec<ProjectedMessage> {
     super::history::user_terminated(
-        trim_to_context(
-            history,
-            summary_input_budget(context_window, calibration, settings, percent),
-        ),
+        trim_to_context(history, summary_input_budget(input, settings, percent)),
         "compaction:instruction",
-        INSTRUCTIONS,
+        instructions(),
     )
 }
 
 /// Estimate-unit budget for the summarize call's replayed history.
+///
+/// The summarize call runs on the summary model and sends its own static
+/// prompt, so its budget is that model's window minus the reserve minus the
+/// output cap it actually requests minus the prompt it actually sends. The
+/// output reserve is clamped to half the usable window, so a configured
+/// `summary_output_tokens` at or above the window cannot zero the budget.
 fn summary_input_budget(
-    context_window: Option<u64>,
-    calibration: f64,
+    input: &SummaryInput,
     settings: &crate::store::CompactionSettings,
     percent: u64,
 ) -> Option<u64> {
-    let window = context_window.filter(|window| *window > 0)?;
-    let usable = context_budget_with(window, settings.reserve_percent())
-        .saturating_sub(OUTPUT_TOKENS)
-        .saturating_mul(percent)
-        / 100;
-    let scaled = calibrate_budget(usable, calibration);
-    (scaled > 0).then_some(scaled)
+    let window = input.context_window.filter(|window| *window > 0)?;
+    let usable = context_budget_with(window, settings.reserve_percent());
+    let output = input.output_tokens.min(usable / 2);
+    let usable = calibrate_budget(usable.saturating_sub(output), input.calibration);
+    let usable = usable.saturating_sub(input.prompt_tokens);
+    let usable = usable.saturating_mul(percent) / 100;
+    (usable > 0).then_some(usable)
 }
 
 fn trim_to_context(
@@ -757,8 +805,12 @@ fn offload_old_tail_images(tail: Vec<CanonicalMessage>) -> Vec<CanonicalMessage>
                             remaining -= 1;
                             result.image = Some(image);
                         } else {
-                            result.content =
-                                format!("[image omitted during compaction: {}]", image.path);
+                            // The tool text is still useful; keep it and append
+                            // where the dropped image went.
+                            result.content = format!(
+                                "{}\n\n[image omitted during compaction: {}]",
+                                result.content, image.path
+                            );
                         }
                     }
                     offload_parts(&mut result.provider_parts, &mut remaining);
@@ -797,16 +849,17 @@ pub(super) fn summary_text(message: &CanonicalMessage) -> Option<String> {
             text.push_str(part);
         }
     }
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
+    // Strip either tag independently: a prior slot may carry only one of them,
+    // and discarding the already stripped prefix in that case would leak the
+    // `<conversation_summary>` marker into the reused digest.
+    let mut text = text.trim();
+    if let Some(stripped) = text.strip_prefix("<conversation_summary>") {
+        text = stripped;
     }
-    let text = text
-        .strip_prefix("<conversation_summary>")
-        .unwrap_or(text)
-        .strip_suffix("</conversation_summary>")
-        .unwrap_or(text)
-        .trim();
+    if let Some(stripped) = text.strip_suffix("</conversation_summary>") {
+        text = stripped;
+    }
+    let text = text.trim();
     (!text.is_empty()).then(|| text.to_string())
 }
 
@@ -890,16 +943,24 @@ pub(super) fn with_context_anchors(summary: &str, messages: &[CanonicalMessage])
 ///
 /// The archive keeps every shadowed canonical message, so the model can recover
 /// a detail the summary omitted with a `Shell` grep instead of re-reading files.
+/// When the summary already carries an archive section (a reused summary slot
+/// from an earlier compaction), the newly written span is appended as an
+/// additional line instead of being lost; the same path is never listed twice.
 pub(super) fn with_archive_anchor(summary: &str, archive: Option<&std::path::Path>) -> String {
     let Some(archive) = archive else {
         return summary.to_string();
     };
+    let path = archive.display().to_string();
     if summary.contains("## Archived History") {
-        return summary.to_string();
+        if summary.contains(&path) {
+            return summary.to_string();
+        }
+        return format!(
+            "{summary}\n- Additional archived span: {path} (use Shell grep/read to recover details the summary omitted)"
+        );
     }
     format!(
-        "{summary}\n\n## Archived History\n- Full pre-compaction messages: {} (use Shell grep/read to recover details the summary omitted)",
-        archive.display()
+        "{summary}\n\n## Archived History\n- Full pre-compaction messages: {path} (use Shell grep/read to recover details the summary omitted)"
     )
 }
 
@@ -1047,11 +1108,20 @@ mod tests {
         crate::store::CompactionSettings::default()
     }
 
+    fn summary_input(context_window: Option<u64>) -> SummaryInput {
+        SummaryInput {
+            context_window,
+            output_tokens: OUTPUT_TOKENS,
+            prompt_tokens: 0,
+            calibration: 1.0,
+        }
+    }
+
     fn compaction_history(
         history: Vec<ProjectedMessage>,
         context_window: Option<u64>,
     ) -> Vec<ProjectedMessage> {
-        super::compaction_history(history, context_window, 1.0, &default_settings())
+        super::compaction_history(history, &summary_input(context_window), &default_settings())
     }
 
     fn validate_compacted(
@@ -1356,10 +1426,16 @@ mod tests {
             history.push(user(&format!("u{index}"), &"x".repeat(80_000)));
             history.push(assistant(&format!("a{index}"), "ok"));
         }
-        let uncalibrated =
-            super::compaction_history(history.clone(), Some(200_000), 1.0, &default_settings());
-        let calibrated =
-            super::compaction_history(history, Some(200_000), 2.0, &default_settings());
+        let uncalibrated = super::compaction_history(
+            history.clone(),
+            &summary_input(Some(200_000)),
+            &default_settings(),
+        );
+        let tight = SummaryInput {
+            calibration: 2.0,
+            ..summary_input(Some(200_000))
+        };
+        let calibrated = super::compaction_history(history, &tight, &default_settings());
         assert!(
             estimate_projected_messages_tokens(&calibrated)
                 < estimate_projected_messages_tokens(&uncalibrated),
@@ -2068,11 +2144,40 @@ mod tests {
         assert!(summary.contains("## Archived History"));
         assert!(summary.contains("/tmp/compaction/run-1.jsonl"));
         assert_eq!(
-            with_archive_anchor(&summary, Some(std::path::Path::new("/tmp/other"))),
+            with_archive_anchor(
+                &summary,
+                Some(std::path::Path::new("/tmp/compaction/run-1.jsonl"))
+            ),
             summary,
-            "the archive anchor is not appended twice"
+            "the same archive path is not listed twice"
         );
         assert_eq!(with_archive_anchor("handover", None), "handover");
+    }
+
+    #[test]
+    fn a_reused_summary_gets_the_new_archive_span_below_its_existing_section() {
+        let first = with_archive_anchor(
+            "handover",
+            Some(std::path::Path::new("/tmp/compaction/run-1.jsonl")),
+        );
+        let both = with_archive_anchor(
+            &first,
+            Some(std::path::Path::new("/tmp/compaction/run-2.jsonl")),
+        );
+        assert!(both.contains("## Archived History"));
+        assert!(both.contains("/tmp/compaction/run-1.jsonl"));
+        assert!(
+            both.contains("- Additional archived span: /tmp/compaction/run-2.jsonl"),
+            "a resumed summary must reference the span this compaction dropped: {both}"
+        );
+        assert_eq!(
+            with_archive_anchor(
+                &both,
+                Some(std::path::Path::new("/tmp/compaction/run-2.jsonl"))
+            ),
+            both,
+            "the additional span is appended only once"
+        );
     }
 
     #[test]
@@ -2105,7 +2210,175 @@ mod tests {
         }
         assert!(result(&offloaded[0]).image.is_none());
         assert!(result(&offloaded[0]).content.contains("omitted"));
+        assert!(
+            result(&offloaded[0]).content.contains("Read image file"),
+            "the tool text survives; the placeholder is appended, not a replacement"
+        );
         assert!(result(&offloaded[1]).image.is_some());
         assert!(result(&offloaded[2]).image.is_some());
+    }
+
+    /// A1: an output cap that claims the whole usable window must disable the
+    /// proactive check instead of making every run fail before dispatch.
+    #[test]
+    fn an_output_cap_that_claims_the_whole_window_disables_the_pressure_check() {
+        let mut prepared = prepared(8_000);
+        prepared.model.max_output_tokens = Some(8_000);
+        assert_eq!(input_budget(&prepared, &default_settings()), None);
+        let projected = project_messages(&[CanonicalMessage::text(
+            "u1",
+            Role::User,
+            Origin::Runtime,
+            "x".repeat(8_000),
+        )])
+        .unwrap();
+        assert!(!should_compact(&prepared, &projected, None));
+
+        // Below the degenerate point the output reservation still shrinks the
+        // budget: 8_000 * 90% - 1_000.
+        prepared.model.max_output_tokens = Some(1_000);
+        assert_eq!(input_budget(&prepared, &default_settings()), Some(6_200));
+    }
+
+    /// A2: the summarize replay budget follows the model that receives it (its
+    /// window, its actual output cap) and subtracts the prompt it sends.
+    #[test]
+    fn summarize_budget_uses_the_summary_model_window_and_actual_output_cap() {
+        let history: Vec<ProjectedMessage> = (1..=8)
+            .flat_map(|index| {
+                [
+                    user(&format!("u{index}"), &"x".repeat(5_000)),
+                    assistant(&format!("a{index}"), "ok"),
+                ]
+            })
+            .collect();
+        let conversation_window = summary_input(Some(200_000));
+        let summary_window = summary_input(Some(8_000));
+        let wide =
+            super::compaction_history(history.clone(), &conversation_window, &default_settings());
+        let narrow = super::compaction_history(history, &summary_window, &default_settings());
+        assert!(
+            estimate_projected_messages_tokens(&narrow) < estimate_projected_messages_tokens(&wide),
+            "an 8k summary model must get a smaller replay than a 200k one"
+        );
+        let narrow_budget = summary_input_budget(&summary_window, &default_settings(), 90)
+            .expect("a budget for a usable window");
+        assert!(
+            estimate_projected_messages_tokens(&narrow) <= narrow_budget,
+            "the replay fits the summary model's budget"
+        );
+
+        // The reserve is the output cap actually requested, not OUTPUT_TOKENS.
+        let default_output = summary_input(Some(200_000));
+        let large_output = SummaryInput {
+            output_tokens: 32_768,
+            ..summary_input(Some(200_000))
+        };
+        let default_budget =
+            summary_input_budget(&default_output, &default_settings(), 100).unwrap();
+        let large_budget = summary_input_budget(&large_output, &default_settings(), 100).unwrap();
+        assert_eq!(default_budget - large_budget, 32_768 - OUTPUT_TOKENS);
+
+        // The static prompt the summarize request sends is charged too.
+        let with_prompt = SummaryInput {
+            prompt_tokens: 30_000,
+            ..summary_input(Some(200_000))
+        };
+        assert_eq!(
+            summary_input_budget(&with_prompt, &default_settings(), 100).unwrap(),
+            default_budget - 30_000
+        );
+
+        // An output cap larger than the window is clamped to half the usable
+        // window instead of zeroing the replay budget.
+        let degenerate = SummaryInput {
+            output_tokens: 500_000,
+            ..summary_input(Some(8_000))
+        };
+        assert_eq!(
+            summary_input_budget(&degenerate, &default_settings(), 100),
+            Some(3_600)
+        );
+    }
+
+    /// A4: output-cap errors quote limits too, but they are not context windows.
+    #[test]
+    fn output_cap_errors_do_not_teach_a_context_window() {
+        assert_eq!(
+            provider_context_limit("max_tokens: 16384 > 8192 maximum for this model"),
+            None
+        );
+        assert_eq!(
+            provider_context_limit("max output tokens: 32768 > 16384 maximum"),
+            None
+        );
+        assert_eq!(
+            provider_context_limit("max_completion_tokens must be at most 8192"),
+            None
+        );
+        assert_eq!(
+            provider_context_limit("prompt is too long: 210000 tokens > 200000 maximum"),
+            Some(200_000),
+            "genuine over-limit prose still teaches the window"
+        );
+    }
+
+    /// A5: generic validation / rate-limit wordings must not trigger a
+    /// destructive compaction.
+    #[test]
+    fn unrelated_validation_errors_are_not_classified_as_context_overflow() {
+        assert!(!is_context_overflow(
+            "invalid input length for tool call arguments"
+        ));
+        assert!(!is_context_overflow("max_tokens must be positive"));
+        assert!(!is_context_overflow(
+            "Invalid 'input length': must be between 1 and 4096"
+        ));
+        assert!(!is_context_overflow(
+            "too many tokens per minute; retry later"
+        ));
+        assert!(!is_context_overflow("request too large for file upload"));
+        assert!(!is_context_overflow(
+            "token limit exceeded for this endpoint"
+        ));
+
+        assert!(is_context_overflow(
+            "request exceeds the maximum number of tokens allowed by the context window"
+        ));
+        assert!(is_context_overflow(
+            "input length 210000 exceeds the model maximum"
+        ));
+        assert!(is_context_overflow("too many tokens in the context window"));
+        assert!(is_context_overflow(
+            "token limit exceeded for the context window"
+        ));
+    }
+
+    /// A8: either checkpoint tag is stripped on its own.
+    #[test]
+    fn summary_text_strips_either_checkpoint_tag_independently() {
+        let message = |text: &str| CanonicalMessage {
+            message_id: "s".into(),
+            role: Role::User,
+            origin: Origin::Runtime,
+            content: MessageContent::Parts {
+                parts: vec![ContentPart::Text { text: text.into() }],
+            },
+            runtime_event_id: Some("summary:x".into()),
+        };
+        assert_eq!(
+            summary_text(&message("<conversation_summary>\nhandover")).as_deref(),
+            Some("handover"),
+            "an opening tag without the closing one must not hide the summary"
+        );
+        assert_eq!(
+            summary_text(&message("handover\n</conversation_summary>")).as_deref(),
+            Some("handover")
+        );
+        assert_eq!(
+            summary_text(&summary_message("summary:plain", "handover")).as_deref(),
+            Some("handover")
+        );
+        assert_eq!(summary_text(&summary_message("summary:empty", "   ")), None);
     }
 }
