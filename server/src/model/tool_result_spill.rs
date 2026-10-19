@@ -7,14 +7,45 @@
 //! instead of re-running the tool.
 use std::{
     path::{Path, PathBuf},
-    time::{Duration, SystemTime},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{config, Result};
 
+use super::CanonicalMessage;
+
 const SPILL_DIR: &str = "tool-results";
+const COMPACTION_ARCHIVE_DIR: &str = "compaction-history";
 const SPILL_RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const SPILL_PRUNE_THRESHOLD: usize = 1_024;
+
+/// Writes the shadowed conversation to a searchable JSONL archive and returns
+/// its path.
+///
+/// The summary slot points at this file, so a model that needs a detail the
+/// summary dropped can `Shell`-grep the archive instead of re-reading the
+/// repository or asking the user to repeat context.
+pub(crate) fn archive_compaction_history(
+    run_id: &str,
+    messages: &[CanonicalMessage],
+) -> Option<PathBuf> {
+    let directory = config::managed_data_dir()
+        .ok()?
+        .join(COMPACTION_ARCHIVE_DIR);
+    std::fs::create_dir_all(&directory).ok()?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    let path = directory.join(format!("{}-{stamp}.jsonl", sanitize(run_id)));
+    let mut body = String::new();
+    for message in messages {
+        body.push_str(&serde_json::to_string(message).ok()?);
+        body.push('\n');
+    }
+    std::fs::write(&path, body).ok()?;
+    Some(path)
+}
 
 /// Best-effort spill of one full tool result. Returns the path only when the
 /// bytes were actually written.

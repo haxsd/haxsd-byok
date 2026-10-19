@@ -123,11 +123,15 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     assert_eq!(compacted_state.self_summary_count, 1);
     let summary_id = compacted_state.summary.as_ref().unwrap();
     let summary = pb::ConversationSummary::decode(compacted.blobs[summary_id].as_slice()).unwrap();
-    assert_eq!(summary.summary, "Durable summary");
+    assert!(
+        summary.summary.starts_with("Durable summary"),
+        "the model summary is preserved; deterministic anchors may be appended: {}",
+        summary.summary
+    );
     let archive_id = compacted_state.summary_archive.as_ref().unwrap();
     let archive =
         pb::ConversationSummaryArchive::decode(compacted.blobs[archive_id].as_slice()).unwrap();
-    assert_eq!(archive.summary, "Durable summary");
+    assert!(archive.summary.starts_with("Durable summary"));
     assert_eq!(archive.window_tail, 0);
     assert_eq!(archive.summarized_messages, old_roots[1..]);
     assert_eq!(
@@ -146,7 +150,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         &stored[0].content,
         MessageContent::Parts { parts }
             if matches!(parts.as_slice(), [ContentPart::Text { text }]
-                if text == "<conversation_summary>\nDurable summary\n</conversation_summary>")
+                if text.starts_with("<conversation_summary>\nDurable summary"))
     ));
 
     let after = run(

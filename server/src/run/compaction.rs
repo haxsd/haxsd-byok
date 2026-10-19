@@ -837,6 +837,23 @@ pub(super) fn with_context_anchors(summary: &str, messages: &[CanonicalMessage])
     }
 }
 
+/// Appends the searchable archive path to a summary slot.
+///
+/// The archive keeps every shadowed canonical message, so the model can recover
+/// a detail the summary omitted with a `Shell` grep instead of re-reading files.
+pub(super) fn with_archive_anchor(summary: &str, archive: Option<&std::path::Path>) -> String {
+    let Some(archive) = archive else {
+        return summary.to_string();
+    };
+    if summary.contains("## Archived History") {
+        return summary.to_string();
+    }
+    format!(
+        "{summary}\n\n## Archived History\n- Full pre-compaction messages: {} (use Shell grep/read to recover details the summary omitted)",
+        archive.display()
+    )
+}
+
 fn context_anchors(messages: &[CanonicalMessage]) -> Option<String> {
     let mut files: Vec<String> = Vec::new();
     for message in messages.iter().rev() {
@@ -1990,5 +2007,22 @@ mod tests {
             None
         );
         assert_eq!(provider_context_limit("prompt is too long"), None);
+    }
+
+    #[test]
+    fn archive_anchor_points_at_the_searchable_history() {
+        let summary = with_archive_anchor(
+            "handover",
+            Some(std::path::Path::new("/tmp/compaction/run-1.jsonl")),
+        );
+        assert!(summary.starts_with("handover"));
+        assert!(summary.contains("## Archived History"));
+        assert!(summary.contains("/tmp/compaction/run-1.jsonl"));
+        assert_eq!(
+            with_archive_anchor(&summary, Some(std::path::Path::new("/tmp/other"))),
+            summary,
+            "the archive anchor is not appended twice"
+        );
+        assert_eq!(with_archive_anchor("handover", None), "handover");
     }
 }

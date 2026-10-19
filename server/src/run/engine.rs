@@ -990,6 +990,11 @@ impl RunEngine {
                 }
                 let event_id = format!("summary:{}", prepared.run_id);
                 let summary = super::compaction::with_context_anchors(&summary, &messages);
+                let archive = crate::model::archive_compaction_history(
+                    &prepared.run_id.to_string(),
+                    &messages,
+                );
+                let summary = super::compaction::with_archive_anchor(&summary, archive.as_deref());
                 let summary_message = super::compaction::summary_message(&event_id, &summary);
                 let summary_message_id = summary_message.message_id.clone();
                 let replacement = match super::compaction::replacement(
@@ -1731,6 +1736,9 @@ impl RunEngine {
         // Exact file anchors recovered from the shadowed tool calls survive
         // even when the summary model omitted them.
         let summary = super::compaction::with_context_anchors(&summary, messages);
+        let archive =
+            crate::model::archive_compaction_history(&prepared.run_id.to_string(), &compactable);
+        let summary = super::compaction::with_archive_anchor(&summary, archive.as_deref());
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();
         let replacement = super::compaction::replacement(
