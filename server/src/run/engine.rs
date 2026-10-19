@@ -446,7 +446,12 @@ impl RunEngine {
             let compaction_estimate = (prepared.action != RunAction::Compact
                 && compaction_settings.auto)
                 .then(|| {
-                    super::compaction::compaction_estimate(prepared, &history, context_usage_anchor)
+                    super::compaction::compaction_estimate(
+                        prepared,
+                        &history,
+                        context_usage_anchor,
+                        &compaction_settings,
+                    )
                 })
                 .flatten();
             if let Some(estimate) = compaction_estimate {
@@ -515,6 +520,7 @@ impl RunEngine {
                     history,
                     prepared.model.context_window_tokens,
                     manual_calibration,
+                    &compaction_settings,
                 )
             } else {
                 super::history::user_terminated(history, CONTINUE_MESSAGE_ID, CONTINUE_INSTRUCTION)
@@ -689,7 +695,7 @@ impl RunEngine {
                         let window_exhausted = exhausted_context_window(
                             &cycle_failure.failure,
                             cycle_failure.usage.as_ref(),
-                            super::compaction::input_budget(prepared),
+                            super::compaction::input_budget(prepared, &compaction_settings),
                         );
                         let overflow_retention = overflow.retention();
                         // A provider error whose reported input usage already
@@ -710,8 +716,11 @@ impl RunEngine {
                                         usage.context_input_tokens.or(usage.input_tokens)
                                     })
                                     .is_some_and(|tokens| {
-                                        super::compaction::input_budget(prepared)
-                                            .is_some_and(|budget| tokens >= budget)
+                                        super::compaction::input_budget(
+                                            prepared,
+                                            &compaction_settings,
+                                        )
+                                        .is_some_and(|budget| tokens >= budget)
                                     });
                         let overflow_refusal = prepared.action != RunAction::Compact
                             && (window_exhausted || provider_refusal || usage_exhausted);
@@ -956,6 +965,7 @@ impl RunEngine {
                     summary_message,
                     super::compaction::Retention::Window,
                     manual_calibration,
+                    &compaction_settings,
                 ) {
                     Ok(replacement) => replacement,
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
@@ -1451,12 +1461,16 @@ impl RunEngine {
         if compactable.is_empty() {
             let projected = crate::model::project_messages(messages)
                 .map_err(|error| RunOutcome::Failed(error.into()))?;
-            let message = super::compaction::validate_compacted(prepared, &projected, calibration)
-                .err()
-                .unwrap_or_else(|| {
-                    "context overflow after compaction: no conversation history can be compacted"
-                        .into()
-                });
+            let message = super::compaction::validate_compacted(
+                prepared,
+                &projected,
+                calibration,
+                settings,
+            )
+            .err()
+            .unwrap_or_else(|| {
+                "context overflow after compaction: no conversation history can be compacted".into()
+            });
             return Err(RunOutcome::Failed(RunFailure::Protocol(message)));
         }
 
@@ -1517,12 +1531,14 @@ impl RunEngine {
                                 history,
                                 prepared.model.context_window_tokens,
                                 calibration,
+                                settings,
                             )
                         } else {
                             super::compaction::compaction_history(
                                 history,
                                 prepared.model.context_window_tokens,
                                 calibration,
+                                settings,
                             )
                         }
                     })
@@ -1688,12 +1704,18 @@ impl RunEngine {
             summary_message,
             retention,
             calibration,
+            settings,
         )
         .map_err(|error| RunOutcome::Failed(error.into()))?;
         let projected_replacement = crate::model::project_messages(&replacement)
             .map_err(|error| RunOutcome::Failed(error.into()))?;
-        super::compaction::validate_compacted(prepared, &projected_replacement, calibration)
-            .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
+        super::compaction::validate_compacted(
+            prepared,
+            &projected_replacement,
+            calibration,
+            settings,
+        )
+        .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
         let mut checkpoint = self
             .store
             .replace_checkpoint(

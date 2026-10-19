@@ -493,6 +493,7 @@ async fn automatic_compaction_uses_the_configured_summary_model() {
             auto: true,
             summary_model_hash: summary.model_hash.clone(),
             summary_output_tokens: Some(1_024),
+            ..Default::default()
         })
         .await
         .unwrap();

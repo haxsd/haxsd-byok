@@ -16,25 +16,13 @@ use crate::{
     store::ContextUsageAnchor,
 };
 
-/// Fraction of the context window kept free, as a divisor: 10 = 10%.
-///
-/// The estimate runs behind the provider: the anchor is what the provider
-/// charged for the *previous* call, and the next request re-sends request
-/// context and carries provider-side overhead the message-tail estimate does
-/// not model. A real conversation measured 948K estimated against 1,017,628
-/// actual, a 7% shortfall that landed it over a 1M window while the check said
-/// there was room. A proportional reserve absorbs that drift and scales with
-/// the model: a 200K window keeps 20K free and a 1M window keeps 100K.
-const CONTEXT_RESERVE_DIVISOR: u64 = 10;
-
-/// Post-compaction message budget as a divisor of the context window: 5 = 20%.
-///
-/// The summary slot and the verbatim turns kept below it share this budget, so
-/// a long summary automatically leaves less room for recent turns. The static
-/// prompt prefix (mode instructions plus tool definitions) is not charged to
-/// it: that prefix is sent on every turn regardless, and charging it here would
-/// leave small windows with almost no room for the turns the model needs.
-const RETAIN_WINDOW_DIVISOR: u64 = 5;
+// The window reserve (default 10%) and the post-compaction retention share
+// (default 20%) are configurable through `CompactionSettings`; the defaults
+// preserve the shipped behaviour. The reserve absorbs the estimate running
+// behind the provider: a conversation measured at 948K estimated against
+// 1,017,628 actual landed over a 1M window while the check said there was
+// room. A proportional reserve scales with the model instead of using a fixed
+// 10K buffer.
 
 /// Safety factor applied to the summarizer input budget.
 ///
@@ -79,9 +67,17 @@ pub(super) const INSTRUCTIONS: &str = "Summarize this conversation as a short ha
 /// dropped, and keeps the Cursor summary state well formed for the client.
 pub(super) const FALLBACK_SUMMARY: &str = "This conversation was compacted because the context window was full, and the summary call failed. Older history was dropped; the turns below are kept verbatim. Continue the current task from this state.";
 
-/// Usable prompt budget: the window minus the proportional reserve.
+/// Usable prompt budget with the shipped reserve: the window minus the
+/// proportional reserve. Kept for tests that do not carry a policy.
+#[cfg(test)]
 pub(super) fn context_budget(context_window: u64) -> u64 {
-    context_window.saturating_sub(context_window / CONTEXT_RESERVE_DIVISOR)
+    context_budget_with(context_window, 10)
+}
+
+/// Usable prompt budget for one reserve percentage.
+fn context_budget_with(context_window: u64, reserve_percent: u64) -> u64 {
+    let reserve = (u128::from(context_window) * u128::from(reserve_percent) / 100) as u64;
+    context_window.saturating_sub(reserve)
 }
 
 /// Converts a provider-token budget into the estimator's unit space.
@@ -105,14 +101,20 @@ pub(super) fn output_reservation(prepared: &PreparedRun) -> u64 {
     prepared.model.max_output_tokens.unwrap_or(0)
 }
 
-/// Usable prompt budget: the window minus the proportional reserve and the
-/// next request's output reservation.
-pub(super) fn input_budget(prepared: &PreparedRun) -> Option<u64> {
+/// Usable prompt budget: the window minus the configured proportional reserve
+/// and the next request's output reservation.
+pub(super) fn input_budget(
+    prepared: &PreparedRun,
+    settings: &crate::store::CompactionSettings,
+) -> Option<u64> {
     let window = prepared
         .model
         .context_window_tokens
         .filter(|window| *window > 0)?;
-    Some(context_budget(window).saturating_sub(output_reservation(prepared)))
+    Some(
+        context_budget_with(window, settings.reserve_percent())
+            .saturating_sub(output_reservation(prepared)),
+    )
 }
 
 /// Whether a provider failure means the prompt did not fit.
@@ -160,11 +162,13 @@ pub(super) fn compaction_history(
     history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
 ) -> Vec<ProjectedMessage> {
     compact_history_at(
         history,
         context_window,
         calibration,
+        settings,
         SUMMARY_INPUT_SAFETY_PERCENT,
     )
 }
@@ -174,20 +178,28 @@ pub(super) fn compaction_history_tight(
     history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
 ) -> Vec<ProjectedMessage> {
-    compact_history_at(history, context_window, calibration, SUMMARY_RETRY_PERCENT)
+    compact_history_at(
+        history,
+        context_window,
+        calibration,
+        settings,
+        SUMMARY_RETRY_PERCENT,
+    )
 }
 
 fn compact_history_at(
     history: Vec<ProjectedMessage>,
     context_window: Option<u64>,
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
     percent: u64,
 ) -> Vec<ProjectedMessage> {
     super::history::user_terminated(
         trim_to_context(
             history,
-            summary_input_budget(context_window, calibration, percent),
+            summary_input_budget(context_window, calibration, settings, percent),
         ),
         "compaction:instruction",
         INSTRUCTIONS,
@@ -198,10 +210,11 @@ fn compact_history_at(
 fn summary_input_budget(
     context_window: Option<u64>,
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
     percent: u64,
 ) -> Option<u64> {
     let window = context_window.filter(|window| *window > 0)?;
-    let usable = context_budget(window)
+    let usable = context_budget_with(window, settings.reserve_percent())
         .saturating_sub(OUTPUT_TOKENS)
         .saturating_mul(percent)
         / 100;
@@ -374,8 +387,9 @@ pub(super) fn compaction_estimate(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
+    settings: &crate::store::CompactionSettings,
 ) -> Option<CompactionEstimate> {
-    let budget = input_budget(prepared)?;
+    let budget = input_budget(prepared, settings)?;
     let calibration = estimate_calibration(prepared, projected_messages, anchor);
     let tokens = estimated_tokens(prepared, projected_messages, anchor);
     (tokens > budget).then_some(CompactionEstimate {
@@ -390,16 +404,23 @@ pub(super) fn should_compact(
     projected_messages: &[ProjectedMessage],
     anchor: Option<ContextUsageAnchor>,
 ) -> bool {
-    compaction_estimate(prepared, projected_messages, anchor).is_some()
+    compaction_estimate(
+        prepared,
+        projected_messages,
+        anchor,
+        &crate::store::CompactionSettings::default(),
+    )
+    .is_some()
 }
 
 pub(super) fn validate_compacted(
     prepared: &PreparedRun,
     projected_messages: &[ProjectedMessage],
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
 ) -> std::result::Result<u64, String> {
     let estimated = estimate_context_tokens(&prepared.prompt, projected_messages);
-    let Some(budget) = input_budget(prepared) else {
+    let Some(budget) = input_budget(prepared, settings) else {
         return Ok(estimated);
     };
     let budget = calibrate_budget(budget, calibration);
@@ -458,6 +479,7 @@ pub(super) fn retention_budget(
     head: &[CanonicalMessage],
     after: &[CanonicalMessage],
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
 ) -> crate::Result<Option<RetentionBudget>> {
     let Some(window) = prepared
         .model
@@ -468,17 +490,25 @@ pub(super) fn retention_budget(
         // the summary slot stands alone, as it did before.
         return Ok(None);
     };
-    let Some(input_budget) = input_budget(prepared) else {
+    let Some(input_budget) = input_budget(prepared, settings) else {
         return Ok(None);
     };
     let head_tokens = projected_tokens(head)?;
     let window = calibrate_budget(window, calibration);
     let input_budget = calibrate_budget(input_budget, calibration);
-    let soft = (window / RETAIN_WINDOW_DIVISOR).saturating_sub(head_tokens);
+    let retention = (window as u128 * u128::from(settings.retention_percent()) / 100) as u64;
+    let mut soft = retention.saturating_sub(head_tokens);
+    if let Some(cap) = settings.max_retained_tokens {
+        soft = soft.min(calibrate_budget(cap, calibration));
+    }
     let hard = input_budget
         .saturating_sub(estimate_context_tokens(&prepared.prompt, &[]))
         .saturating_sub(head_tokens)
         .saturating_sub(projected_tokens(after)?);
+    let hard = match settings.max_retained_tokens {
+        Some(cap) => hard.min(calibrate_budget(cap, calibration)),
+        None => hard,
+    };
     Ok(Some(RetentionBudget { soft, hard }))
 }
 
@@ -626,6 +656,7 @@ pub(super) fn replacement(
     summary: CanonicalMessage,
     retention: Retention,
     calibration: f64,
+    settings: &crate::store::CompactionSettings,
 ) -> crate::Result<Vec<CanonicalMessage>> {
     let current_ids = prepared
         .initial_messages
@@ -641,6 +672,7 @@ pub(super) fn replacement(
             &replacement,
             &prepared.initial_messages,
             calibration,
+            settings,
         )? {
             Some(budget) => retained_tail(&compactable, budget)?,
             None => Vec::new(),
@@ -889,21 +921,29 @@ mod tests {
         }
     }
 
-    // Unit-test conveniences for the uncalibrated path: the no-anchor
-    // calibration is 1.0, so these mirror the pre-calibration signatures.
-    // Calibration-specific tests call `super::` directly.
+    // Unit-test conveniences for the default policy/calibration path. Tests
+    // that exercise a non-default policy call `super::` with explicit settings.
+    fn default_settings() -> crate::store::CompactionSettings {
+        crate::store::CompactionSettings::default()
+    }
+
     fn compaction_history(
         history: Vec<ProjectedMessage>,
         context_window: Option<u64>,
     ) -> Vec<ProjectedMessage> {
-        super::compaction_history(history, context_window, 1.0)
+        super::compaction_history(history, context_window, 1.0, &default_settings())
     }
 
     fn validate_compacted(
         prepared: &PreparedRun,
         projected_messages: &[ProjectedMessage],
     ) -> std::result::Result<u64, String> {
-        super::validate_compacted(prepared, projected_messages, 1.0)
+        super::validate_compacted(
+            prepared,
+            projected_messages,
+            1.0,
+            &crate::store::CompactionSettings::default(),
+        )
     }
 
     fn retention_budget(
@@ -911,7 +951,13 @@ mod tests {
         head: &[CanonicalMessage],
         after: &[CanonicalMessage],
     ) -> crate::Result<Option<RetentionBudget>> {
-        super::retention_budget(prepared, head, after, 1.0)
+        super::retention_budget(
+            prepared,
+            head,
+            after,
+            1.0,
+            &crate::store::CompactionSettings::default(),
+        )
     }
 
     fn replacement(
@@ -920,7 +966,14 @@ mod tests {
         summary: CanonicalMessage,
         retention: Retention,
     ) -> crate::Result<Vec<CanonicalMessage>> {
-        super::replacement(prepared, messages, summary, retention, 1.0)
+        super::replacement(
+            prepared,
+            messages,
+            summary,
+            retention,
+            1.0,
+            &crate::store::CompactionSettings::default(),
+        )
     }
 
     #[test]
@@ -1183,8 +1236,10 @@ mod tests {
             history.push(user(&format!("u{index}"), &"x".repeat(80_000)));
             history.push(assistant(&format!("a{index}"), "ok"));
         }
-        let uncalibrated = super::compaction_history(history.clone(), Some(200_000), 1.0);
-        let calibrated = super::compaction_history(history, Some(200_000), 2.0);
+        let uncalibrated =
+            super::compaction_history(history.clone(), Some(200_000), 1.0, &default_settings());
+        let calibrated =
+            super::compaction_history(history, Some(200_000), 2.0, &default_settings());
         assert!(
             estimate_projected_messages_tokens(&calibrated)
                 < estimate_projected_messages_tokens(&uncalibrated),
@@ -1717,7 +1772,7 @@ mod tests {
         let mut prepared = prepared(200_000);
         prepared.model.max_output_tokens = Some(32_000);
         assert_eq!(context_budget(200_000), 180_000);
-        assert_eq!(input_budget(&prepared), Some(148_000));
+        assert_eq!(input_budget(&prepared, &default_settings()), Some(148_000));
 
         let history = vec![canonical_user("u1", &"x".repeat(600_000))];
         let projected = project_messages(&history).unwrap();
@@ -1830,5 +1885,35 @@ mod tests {
         let digest = super::digest_of(&compactable).expect("a digest for real messages");
         assert!(!digest.contains("OLD-SUMMARY-MARKER"));
         assert!(digest.contains("continue the task"));
+    }
+
+    #[test]
+    fn compaction_policy_changes_reserve_retention_and_absolute_cap() {
+        let prepared = prepared(1_000_000);
+        assert_eq!(input_budget(&prepared, &default_settings()), Some(900_000));
+
+        let strict = crate::store::CompactionSettings {
+            reserve_percent: Some(25),
+            ..Default::default()
+        };
+        assert_eq!(
+            input_budget(&prepared, &strict),
+            Some(750_000),
+            "a 25% reserve leaves three quarters of the window for the prompt"
+        );
+
+        let capped = crate::store::CompactionSettings {
+            retention_percent: Some(5),
+            max_retained_tokens: Some(20_000),
+            ..Default::default()
+        };
+        let budget = super::retention_budget(&prepared, &[], &[], 1.0, &capped)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            budget.soft, 20_000,
+            "5% of 1M is 50k but the absolute cap wins"
+        );
+        assert_eq!(budget.hard, 20_000, "the cap bounds the hard limit too");
     }
 }

@@ -460,6 +460,12 @@ pub struct CompactionSettings {
     pub summary_model_hash: String,
     /// Output cap for the summarize call; clamped by that model's own limit.
     pub summary_output_tokens: Option<u64>,
+    /// Share of the window kept free for estimator drift and provider framing.
+    pub reserve_percent: Option<u64>,
+    /// Share of the window retained verbatim after a compaction.
+    pub retention_percent: Option<u64>,
+    /// Absolute ceiling on the retained tail; `None` keeps only the percentage.
+    pub max_retained_tokens: Option<u64>,
 }
 
 impl Default for CompactionSettings {
@@ -468,11 +474,24 @@ impl Default for CompactionSettings {
             auto: true,
             summary_model_hash: String::new(),
             summary_output_tokens: None,
+            reserve_percent: None,
+            retention_percent: None,
+            max_retained_tokens: None,
         }
     }
 }
 
 impl CompactionSettings {
+    pub fn reserve_percent(&self) -> u64 {
+        // Mirrors `run::compaction::CONTEXT_RESERVE_DIVISOR = 10`.
+        self.reserve_percent.unwrap_or(10)
+    }
+
+    pub fn retention_percent(&self) -> u64 {
+        // Mirrors `run::compaction::RETAIN_WINDOW_DIVISOR = 5`.
+        self.retention_percent.unwrap_or(20)
+    }
+
     pub fn validate(&self) -> Result<()> {
         if let Some(tokens) = self.summary_output_tokens {
             if tokens == 0 {
@@ -485,6 +504,27 @@ impl CompactionSettings {
             return Err(crate::Error::Config(
                 "compaction.summary_model_hash is too long".into(),
             ));
+        }
+        if let Some(percent) = self.reserve_percent {
+            if !(1..=50).contains(&percent) {
+                return Err(crate::Error::Config(
+                    "compaction.reserve_percent must be between 1 and 50".into(),
+                ));
+            }
+        }
+        if let Some(percent) = self.retention_percent {
+            if !(1..=50).contains(&percent) {
+                return Err(crate::Error::Config(
+                    "compaction.retention_percent must be between 1 and 50".into(),
+                ));
+            }
+        }
+        if let Some(tokens) = self.max_retained_tokens {
+            if tokens == 0 {
+                return Err(crate::Error::Config(
+                    "compaction.max_retained_tokens must be positive".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -934,6 +974,9 @@ impl Store {
             auto: settings.auto,
             summary_model_hash: settings.summary_model_hash.trim().to_owned(),
             summary_output_tokens: settings.summary_output_tokens,
+            reserve_percent: settings.reserve_percent,
+            retention_percent: settings.retention_percent,
+            max_retained_tokens: settings.max_retained_tokens,
         };
         settings.validate()?;
         let value_json = serde_json::to_string(&settings)?;
@@ -2146,12 +2189,18 @@ mod tests {
                 auto: false,
                 summary_model_hash: " 0123abcd ".into(),
                 summary_output_tokens: Some(2_048),
+                reserve_percent: Some(15),
+                retention_percent: Some(12),
+                max_retained_tokens: Some(32_768),
             })
             .await
             .unwrap();
         assert!(!saved.auto);
         assert_eq!(saved.summary_model_hash, "0123abcd");
         assert_eq!(saved.summary_output_tokens, Some(2_048));
+        assert_eq!(saved.reserve_percent, Some(15));
+        assert_eq!(saved.retention_percent, Some(12));
+        assert_eq!(saved.max_retained_tokens, Some(32_768));
         assert_eq!(store.compaction_settings().await.unwrap(), saved);
 
         let invalid = store
