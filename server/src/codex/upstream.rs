@@ -247,6 +247,7 @@ async fn prepare(
     let recorder = CallRecorder::start(
         store,
         NewLlmCall {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: CallClient::Codex,
             call_id: call_id.clone(),
             run_id: call_id.clone(),

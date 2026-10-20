@@ -1,4 +1,4 @@
-import type { CommitPromptLocale, Locale } from "../i18n/runtime";
+﻿import type { CommitPromptLocale, Locale } from "../i18n/runtime";
 import { clipConsoleBody, errorBodyMessage, errorBodyNeedsConsole } from "./utils/errorBody";
 
 export type ModelType = "openai" | "anthropic";
@@ -265,6 +265,14 @@ export interface StatisticsStorage {
   bytes: number;
   /** 数据库文件的当前大小：清理不会让它变小，界面要同时说清这两件事。 */
   database_bytes: number;
+  /**
+   * 落盘的大工具结果与压缩历史（`<数据目录>/tool-results`、`compaction-history`）的合计大小。
+   *
+   * 与 `bytes` 分开：这两块不归"清理统计"管，服务端在写入路径上按保留期惰性清理。
+   */
+  artifact_bytes: number;
+  /** 上面那两个落盘目录的保留天数（服务端的清理常量，只读）。 */
+  artifact_retention_days: number;
   call_count: number;
   trace_count: number;
   /** 服务端对话副本的闲置回收窗口（天）：只读，来自服务端的回收常量。 */
@@ -676,6 +684,24 @@ export interface LlmCall {
   error_kind: string | null;
   error_message: string | null;
   detailed: boolean;
+  /** `chat` 或 `compaction-summary`：摘要调用在列表里要能区分出来。 */
+  purpose: string;
+}
+
+/** 一次已提交的上下文压缩：压掉多少条、摘要多长、归档在哪。 */
+export interface CompactionRecord {
+  conversation_id: string;
+  run_id: string;
+  checkpoint_id: number;
+  trigger: string;
+  retention: string;
+  estimated_tokens: number | null;
+  calibration: number | null;
+  compactable_messages: number;
+  replacement_messages: number;
+  summary_chars: number;
+  archive_path: string | null;
+  created_at_ms: number;
 }
 
 export interface CallDetail {
@@ -709,6 +735,8 @@ export interface CallDetail {
       data: string;
     }>;
   } | null;
+  /** 这个 run 触发过上下文压缩时的记录。 */
+  compaction: CompactionRecord | null;
 }
 
 const packagedDesktop = "__TAURI_INTERNALS__" in window

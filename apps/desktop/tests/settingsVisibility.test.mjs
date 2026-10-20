@@ -102,6 +102,8 @@ function storageFixture() {
     call_count: 3,
     trace_count: 0,
     database_bytes: 2048,
+    artifact_bytes: 4096,
+    artifact_retention_days: 7,
     conversation_retention_days: 30,
   };
 }

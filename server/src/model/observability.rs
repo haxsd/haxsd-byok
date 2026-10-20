@@ -142,6 +142,8 @@ mod llm_call {
         pub message_count: usize,
         pub tool_count: usize,
         pub detailed: bool,
+        /// 普通对话还是压缩摘要：用量锚点只读 `Chat`。
+        pub purpose: crate::model::CallPurpose,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -190,6 +192,8 @@ mod llm_call {
         pub error_kind: Option<String>,
         pub error_message: Option<String>,
         pub detailed: bool,
+        /// `chat` 或 `compaction-summary`：摘要调用在列表里要能区分出来。
+        pub purpose: String,
     }
 
     #[derive(Clone, Debug, Serialize)]

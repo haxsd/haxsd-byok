@@ -177,6 +177,7 @@ pub(crate) mod testing {
 
     pub(crate) fn invocation(model_id: &str) -> ModelInvocation {
         ModelInvocation {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Cursor,
             call_id: "sse-test-call".into(),
             run_id: "sse-test-run".into(),

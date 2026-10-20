@@ -1,6 +1,7 @@
-//! Expires inactive runtime state while preserving lifetime usage statistics.
+﻿//! Expires inactive runtime state while preserving lifetime usage statistics.
 use super::{BlobId, Store};
-use crate::Result;
+use crate::{Error, Result};
+use std::collections::HashSet;
 
 /// 观测明细（调用请求/响应正文、追踪附件与轨迹摘要）的回收窗口。
 pub(crate) const RETENTION_MS: i64 = 3 * 24 * 60 * 60 * 1000;
@@ -87,6 +88,30 @@ impl Store {
         }
         tx.commit().await?;
         Ok(())
+    }
+
+    /// 清理落盘的大工具结果与压缩归档。
+    ///
+    /// 判定依据是**引用是否还在**：`tool_round_calls.call_id` 与 `conversations`
+    /// 都随会话回收消失，所以"消息还在、文件也还在"；写入路径不再扫目录。文件系统
+    /// 操作放在阻塞线程池里，数万行的引用集合也只读两张表各一次。
+    pub async fn prune_artifact_files(&self) -> Result<usize> {
+        let calls: Vec<String> =
+            sqlx::query_scalar("SELECT DISTINCT call_id FROM tool_round_calls")
+                .fetch_all(&self.pool)
+                .await?;
+        let conversations: Vec<String> =
+            sqlx::query_scalar("SELECT conversation_id FROM conversations")
+                .fetch_all(&self.pool)
+                .await?;
+        let live_calls: HashSet<String> = calls.into_iter().collect();
+        let live_conversations: HashSet<String> = conversations.into_iter().collect();
+        let removed = tokio::task::spawn_blocking(move || {
+            crate::model::prune_artifact_files(&live_calls, &live_conversations)
+        })
+        .await
+        .map_err(|error| Error::Store(format!("artifact prune task failed: {error}")))?;
+        Ok(removed)
     }
 
     /// Caller must exclude live transports, including requests still being compiled.

@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   CallDetail,
   CodexSettings,
   CodexStatus,
@@ -80,6 +80,7 @@ const calls: LlmCall[] = Array.from({ length: 24 }, (_, index) => {
     error_kind: failed ? "provider_rate_limit" : null,
     error_message: failed ? "Mock provider rate limit" : null,
     detailed: true,
+    purpose: "chat",
   };
 });
 
@@ -146,6 +147,9 @@ let tabSettings: TabSettings = { mode: "public", address: "" };
 let storage: StatisticsStorage = {
   bytes: 26_004_480,
   database_bytes: 1_212_334_080,
+  // 落盘的大工具结果与压缩历史：与库内观测数据分开报，按服务端的 7 天保留期惰性清理。
+  artifact_bytes: 41_943_040,
+  artifact_retention_days: 7,
   call_count: calls.length,
   trace_count: calls.length,
   conversation_retention_days: 3,
@@ -464,6 +468,7 @@ function createCallDetail(id: string): CallDetail {
       { seq: 2, received_offset_ms: 512, data: "event: response.output_text.delta", byte_count: 256 },
     ],
     cursor_trace: null,
+    compaction: null,
   };
 }
 

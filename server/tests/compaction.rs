@@ -1,4 +1,4 @@
-//! Verifies explicit and automatic context compaction behavior.
+﻿//! Verifies explicit and automatic context compaction behavior.
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
 #[path = "support/fixtures.rs"]
@@ -850,6 +850,7 @@ async fn automatic_compaction_replays_the_newest_turn_verbatim() {
     ));
     provider.push(text_response("hard state summary", 170_000, 20));
     provider.push(text_response("third answer", 20_000, 12));
+    provider.push(text_response("fourth answer", 20_000, 12));
     let registry = registry(store, &provider);
 
     let first = run(
@@ -956,6 +957,37 @@ async fn automatic_compaction_replays_the_newest_turn_verbatim() {
         previous_roots.len() - 1,
         "every root outside the summary is either summarized or kept"
     );
+
+    // 压缩后的下一轮：整段 provider 历史必须是新请求的前缀。单条消息逐字节一致
+    // 还不够——任何位置的改写都会让跨轮前缀缓存归零。
+    let fourth = run(
+        &registry,
+        "retain-fourth",
+        user_request(
+            "retain-conversation",
+            "retain-user-4",
+            "and then?",
+            &model.model_hash,
+            third.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(fourth.summary_started, 0, "the compacted history fits");
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 5, "four turns and one summary call");
+    let compacted = &requests[3].history;
+    let continued = &requests[4].history;
+    assert!(
+        continued.len() > compacted.len(),
+        "a new turn appends messages"
+    );
+    for (index, message) in compacted.iter().enumerate() {
+        assert_eq!(
+            serde_json::to_string(message).unwrap(),
+            serde_json::to_string(&continued[index]).unwrap(),
+            "provider message {index} must stay byte-identical across the turn boundary"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1769,4 +1801,78 @@ fn kv_ack(id: u32) -> pb::AgentClientMessage {
             },
         )),
     }
+}
+/// 预留比例是真正的策略开关：同一段历史，默认 10% 放行，调到 50% 就必须压缩。
+#[tokio::test]
+async fn raising_the_reserve_percent_makes_the_same_history_compact() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("reserve-model", Some(100_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response(
+        &format!("{} BIG-TURN", "q".repeat(240_000)),
+        20_000,
+        1_000,
+    ));
+    provider.push(text_response("second answer", 60_000, 20));
+    provider.push(text_response("reserve summary", 40_000, 20));
+    provider.push(text_response("third answer", 20_000, 20));
+    let registry = registry(store.clone(), &provider);
+
+    let first = run(
+        &registry,
+        "reserve-first",
+        user_request(
+            "reserve-conversation",
+            "reserve-user-1",
+            "write the big report",
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "reserve-second",
+        user_request(
+            "reserve-conversation",
+            "reserve-user-2",
+            "continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert_eq!(
+        second.summary_started, 0,
+        "the default 10% reserve still fits this history"
+    );
+
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            auto: true,
+            reserve_percent: Some(50),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let third = run(
+        &registry,
+        "reserve-third",
+        user_request(
+            "reserve-conversation",
+            "reserve-user-3",
+            "continue again",
+            &model.model_hash,
+            second.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    assert!(
+        third.summary_started >= 1,
+        "a 50% reserve compacts the same history"
+    );
 }

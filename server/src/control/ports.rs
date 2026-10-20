@@ -13,6 +13,7 @@
 use tokio::net::TcpListener;
 
 use crate::{
+    codex::CodexSettings,
     devin::{gateway::DevinBoundPorts, DevinSettings},
     store::Store,
     Error, Result,
@@ -72,6 +73,84 @@ pub(super) async fn ensure_devin_ports_usable(
         }
     }
     Ok(())
+}
+
+/// Refuses a Codex settings save whose port could not be listened on.
+///
+/// Same reasoning as the Devin check: the Codex gateway binds its port without a
+/// fallback, and a port taken by our own service/proxy/Devin listener (or by
+/// another program) used to surface as "saved, not listening" with a raw io
+/// error nobody could act on. `own_listener` is the port the running gateway
+/// already holds — that one is ours, not an occupier.
+pub(super) async fn ensure_codex_port_usable(
+    store: &Store,
+    settings: &CodexSettings,
+    own_listener: Option<u16>,
+) -> Result<()> {
+    let port = settings.port;
+    if port == 0 {
+        return Err(Error::Config("Codex port must be non-zero".into()));
+    }
+    for (owned, description) in app_ports_for_codex(store).await? {
+        if owned == port {
+            return Err(Error::Config(format!(
+                "Codex gateway port {port} is already used by haxsd byok as the {description}; choose a different port for the gateway"
+            )));
+        }
+    }
+    if own_listener == Some(port) {
+        return Ok(());
+    }
+    if !settings.enabled {
+        return Ok(());
+    }
+    if let Some(error) = bind_conflict(port).await {
+        return Err(Error::Config(match error.kind() {
+            std::io::ErrorKind::AddrInUse => format!(
+                "Codex gateway port {port} is already in use by another program on this machine; \
+                 close it or choose a different port for the gateway"
+            ),
+            _ => format!(
+                "Codex gateway port {port} cannot be listened on by this app: {error}; \
+                 choose a different port for the gateway"
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// The other listeners this app owns; the Codex port itself is deliberately not
+/// in the list (saving the same port again must stay a no-op, not a conflict).
+async fn app_ports_for_codex(store: &Store) -> Result<Vec<(u16, &'static str)>> {
+    let ports = store.port_settings().await?;
+    let mut own = Vec::new();
+    for (port, description) in [
+        (ports.service_port, "management service port"),
+        (ports.proxy_port, "Cursor proxy port"),
+    ] {
+        if port != 0 {
+            own.push((port, description));
+        }
+    }
+    // 一条读不动的 Devin 设置不该拦住 Codex 页：Devin 页自己会报那一行的问题。
+    match store.devin_settings().await {
+        Ok(devin) => {
+            for (port, description) in [
+                (devin.api_port, "Devin API port"),
+                (devin.inference_port, "Devin inference port"),
+                (devin.local_api_port, "Devin local API port"),
+            ] {
+                if port != 0 {
+                    own.push((port, description));
+                }
+            }
+        }
+        Err(error) => tracing::warn!(
+            %error,
+            "Devin settings could not be read; the Codex port check skips its ports"
+        ),
+    }
+    Ok(own)
 }
 
 /// The app's own listeners, read from the settings that are in effect.
@@ -326,5 +405,130 @@ mod tests {
         tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port))
             .await
             .unwrap();
+    }
+
+    /// Codex 的端口准入：被本应用自己的监听器占着时要指名道姓，而不是让保存成功、
+    /// 监听失败、重启也不管用。
+    #[tokio::test]
+    async fn a_codex_port_held_by_our_own_listeners_is_refused_by_name() {
+        let (_directory, store) = temp_store().await;
+        store.set_service_port(42_001).await.unwrap();
+        store.set_proxy_port(42_002).await.unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                api_port: 42_003,
+                inference_port: 42_004,
+                local_api_port: 42_005,
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+
+        for (port, expected) in [
+            (42_001, "management service port"),
+            (42_002, "Cursor proxy port"),
+            (42_003, "Devin API port"),
+            (42_004, "Devin inference port"),
+            (42_005, "Devin local API port"),
+        ] {
+            let error = ensure_codex_port_usable(
+                &store,
+                &CodexSettings {
+                    port,
+                    ..CodexSettings::default()
+                },
+                None,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+            assert!(
+                error.contains(expected) && error.contains(&port.to_string()),
+                "port {port} should name {expected}: {error}"
+            );
+        }
+    }
+
+    /// 同一个端口再存一次不算冲突（那是我们自己的监听器），空闲端口可以直接保存。
+    #[tokio::test]
+    async fn the_codex_gateways_own_port_and_a_free_port_are_accepted() {
+        let (_directory, store) = temp_store().await;
+        ensure_codex_port_usable(
+            &store,
+            &CodexSettings {
+                port: 42_010,
+                ..CodexSettings::default()
+            },
+            Some(42_010),
+        )
+        .await
+        .unwrap();
+
+        let port = free_port();
+        ensure_codex_port_usable(
+            &store,
+            &CodexSettings {
+                port,
+                ..CodexSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+    }
+
+    /// 别的程序占着、或者开关没打开（不监听）时的两种结果。
+    #[tokio::test]
+    async fn a_codex_port_held_by_another_program_is_refused_unless_the_gateway_is_disabled() {
+        let (_directory, store) = temp_store().await;
+        let occupied = OccupiedPort::new();
+        let error = ensure_codex_port_usable(
+            &store,
+            &CodexSettings {
+                enabled: true,
+                port: occupied.port(),
+                ..CodexSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("another program") && error.contains(&occupied.port().to_string()),
+            "{error}"
+        );
+
+        ensure_codex_port_usable(
+            &store,
+            &CodexSettings {
+                enabled: false,
+                port: occupied.port(),
+                ..CodexSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_zero_codex_port_is_refused() {
+        let (_directory, store) = temp_store().await;
+        let error = ensure_codex_port_usable(
+            &store,
+            &CodexSettings {
+                port: 0,
+                ..CodexSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("Codex port must be non-zero"), "{error}");
     }
 }

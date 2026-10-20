@@ -2,6 +2,7 @@
 mod cas;
 mod checkpoints;
 mod codex;
+mod compactions;
 mod conversations;
 mod cursor_traces;
 mod input_anchors;
@@ -20,6 +21,7 @@ mod tool_rounds;
 mod writer;
 
 pub use cas::*;
+pub use compactions::{CompactionEvent, NewCompactionEvent};
 pub(crate) use cursor_traces::BufferedCursorTraceChunk;
 pub(crate) use llm_calls::{BufferedLlmChunk, ContextUsageAnchor};
 pub use runs::*;

@@ -18,6 +18,27 @@ pub struct ModelRequest {
     pub history: Vec<ProjectedMessage>,
 }
 
+/// 一次模型调用在业务上的用途。
+///
+/// 自动压缩的摘要调用与普通对话共用 `llm_calls`：它确实是一次 provider 调用，用量也要
+/// 计费统计。但它的输入是被裁剪过的重放历史，不代表会话当前的上下文长度；上下文用量
+/// 锚点只读 [`CallPurpose::Chat`] 的行，否则摘要调用之后的估算会按"重放输入"起算。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CallPurpose {
+    #[default]
+    Chat,
+    CompactionSummary,
+}
+
+impl CallPurpose {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::CompactionSummary => "compaction-summary",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ModelInvocation {
     pub client_source: super::CallClient,
@@ -25,6 +46,8 @@ pub struct ModelInvocation {
     pub run_id: String,
     pub conversation_id: String,
     pub provider_call_index: u64,
+    /// 这次调用是普通对话还是压缩摘要；只有普通对话会更新上下文用量锚点。
+    pub purpose: CallPurpose,
     pub request: ModelRequest,
 }
 

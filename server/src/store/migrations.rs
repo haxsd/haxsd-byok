@@ -527,6 +527,16 @@ mod tests {
             .await
             .unwrap();
 
+            let llm_call_purpose_exists: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(
+                    SELECT 1 FROM pragma_table_info('llm_calls')
+                    WHERE name = 'purpose'
+                 )",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
             let runs_status_index_exists: i64 = sqlx::query_scalar(
                 "SELECT EXISTS(
                     SELECT 1 FROM sqlite_master
@@ -568,7 +578,10 @@ mod tests {
             assert_eq!(checksum_after, checksum_before);
             assert_eq!(
                 versions,
-                vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+                vec![
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                    23, 24
+                ]
             );
             assert_eq!(checkpoint_table_exists, 1);
             assert_eq!(argument_error_column_exists, 1);
@@ -576,6 +589,7 @@ mod tests {
             assert_eq!(client_source_index_exists, 1);
             assert_eq!(message_image_table_exists, 1);
             assert_eq!(artifact_byte_count_exists, 1);
+            assert_eq!(llm_call_purpose_exists, 1);
             assert_eq!(runs_status_index_exists, 1);
             assert_eq!(llm_calls_conversation_index_exists, 1);
             assert_eq!(runs_parent_indexes_exist, 2);

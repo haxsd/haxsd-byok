@@ -141,6 +141,16 @@ impl OverflowEpisode {
     fn preflight_compacted(&mut self) {
         self.compactions = self.compactions.max(1);
     }
+
+    /// 当前 episode 内是否已经压过一次。
+    ///
+    /// 预检压缩提交后，下一轮的估算必须跳过：否则同一个 episode 里会立刻再估一次
+    /// （此时校准锚点已被清空，按 1.0 复算），一旦仍超预算就白付第二次摘要调用，
+    /// 再因为复核失败以 "context overflow after compaction" 结束。让上游当裁决者：
+    /// 真放不下会拒绝，那时再走 `retention()` 的台阶。
+    fn already_compacted(&self) -> bool {
+        self.compactions > 0
+    }
 }
 
 /// `auto_compact` 的输入。
@@ -466,16 +476,17 @@ impl RunEngine {
                 Err(error) => return (RunOutcome::Failed(error.into()), usage),
             };
             let compaction_estimate = (prepared.action != RunAction::Compact
-                && compaction_settings.auto)
-                .then(|| {
-                    super::compaction::compaction_estimate(
-                        &compaction_run,
-                        &history,
-                        context_usage_anchor,
-                        &compaction_settings,
-                    )
-                })
-                .flatten();
+                && compaction_settings.auto
+                && !overflow.already_compacted())
+            .then(|| {
+                super::compaction::compaction_estimate(
+                    &compaction_run,
+                    &history,
+                    context_usage_anchor,
+                    &compaction_settings,
+                )
+            })
+            .flatten();
             if let Some(estimate) = compaction_estimate {
                 if emit(
                     client,
@@ -597,6 +608,7 @@ impl RunEngine {
                     format!("{}:{provider_call_index}:retry-{retries}", prepared.run_id)
                 };
                 let invocation = crate::model::ModelInvocation {
+                    purpose: crate::model::CallPurpose::Chat,
                     client_source: crate::model::CallClient::Cursor,
                     call_id,
                     run_id: prepared.run_id.to_string(),
@@ -1018,6 +1030,7 @@ impl RunEngine {
                 let event_id = format!("summary:{}", prepared.run_id);
                 let summary = super::compaction::with_context_anchors(&summary, &messages);
                 let archive = crate::model::archive_compaction_history(
+                    &prepared.conversation_id.to_string(),
                     &prepared.run_id.to_string(),
                     &messages,
                 );
@@ -1570,8 +1583,11 @@ impl RunEngine {
         // reuse step appends a digest of the span it drops, so the slot must
         // point at the archive written for this compaction, not only at the one
         // referenced by the earlier summarized span.
-        let archive =
-            crate::model::archive_compaction_history(&prepared.run_id.to_string(), &compactable);
+        let archive = crate::model::archive_compaction_history(
+            &prepared.conversation_id.to_string(),
+            &prepared.run_id.to_string(),
+            &compactable,
+        );
         // Second overflow step: when a summary slot already exists, drop the
         // retained turns around it instead of paying for another summarize call
         // over nearly the same history. The digest keeps the newest concrete
@@ -1595,7 +1611,9 @@ impl RunEngine {
             (
                 summary,
                 None,
-                format!("summary:auto:{}:reuse", prepared.run_id),
+                // 一次 run 里可能压缩多次（成功调用会清零台阶），用当前 checkpoint
+                // 区分：常量 id 会让第二次 reuse 带着不同内容撞上同一个 runtime_event_id。
+                format!("summary:auto:{}:reuse:{}", prepared.run_id, checkpoint.0),
             )
         } else {
             let target = self.summary_target(prepared, settings).await;
@@ -1612,8 +1630,9 @@ impl RunEngine {
             let mut summary_usage: Option<Usage> = None;
             let mut summary_call_index: Option<u64> = None;
             let mut attempts = 0_u8;
+            // 下一次重试是否收紧重放：只有"提示超长"需要，瞬时故障原样重试。
+            let mut tighten = false;
             let (summary, compaction_usage) = 'summary: loop {
-                let retry = attempts > 0;
                 attempts = attempts.saturating_add(1);
                 // A provider call per attempt keeps each request observable.
                 let provider_call_index = self
@@ -1626,10 +1645,10 @@ impl RunEngine {
                 }
                 let history = crate::model::project_messages(&compactable)
                     .map(|history| {
-                        // First attempt: the calibrated safe budget. Retry after a
-                        // failed summarize call: cut the replayed history roughly in
-                        // half so an estimator overshoot cannot repeat the failure.
-                        if retry {
+                        // First attempt: the calibrated safe budget. Retry after an
+                        // over-limit refusal: cut the replayed history roughly in
+                        // half so the same overshoot cannot repeat.
+                        if tighten {
                             super::compaction::compaction_history_tight(
                                 history,
                                 &summary_input,
@@ -1641,6 +1660,8 @@ impl RunEngine {
                     })
                     .map_err(|error| RunOutcome::Failed(error.into()))?;
                 let invocation = crate::model::ModelInvocation {
+                    // 摘要调用的输入是被裁剪过的重放历史，不能当上下文用量锚点。
+                    purpose: crate::model::CallPurpose::CompactionSummary,
                     client_source: crate::model::CallClient::Cursor,
                     call_id: format!("{}:{provider_call_index}", prepared.run_id),
                     run_id: prepared.run_id.to_string(),
@@ -1717,7 +1738,7 @@ impl RunEngine {
                         summary_usage,
                     );
                 }
-                let outcome: Result<(), (String, bool)> = match cycle {
+                let outcome: Result<(), (String, bool, bool)> = match cycle {
                     Ok(cycle) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
                         let usage = cycle.usage;
                         break 'summary (cycle.text.trim().to_string(), {
@@ -1734,45 +1755,51 @@ impl RunEngine {
                         Err((
                             "automatic compaction returned no usable summary".to_string(),
                             true,
+                            false,
                         ))
                     }
                     Err(failure) => {
                         if let Some(usage) = failure.usage {
                             accumulate_usage(&mut summary_usage, usage);
                         }
-                        // A tighter replay only helps when the prompt was over
-                        // the limit (which the normal retry policy classifies
-                        // as non-retryable). Transient provider failures stay
-                        // retryable; auth/quota/bad-request failures must not
-                        // buy a second summarize call just to fail again.
-                        let retryable = failure.retryable
-                            || matches!(
-                                &failure.failure,
-                                RunFailure::Provider(message)
-                                    if super::compaction::is_context_overflow(message)
-                            );
+                        // 只有"提示超长"才值得收紧重放：把历史砍一半能救回这一次调用。
+                        // 瞬时故障（500/timeout）原样重试——收紧只会无缘无故降低第二次
+                        // 摘要的质量；鉴权、配额、坏请求本来就不该买第二次调用。
+                        let overflow = matches!(
+                            &failure.failure,
+                            RunFailure::Provider(message)
+                                if super::compaction::is_context_overflow(message)
+                        );
+                        let retryable = failure.retryable || overflow;
                         Err((
                             format!("automatic compaction model failed: {:?}", failure.failure),
                             retryable,
+                            overflow,
                         ))
                     }
                 };
                 let retryable = outcome
                     .as_ref()
                     .err()
-                    .is_some_and(|(_, retryable)| *retryable);
+                    .is_some_and(|(_, retryable, _)| *retryable);
                 if attempts < 2 && retryable {
+                    // 只有超长才收紧重放；瞬时故障原样再试一次。
+                    tighten = outcome
+                        .as_ref()
+                        .err()
+                        .is_some_and(|(_, _, tighten)| *tighten);
                     tracing::warn!(
                         attempt = attempts,
-                        error = outcome.as_ref().err().map(|(message, _)| message),
-                        "automatic compaction failed; retrying once with a tighter history"
+                        tighten,
+                        error = outcome.as_ref().err().map(|(message, _, _)| message),
+                        "automatic compaction failed; retrying once"
                     );
                     continue 'summary;
                 }
                 tracing::warn!(
                     attempts,
                     retryable,
-                    error = outcome.as_ref().err().map(|(message, _)| message),
+                    error = outcome.as_ref().err().map(|(message, _, _)| message),
                     "automatic compaction failed; using the fallback summary"
                 );
                 break 'summary (
@@ -1811,6 +1838,7 @@ impl RunEngine {
             settings,
         )
         .map_err(|message| RunOutcome::Failed(RunFailure::Protocol(message)))?;
+        let summary_chars = summary.chars().count();
         tracing::info!(
             run_id = %prepared.run_id,
             trigger,
@@ -1819,7 +1847,7 @@ impl RunEngine {
             retention = ?retention,
             compactable_messages = compactable.len(),
             replacement_messages = replacement.len(),
-            summary_chars = summary.chars().count(),
+            summary_chars,
             "compaction committed"
         );
         let mut checkpoint = self
@@ -1832,6 +1860,33 @@ impl RunEngine {
             )
             .await
             .map_err(|error| RunOutcome::Failed(error.into()))?;
+        // 界面要能看到"这段历史被压缩过"：提交成功后留一条记录。观测写入是旁路，
+        // 失败只留 warn——历史已经提交，不该因此把这一轮判死。
+        let retention_label = match retention {
+            super::compaction::Retention::Window => "window",
+            super::compaction::Retention::None => "none",
+        };
+        let run_id = prepared.run_id.to_string();
+        let archive_path = archive.as_ref().map(|path| path.display().to_string());
+        if let Err(error) = self
+            .store
+            .record_compaction_event(&crate::store::NewCompactionEvent {
+                conversation_id: prepared.conversation_id.as_str(),
+                run_id: &run_id,
+                checkpoint_id: checkpoint.0,
+                trigger,
+                retention: retention_label,
+                estimated_tokens: estimated_tokens.map(|tokens| tokens as i64),
+                calibration: Some(calibration),
+                compactable_messages: compactable.len() as i64,
+                replacement_messages: replacement.len() as i64,
+                summary_chars: summary_chars as i64,
+                archive_path: archive_path.as_deref(),
+            })
+            .await
+        {
+            tracing::warn!(%error, "failed to record the compaction event; the compaction itself is committed");
+        }
         let (barrier, ready) = CommitBarrier::before_continue();
         emit(
             client,
@@ -2326,7 +2381,15 @@ mod tests {
     #[test]
     fn a_preflight_compaction_advances_the_overflow_ladder() {
         let mut episode = OverflowEpisode::default();
+        assert!(
+            !episode.already_compacted(),
+            "a fresh episode checks pressure"
+        );
         episode.preflight_compacted();
+        assert!(
+            episode.already_compacted(),
+            "the same episode must not run the pressure check again after compacting"
+        );
         assert_eq!(
             episode.retention(),
             Some(crate::run::compaction::Retention::None),
@@ -2337,6 +2400,10 @@ mod tests {
         assert_eq!(
             episode.retention(),
             Some(crate::run::compaction::Retention::Window)
+        );
+        assert!(
+            !episode.already_compacted(),
+            "a later overflow in the same run checks pressure again"
         );
     }
 

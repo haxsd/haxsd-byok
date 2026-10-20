@@ -8,7 +8,7 @@ import { TitledCard } from "../../shared/ui/TitledCard";
 import { browserTimers, type PollTimers } from "../../shared/utils/pollTimers";
 import { loadWhenVisible } from "../../shared/utils/visibleLoad";
 import { loadStatisticsStorage } from "./settingsLoaders";
-import { clearingCounter, conversationRetentionDays, formatBytes, hasWebCache, LOG_RETENTION_DAYS, storageHint, storageHintThreshold } from "./storageHint";
+import { clearingCounter, formatBytes, hasWebCache, LOG_RETENTION_DAYS, retentionDays, storageHint, storageHintThreshold } from "./storageHint";
 import styles from "./SettingsPage.module.scss";
 
 /** 清理在服务端后台分批跑：清完之前每隔这么久问一次进度。 */
@@ -60,7 +60,8 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     finally { setBusy(false); }
   };
   const hint = storage ? storageHint(storage) : null;
-  const retentionDays = conversationRetentionDays(storage?.conversation_retention_days);
+  const conversationDays = retentionDays(storage?.conversation_retention_days);
+  const artifactDays = retentionDays(storage?.artifact_retention_days);
   const clearable = storage ? hasWebCache(storage) : false;
   const progress = clearing ? clearingCounter(clearingScope, clearing) : 0;
   return <>
@@ -89,7 +90,12 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
         ? t("可清理的观测数据已超过 {threshold}：清理详细记录能收回这部分空间，调用列表与用量统计不受影响。", { threshold: formatBytes(storageHintThreshold(hint)) })
         : t("数据库文件已超过 {threshold}，其中大部分是对话内容与内容块（为前缀缓存保留，这里的清理不删它们）；清理只让文件不再继续变大。", { threshold: formatBytes(storageHintThreshold(hint)) })}</p>}
       {/* 对话内容那部分也不是无底洞：服务端自己的副本按闲置窗口自动回收，卡片必须说出这个策略。 */}
-      {retentionDays > 0 && <p className={styles.storageHint}>{t("服务端的对话副本闲置 {days} 天后自动回收；对话本身保存在客户端，继续使用旧对话时会按需取回。", { days: retentionDays })}</p>}
+      {conversationDays > 0 && <p className={styles.storageHint}>{t("服务端的对话副本闲置 {days} 天后自动回收；对话本身保存在客户端，继续使用旧对话时会按需取回。", { days: conversationDays })}</p>}
+      {/* 大工具结果与压缩历史同样占磁盘，但不在库里、也不归"清理存储空间"管：服务端在写入
+          路径上按保留期惰性清理，这里只说清"它会自己过期"。 */}
+      {storage && <p className={styles.storageHint}>{artifactDays > 0
+        ? t("大工具结果与压缩历史：{size}（随会话一起回收；没有引用的文件最多再留 {days} 天）", { size: formatBytes(storage.artifact_bytes), days: artifactDays })
+        : t("大工具结果与压缩历史：{size}（随会话一起回收）", { size: formatBytes(storage.artifact_bytes) })}</p>}
       {/* 日志同样按天滚动、不删就只增不减；保留期与代码里的常量一致，别在这里另写一个数字。 */}
       <p className={styles.storageHint}>{t("日志文件保留 {days} 天，过期自动删除。", { days: LOG_RETENTION_DAYS })}</p>
       {error && !open && <div className={styles.inlineError} role="alert"><span>{error}</span><Button size="small" onClick={() => setAttempt(value => value + 1)}>{t("重试")}</Button></div>}

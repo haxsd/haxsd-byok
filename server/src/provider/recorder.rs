@@ -419,6 +419,7 @@ mod tests {
         let recorder = CallRecorder::start(
             store.clone(),
             NewLlmCall {
+                purpose: crate::model::CallPurpose::Chat,
                 client_source: crate::model::CallClient::Internal,
                 call_id: "cancel-on-drop".into(),
                 run_id: "run".into(),

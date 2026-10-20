@@ -1,13 +1,14 @@
 //! 调用来源是显式数据，不通过 ID 前缀猜测新调用。
 #[path = "support/fixtures.rs"]
 mod fixtures;
-use cursor_server::model::{CallClient, NewLlmCall, ProviderType};
+use cursor_server::model::{CallClient, CallPurpose, NewLlmCall, ProviderType};
 
 #[tokio::test]
 async fn call_source_round_trips_even_when_its_id_looks_like_another_client() {
     let (_dir, store) = fixtures::temp_store().await;
     store
         .start_llm_call(&NewLlmCall {
+            purpose: CallPurpose::Chat,
             client_source: CallClient::Codex,
             call_id: "devin:misleading-id".into(),
             run_id: "r".into(),

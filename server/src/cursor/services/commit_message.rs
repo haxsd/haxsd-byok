@@ -129,6 +129,7 @@ fn build_invocation(
 ) -> ModelInvocation {
     let call_id = format!("commit-message-{}", uuid::Uuid::new_v4());
     ModelInvocation {
+        purpose: crate::model::CallPurpose::Chat,
         client_source: crate::model::CallClient::Cursor,
         call_id: call_id.clone(),
         run_id: call_id.clone(),

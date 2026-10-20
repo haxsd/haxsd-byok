@@ -187,6 +187,18 @@ impl CodexGateway {
         Ok(())
     }
 
+    /// 当前正在监听的端口（自己有监听器时才有值）。
+    ///
+    /// 保存端口时它算"我们自己的监听器"，不能被当成"被别的程序占用"——否则把同一个端口
+    /// 再存一次都会报冲突。与 `status()` 判定 `listening` 的口径一致。
+    pub async fn listening_port(&self) -> Option<u16> {
+        let runtime = self.inner.runtime.lock().await;
+        runtime
+            .as_ref()
+            .filter(|running| running.alive.load(Ordering::SeqCst))
+            .map(|running| running.port)
+    }
+
     pub async fn save_settings(&self, settings: CodexSettings) -> Result<CodexSettings> {
         let _operation = self.inner.operations.lock().await;
         settings.validate()?;

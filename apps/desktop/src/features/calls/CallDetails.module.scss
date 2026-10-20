@@ -25,3 +25,12 @@
   margin-bottom: var(--oa-space-3);
   font-variant-numeric: tabular-nums;
 }
+
+.compaction {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 4px;
+}

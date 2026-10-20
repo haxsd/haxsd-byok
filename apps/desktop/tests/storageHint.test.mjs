@@ -58,14 +58,14 @@ test("byte sizes read the way the card prints them", () => {
 // 卡片里"服务端对话副本闲置 N 天后自动回收"的 N 直接印在句子中间：坏数字（缺失、0、
 // 负数、NaN）会让句子变成"闲置 0 天"或"闲置 NaN 天"，比不写数字更糟。
 test("the retention window the card prints is the one the server reported", () => {
-  assert.equal(module.conversationRetentionDays(3), 3);
-  assert.equal(module.conversationRetentionDays(20), 20);
+  assert.equal(module.retentionDays(3), 3);
+  assert.equal(module.retentionDays(20), 20);
   // 服务端不该发小数，真发了也不在句子里印小数天。
-  assert.equal(module.conversationRetentionDays(3.9), 3);
+  assert.equal(module.retentionDays(3.9), 3);
 });
 
 test("a missing or nonsensical retention window reads as no number", () => {
   for (const value of [undefined, null, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.equal(module.conversationRetentionDays(value), 0, `value: ${String(value)}`);
+    assert.equal(module.retentionDays(value), 0, `value: ${String(value)}`);
   }
 });

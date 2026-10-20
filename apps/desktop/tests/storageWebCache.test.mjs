@@ -18,6 +18,8 @@ const STORAGE = `${API_ROOT}/settings/storage/statistics`;
 const STORAGE_FIXTURE = {
   bytes: 26_004_480,
   database_bytes: 1_212_334_080,
+  artifact_bytes: 41_943_040,
+  artifact_retention_days: 7,
   call_count: 12,
   trace_count: 12,
   conversation_retention_days: 3,
@@ -118,4 +120,16 @@ test("the card renders both rows and wires the cache button to the dialog", asyn
   assert.match(source, /setScope\("web_cache"\)/, "缓存那一行的按钮要把作用域设成 web_cache");
   assert.match(source, /clearingCounter\(clearingScope, clearing\)/, "进度按作用域取对应的计数");
   assert.doesNotMatch(source, /bytes \+ storage\.web_cache_bytes/, "别把两个数字加起来");
+});
+
+// 大工具结果与压缩历史也不在库里：服务端按"引用还在不在"清理（维护循环）。卡片要把体积与
+// 保留期一起说出来，但天数只有服务端给了正数才印——缺字段时宁可不提，也不印"保留 0 天"。
+test("the artifact row reports disk usage and only names a window the server sent", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /formatBytes\(storage\.artifact_bytes\)/, "要显示落盘目录的合计体积");
+  assert.match(source, /retentionDays\(storage\?\.artifact_retention_days\)/, "天数走与对话窗口同一套判定");
+  assert.match(source, /大工具结果与压缩历史：\{size\}（随会话一起回收；没有引用的文件最多再留 \{days\} 天）/, "有正数天数时的句子");
+  assert.match(source, /大工具结果与压缩历史：\{size\}（随会话一起回收）/, "天数缺失时的句子不能带 {days}");
+  assert.doesNotMatch(source, /artifact_retention_days \?\? \d+/, "别在前端写死保留天数");
 });

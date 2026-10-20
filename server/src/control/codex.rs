@@ -41,6 +41,14 @@ async fn save(
     State(state): State<CodexControl>,
     Json(settings): Json<CodexSettings>,
 ) -> Result<Json<CodexSettings>> {
+    // 端口准入在写库之前：被自己或别的程序占着时，宁可拒绝保存，也不要留下
+    // "已保存、未监听、重启也不管用"的状态。
+    super::ports::ensure_codex_port_usable(
+        &state.store,
+        &settings,
+        state.gateway.listening_port().await,
+    )
+    .await?;
     Ok(Json(state.gateway.save_settings(settings).await?))
 }
 async fn status(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {

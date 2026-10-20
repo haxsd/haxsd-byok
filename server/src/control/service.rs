@@ -201,6 +201,8 @@ pub struct CallDetail {
     pub cursor_trace: Option<CursorTraceDetail>,
     /// 正文被闸门截断过：只回了一部分，剩下的没取。
     pub truncated: bool,
+    /// 这个 run 触发过上下文压缩时的记录：压掉多少条、摘要多长、归档在哪。
+    pub compaction: Option<crate::store::CompactionEvent>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -554,6 +556,7 @@ impl ControlService {
         }
         let call_id = format!("model-test-{}", uuid::Uuid::new_v4());
         let invocation = ModelInvocation {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Internal,
             call_id: call_id.clone(),
             run_id: call_id.clone(),
@@ -718,6 +721,15 @@ impl ControlService {
                 CALL_DETAIL_BUDGET,
                 |chunk| chunk.data.len(),
             );
+            // 这个 run 触发过压缩：详情里要说清楚，否则用户只会觉得"模型忘了前面的事"。
+            let compaction = self
+                .store
+                .compaction_event_for_run(&call.run_id)
+                .await
+                .unwrap_or_else(|error| {
+                    tracing::warn!(%error, "compaction event lookup failed");
+                    None
+                });
             return Ok(CallDetail {
                 request: self.store.llm_call_request(call_id).await?,
                 response_chunks,
@@ -728,6 +740,7 @@ impl ControlService {
                     route: "local_byok",
                 },
                 cursor_trace,
+                compaction,
             });
         }
         let request_id = call_id.strip_prefix("cursor:").unwrap_or(call_id);
@@ -744,6 +757,7 @@ impl ControlService {
             response_chunks: Vec::new(),
             truncated: cursor_trace.truncated,
             cursor_trace: Some(cursor_trace),
+            compaction: None,
         })
     }
 
@@ -966,6 +980,7 @@ fn official_call(trace: CursorRunTraceSummary) -> CallSummary {
             error_kind: error.as_ref().map(|_| "cursor_official".into()),
             error_message: error,
             detailed: true,
+            purpose: "chat".into(),
         },
         call_kind: "cursor_official",
         route: "cursor_official",
@@ -1519,6 +1534,7 @@ mod tests {
         let recorder = crate::provider::CallRecorder::start(
             store.clone(),
             crate::model::NewLlmCall {
+                purpose: crate::model::CallPurpose::Chat,
                 client_source: crate::model::CallClient::Internal,
                 call_id: call_id.clone(),
                 run_id: call_id.clone(),

@@ -491,6 +491,7 @@ mod tests {
         let recorder = CallRecorder::start(
             store.clone(),
             NewLlmCall {
+                purpose: crate::model::CallPurpose::Chat,
                 client_source: CallClient::Internal,
                 call_id: call_id.into(),
                 run_id: call_id.into(),
@@ -912,6 +913,7 @@ mod tests {
 
         let events = collect_events(provider.stream(
             ModelInvocation {
+                purpose: crate::model::CallPurpose::Chat,
                 client_source: CallClient::Internal,
                 call_id: "retry-adapter".into(),
                 run_id: "run".into(),

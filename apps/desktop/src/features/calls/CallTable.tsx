@@ -111,6 +111,7 @@ export function CallTable({ calls, noCallsYet = false, onDetails }: { calls: Llm
               <span className={styles.model} role="cell">
                 <span className={styles.modelName} title={call.display_name}>{call.display_name || call.model_id}</span>
                 <span className={styles.modelId} title={call.model_id}>{call.model_id}</span>
+                {call.purpose === "compaction-summary" && <span className={styles.purposeBadge}>{t("压缩摘要")}</span>}
               </span>
               <span className={styles.time} role="cell" title={Number.isFinite(call.created_at_ms) ? new Date(call.created_at_ms).toLocaleString() : "-"}>
                 {formatRelativeTime(call.created_at_ms, locale)}

@@ -8,7 +8,7 @@ use crate::{
 
 use super::{now_ms, Store};
 
-const CALL_COLUMNS: &str = "client_source, call_id, run_id, conversation_id, provider_call_index, model_hash, provider_type, provider_url, request_type, request_url, model_id, display_name, reasoning_effort, fast, status, finish_reason, created_at_ms, request_started_at_ms, response_headers_at_ms, first_event_at_ms, first_text_at_ms, first_valid_response_at_ms, finished_at_ms, queue_ms, ttfb_ms, ttft_ms, ttfr_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, usage_json, message_count, tool_count, request_bytes, response_bytes, stream_event_count, http_status, error_kind, error_message, detailed";
+const CALL_COLUMNS: &str = "client_source, call_id, run_id, conversation_id, provider_call_index, model_hash, provider_type, provider_url, request_type, request_url, model_id, display_name, reasoning_effort, fast, status, finish_reason, created_at_ms, request_started_at_ms, response_headers_at_ms, first_event_at_ms, first_text_at_ms, first_valid_response_at_ms, finished_at_ms, queue_ms, ttfb_ms, ttft_ms, ttfr_ms, duration_ms, input_tokens, output_tokens, total_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, usage_json, message_count, tool_count, request_bytes, response_bytes, stream_event_count, http_status, error_kind, error_message, detailed, purpose";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ContextUsageAnchor {
@@ -74,8 +74,9 @@ impl Store {
                 call_id, run_id, conversation_id, provider_call_index, model_hash,
                 provider_type, provider_url, request_type, request_url, model_id, display_name,
                 reasoning_effort, fast, status,
-                created_at_ms, request_started_at_ms, queue_ms, message_count, tool_count, detailed, client_source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, 0, ?, ?, ?, ?)"#,
+                created_at_ms, request_started_at_ms, queue_ms, message_count, tool_count, detailed, client_source,
+                purpose
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, 0, ?, ?, ?, ?, ?)"#,
         )
         .bind(&call.call_id)
         .bind(&call.run_id)
@@ -96,6 +97,7 @@ impl Store {
         .bind(call.tool_count as i64)
         .bind(call.detailed)
         .bind(call.client_source.as_str())
+        .bind(call.purpose.as_str())
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -316,6 +318,7 @@ impl Store {
         let row = sqlx::query(
             "SELECT usage_json, message_count FROM llm_calls
              WHERE conversation_id = ?
+               AND purpose = 'chat'
                AND json_extract(usage_json, '$.context_input_tokens') IS NOT NULL
              ORDER BY created_at_ms DESC, rowid DESC
              LIMIT 1",
@@ -461,6 +464,7 @@ fn summary_from_row(row: sqlx::sqlite::SqliteRow) -> Result<LlmCallSummary> {
         error_kind: row.try_get("error_kind")?,
         error_message: row.try_get("error_message")?,
         detailed: row.try_get("detailed")?,
+        purpose: row.try_get("purpose")?,
     })
 }
 
@@ -472,6 +476,7 @@ mod tests {
 
     fn new_call(call_id: &str) -> NewLlmCall {
         NewLlmCall {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Internal,
             call_id: call_id.into(),
             run_id: format!("run-{call_id}"),
@@ -538,6 +543,7 @@ mod tests {
         let plugin_model = "plugin:dev.example/codex/gpt-test";
         store
             .start_llm_call(&NewLlmCall {
+                purpose: crate::model::CallPurpose::Chat,
                 client_source: crate::model::CallClient::Internal,
                 call_id: "plugin-call".into(),
                 run_id: "run".into(),
@@ -587,6 +593,7 @@ mod tests {
         ] {
             store
                 .start_llm_call(&NewLlmCall {
+                    purpose: crate::model::CallPurpose::Chat,
                     client_source: crate::model::CallClient::Internal,
                     call_id: call_id.into(),
                     run_id: format!("run-{call_id}"),
@@ -745,6 +752,105 @@ mod tests {
         assert!(
             !miss.contains("llm_calls_conversation_created"),
             "没有会话约束时不该用会话索引：{miss}"
+        );
+    }
+    /// 摘要调用是真实调用，但它重放的是裁剪过的历史——输入规模不代表会话上下文。
+    /// 拿它当锚点会让下一轮估算按"重放输入"起算（系统性低估，预检不触发）。
+    #[tokio::test]
+    async fn a_compaction_summary_call_never_becomes_the_context_anchor() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        for (call_id, purpose, context_input_tokens, message_count) in [
+            (
+                "chat-1",
+                crate::model::CallPurpose::Chat,
+                1_000_u64,
+                40_usize,
+            ),
+            (
+                "summary-1",
+                crate::model::CallPurpose::CompactionSummary,
+                300_u64,
+                12_usize,
+            ),
+        ] {
+            store
+                .start_llm_call(&NewLlmCall {
+                    purpose,
+                    client_source: crate::model::CallClient::Internal,
+                    call_id: call_id.into(),
+                    run_id: format!("run-{call_id}"),
+                    conversation_id: "conversation".into(),
+                    provider_call_index: 0,
+                    model_hash: "model".into(),
+                    provider_type: ProviderType::Plugin,
+                    provider_url: "plugin://test".into(),
+                    request_type: ProviderType::Plugin,
+                    request_url: "plugin://test".into(),
+                    model_id: "model".into(),
+                    display_name: "model".into(),
+                    reasoning_effort: None,
+                    fast: false,
+                    message_count,
+                    tool_count: 0,
+                    detailed: false,
+                })
+                .await
+                .unwrap();
+            store
+                .record_llm_usage(
+                    call_id,
+                    Usage {
+                        input_tokens: Some(context_input_tokens),
+                        context_input_tokens: Some(context_input_tokens),
+                        output_tokens: Some(10),
+                        total_tokens: Some(context_input_tokens + 10),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+        }
+
+        assert_eq!(
+            store.latest_context_usage("conversation").await.unwrap(),
+            Some(ContextUsageAnchor {
+                context_input_tokens: 1_000,
+                message_count: 40,
+            }),
+            "the newest row is a summary call; the anchor must stay on the chat turn"
+        );
+    }
+    /// 迁移 0023 给历史行留的默认值必须成立：不写 purpose 的插入按 "chat" 落库。
+    #[tokio::test]
+    async fn a_row_inserted_without_a_purpose_defaults_to_chat() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index, provider_type, provider_url, request_type, request_url, model_id, display_name, status, created_at_ms, message_count, tool_count, detailed) VALUES ('legacy', 'run', 'conversation', 0, 'openai', 'url', 'chat', 'url', 'model', 'name', 'completed', 1, 1, 0, 0)",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        let purpose: String =
+            sqlx::query_scalar("SELECT purpose FROM llm_calls WHERE call_id = 'legacy'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            purpose, "chat",
+            "rows written before 0023 read as chat turns"
         );
     }
 }

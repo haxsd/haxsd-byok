@@ -27,3 +27,7 @@ pub(crate) use tool_result_replay::limit_tool_result_text;
 #[cfg(test)]
 pub(crate) use tool_result_replay::limit_tool_result_text_in_dir;
 pub(crate) use tool_result_spill::archive_compaction_history;
+pub(crate) use tool_result_spill::prune_artifact_files;
+pub(crate) use tool_result_spill::{
+    COMPACTION_ARCHIVE_DIR, RETENTION_DAYS as ARTIFACT_RETENTION_DAYS, SPILL_DIR,
+};

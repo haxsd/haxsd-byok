@@ -35,13 +35,13 @@ export function storageHintThreshold(hint: Exclude<StorageHint, null>): number {
 }
 
 /**
- * 「服务端对话副本闲置 N 天后自动回收」里的 N。
+ * 卡片里印在句子中间的保留天数（对话副本回收窗口、落盘目录保留期）。
  *
- * 窗口由服务端只读字段 `conversation_retention_days` 给出，界面不自己算：数字必须与
- * 服务端真正跑的回收常量一致。字段缺失或不是正数时退回 0，调用方据此不显示数字——
- * 宁可不提天数，也不印一个"闲置 0 天"或"闲置 NaN 天"。
+ * 窗口由服务端只读字段给出，界面不自己算：数字必须与服务端真正跑的清理常量一致。
+ * 字段缺失或不是正数时退回 0，调用方据此不显示数字——宁可不提天数，也不印一个
+ * "闲置 0 天"或"NaN 天"。
  */
-export function conversationRetentionDays(value: number | undefined | null): number {
+export function retentionDays(value: number | undefined | null): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 

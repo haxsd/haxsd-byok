@@ -251,6 +251,7 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
     CallRecorder::start(
         store.clone(),
         NewLlmCall {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: invocation.client_source,
             call_id: invocation.call_id.clone(),
             run_id: invocation.run_id.clone(),
@@ -476,6 +477,7 @@ mod tests {
             messages
         };
         let invocation = |call_id: &str, persisted: usize, tail: Option<&str>| ModelInvocation {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Cursor,
             call_id: call_id.into(),
             run_id: "anchor-run".into(),
@@ -538,6 +540,7 @@ mod tests {
         .await
         .unwrap();
         let invocation = ModelInvocation {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Cursor,
             call_id: "effort-call".into(),
             run_id: "effort-run".into(),

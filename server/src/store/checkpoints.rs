@@ -684,7 +684,7 @@ pub(crate) mod probe {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Origin, Role};
+    use crate::model::{MessageContent, Origin, Role, ToolImageReference, ToolResultContent};
 
     async fn fixture() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
@@ -1256,5 +1256,83 @@ mod tests {
             );
             digests.insert(id, stored);
         }
+    }
+    /// 压缩失败必须整体回滚：replacement 里若有一条消息与落库版本内容不同，
+    /// `put_message_tx` 会整笔拒绝，历史必须保持原样（P1-1 的同类防线）。
+    #[tokio::test]
+    async fn a_replacement_that_rewrites_a_persisted_message_is_refused_and_rolls_back() {
+        let (_dir, store) = fixture().await;
+        let conversation = ConversationId::new("compaction-rollback");
+        let (run_id, root) = claimed_run(&store, &conversation).await;
+        let original = user("persisted-1", "hello");
+        let (head, _) = store
+            .append_message_once(&conversation, &run_id, root, &original)
+            .await
+            .unwrap();
+
+        let rewritten = user("persisted-1", "hello (rewritten by compaction)");
+        let error = store
+            .replace_checkpoint(&conversation, &run_id, head, &[rewritten])
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("reused with different content"),
+            "{error}"
+        );
+        assert_eq!(
+            store.load_checkpoint_messages(head).await.unwrap(),
+            vec![original],
+            "a failed replacement leaves the committed history untouched"
+        );
+    }
+
+    /// 保留尾部含三张图时的压缩提交：图与正文都是落库内容，必须原样重写成功。
+    ///
+    /// 旧实现会就地"省略旧图"并改 `content`，同一条消息带着不同 payload 重写，
+    /// 这里会以 reused-with-different-content 整笔失败——会话从此每轮都压、都失败。
+    #[tokio::test]
+    async fn a_compaction_replacement_rewrites_three_image_messages_unchanged() {
+        let (_dir, store) = fixture().await;
+        let conversation = ConversationId::new("compaction-images");
+        let (run_id, root) = claimed_run(&store, &conversation).await;
+        let image_message = |index: usize| CanonicalMessage {
+            message_id: format!("img-{index}"),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: format!("call-{index}"),
+                name: "Read".into(),
+                content: "Read image file".into(),
+                is_error: false,
+                image: Some(ToolImageReference {
+                    blob_id: "blob".into(),
+                    mime_type: "image/png".into(),
+                    path: format!("/tmp/{index}.png"),
+                }),
+                provider_parts: Vec::new(),
+            }),
+            runtime_event_id: None,
+        };
+        let mut head = root;
+        let mut tail = Vec::new();
+        for index in 0..3 {
+            let message = image_message(index);
+            let (next, _) = store
+                .append_message_once(&conversation, &run_id, head, &message)
+                .await
+                .unwrap();
+            head = next;
+            tail.push(message);
+        }
+
+        let committed = store
+            .replace_checkpoint(&conversation, &run_id, head, &tail)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.load_checkpoint_messages(committed).await.unwrap(),
+            tail,
+            "every retained image message survives byte-identically"
+        );
     }
 }

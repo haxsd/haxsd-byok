@@ -1142,7 +1142,7 @@ mod tests {
         assert_eq!(files.len(), 1, "the spilled full result is on disk");
         let file_name = files[0].file_name().to_string_lossy().to_string();
         assert!(
-            file_name.starts_with("WebFetch-test-call-"),
+            file_name.ends_with("-WebFetch.txt"),
             "文件名用规范名: {file_name}"
         );
     }

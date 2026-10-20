@@ -282,6 +282,12 @@ impl ModelConfig {
         if model.context_window_tokens.is_none() {
             model.context_window_tokens = self.context_window_tokens;
         }
+        // 输出上限同理：Cursor 的 ModelSpec 不带它，但真正发给 provider 的 `max_tokens`
+        // 用的是这里的配置。压缩的预检要把这笔输出预留扣出窗口，少了它就会按
+        // "窗口 − 10% 预留"放行，然后被 provider 以超长拒绝。
+        if model.max_output_tokens.is_none() {
+            model.max_output_tokens = self.max_output_tokens();
+        }
         // 只有调用方**显式关闭**思考（`Some(false)`）时才不补强度。`None` 是"没表态"：
         // 普通 Cursor→Anthropic 请求就是这个形状，思考强度由模型配置给（默认 xhigh），
         // 不能把"没表态"当成"不要思考"（那会一次关掉所有 Anthropic 模型的思考）。

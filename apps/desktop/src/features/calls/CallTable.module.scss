@@ -154,6 +154,16 @@ $columns: 28px 104px minmax(150px, 1.5fr) 96px 96px 82px 82px minmax(150px, 1fr)
   font-size: type.$font-size-2xs;
 }
 
+.purposeBadge {
+  justify-self: start;
+  padding: 0 0.4em;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  white-space: nowrap;
+}
+
 .time,
 .number {
   color: var(--vscode-descriptionForeground);

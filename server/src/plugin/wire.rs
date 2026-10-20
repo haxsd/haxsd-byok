@@ -202,6 +202,7 @@ mod tests {
     #[test]
     fn projects_history_into_wire_messages() {
         let invocation = ModelInvocation {
+            purpose: crate::model::CallPurpose::Chat,
             client_source: crate::model::CallClient::Internal,
             call_id: "call".into(),
             run_id: "run".into(),

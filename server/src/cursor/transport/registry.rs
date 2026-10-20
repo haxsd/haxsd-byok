@@ -172,6 +172,10 @@ impl TransportRegistry {
                 .store
                 .prune_inactive_storage(crate::store::now_ms())
                 .await?;
+            // 落盘的大工具结果与压缩归档：引用（调用行/会话）还在就留着，会话被回收后
+            // 删掉。放在这里而不是写入路径，既躲开工具热路径的同步目录扫描，也保证
+            // "提示里的路径"与"文件"同生共死。
+            self.inner.store.prune_artifact_files().await?;
         }
         Ok(())
     }

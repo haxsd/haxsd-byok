@@ -25,6 +25,10 @@ pub struct StatisticsStorage {
     pub bytes: i64,
     /// 数据库文件的当前大小：清理不会让它变小（SQLite 复用释放页），所以两个数字要一起给。
     pub database_bytes: i64,
+    /// 落盘的大工具结果与压缩历史（`tool-results`、`compaction-history`）合计大小。
+    pub artifact_bytes: i64,
+    /// 上面那两个目录的保留天数（它们与日志各自按 7 天清理）。
+    pub artifact_retention_days: i64,
     pub call_count: i64,
     pub trace_count: i64,
     /// 服务端对话副本的闲置回收窗口（天）：见 `retention::CONVERSATION_RETENTION_MS`。
@@ -124,10 +128,17 @@ impl Store {
         let web_cache = tokio::task::spawn_blocking(crate::diagnostics::web_cache_usage)
             .await
             .unwrap_or_default();
+        // 大工具结果与压缩历史同样在文件系统里（每个目录最多几千个文件）：一并放到阻塞
+        // 线程池里数，界面才能说清"这块空间也有一天会过期"。
+        let artifact_bytes = tokio::task::spawn_blocking(artifact_usage)
+            .await
+            .unwrap_or(0);
 
         Ok(StatisticsStorage {
             bytes,
             database_bytes,
+            artifact_bytes: artifact_bytes as i64,
+            artifact_retention_days: crate::model::ARTIFACT_RETENTION_DAYS,
             call_count,
             trace_count,
             conversation_retention_days: super::retention::CONVERSATION_RETENTION_DAYS,
@@ -384,6 +395,47 @@ impl Store {
         transaction.commit().await?;
         Ok(())
     }
+}
+
+/// 落盘的大工具结果与压缩历史合计多大。
+///
+/// 两个目录都在数据目录下、都按 [`crate::model::ARTIFACT_RETENTION_DAYS`] 天惰性清理；
+/// 这里只数不删（清理发生在写入路径上，见 `tool_result_spill`）。
+fn artifact_usage() -> u64 {
+    match crate::config::managed_data_dir() {
+        Ok(root) => artifact_usage_in(&root),
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the data directory for artifact usage");
+            0
+        }
+    }
+}
+
+/// 数据目录下两个落盘目录的合计字节数；目录名只从 `tool_result_spill` 读，避免两处各写一份。
+fn artifact_usage_in(root: &std::path::Path) -> u64 {
+    [
+        crate::model::SPILL_DIR,
+        crate::model::COMPACTION_ARCHIVE_DIR,
+    ]
+    .iter()
+    .map(|name| directory_usage(&root.join(name)))
+    .sum()
+}
+
+/// 一个目录里直接子文件的字节数；读不到就是 0（统计不该因为缺目录而失败）。
+///
+/// 只数一层：两个目录目前都是平铺的（见 `tool_result_spill` 的文件名约定），嵌套目录既
+/// 不占用统计，也不在保留期清理的扫描范围内。
+fn directory_usage(directory: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return 0;
+    };
+    entries
+        .filter_map(std::result::Result::ok)
+        .filter_map(|entry| entry.metadata().ok())
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .sum()
 }
 
 #[cfg(test)]
@@ -916,5 +968,48 @@ mod tests {
         })
         .await
         .expect("后台清理必须自己收尾");
+    }
+
+    /// 存储卡片多报的那行数字只数两个落盘目录里的直接子文件：子目录不是工具结果或压缩
+    /// 历史（写入路径从不建子目录），它的内容不该混进来；目录不存在（从没溢出过）时是 0，
+    /// 而不是让整张存储卡片读失败。
+    #[test]
+    fn directory_usage_counts_only_direct_file_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("spill-a.txt"), b"aaaa").unwrap();
+        std::fs::write(directory.path().join("spill-b.txt"), b"bbbbbbbb").unwrap();
+        let nested = directory.path().join("nested");
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("ignored.txt"), vec![0_u8; 1_000]).unwrap();
+
+        assert_eq!(
+            directory_usage(directory.path()),
+            12,
+            "只数两个直接子文件的字节，子目录里的 1000 字节不计入"
+        );
+        assert_eq!(
+            directory_usage(&directory.path().join("never-created")),
+            0,
+            "目录不存在时是 0：没溢出过不是错误"
+        );
+    }
+
+    /// 两个目录用 `tool_result_spill` 的常量拼路径：改名时统计跟着走，不会悄悄数错地方。
+    #[test]
+    fn artifact_usage_sums_the_spill_and_compaction_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let spill = root.path().join(crate::model::SPILL_DIR);
+        let archive = root.path().join(crate::model::COMPACTION_ARCHIVE_DIR);
+        std::fs::create_dir(&spill).unwrap();
+        std::fs::create_dir(&archive).unwrap();
+        std::fs::write(spill.join("result.txt"), b"12345").unwrap();
+        std::fs::write(archive.join("run.jsonl"), b"1234567").unwrap();
+
+        assert_eq!(artifact_usage_in(root.path()), 12);
+        assert_eq!(
+            artifact_usage_in(&root.path().join("missing-root")),
+            0,
+            "两个目录都不存在时合计是 0"
+        );
     }
 }

@@ -24,6 +24,11 @@ use crate::{
 // room. A proportional reserve scales with the model instead of using a fixed
 // 10K buffer.
 
+/// 配置里没写窗口时的保守假设。
+///
+/// 见 `summary_input_budget`：没有窗口也不能不裁剪，否则摘要调用必然被拒、只剩 digest。
+const ASSUMED_WINDOW_WITHOUT_CONFIG: u64 = 32_000;
+
 /// Safety factor applied to the summarizer input budget.
 ///
 /// The trim budget is already the provider's usable window minus the summary
@@ -320,7 +325,13 @@ fn summary_input_budget(
     settings: &crate::store::CompactionSettings,
     percent: u64,
 ) -> Option<u64> {
-    let window = input.context_window.filter(|window| *window > 0)?;
+    // 配置里没写窗口时的保守假设：32k。旧行为是**完全不裁剪**重放——摘要调用按整段
+    // 历史发给上游，多数模型会以超长拒绝两次，最后只剩 400 字符的 digest，摘要实际上
+    // 没起作用。32k 与在役最小窗口同量级，按它裁剪至少能拿到一份真摘要。
+    let window = input
+        .context_window
+        .filter(|window| *window > 0)
+        .unwrap_or(ASSUMED_WINDOW_WITHOUT_CONFIG);
     let usable = context_budget_with(window, settings.reserve_percent());
     let output = input.output_tokens.min(usable / 2);
     let usable = calibrate_budget(usable.saturating_sub(output), input.calibration);
@@ -791,6 +802,13 @@ pub(super) fn replacement(
 }
 
 /// Keeps only the newest images in the retained tail visible to the provider.
+///
+/// 只改 `provider_parts`——它 `#[serde(skip)]`，改它不会让这条消息的 payload 变样。
+/// 保留尾部来自**已经落库**的消息：改 `content` / `image` 会让同一个 `message_id` 带着
+/// 不同内容再写一次，`put_message_tx` 以 "message id or runtime event reused with
+/// different content" 拒绝整次提交——尾部只要有三张图就会触发（`MAX_RETAINED_IMAGES`
+/// 是 2），而且下一轮还会再压、再失败。序列化字段里的图片只能整条保留（它们照样占用
+/// 名额），想少带图片只能靠少保留几条消息。
 fn offload_old_tail_images(tail: Vec<CanonicalMessage>) -> Vec<CanonicalMessage> {
     let mut remaining = MAX_RETAINED_IMAGES;
     let mut offloaded: Vec<CanonicalMessage> = tail
@@ -798,20 +816,12 @@ fn offload_old_tail_images(tail: Vec<CanonicalMessage>) -> Vec<CanonicalMessage>
         .rev()
         .map(|mut message| {
             match &mut message.content {
-                MessageContent::Parts { parts } => offload_parts(parts, &mut remaining),
+                MessageContent::Parts { parts } => {
+                    remaining = remaining.saturating_sub(count_images(parts));
+                }
                 MessageContent::ToolResult(result) => {
-                    if let Some(image) = result.image.take() {
-                        if remaining > 0 {
-                            remaining -= 1;
-                            result.image = Some(image);
-                        } else {
-                            // The tool text is still useful; keep it and append
-                            // where the dropped image went.
-                            result.content = format!(
-                                "{}\n\n[image omitted during compaction: {}]",
-                                result.content, image.path
-                            );
-                        }
+                    if result.image.is_some() {
+                        remaining = remaining.saturating_sub(1);
                     }
                     offload_parts(&mut result.provider_parts, &mut remaining);
                 }
@@ -822,6 +832,13 @@ fn offload_old_tail_images(tail: Vec<CanonicalMessage>) -> Vec<CanonicalMessage>
         .collect();
     offloaded.reverse();
     offloaded
+}
+
+fn count_images(parts: &[ContentPart]) -> usize {
+    parts
+        .iter()
+        .filter(|part| matches!(part, ContentPart::Image { .. }))
+        .count()
 }
 
 fn offload_parts(parts: &mut [ContentPart], remaining: &mut usize) {
@@ -908,11 +925,19 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
             break;
         }
         let text = message_text(message);
-        let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        if text.is_empty() {
+        // 逐词拼接而不是 `collect::<Vec<_>>().join(" ")`：2 MB 的工具结果会先分配一个
+        // 十几万元素的 Vec，只为再拼回一个字符串。拼接结果与原来逐字节相同。
+        let mut collapsed = String::with_capacity(text.len());
+        for word in text.split_whitespace() {
+            if !collapsed.is_empty() {
+                collapsed.push(' ');
+            }
+            collapsed.push_str(word);
+        }
+        if collapsed.is_empty() {
             continue;
         }
-        let text = truncate_chars_middle(&text, MAX_CHARS);
+        let text = truncate_chars_middle(&collapsed, MAX_CHARS);
         digest.push(format!("- {label}: {text}"));
     }
     if digest.is_empty() {
@@ -2180,8 +2205,10 @@ mod tests {
         );
     }
 
+    /// 保留尾部是已经落库的消息：图片裁剪只能动 `provider_parts`（`#[serde(skip)]`）。
+    /// 改 `content` / `image` 会让同一条消息带着不同 payload 重写，压缩提交直接失败。
     #[test]
-    fn tail_image_offload_keeps_only_the_newest_images() {
+    fn tail_image_offload_never_rewrites_a_persisted_message() {
         let image_message = |id: &str| CanonicalMessage {
             message_id: id.into(),
             role: Role::Tool,
@@ -2201,21 +2228,62 @@ mod tests {
             runtime_event_id: None,
         };
         let tail = vec![image_message("a"), image_message("b"), image_message("c")];
+        let stored: Vec<String> = tail
+            .iter()
+            .map(|message| serde_json::to_string(message).unwrap())
+            .collect();
         let offloaded = offload_old_tail_images(tail);
-        fn result(message: &CanonicalMessage) -> &crate::model::ToolResultContent {
-            match &message.content {
-                MessageContent::ToolResult(result) => result,
-                _ => panic!("expected tool result"),
-            }
-        }
-        assert!(result(&offloaded[0]).image.is_none());
-        assert!(result(&offloaded[0]).content.contains("omitted"));
-        assert!(
-            result(&offloaded[0]).content.contains("Read image file"),
-            "the tool text survives; the placeholder is appended, not a replacement"
+
+        let rewritten: Vec<String> = offloaded
+            .iter()
+            .map(|message| serde_json::to_string(message).unwrap())
+            .collect();
+        assert_eq!(
+            rewritten, stored,
+            "the persisted payload must stay byte-identical, even past the image cap"
         );
-        assert!(result(&offloaded[1]).image.is_some());
-        assert!(result(&offloaded[2]).image.is_some());
+    }
+
+    /// provider-only 的副本可以随意裁剪：它不进 payload，也就不破坏消息身份。
+    #[test]
+    fn tail_image_offload_drops_provider_only_images_past_the_cap() {
+        let part_image = |path: &str| crate::model::ContentPart::Image {
+            mime_type: "image/png".into(),
+            data: path.as_bytes().to_vec(),
+        };
+        let message = |id: &str, images: Vec<crate::model::ContentPart>| CanonicalMessage {
+            message_id: id.into(),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: id.into(),
+                name: "Read".into(),
+                content: "Read image file".into(),
+                is_error: false,
+                image: None,
+                provider_parts: images,
+            }),
+            runtime_event_id: None,
+        };
+        let tail = vec![
+            message("a", vec![part_image("/tmp/a.png")]),
+            message("b", vec![part_image("/tmp/b.png")]),
+            message("c", vec![part_image("/tmp/c.png")]),
+        ];
+        let offloaded = offload_old_tail_images(tail);
+        let parts = |message: &CanonicalMessage| match &message.content {
+            MessageContent::ToolResult(result) => result.provider_parts.clone(),
+            _ => panic!("expected tool result"),
+        };
+        let is_image = |part: &crate::model::ContentPart| {
+            matches!(part, crate::model::ContentPart::Image { .. })
+        };
+        assert!(
+            !parts(&offloaded[0]).iter().any(is_image),
+            "the oldest image is dropped"
+        );
+        assert!(parts(&offloaded[1]).iter().any(is_image));
+        assert!(parts(&offloaded[2]).iter().any(is_image));
     }
 
     /// A1: an output cap that claims the whole usable window must disable the
