@@ -54,6 +54,11 @@ pub struct ConfigStatus {
     /// 与接管快照不一致的受管字段（含 `model`）。界面据此说清"哪一项被改成了什么"，
     /// 而不是只丢一句"配置冲突"。
     pub conflicts: Vec<ConfigFieldConflict>,
+    /// Codex 配置目录里存在 `auth.json`：ChatGPT 已登录。
+    ///
+    /// 接管只改模型路由，不碰登录凭据；但 Codex 的中文界面、云端会话等功能由账号态
+    /// 决定，未登录时接管后也不可用。界面用这个字段提示"先登录，再接管"。
+    pub chatgpt_signed_in: bool,
     pub message: String,
 }
 
@@ -344,6 +349,7 @@ pub fn inspect(home: &Path) -> Result<ConfigStatus> {
         restorable,
         conflict,
         conflicts,
+        chatgpt_signed_in: home.join("auth.json").is_file(),
         message: if conflict {
             "Codex routing is managed by another configuration or was modified"
         } else if applied {
@@ -641,6 +647,33 @@ mod tests {
     /// 客户端切换模型就是重写 config.toml 里的这一行。
     fn switch_client_model(home: &Path, slug: &str) {
         edit(home, |doc| doc[MODEL_KEY] = value(slug));
+    }
+
+    /// 登录态只读：`auth.json` 存在说明 ChatGPT 已登录；接管与撤销都不应碰它。
+    ///
+    /// 界面靠这个字段提示"先登录，再接管"——接管只换模型请求的凭据，不替用户退出登录，
+    /// 但未登录时客户端的中文界面/云端功能本来就用不了。
+    #[test]
+    fn chatgpt_sign_in_is_detected_from_auth_json_and_survives_apply_and_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let auth = directory.path().join("auth.json");
+        assert!(!inspect(directory.path()).unwrap().chatgpt_signed_in);
+
+        fs::write(&auth, br#"{"tokens":null}"#).unwrap();
+        assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
+
+        apply(directory.path(), &route(directory.path())).unwrap();
+        assert!(
+            inspect(directory.path()).unwrap().chatgpt_signed_in,
+            "接管不能动登录凭据"
+        );
+
+        restore(directory.path()).unwrap();
+        assert!(
+            inspect(directory.path()).unwrap().chatgpt_signed_in,
+            "撤销也不能动登录凭据"
+        );
+        assert!(auth.exists());
     }
 
     fn edit(home: &Path, change: impl FnOnce(&mut DocumentMut)) -> String {

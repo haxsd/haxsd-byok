@@ -226,16 +226,25 @@ impl CodexGateway {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home);
-        let (configured, conflict, restorable, conflicts, config_error) = match inspected {
-            Ok(status) => (
-                status.applied,
-                status.conflict,
-                status.restorable,
-                status.conflicts,
-                None,
-            ),
-            Err(error) => (false, true, false, Vec::new(), Some(error.to_string())),
-        };
+        let (configured, conflict, restorable, conflicts, chatgpt_signed_in, config_error) =
+            match inspected {
+                Ok(status) => (
+                    status.applied,
+                    status.conflict,
+                    status.restorable,
+                    status.conflicts,
+                    status.chatgpt_signed_in,
+                    None,
+                ),
+                Err(error) => (
+                    false,
+                    true,
+                    false,
+                    Vec::new(),
+                    false,
+                    Some(error.to_string()),
+                ),
+            };
         let runtime = self.inner.runtime.lock().await;
         let listening = runtime
             .as_ref()
@@ -252,6 +261,7 @@ impl CodexGateway {
             config_conflict: conflict,
             restorable,
             conflicts,
+            chatgpt_signed_in,
             home: home.display().to_string(),
             calls: calls.max(0) as usize,
             last_error: config_error.or_else(|| {

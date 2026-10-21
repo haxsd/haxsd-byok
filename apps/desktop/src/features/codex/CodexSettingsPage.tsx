@@ -10,10 +10,12 @@ import { PageTitle } from "../../shared/ui/PageTitle";
 import { useMessage } from "../../shared/ui/message";
 import { PageContent } from "../../shell/layout/PageContent";
 import { PageActions } from "../../shell/PageActions";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
+import { CodexLoginCard } from "./CodexLoginCard";
 import { CodexSettingsForm } from "./CodexSettingsForm";
-import { codexActionGate, codexConnectionView } from "./codexConnectionView";
+import { codexActionGate, codexApplyNeedsSignInConfirm, codexConnectionView } from "./codexConnectionView";
 import styles from "./CodexSettingsPage.module.scss";
 
 export function CodexSettingsPage() {
@@ -23,6 +25,8 @@ export function CodexSettingsPage() {
   const [draft, setDraft] = useState<CodexSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // 未登录 ChatGPT 时点「应用到 Codex」先确认：接管后客户端可能不再提供登录入口。
+  const [confirmApply, setConfirmApply] = useState(false);
   const message = useMessage();
   // 模型库里的插件模型只是为了让设置页说清「为什么它们不能选」，不进入 Codex 目录。
   const pluginModels = configuredPluginModels(plugins);
@@ -50,6 +54,13 @@ export function CodexSettingsPage() {
     setSaved(settings); setDraft(settings); message(t("Codex 设置已保存"));
   });
   const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用，请重新打开 Codex 或新建会话")); });
+  const requestApply = () => {
+    if (codexApplyNeedsSignInConfirm(codexStatus)) {
+      setConfirmApply(true);
+      return;
+    }
+    void apply();
+  };
   const restore = () => action(async () => { await api.restoreCodex(); message(t("Codex 配置已恢复")); });
   // 与 Cursor / Devin 接入页同一套：状态、冲突（有才出现）、设置、边界，各自的说明都留在卡片内。
   const content = <div className={styles.page}>
@@ -69,11 +80,13 @@ export function CodexSettingsPage() {
         steps={[]}
         footnotes={<div className={styles.facts}>
           <span>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
+          <span>{t("ChatGPT 登录")}：{codexStatus ? (codexStatus.chatgpt_signed_in ? t("已检测到") : t("未检测到")) : t("读取中…")}</span>
           <span>{t("已记录 {count} 次 Codex 调用", { count: codexStatus?.calls ?? 0 })}</span>
         </div>}
       />
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
+    <CodexLoginCard status={codexStatus} />
     <TitledCard title={t("接入设置")}>
       {draft
         ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} onChange={setDraft} />
@@ -91,9 +104,19 @@ export function CodexSettingsPage() {
   return <>
     <PageActions>
       <Button disabled={busy || !dirty || locked || !draft} onClick={() => void save()}>{t("保存")}</Button>
-      <Button disabled={busy || !gate.apply} onClick={() => void apply()}>{t("应用到 Codex")}</Button>
+      <Button disabled={busy || !gate.apply} onClick={requestApply}>{t("应用到 Codex")}</Button>
       <Button disabled={busy || !gate.restore} onClick={() => void restore()}>{t("撤销接管")}</Button>
     </PageActions>
+    <ConfirmDialog
+      open={confirmApply}
+      title={t("未检测到 ChatGPT 登录")}
+      confirmLabel={t("仍然应用")}
+      busy={busy}
+      onCancel={() => setConfirmApply(false)}
+      onConfirm={() => { setConfirmApply(false); void apply(); }}
+    >
+      <p>{t("接管只替换模型请求的凭据，不会退出登录；但接管后客户端可能找不到登录入口。建议先登录 ChatGPT，再回来应用。")}</p>
+    </ConfirmDialog>
     <PageContent
       title={<PageTitle
         title="Codex"

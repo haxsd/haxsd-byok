@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   CallDetail,
   CodexSettings,
   CodexStatus,
@@ -104,6 +104,7 @@ let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
+    chatgpt_signed_in: true,
     home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
 }
 

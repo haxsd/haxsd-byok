@@ -8,7 +8,7 @@ const loader = await startModuleLoader();
 await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
-const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], home: "test-home", calls: 0, last_error: null };
+const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, home: "test-home", calls: 0, last_error: null };
 
 test("a listening Codex gateway is not presented as applied client configuration", async () => {
   const { codexConnectionView } = await loader.load("/src/features/codex/codexConnectionView.ts");
@@ -266,4 +266,27 @@ test("Codex settings and explicit apply/restore stay on the shared management HT
   assert.equal(backend.requestsFor("PUT", `${API_ROOT}/codex/settings`).length, 1);
   assert.equal(backend.requestsFor("POST", `${API_ROOT}/codex/apply`).length, 1);
   assert.equal(backend.requestsFor("POST", `${API_ROOT}/codex/restore`).length, 1);
+});
+
+test("ChatGPT login is a hint that never changes the routing state", async () => {
+  const { codexLoginState, codexApplyNeedsSignInConfirm, codexConnectionView } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexLoginState(null), "checking");
+  assert.equal(codexLoginState({ ...state, chatgpt_signed_in: true }), "signed-in");
+  assert.equal(codexLoginState({ ...state, chatgpt_signed_in: false }), "signed-out");
+  assert.equal(codexApplyNeedsSignInConfirm({ ...state, chatgpt_signed_in: false }), true);
+  assert.equal(codexApplyNeedsSignInConfirm({ ...state, chatgpt_signed_in: true }), false);
+  // 未登录只影响客户端账号能力，接管状态本身仍是"已接管"。
+  assert.equal(codexConnectionView({ ...state, configured: true, chatgpt_signed_in: false }).state, "taken-over");
+});
+
+test("the login card says takeover does not sign the user out, and to log in before applying", async () => {
+  const { CodexLoginCard } = await loader.load("/src/features/codex/CodexLoginCard.tsx");
+  const signedOut = renderToStaticMarkup(createElement(CodexLoginCard, { status: { ...state, chatgpt_signed_in: false } }));
+  assert.match(signedOut, /不会退出或替换你的 ChatGPT 登录/);
+  assert.match(signedOut, /推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管/);
+  assert.match(signedOut, /未检测到 ChatGPT 登录/);
+
+  const signedIn = renderToStaticMarkup(createElement(CodexLoginCard, { status: { ...state, chatgpt_signed_in: true } }));
+  assert.match(signedIn, /已检测到 ChatGPT 登录，可以应用接管/);
+  assert.doesNotMatch(signedIn, /未检测到 ChatGPT 登录/);
 });

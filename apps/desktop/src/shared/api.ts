@@ -1,4 +1,4 @@
-﻿import type { CommitPromptLocale, Locale } from "../i18n/runtime";
+import type { CommitPromptLocale, Locale } from "../i18n/runtime";
 import { clipConsoleBody, errorBodyMessage, errorBodyNeedsConsole } from "./utils/errorBody";
 
 export type ModelType = "openai" | "anthropic";
@@ -200,6 +200,8 @@ export interface CodexStatus {
   restorable: boolean;
   /** 与接管快照不一致的受管字段；没有差异时是空数组。 */
   conflicts: CodexConfigConflict[];
+  /** Codex 配置目录里存在 auth.json：ChatGPT 已登录。接管只换模型请求凭据，不碰它。 */
+  chatgpt_signed_in: boolean;
   home: string;
   calls: number;
   last_error: string | null;
@@ -856,6 +858,7 @@ function usableCodexStatus(payload: unknown): CodexStatus {
     ...status,
     conflicts,
     restorable: typeof status.restorable === "boolean" ? status.restorable : status.configured,
+    chatgpt_signed_in: status.chatgpt_signed_in === true,
   };
 }
 

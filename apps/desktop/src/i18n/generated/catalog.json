@@ -112,7 +112,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 67,
+          "line": 78,
           "column": 82
         },
         {
@@ -180,7 +180,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 66,
+          "line": 77,
           "column": 36
         },
         {
@@ -250,7 +250,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 77,
+          "line": 90,
           "column": 24
         }
       ]
@@ -578,7 +578,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 84,
+          "line": 97,
           "column": 13
         }
       ]
@@ -592,6 +592,18 @@
           "file": "features/devin/devinConnectionView.ts",
           "line": 139,
           "column": 14
+        }
+      ]
+    },
+    "08d93a0408c60d7a": {
+      "source": "ChatGPT 登录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 83,
+          "column": 18
         }
       ]
     },
@@ -778,6 +790,18 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 113,
           "column": 12
+        }
+      ]
+    },
+    "0b2d39c007564013": {
+      "source": "登录与接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 15,
+          "column": 29
         }
       ]
     },
@@ -1298,6 +1322,18 @@
         }
       ]
     },
+    "156219aa0cfeffa4": {
+      "source": "未检测到",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 83,
+          "column": 95
+        }
+      ]
+    },
     "15730c19fd7eef51": {
       "source": "请求协议",
       "kind": "text",
@@ -1322,7 +1358,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 57,
+          "line": 68,
           "column": 14
         },
         {
@@ -1913,7 +1949,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 66,
+          "line": 77,
           "column": 80
         },
         {
@@ -2930,7 +2966,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 95,
+          "line": 108,
           "column": 80
         }
       ]
@@ -3162,6 +3198,18 @@
         }
       ]
     },
+    "33b9d1afdeb643f6": {
+      "source": "推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管。未登录也可以只使用本地模型，但接管后客户端可能不再提供登录入口；界面语言、云端会话等显示能力由客户端自身的运行时与远端配置决定，与接管无关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 18,
+          "column": 11
+        }
+      ]
+    },
     "33fa8b3c56f9f863": {
       "source": "Codex 设置已保存",
       "kind": "text",
@@ -3169,7 +3217,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 50,
+          "line": 54,
           "column": 53
         }
       ]
@@ -3193,13 +3241,18 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 8,
+          "line": 26,
           "column": 65
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 71,
+          "line": 82,
           "column": 51
+        },
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 83,
+          "column": 108
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -3250,7 +3303,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 25,
+          "line": 43,
           "column": 39
         }
       ]
@@ -3613,6 +3666,18 @@
         }
       ]
     },
+    "3a124984593d6006": {
+      "source": "接管只把 Codex 的模型请求改到本机网关（使用本机令牌），不会退出或替换你的 ChatGPT 登录，也不会修改 auth.json；登录态仍用于客户端自己的账号功能。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 17,
+          "column": 11
+        }
+      ]
+    },
     "3a250eb605945e9d": {
       "source": "点击查看这一天的调用",
       "kind": "text",
@@ -3748,8 +3813,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 94,
-          "column": 76
+          "line": 107,
+          "column": 70
         }
       ]
     },
@@ -3981,7 +4046,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 24,
+          "line": 42,
           "column": 35
         }
       ]
@@ -4060,12 +4125,12 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 10,
+          "line": 28,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 12,
+          "line": 30,
           "column": 77
         }
       ]
@@ -4297,7 +4362,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 9,
+          "line": 27,
           "column": 79
         },
         {
@@ -4442,6 +4507,18 @@
         }
       ]
     },
+    "478cadf041015321": {
+      "source": "接管只替换模型请求的凭据，不会退出登录；但接管后客户端可能找不到登录入口。建议先登录 ChatGPT，再回来应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 118,
+          "column": 11
+        }
+      ]
+    },
     "4791868cb0a4be4d": {
       "source": "输出价格",
       "kind": "text",
@@ -4581,7 +4658,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 80,
+          "line": 93,
           "column": 59
         },
         {
@@ -4868,7 +4945,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 72,
+          "line": 84,
           "column": 18
         }
       ]
@@ -5102,7 +5179,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 67,
+          "line": 78,
           "column": 139
         },
         {
@@ -5133,6 +5210,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 351,
           "column": 47
+        }
+      ]
+    },
+    "509c099a2b5d07cf": {
+      "source": "已检测到",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 83,
+          "column": 83
         }
       ]
     },
@@ -5259,7 +5348,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 14,
+          "line": 32,
           "column": 52
         },
         {
@@ -5583,7 +5672,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 65,
+          "line": 76,
           "column": 90
         }
       ]
@@ -5873,7 +5962,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 29,
+          "line": 47,
           "column": 47
         }
       ]
@@ -6275,12 +6364,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 804,
+          "line": 806,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 877,
+          "line": 880,
           "column": 29
         }
       ]
@@ -6395,7 +6484,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1117,
+          "line": 1120,
           "column": 43
         }
       ]
@@ -6697,7 +6786,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 80,
+          "line": 93,
           "column": 47
         },
         {
@@ -6742,12 +6831,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 812,
+          "line": 814,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 877,
+          "line": 880,
           "column": 41
         }
       ]
@@ -7324,7 +7413,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 63,
+          "line": 74,
           "column": 22
         }
       ]
@@ -7386,7 +7475,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1112,
+          "line": 1115,
           "column": 43
         }
       ]
@@ -7729,7 +7818,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 756,
+          "line": 758,
           "column": 11
         },
         {
@@ -7847,7 +7936,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 66,
+          "line": 77,
           "column": 91
         }
       ]
@@ -8026,6 +8115,18 @@
         }
       ]
     },
+    "84e9d806a2e38f90": {
+      "source": "已检测到 ChatGPT 登录，可以应用接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 19,
+          "column": 37
+        }
+      ]
+    },
     "8519b973928ae5b2": {
       "source": "{name} 占全部用量的 {percent}%",
       "kind": "template",
@@ -8151,7 +8252,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 27,
+          "line": 45,
           "column": 51
         }
       ]
@@ -8525,7 +8626,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 65,
+          "line": 76,
           "column": 77
         }
       ]
@@ -8672,7 +8773,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 52,
+          "line": 56,
           "column": 76
         }
       ]
@@ -8869,7 +8970,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 86,
+          "line": 99,
           "column": 13
         }
       ]
@@ -9069,7 +9170,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 769,
+          "line": 771,
           "column": 11
         }
       ]
@@ -9093,7 +9194,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 71,
+          "line": 82,
           "column": 18
         }
       ]
@@ -9240,7 +9341,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 67,
+          "line": 78,
           "column": 35
         },
         {
@@ -9603,7 +9704,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 93,
+          "line": 106,
           "column": 90
         },
         {
@@ -9772,7 +9873,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 85,
+          "line": 98,
           "column": 13
         }
       ]
@@ -10340,7 +10441,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 53,
+          "line": 64,
           "column": 80
         }
       ]
@@ -10659,7 +10760,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 58,
+          "line": 69,
           "column": 77
         },
         {
@@ -10683,6 +10784,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 409,
           "column": 70
+        }
+      ]
+    },
+    "b25ef174b5b518c8": {
+      "source": "未检测到 ChatGPT 登录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 112,
+          "column": 14
         }
       ]
     },
@@ -10854,7 +10967,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 82,
+          "line": 95,
           "column": 24
         }
       ]
@@ -11230,7 +11343,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 26,
+          "line": 44,
           "column": 41
         }
       ]
@@ -11352,7 +11465,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1128,
+          "line": 1131,
           "column": 43
         }
       ]
@@ -12065,7 +12178,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 101,
+          "line": 124,
           "column": 15
         }
       ]
@@ -12219,7 +12332,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 23,
+          "line": 41,
           "column": 26
         },
         {
@@ -12338,7 +12451,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 40,
+          "line": 58,
           "column": 24
         }
       ]
@@ -12589,7 +12702,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 13,
+          "line": 31,
           "column": 81
         }
       ]
@@ -14044,6 +14157,18 @@
         }
       ]
     },
+    "e5417c5ae2c0c3ee": {
+      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 20,
+          "column": 79
+        }
+      ]
+    },
     "e557f2f5092c32a3": {
       "source": "复制诊断摘要",
       "kind": "text",
@@ -14422,6 +14547,18 @@
         }
       ]
     },
+    "eb74a7f2ac7670a1": {
+      "source": "仍然应用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 113,
+          "column": 21
+        }
+      ]
+    },
     "eb846686f715e3de": {
       "source": "先启用并保存 Devin 网关，再应用宿主补丁。",
       "kind": "text",
@@ -14691,7 +14828,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 28,
+          "line": 46,
           "column": 31
         }
       ]
@@ -15002,7 +15139,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 11,
+          "line": 29,
           "column": 73
         },
         {

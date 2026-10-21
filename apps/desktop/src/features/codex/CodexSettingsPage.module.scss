@@ -65,6 +65,13 @@
   overflow-wrap: anywhere;
 }
 
+/* 未登录提示：这是"建议先做的一步"，不是错误，所以用 warning 语义色。 */
+.warning {
+  margin: 0;
+  color: var(--vscode-editorWarning-foreground);
+  font-size: type.$font-size-xs;
+}
+
 .facts {
   display: flex;
   flex-wrap: wrap;
