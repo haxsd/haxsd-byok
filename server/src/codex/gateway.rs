@@ -183,16 +183,28 @@ impl CodexGateway {
             });
             let guard_shutdown = shutdown.clone();
             let guard_home = settings.resolved_home().ok();
+            let guard_gateway = self.clone();
+            let guard_alive = alive.clone();
+            // 用 try_lock 与 apply/restore/shutdown 互斥：配置生命周期操作持锁时跳过本轮，
+            // 绝不阻塞等待（否则 shutdown 持锁等 guard、guard 等锁会互相卡死）。
             let client_guard = tokio::spawn(async move {
                 let mut ticker = tokio::time::interval(Duration::from_secs(2));
+                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
                 loop {
                     tokio::select! {
                         _ = guard_shutdown.cancelled() => break,
                         _ = ticker.tick() => {
-                            if let Some(home) = guard_home.as_deref() {
-                                if let Err(error) = config::ensure_local_mode(home) {
-                                    tracing::warn!(%error, "Codex client mode guard failed");
-                                }
+                            if !guard_alive.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let Some(home) = guard_home.as_deref() else {
+                                continue;
+                            };
+                            let Ok(_operation) = guard_gateway.inner.operations.try_lock() else {
+                                continue;
+                            };
+                            if let Err(error) = config::ensure_local_mode(home) {
+                                tracing::warn!(%error, "Codex client mode guard failed");
                             }
                         }
                     }

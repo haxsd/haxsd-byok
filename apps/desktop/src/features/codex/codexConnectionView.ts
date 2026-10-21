@@ -4,10 +4,11 @@ import type { EntryStatus } from "../../shell/connectionStatus";
 export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "taken-over" | "unavailable" | "conflict";
 
 /**
- * ChatGPT 登录态只是账号侧的提示，不参与路由是否接管的判定。
+ * 登录态只是账号侧的提示，不参与路由是否接管的判定。
  *
- * `auth.json` 存在即认为已登录：接管只替换模型请求的凭据，不写这个文件；但未登录时
- * 客户端的中文界面、云端会话等功能本来就用不了，界面要提醒"先登录，再接管"。
+ * 服务端只认有效的 ChatGPT tokens / personal access token；keyring 存储无法从磁盘判断时
+ * 按已登录处理。接管只替换模型请求的凭据，不写登录文件；未登录时客户端会停在需要账号的
+ * Work 界面并拒绝本地任务，所以界面要提醒"先登录，再接管"。
  */
 export type CodexLoginState = "checking" | "signed-in" | "signed-out";
 

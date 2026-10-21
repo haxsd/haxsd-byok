@@ -3241,7 +3241,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 26,
+          "line": 27,
           "column": 65
         },
         {
@@ -3303,7 +3303,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 43,
+          "line": 44,
           "column": 39
         }
       ]
@@ -4046,7 +4046,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 42,
+          "line": 43,
           "column": 35
         }
       ]
@@ -4125,12 +4125,12 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 28,
+          "line": 29,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 30,
+          "line": 31,
           "column": 77
         }
       ]
@@ -4362,7 +4362,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 27,
+          "line": 28,
           "column": 79
         },
         {
@@ -5348,7 +5348,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 32,
+          "line": 33,
           "column": 52
         },
         {
@@ -5962,7 +5962,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 47,
+          "line": 48,
           "column": 47
         }
       ]
@@ -8264,7 +8264,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 45,
+          "line": 46,
           "column": 51
         }
       ]
@@ -9904,6 +9904,18 @@
         }
       ]
     },
+    "a51f4ee7c8ed33e6": {
+      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。接管会保持 Codex 本地模式；如果 Codex 仍显示 Work 界面，请重启客户端。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 23,
+          "column": 92
+        }
+      ]
+    },
     "a5e13c88c5db268c": {
       "source": "应用会校验下载文件的完整性。",
       "kind": "text",
@@ -11355,7 +11367,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 44,
+          "line": 45,
           "column": 41
         }
       ]
@@ -12344,7 +12356,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 41,
+          "line": 42,
           "column": 26
         },
         {
@@ -12463,7 +12475,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 58,
+          "line": 59,
           "column": 24
         }
       ]
@@ -12714,7 +12726,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 31,
+          "line": 32,
           "column": 81
         }
       ]
@@ -14652,18 +14664,6 @@
         }
       ]
     },
-    "ed7d204b42d4c7f2": {
-      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。当前客户端已保持在 Codex 本地模式。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 23,
-          "column": 92
-        }
-      ]
-    },
     "edb9778086b9c2c4": {
       "source": "已有 {count} 条调用记录",
       "kind": "template",
@@ -14840,7 +14840,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 46,
+          "line": 47,
           "column": 31
         }
       ]
@@ -15151,7 +15151,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 29,
+          "line": 30,
           "column": 73
         },
         {

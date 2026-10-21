@@ -285,7 +285,7 @@ test("the login card says takeover does not sign the user out, and to log in bef
   assert.match(signedOut, /不会退出或替换你的 ChatGPT 登录/);
   assert.match(signedOut, /推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管/);
   assert.match(signedOut, /未检测到 ChatGPT 登录/);
-  assert.match(signedOut, /已保持在 Codex 本地模式/);
+  assert.match(signedOut, /接管会保持 Codex 本地模式/);
 
   const workMode = renderToStaticMarkup(createElement(CodexLoginCard, {
     status: { ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_PROSE" },

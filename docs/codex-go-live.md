@@ -23,7 +23,9 @@
 
 未登录 ChatGPT 也可以只使用本机模型；界面语言、云端会话、远程控制等能力由客户端自己的账号与运行时/远端配置决定，接管本身不参与，也不会替用户退出或替换登录。
 
-新版客户端用 `conversationDetailMode` 区分「ChatGPT Work」和「Codex 本地」界面：详细模式（`STEPS_PROSE`）会要求 Work 浏览器身份，未登录时客户端在创建本地任务之前就报 `Work browser access requires an authenticated account`。接管期间如果检测到未登录，本应用会把该值保持在本地模式（`STEPS_COMMANDS`），并在客户端把它切回详细模式后自动纠正；登录后自动还回用户原来的详细模式，撤销接管时也会还原。这样用户在 Codex 里切换显示设置不会让整条接入失效。
+新版客户端用 `conversationDetailMode` 区分「ChatGPT Work」和「Codex 本地」界面：详细模式（`STEPS_PROSE`）会要求 Work 浏览器身份，未登录时客户端在创建本地任务之前就报 `Work browser access requires an authenticated account`。接管期间如果检测到未登录，本应用会把该值保持在本地模式（`STEPS_COMMANDS`），并在客户端把它切回详细模式后自动纠正；登录后自动还回用户原来的详细模式。撤销接管时按接管前的原值恢复（不一定是详细模式），所以用户在 Codex 里切换显示设置不会让整条接入失效。
+
+首次接管前会把整份 `config.toml` 保存为配置目录下的 `.haxsd-byok-config-backup.toml`；重复接管不覆盖这份备份，撤销也不会删除它，需要人工找回插件/审批等设置时可以直接查看。
 
 客户端会在自身界面里切换模型，切换时它重写 `config.toml` 的 `model`。只要新的 slug 仍是本应用发布的能力目录里的模型，路由就没有改变，不算外部冲突，可以继续提交任务；只有切到目录之外的 slug 才按冲突处理。
 

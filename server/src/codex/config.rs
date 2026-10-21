@@ -178,11 +178,32 @@ struct Receipt {
     applied: String,
 }
 
-/// 记录「未登录时代管把客户端的详细模式改成了本地模式」这件事，登录后还原。
+/// 记录「未登录期间我们把客户端的详细模式改成了本地模式」这件事。
+///
+/// `original` 是改写前的原始值；`None` 表示原来没有这个键。旧版本 marker 只有
+/// `remembered_prose`，读取时等价于 original = Some(STEPS_PROSE)。
 #[derive(Default, Serialize, Deserialize)]
 struct ClientMode {
     #[serde(default)]
+    active: bool,
+    #[serde(default)]
+    original: Option<String>,
+    #[serde(default)]
     remembered_prose: bool,
+}
+
+impl ClientMode {
+    /// 需要恢复原来的详细模式时返回目标值；`None` 表示删掉这个键。
+    fn restore_target(&self) -> Option<Option<&str>> {
+        if self.active {
+            return Some(self.original.as_deref());
+        }
+        self.remembered_prose.then_some(Some(DETAIL_PROSE))
+    }
+
+    fn persist(&self) -> bool {
+        self.active || self.remembered_prose
+    }
 }
 
 pub fn default_home() -> Result<PathBuf> {
@@ -232,12 +253,34 @@ fn client_mode(home: &Path) -> Result<ClientMode> {
         .unwrap_or_default())
 }
 
-/// Codex `auth.json` 里是否存在可用的 ChatGPT 登录凭据。
+/// Codex 的 auth 存储位置：只有 `file`（默认）时 `auth.json` 才代表登录态。
+fn auth_store_uses_file(home: &Path) -> bool {
+    let Ok(Some(text)) = read(&home.join("config.toml")) else {
+        return true;
+    };
+    let Ok(document) = parse(&text) else {
+        return false;
+    };
+    matches!(
+        document
+            .get("cli_auth_credentials_store")
+            .and_then(Item::as_str),
+        None | Some("file")
+    )
+}
+
+/// `auth.json` 里是否存在可用的 ChatGPT 登录凭据。
 ///
-/// 只认 ChatGPT 登录（`tokens.access_token` / `id_token` / `refresh_token`）；单独的
-/// `OPENAI_API_KEY` 不算——新版客户端的 Work 身份判断也要求账号登录。文件不存在、
-/// JSON 损坏或没有登录材料都按未登录处理，界面提示"先登录，再接管"。
+/// 只认真正的登录材料：ChatGPT tokens（`access_token` + `refresh_token` + `id_token`
+/// 都必须非空，和 Codex 的 `TokenData` 一致）或 personal access token。单独的
+/// `OPENAI_API_KEY` 不算——新版客户端的 Work 身份判断也要求账号登录。
+///
+/// `cli_auth_credentials_store` 不是 `file`（keyring/auto/未知）时无法从磁盘证明未登录，
+/// 按已登录处理，避免把 keyring 用户误判成未登录后强行改界面模式。
 fn chatgpt_signed_in(home: &Path) -> bool {
+    if !auth_store_uses_file(home) {
+        return true;
+    }
     let Ok(Some(text)) = read(&home.join("auth.json")) else {
         return false;
     };
@@ -247,23 +290,35 @@ fn chatgpt_signed_in(home: &Path) -> bool {
     let Some(object) = auth.as_object() else {
         return false;
     };
+    let non_empty = |value: Option<&serde_json::Value>| {
+        value
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    };
     if let Some(mode) = object.get("auth_mode").and_then(serde_json::Value::as_str) {
-        if !matches!(mode, "chatgpt" | "chatgptAuthTokens") {
-            return false;
-        }
+        return match mode {
+            "chatgpt" | "chatgptAuthTokens" => object
+                .get("tokens")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|tokens| {
+                    ["access_token", "refresh_token", "id_token"]
+                        .iter()
+                        .all(|key| non_empty(tokens.get(*key)))
+                }),
+            "personalAccessToken" => non_empty(object.get("personal_access_token")),
+            _ => false,
+        };
+    }
+    if non_empty(object.get("personal_access_token")) {
+        return true;
     }
     object
         .get("tokens")
         .and_then(serde_json::Value::as_object)
         .is_some_and(|tokens| {
-            ["access_token", "id_token", "refresh_token"]
+            ["access_token", "refresh_token", "id_token"]
                 .iter()
-                .any(|key| {
-                    tokens
-                        .get(*key)
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(|value| !value.trim().is_empty())
-                })
+                .all(|key| non_empty(tokens.get(*key)))
         })
 }
 
@@ -275,9 +330,27 @@ fn detail_mode(document: &DocumentMut) -> Option<String> {
         .map(str::to_owned)
 }
 
+fn set_detail_mode(document: &mut DocumentMut, mode: &str) {
+    document[DESKTOP][DETAIL_MODE] = value(mode);
+}
+
+fn remove_detail_mode(document: &mut DocumentMut) {
+    if let Some(desktop) = document.get_mut(DESKTOP).and_then(Item::as_table_like_mut) {
+        desktop.remove(DETAIL_MODE);
+    }
+}
+
+/// `None` 表示删掉这个键。
+fn apply_detail_target(document: &mut DocumentMut, target: Option<&str>) {
+    match target {
+        Some(mode) => set_detail_mode(document, mode),
+        None => remove_detail_mode(document),
+    }
+}
+
 fn set_client_mode(home: &Path, mode: &ClientMode) -> Result<()> {
     let path = home.join(CLIENT_MODE);
-    if mode.remembered_prose {
+    if mode.persist() {
         return atomic_write(&path, &serde_json::to_vec(mode)?);
     }
     match fs::remove_file(&path) {
@@ -287,8 +360,41 @@ fn set_client_mode(home: &Path, mode: &ClientMode) -> Result<()> {
     }
 }
 
-fn set_detail_mode(document: &mut DocumentMut, mode: &str) {
-    document[DESKTOP][DETAIL_MODE] = value(mode);
+/// 把当前的详细模式改成 `target`；返回是否真的写了文件。
+///
+/// 写前重新读一次文件，发现它已被客户端改掉就放弃本次写入，避免覆盖客户端的更新。
+fn write_detail_target(home: &Path, target: Option<&str>) -> Result<bool> {
+    let path = home.join("config.toml");
+    let Some(original) = read(&path)? else {
+        return Ok(false);
+    };
+    let mut document = parse(&original)?;
+    if detail_mode(&document).as_deref() == target {
+        return Ok(false);
+    }
+    apply_detail_target(&mut document, target);
+    if read(&path)? != Some(original) {
+        return Ok(false);
+    }
+    atomic_write(&path, document.to_string().as_bytes())?;
+    Ok(true)
+}
+
+/// 没有接管时，把之前为未登录守 local 而改的详细模式还回去。
+fn restore_orphan_client_mode(home: &Path) -> Result<bool> {
+    let mode = client_mode(home)?;
+    let Some(target) = mode.restore_target() else {
+        return Ok(false);
+    };
+    write_detail_target(home, target)?;
+    set_client_mode(home, &ClientMode::default())?;
+    Ok(true)
+}
+
+/// 撤销接管时按收据原值恢复详细模式（而不是一律写回 PROSE）。
+fn restore_detail_mode_to(home: &Path, target: Option<&str>) -> Result<()> {
+    write_detail_target(home, target)?;
+    set_client_mode(home, &ClientMode::default())
 }
 
 /// 未登录时把客户端保持在 Codex 本地界面；登录后还原用户原来的详细模式。
@@ -298,11 +404,11 @@ fn set_detail_mode(document: &mut DocumentMut, mode: &str) {
 /// 到不了本机网关）。这个设置属于客户端的显示偏好，不是模型路由，接管只在未登录期间
 /// 强制本地模式，并把用户原来的选择记在 `CLIENT_MODE` 里，登录后还回去。
 ///
-/// 返回是否改写了 `config.toml`。只在接管仍然生效时动作。
+/// 先写 journal 再改 config：任一步失败，下一轮都能按 journal 恢复原值。
 pub fn ensure_local_mode(home: &Path) -> Result<bool> {
     absolute(home)?;
     if !inspect(home)?.applied {
-        return Ok(false);
+        return restore_orphan_client_mode(home);
     }
     let path = home.join("config.toml");
     let Some(original) = read(&path)? else {
@@ -310,53 +416,55 @@ pub fn ensure_local_mode(home: &Path) -> Result<bool> {
     };
     let mut document = parse(&original)?;
     let current = detail_mode(&document);
-    let remembered = client_mode(home)?;
+    let mode = client_mode(home)?;
     let signed_in = chatgpt_signed_in(home);
     if signed_in {
-        if remembered.remembered_prose && current.as_deref() == Some(DETAIL_LOCAL) {
-            set_detail_mode(&mut document, DETAIL_PROSE);
-            if read(&path)? != Some(original) {
-                return Ok(false);
-            }
-            atomic_write(&path, document.to_string().as_bytes())?;
+        let Some(target) = mode.restore_target() else {
+            return Ok(false);
+        };
+        if current.as_deref() != Some(DETAIL_LOCAL) {
+            // 用户自己已经改走了：清掉 journal，不覆盖他的选择。
             set_client_mode(home, &ClientMode::default())?;
             return Ok(true);
         }
-        return Ok(false);
+        if current.as_deref() == target {
+            set_client_mode(home, &ClientMode::default())?;
+            return Ok(true);
+        }
+        apply_detail_target(&mut document, target);
+        if read(&path)? != Some(original) {
+            return Ok(false);
+        }
+        atomic_write(&path, document.to_string().as_bytes())?;
+        set_client_mode(home, &ClientMode::default())?;
+        return Ok(true);
     }
     if current.as_deref() == Some(DETAIL_PROSE) {
+        if !mode.active {
+            set_client_mode(
+                home,
+                &ClientMode {
+                    active: true,
+                    original: Some(DETAIL_PROSE.to_owned()),
+                    remembered_prose: false,
+                },
+            )?;
+        }
         set_detail_mode(&mut document, DETAIL_LOCAL);
         if read(&path)? != Some(original) {
             return Ok(false);
         }
         atomic_write(&path, document.to_string().as_bytes())?;
-        set_client_mode(
-            home,
-            &ClientMode {
-                remembered_prose: true,
-            },
-        )?;
+        return Ok(true);
+    }
+    if mode.persist() && current.as_deref() != Some(DETAIL_LOCAL) {
+        // 用户把模式改成了第三种值：不再替用户守 local，交给用户。
+        set_client_mode(home, &ClientMode::default())?;
         return Ok(true);
     }
     Ok(false)
 }
 
-/// 撤销接管时把我们改过的界面模式还回去；用户自己再改过就不动。
-fn restore_client_mode(home: &Path) -> Result<()> {
-    let mode = client_mode(home)?;
-    if !mode.remembered_prose {
-        return Ok(());
-    }
-    let path = home.join("config.toml");
-    if let Some(original) = read(&path)? {
-        let mut document = parse(&original)?;
-        if detail_mode(&document).as_deref() == Some(DETAIL_LOCAL) {
-            set_detail_mode(&mut document, DETAIL_PROSE);
-            atomic_write(&path, document.to_string().as_bytes())?;
-        }
-    }
-    set_client_mode(home, &ClientMode::default())
-}
 /// 已发布目录里的模型标识：客户端切模型时写的 slug 必须来自这里。
 fn catalog_slugs(published: &DocumentMut) -> Vec<String> {
     published
@@ -508,7 +616,7 @@ pub fn inspect(home: &Path) -> Result<ConfigStatus> {
         conflicts,
         chatgpt_signed_in: chatgpt_signed_in(home),
         conversation_detail_mode: detail_mode(&doc),
-        local_mode_guard: client_mode(home)?.remembered_prose,
+        local_mode_guard: client_mode(home)?.persist(),
         message: if conflict {
             "Codex routing is managed by another configuration or was modified"
         } else if applied {
@@ -628,12 +736,19 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
 pub fn restore(home: &Path) -> Result<ConfigStatus> {
     absolute(home)?;
     let Some(receipt) = receipt(home)? else {
+        // 没有收据也要自愈：崩溃可能留下"只有 marker、没有收据"的半截状态。
+        restore_orphan_client_mode(home)?;
         return inspect(home);
     };
     let path = home.join("config.toml");
     let current = read(&path)?;
     let mut doc = parse(current.as_deref().unwrap_or(""))?;
     let original = parse(receipt.original.as_deref().unwrap_or(""))?;
+    let original_detail = original
+        .get(DESKTOP)
+        .and_then(|desktop| desktop.get(DETAIL_MODE))
+        .and_then(Item::as_str)
+        .map(str::to_owned);
     // 受管字段被外部改过也照样撤销：撤销的意思就是"把我们的字段还回去"，而下面这段只动
     // `OWNED_KEYS`（含 provider 表），不碰其它键。以前这里整体拒绝，于是用户在"应用不了、
     // 也撤销不了"的状态里出不来。
@@ -658,9 +773,10 @@ pub fn restore(home: &Path) -> Result<ConfigStatus> {
             atomic_write(&path, updated.as_bytes())?;
         }
     }
+    // 详细模式按收据里的原值恢复（可能是"未设置"或别的模式），不是一律写回 PROSE。
+    // 必须在删收据之前完成：失败时收据还在，下次撤销还能重试。
+    restore_detail_mode_to(home, original_detail.as_deref())?;
     fs::remove_file(home.join(RECEIPT))?;
-    // 接管撤掉了，把未登录期间替用户保存的界面模式还回去。
-    restore_client_mode(home)?;
     inspect(home)
 }
 pub(super) fn applied_catalog(home: &Path) -> Result<Option<serde_json::Value>> {
@@ -948,6 +1064,84 @@ mod tests {
         apply(directory.path(), &route(directory.path())).unwrap();
         assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
         assert!(!inspect(directory.path()).unwrap().local_mode_guard);
+    }
+
+    /// 撤销时的详细模式必须按收据原值恢复，而不是一律写回 PROSE。
+    #[test]
+    fn restore_uses_the_receipt_original_detail_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        let original = "[desktop]\nconversationDetailMode = \"STEPS_COMMANDS\"\nscale = 1.25\n";
+        fs::write(directory.path().join("config.toml"), original).unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+
+        // 接管后用户在客户端里切到详细模式；未登录守卫改成 local 并记下 PROSE。
+        edit(directory.path(), |doc| {
+            doc[DESKTOP][DETAIL_MODE] = value(DETAIL_PROSE)
+        });
+        assert!(ensure_local_mode(directory.path()).unwrap());
+
+        restore(directory.path()).unwrap();
+        let text = config_text(directory.path());
+        assert!(
+            text.contains("conversationDetailMode = \"STEPS_COMMANDS\""),
+            "撤销应回到收据里的原值，而不是 PROSE: {text}"
+        );
+        assert!(!directory.path().join(CLIENT_MODE).exists());
+    }
+
+    /// 没有收据（崩溃/旧版本残留）也要把 marker 里记录的详细模式还回去。
+    #[test]
+    fn orphan_client_mode_marker_is_healed_without_receipt() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("config.toml"),
+            "[desktop]\nconversationDetailMode = \"STEPS_COMMANDS\"\n",
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join(CLIENT_MODE),
+            serde_json::to_vec(&ClientMode {
+                active: true,
+                original: Some(DETAIL_PROSE.to_owned()),
+                remembered_prose: false,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(ensure_local_mode(directory.path()).unwrap());
+        assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
+        assert!(!directory.path().join(CLIENT_MODE).exists());
+        assert!(!ensure_local_mode(directory.path()).unwrap());
+    }
+
+    /// keyring/auto 存储下 auth.json 不代表登录态：不能把已登录用户误判成未登录。
+    #[test]
+    fn keyring_auth_store_is_treated_as_signed_in() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = "cli_auth_credentials_store = \"keyring\"\n[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\n";
+        fs::write(directory.path().join("config.toml"), config).unwrap();
+        assert!(!directory.path().join("auth.json").exists());
+
+        apply(directory.path(), &route(directory.path())).unwrap();
+        let text = config_text(directory.path());
+        assert!(
+            text.contains("conversationDetailMode = \"STEPS_PROSE\""),
+            "keyring 用户不应被强行切模式: {text}"
+        );
+        assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
+    }
+
+    /// personal access token 在 Codex 里也算 ChatGPT 账号登录。
+    #[test]
+    fn personal_access_token_counts_as_signed_in() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("auth.json"),
+            br#"{"auth_mode":"personalAccessToken","personal_access_token":"pat"}"#,
+        )
+        .unwrap();
+        assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
     }
 
     /// 撤销接管时把替用户保存的详细模式还回去。

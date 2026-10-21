@@ -91,8 +91,8 @@ pub struct CodexStatus {
     pub restorable: bool,
     /// 与接管快照不一致的受管字段；界面据此说清"哪一项被改成了什么"。
     pub conflicts: Vec<ConfigFieldConflict>,
-    /// Codex 配置目录里存在 `auth.json`：ChatGPT 已登录。接管只替换模型请求的
-    /// 凭据，不碰这个文件；界面据此提示"先登录再接管"，避免把未登录当成接管 bug。
+    /// `auth.json` 里有有效的 ChatGPT 登录凭据（tokens 或 personal access token）。
+    /// 接管只替换模型请求的凭据，不碰登录文件；界面据此提示"先登录再接管"。
     pub chatgpt_signed_in: bool,
     /// 客户端当前界面模式：`STEPS_PROSE` = ChatGPT Work，`STEPS_COMMANDS` = Codex 本地。
     pub conversation_detail_mode: Option<String>,
