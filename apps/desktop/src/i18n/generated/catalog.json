@@ -948,6 +948,18 @@
         }
       ]
     },
+    "0d8c5c234e3a968e": {
+      "source": "推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管。未登录时接管会把客户端保持在 Codex 本地模式（「输出详细程度」保持默认），否则新版客户端会用需要登录的 ChatGPT Work 模式拒绝本地任务；登录后会还回你原来的详细模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 18,
+          "column": 11
+        }
+      ]
+    },
     "0e3bbd41165a02a4": {
       "source": "大工具结果与压缩历史：{size}（随会话一起回收；没有引用的文件最多再留 {days} 天）",
       "kind": "template",
@@ -3195,18 +3207,6 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 433,
           "column": 160
-        }
-      ]
-    },
-    "33b9d1afdeb643f6": {
-      "source": "推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管。未登录也可以只使用本地模型，但接管后客户端可能不再提供登录入口；界面语言、云端会话等显示能力由客户端自身的运行时与远端配置决定，与接管无关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 18,
-          "column": 11
         }
       ]
     },

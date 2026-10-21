@@ -52,6 +52,9 @@ struct Running {
     shutdown: CancellationToken,
     alive: Arc<AtomicBool>,
     task: JoinHandle<()>,
+    /// 未登录时把客户端保持在本地界面：Codex 自己的 `conversationDetailMode` 被切到
+    /// Work 模式后，它会在创建本地任务前就拒绝请求。轮询得很轻（2s 一次，只在需要时写）。
+    client_guard: JoinHandle<()>,
 }
 
 /// 跨流的活动计数；响应 Body 被客户端丢弃也释放所有权。
@@ -151,6 +154,8 @@ impl CodexGateway {
         };
         if let Some(previous) = runtime.take() {
             previous.shutdown.cancel();
+            previous.client_guard.abort();
+            let _ = previous.client_guard.await;
             let mut task = previous.task;
             match tokio::time::timeout(Duration::from_secs(10), &mut task).await {
                 Ok(_) => {}
@@ -176,11 +181,29 @@ impl CodexGateway {
                 }
                 serving.store(false, Ordering::SeqCst);
             });
+            let guard_shutdown = shutdown.clone();
+            let guard_home = settings.resolved_home().ok();
+            let client_guard = tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(Duration::from_secs(2));
+                loop {
+                    tokio::select! {
+                        _ = guard_shutdown.cancelled() => break,
+                        _ = ticker.tick() => {
+                            if let Some(home) = guard_home.as_deref() {
+                                if let Err(error) = config::ensure_local_mode(home) {
+                                    tracing::warn!(%error, "Codex client mode guard failed");
+                                }
+                            }
+                        }
+                    }
+                }
+            });
             *runtime = Some(Running {
                 port: settings.port,
                 shutdown,
                 alive,
                 task,
+                client_guard,
             });
         }
         self.record_error(None);

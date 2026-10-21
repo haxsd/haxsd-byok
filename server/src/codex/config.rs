@@ -34,6 +34,16 @@ const OWNED_KEYS: &[&str] = &[
     "model_auto_compact_token_limit",
     "web_search",
 ];
+/// 客户端自己的界面模式：新版 Codex 用 `conversationDetailMode` 在「ChatGPT Work」和
+/// 「Codex 本地」两个界面之间切换。详细模式（`STEPS_PROSE`）会要求 Work 浏览器身份，
+/// 未登录时客户端连本地任务都拒绝创建（`Work browser access requires an authenticated
+/// account`）；本地模式（`STEPS_COMMANDS`）不要求登录。这个字段不是模型路由，接管只在
+/// 未登录期间把它保持在本地模式，登录后还原用户原来的选择。
+const CLIENT_MODE: &str = ".haxsd-byok-client-mode.json";
+const DESKTOP: &str = "desktop";
+const DETAIL_MODE: &str = "conversationDetailMode";
+const DETAIL_PROSE: &str = "STEPS_PROSE";
+const DETAIL_LOCAL: &str = "STEPS_COMMANDS";
 
 pub struct ConfigRoute {
     pub model: String,
@@ -161,6 +171,13 @@ struct Receipt {
     applied: String,
 }
 
+/// 记录「未登录时代管把客户端的详细模式改成了本地模式」这件事，登录后还原。
+#[derive(Default, Serialize, Deserialize)]
+struct ClientMode {
+    #[serde(default)]
+    remembered_prose: bool,
+}
+
 pub fn default_home() -> Result<PathBuf> {
     let home = if let Some(home) = std::env::var_os("CODEX_HOME") {
         PathBuf::from(home)
@@ -199,6 +216,103 @@ fn receipt(home: &Path) -> Result<Option<Receipt>> {
             Ok(receipt)
         })
         .transpose()
+}
+
+fn client_mode(home: &Path) -> Result<ClientMode> {
+    Ok(read(&home.join(CLIENT_MODE))?
+        .map(|text| serde_json::from_str::<ClientMode>(&text))
+        .transpose()?
+        .unwrap_or_default())
+}
+
+fn set_client_mode(home: &Path, mode: &ClientMode) -> Result<()> {
+    let path = home.join(CLIENT_MODE);
+    if mode.remembered_prose {
+        return atomic_write(&path, &serde_json::to_vec(mode)?);
+    }
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn set_detail_mode(document: &mut DocumentMut, mode: &str) {
+    document[DESKTOP][DETAIL_MODE] = value(mode);
+}
+
+/// 未登录时把客户端保持在 Codex 本地界面；登录后还原用户原来的详细模式。
+///
+/// 新版客户端的「输出详细程度」决定它进入 ChatGPT Work 还是 Codex 本地界面。Work 界面
+/// 要求账号身份，未登录时连本地任务都会被客户端拒绝（错误发生在创建任务之前，请求根本
+/// 到不了本机网关）。这个设置属于客户端的显示偏好，不是模型路由，接管只在未登录期间
+/// 强制本地模式，并把用户原来的选择记在 `CLIENT_MODE` 里，登录后还回去。
+///
+/// 返回是否改写了 `config.toml`。只在接管仍然生效时动作。
+pub fn ensure_local_mode(home: &Path) -> Result<bool> {
+    absolute(home)?;
+    if !inspect(home)?.applied {
+        return Ok(false);
+    }
+    let path = home.join("config.toml");
+    let Some(original) = read(&path)? else {
+        return Ok(false);
+    };
+    let mut document = parse(&original)?;
+    let current = document
+        .get(DESKTOP)
+        .and_then(|desktop| desktop.get(DETAIL_MODE))
+        .and_then(Item::as_str);
+    let remembered = client_mode(home)?;
+    let signed_in = home.join("auth.json").is_file();
+    if signed_in {
+        if remembered.remembered_prose && current == Some(DETAIL_LOCAL) {
+            set_detail_mode(&mut document, DETAIL_PROSE);
+            if read(&path)? != Some(original) {
+                return Ok(false);
+            }
+            atomic_write(&path, document.to_string().as_bytes())?;
+            set_client_mode(home, &ClientMode::default())?;
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+    if current == Some(DETAIL_PROSE) {
+        set_detail_mode(&mut document, DETAIL_LOCAL);
+        if read(&path)? != Some(original) {
+            return Ok(false);
+        }
+        atomic_write(&path, document.to_string().as_bytes())?;
+        set_client_mode(
+            home,
+            &ClientMode {
+                remembered_prose: true,
+            },
+        )?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// 撤销接管时把我们改过的界面模式还回去；用户自己再改过就不动。
+fn restore_client_mode(home: &Path) -> Result<()> {
+    let mode = client_mode(home)?;
+    if !mode.remembered_prose {
+        return Ok(());
+    }
+    let path = home.join("config.toml");
+    if let Some(original) = read(&path)? {
+        let mut document = parse(&original)?;
+        let current = document
+            .get(DESKTOP)
+            .and_then(|desktop| desktop.get(DETAIL_MODE))
+            .and_then(Item::as_str);
+        if current == Some(DETAIL_LOCAL) {
+            set_detail_mode(&mut document, DETAIL_PROSE);
+            atomic_write(&path, document.to_string().as_bytes())?;
+        }
+    }
+    set_client_mode(home, &ClientMode::default())
 }
 /// 已发布目录里的模型标识：客户端切模型时写的 slug 必须来自这里。
 fn catalog_slugs(published: &DocumentMut) -> Vec<String> {
@@ -451,6 +565,9 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
         ));
     }
     atomic_write(&path, applied.as_bytes())?;
+    // 接管生效后立刻把未登录的客户端切到本地界面：Work 界面的浏览器身份门禁会让
+    // 客户端在创建本地任务之前就报错，请求根本到不了本机网关。
+    ensure_local_mode(home)?;
     inspect(home)
 }
 pub fn restore(home: &Path) -> Result<ConfigStatus> {
@@ -487,6 +604,8 @@ pub fn restore(home: &Path) -> Result<ConfigStatus> {
         }
     }
     fs::remove_file(home.join(RECEIPT))?;
+    // 接管撤掉了，把未登录期间替用户保存的界面模式还回去。
+    restore_client_mode(home)?;
     inspect(home)
 }
 pub(super) fn applied_catalog(home: &Path) -> Result<Option<serde_json::Value>> {
@@ -674,6 +793,73 @@ mod tests {
             "撤销也不能动登录凭据"
         );
         assert!(auth.exists());
+    }
+
+    fn prose_desktop() -> &'static str {
+        "[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\nscale = 1.25\n"
+    }
+
+    fn config_text(home: &Path) -> String {
+        fs::read_to_string(home.join("config.toml")).unwrap()
+    }
+
+    /// 未登录时，接管必须把客户端留在 Codex 本地界面：Work 界面的浏览器身份门禁会在
+    /// 创建本地任务之前就报「需要登录」，请求根本到不了本机网关。
+    #[test]
+    fn signed_out_takeover_keeps_the_client_in_local_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("config.toml"), prose_desktop()).unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+
+        let text = config_text(directory.path());
+        assert!(
+            text.contains("conversationDetailMode = \"STEPS_COMMANDS\""),
+            "{text}"
+        );
+        assert!(
+            text.contains("scale = 1.25"),
+            "其它 desktop 设置不能被带走: {text}"
+        );
+        assert!(
+            !ensure_local_mode(directory.path()).unwrap(),
+            "已经是本地模式，不应重复写"
+        );
+    }
+
+    /// 登录之后把用户原来的详细模式还回去，且只还原一次。
+    #[test]
+    fn prose_mode_returns_after_chatgpt_sign_in() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("config.toml"), prose_desktop()).unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+        assert!(config_text(directory.path()).contains("STEPS_COMMANDS"));
+
+        fs::write(directory.path().join("auth.json"), b"{}").unwrap();
+        assert!(ensure_local_mode(directory.path()).unwrap());
+        assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
+        assert!(!directory.path().join(CLIENT_MODE).exists());
+        assert!(!ensure_local_mode(directory.path()).unwrap());
+    }
+
+    /// 已登录就不该碰用户的显示偏好。
+    #[test]
+    fn signed_in_takeover_leaves_the_prose_setting_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("config.toml"), prose_desktop()).unwrap();
+        fs::write(directory.path().join("auth.json"), b"{}").unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+        assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
+    }
+
+    /// 撤销接管时把替用户保存的详细模式还回去。
+    #[test]
+    fn restore_returns_the_remembered_prose_mode() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(directory.path().join("config.toml"), prose_desktop()).unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+        restore(directory.path()).unwrap();
+        assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
+        assert!(!directory.path().join(CLIENT_MODE).exists());
     }
 
     fn edit(home: &Path, change: impl FnOnce(&mut DocumentMut)) -> String {
