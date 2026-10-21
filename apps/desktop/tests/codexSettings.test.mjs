@@ -99,7 +99,7 @@ test("the conflict card lists every changed field with both values", async () =>
   assert.match(markup, /联网搜索：接管时 disabled → 现在 live/);
   assert.match(markup, /上下文窗口：接管时 （未设置） → 现在 114000/);
   assert.match(markup, /模型目录：接管时 C:\/Users\/x\/\.codex\/catalog\.json → 现在 C:\/Users\/x\/\.codex\/generated\.json/);
-  assert.match(markup, /受管字段被改过时，点「撤销接管」会把它们还原成接管前的值；想继续用本机网关，就再点「应用到 Codex」。/);
+  assert.match(markup, /撤销接管会还原这些字段；要继续使用本机网关，再应用一次。/);
 });
 
 test("the conflict card explains a route held by another provider", async () => {
@@ -114,7 +114,7 @@ test("the conflict card explains a route held by another provider", async () => 
   }));
 
   assert.match(markup, /配置冲突/);
-  assert.match(markup, /目标目录里已有其他 provider/);
+  assert.match(markup, /Codex 现在使用别人写的 provider/);
   assert.match(markup, /模型供应商：接管时 haxsd-byok → 现在 openai/);
 });
 
@@ -134,7 +134,7 @@ test("applied Codex configuration locks settings until an explicit restore", asy
   })));
   assert.match(markup, /aria-label="Codex 配置目录"[^>]*disabled/);
   assert.match(markup, /aria-label="Codex 网关端口"[^>]*disabled/);
-  assert.match(markup, /撤销接管后才能修改设置/);
+  assert.match(markup, /撤销接管后才能修改/);
 });
 
 test("the reason Codex settings are locked belongs to the gateway switch row", async () => {
@@ -146,8 +146,8 @@ test("the reason Codex settings are locked belongs to the gateway switch row", a
   })));
   // The reason used to be a paragraph floating above the form; it has to stay inside the
   // switch's own row, next to the control it explains.
-  assert.match(render(true), /启用 Codex 网关<\/strong><small>撤销接管后才能修改设置<\/small>/);
-  assert.match(render(false), /启用 Codex 网关<\/strong><small>关闭时不会监听端口[^<]*<\/small>/);
+  assert.match(render(true), /启用 Codex 网关<\/strong><small>撤销接管后才能修改<\/small>/);
+  assert.match(render(false), /启用 Codex 网关<\/strong><small>关闭时不监听端口<\/small>/);
 });
 
 const libraryModel = (hash, name) => ({
@@ -231,8 +231,7 @@ test("the Codex form says why plugin models are not offered", async () => {
     locked: false,
     onChange: () => {},
   })));
-  assert.match(markup, /插件提供的 1 个模型不能用于 Codex/);
-  assert.match(markup, /Grok 4\.6/);
+  assert.match(markup, /插件模型的 1 个模型不可用/);
 });
 
 test("a selected model that left the library is called out instead of silently kept", async () => {
@@ -245,7 +244,7 @@ test("a selected model that left the library is called out instead of silently k
     locked: false,
     onChange: () => {},
   })));
-  assert.match(markup, /已选的 1 个模型已不在模型库里/);
+  assert.match(markup, /1 个已选模型不在模型库/);
 });
 
 test("Codex settings and explicit apply/restore stay on the shared management HTTP boundary", async () => {
@@ -279,20 +278,27 @@ test("ChatGPT login is a hint that never changes the routing state", async () =>
   assert.equal(codexConnectionView({ ...state, configured: true, chatgpt_signed_in: false }).state, "taken-over");
 });
 
-test("the login card says takeover does not sign the user out, and to log in before applying", async () => {
-  const { CodexLoginCard } = await loader.load("/src/features/codex/CodexLoginCard.tsx");
-  const signedOut = renderToStaticMarkup(createElement(CodexLoginCard, { status: { ...state, chatgpt_signed_in: false } }));
-  assert.match(signedOut, /不会退出或替换你的 ChatGPT 登录/);
-  assert.match(signedOut, /推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管/);
-  assert.match(signedOut, /未检测到 ChatGPT 登录/);
-  assert.match(signedOut, /接管会保持 Codex 本地模式/);
+test("login and client mode are compact pills, not paragraphs", async () => {
+  const { codexLoginView, codexClientModeView } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexLoginView(null).label, "登录检测中…");
+  assert.equal(codexLoginView({ ...state, chatgpt_signed_in: true }).label, "ChatGPT 已登录");
+  assert.equal(codexLoginView({ ...state, chatgpt_signed_in: false }).label, "ChatGPT 未登录");
 
-  const workMode = renderToStaticMarkup(createElement(CodexLoginCard, {
-    status: { ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_PROSE" },
-  }));
-  assert.match(workMode, /接管会自动切回 Codex 本地模式/);
+  // 未登录时把客户端实际模式摆在旁边；已登录时 Work 模式是正常的，不再提示。
+  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_COMMANDS" }).label, "本地模式");
+  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_PROSE" }).label, "Work 模式");
+  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: true, conversation_detail_mode: "STEPS_PROSE" }), null);
+});
 
-  const signedIn = renderToStaticMarkup(createElement(CodexLoginCard, { status: { ...state, chatgpt_signed_in: true } }));
-  assert.match(signedIn, /已检测到 ChatGPT 登录，可以应用接管/);
-  assert.doesNotMatch(signedIn, /未检测到 ChatGPT 登录/);
+test("the status card lists at most two next actions and shorter descriptions", async () => {
+  const { codexOutstandingSteps, codexVerdictDescription } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  const pending = { ...state, configured: false, listening: false, enabled: false, chatgpt_signed_in: false };
+  const steps = codexOutstandingSteps(pending, 0);
+  assert.equal(steps.length, 2);
+  assert.deepEqual(steps.map((step) => step.label), ["添加模型", "启用网关"]);
+  assert.equal(codexOutstandingSteps({ ...pending, configured: true }, 0).length, 0, "已接管后不再列步骤");
+
+  for (const stateName of ["checking", "disabled", "pending-apply", "taken-over", "unavailable", "conflict"]) {
+    assert.ok(codexVerdictDescription(stateName).length <= 30, `${stateName} 的状态说明要短`);
+  }
 });

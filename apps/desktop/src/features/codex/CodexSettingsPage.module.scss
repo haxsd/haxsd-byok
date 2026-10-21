@@ -1,7 +1,6 @@
 @use "../../styles/typography" as type;
 
-/* 与 Devin 接入页同一套排版：卡片之间的间距来自全局节奏令牌，卡片内部的行距由
-   每行自己的 padding 给出，说明文字统一用 xs 的次要色。 */
+/* 与 Cursor / Devin 接入页同一套排版：卡片之间用全局节奏，卡片内部按内容分组。 */
 .page { display: grid; gap: var(--oa-section-gap); }
 
 .form { display: grid; }
@@ -61,15 +60,17 @@
 
 .error {
   margin: 0;
+  padding: 0 16px 16px;
   color: var(--vscode-errorForeground);
   overflow-wrap: anywhere;
 }
 
-/* 未登录提示：这是"建议先做的一步"，不是错误，所以用 warning 语义色。 */
-.warning {
-  margin: 0;
-  color: var(--vscode-editorWarning-foreground);
-  font-size: type.$font-size-xs;
+/* 状态卡右侧的两个状态 pill：登录与客户端模式，不再各占一张说明卡。 */
+.aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .facts {
@@ -79,6 +80,25 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* 配置目录只做背景信息：单行截断，完整路径放 title。 */
+.home {
+  max-width: 52ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 使用边界默认折叠，三条各一行。 */
+.boundaries {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 16px 16px 34px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
 @media (max-width: 700px) {
   .fields { grid-template-columns: 1fr; }
+  .aside { align-items: flex-start; }
 }

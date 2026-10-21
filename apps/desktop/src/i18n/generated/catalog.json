@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 29,
+          "line": 27,
           "column": 25
         },
         {
@@ -79,6 +79,18 @@
         }
       ]
     },
+    "01d6f66a3b0250a8": {
+      "source": "正在读取 Codex 登录状态",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 32,
+          "column": 76
+        }
+      ]
+    },
     "01f3e69a5a9b2c9b": {
       "source": "访问模型服务所需的密钥。",
       "kind": "text",
@@ -112,8 +124,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 78,
-          "column": 82
+          "line": 90,
+          "column": 66
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -180,7 +192,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 77,
+          "line": 89,
           "column": 36
         },
         {
@@ -204,6 +216,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 433,
           "column": 39
+        }
+      ]
+    },
+    "03a391e1c5bbb2f8": {
+      "source": "Codex 现在使用别人写的 provider，处理占用后再应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 21,
+          "column": 38
         }
       ]
     },
@@ -250,7 +274,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 90,
+          "line": 105,
           "column": 24
         }
       ]
@@ -571,18 +595,6 @@
         }
       ]
     },
-    "086624a7cb85de89": {
-      "source": "Codex 只发 Responses 请求；本机网关按模型的接口类型，把它翻译成 Chat Completions 或 Anthropic Messages 后转发给上游。工具仍由 Codex 执行，不会改动登录、MCP、技能或审批设置。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
-          "column": 13
-        }
-      ]
-    },
     "08c7d97f993eb9ec": {
       "source": "把 Devin 指到本机网关",
       "kind": "text",
@@ -592,18 +604,6 @@
           "file": "features/devin/devinConnectionView.ts",
           "line": 139,
           "column": 14
-        }
-      ]
-    },
-    "08d93a0408c60d7a": {
-      "source": "ChatGPT 登录",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 83,
-          "column": 18
         }
       ]
     },
@@ -793,18 +793,6 @@
         }
       ]
     },
-    "0b2d39c007564013": {
-      "source": "登录与接管",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 18,
-          "column": 29
-        }
-      ]
-    },
     "0ba99840b7fd5826": {
       "source": "使用界面语言的默认提示词",
       "kind": "text",
@@ -948,15 +936,15 @@
         }
       ]
     },
-    "0d8c5c234e3a968e": {
-      "source": "推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管。未登录时接管会把客户端保持在 Codex 本地模式（「输出详细程度」保持默认），否则新版客户端会用需要登录的 ChatGPT Work 模式拒绝本地任务；登录后会还回你原来的详细模式。",
+    "0dc322a884a1b9bf": {
+      "source": "路由被其他程序占用",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 21,
-          "column": 11
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 17,
+          "column": 43
         }
       ]
     },
@@ -1026,12 +1014,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 23,
+          "line": 21,
           "column": 18
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 26,
+          "line": 24,
           "column": 22
         }
       ]
@@ -1329,20 +1317,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 47,
+          "line": 42,
           "column": 99
-        }
-      ]
-    },
-    "156219aa0cfeffa4": {
-      "source": "未检测到",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 83,
-          "column": 95
         }
       ]
     },
@@ -1370,7 +1346,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 68,
+          "line": 79,
           "column": 14
         },
         {
@@ -1424,6 +1400,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 70,
+          "column": 40
+        },
+        {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 371,
           "column": 130
@@ -1447,7 +1428,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 45,
+          "line": 40,
           "column": 70
         }
       ]
@@ -1846,6 +1827,18 @@
         }
       ]
     },
+    "1c98794f80ec1dba": {
+      "source": "检查端口是否被占用后保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 75,
+          "column": 58
+        }
+      ]
+    },
     "1cc0eb50e4883eff": {
       "source": "需要先信任本地 CA",
       "kind": "text",
@@ -1918,6 +1911,20 @@
         }
       ]
     },
+    "1dbc04ea4513c2e3": {
+      "source": "插件模型的 {count} 个模型不可用（Codex 只转发 API 模型）",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 31,
+          "column": 12
+        }
+      ]
+    },
     "1ded6559f626109d": {
       "source": "缓存读取",
       "kind": "text",
@@ -1949,7 +1956,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 45,
+          "line": 40,
           "column": 25
         }
       ]
@@ -1961,7 +1968,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 77,
+          "line": 89,
           "column": 80
         },
         {
@@ -2104,6 +2111,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 460,
           "column": 50
+        }
+      ]
+    },
+    "21df898e6ec23582": {
+      "source": "本机网关没有在监听。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 92,
+          "column": 32
         }
       ]
     },
@@ -2272,6 +2291,18 @@
         }
       ]
     },
+    "253db8e3e6d82761": {
+      "source": "启动网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 75,
+          "column": 41
+        }
+      ]
+    },
     "2555d6c7fbb7e070": {
       "source": "可以直接输入模型标识，也可以读取接口返回的模型列表。",
       "kind": "text",
@@ -2334,18 +2365,6 @@
         }
       ]
     },
-    "2637ea138c9407cf": {
-      "source": "这些受管字段在接管之后被改过：",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexConflictCard.tsx",
-          "line": 20,
-          "column": 31
-        }
-      ]
-    },
     "26b5a45115e77ac1": {
       "source": "日志文件保留 {days} 天，过期自动删除。",
       "kind": "template",
@@ -2369,18 +2388,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 200,
           "column": 36
-        }
-      ]
-    },
-    "2748e98062d5c6eb": {
-      "source": "插件模型的设置项在 Codex 网关里无法生效，请取消它们。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 42,
-          "column": 12
         }
       ]
     },
@@ -2508,20 +2515,6 @@
         }
       ]
     },
-    "29185f5cb73b3c2e": {
-      "source": "插件提供的 {count} 个模型不能用于 Codex：本机网关只转发模型库里的 API 模型。",
-      "kind": "template",
-      "placeholders": [
-        "count"
-      ],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 35,
-          "column": 12
-        }
-      ]
-    },
     "296de0e31f8c22d9": {
       "source": "正常",
       "kind": "text",
@@ -2531,6 +2524,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 166,
           "column": 11
+        }
+      ]
+    },
+    "298c1f1ed6466dd3": {
+      "source": "先登录 ChatGPT（推荐）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 80,
+          "column": 39
         }
       ]
     },
@@ -2615,7 +2620,7 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 23,
+          "line": 24,
           "column": 12
         }
       ]
@@ -2978,7 +2983,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 108,
+          "line": 129,
           "column": 80
         }
       ]
@@ -3072,18 +3077,6 @@
           "file": "features/tutorial/onboarding.ts",
           "line": 161,
           "column": 75
-        }
-      ]
-    },
-    "31d543f5b2fa8979": {
-      "source": "关闭时不会监听端口，Codex 也不会指向本机网关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 24,
-          "column": 45
         }
       ]
     },
@@ -3184,6 +3177,18 @@
         }
       ]
     },
+    "32e9ed9093efa32b": {
+      "source": "来自共享模型库",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 27,
+          "column": 42
+        }
+      ]
+    },
     "33403e6bf597d4d6": {
       "source": "模型分组方式",
       "kind": "text",
@@ -3193,6 +3198,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 403,
           "column": 22
+        }
+      ]
+    },
+    "338e4f25e85dfc4d": {
+      "source": "切换模型或端口前，先撤销接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 121,
+          "column": 14
         }
       ]
     },
@@ -3217,7 +3234,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 54,
+          "line": 66,
           "column": 53
         }
       ]
@@ -3241,18 +3258,13 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 27,
+          "line": 104,
           "column": 65
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 82,
-          "column": 51
-        },
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 83,
-          "column": 108
+          "line": 99,
+          "column": 101
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -3303,7 +3315,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 44,
+          "line": 121,
           "column": 39
         }
       ]
@@ -3329,6 +3341,18 @@
           "file": "shared/utils/modelPresets.ts",
           "line": 104,
           "column": 17
+        }
+      ]
+    },
+    "355a08345166fd1b": {
+      "source": "点击右上角「应用到 Codex」",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 77,
+          "column": 61
         }
       ]
     },
@@ -3666,18 +3690,6 @@
         }
       ]
     },
-    "3a124984593d6006": {
-      "source": "接管只把 Codex 的模型请求改到本机网关（使用本机令牌），不会退出或替换你的 ChatGPT 登录，也不会修改 auth.json；登录态仍用于客户端自己的账号功能。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 20,
-          "column": 11
-        }
-      ]
-    },
     "3a250eb605945e9d": {
       "source": "点击查看这一天的调用",
       "kind": "text",
@@ -3812,8 +3824,13 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 77,
+          "column": 39
+        },
+        {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 107,
+          "line": 128,
           "column": 70
         }
       ]
@@ -4046,7 +4063,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 43,
+          "line": 120,
           "column": 35
         }
       ]
@@ -4125,12 +4142,12 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 29,
+          "line": 106,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 31,
+          "line": 108,
           "column": 77
         }
       ]
@@ -4193,6 +4210,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 63,
           "column": 18
+        }
+      ]
+    },
+    "424f7d34a6c5f0bd": {
+      "source": "本地模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 51,
+          "column": 23
         }
       ]
     },
@@ -4319,6 +4348,18 @@
         }
       ]
     },
+    "443d87fadf1b19e2": {
+      "source": "撤销接管会还原这些字段；要继续使用本机网关，再应用一次。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 27,
+          "column": 31
+        }
+      ]
+    },
     "4476fd48d2a03f87": {
       "source": "{hash}（已删除，将回退到会话模型）",
       "kind": "template",
@@ -4357,12 +4398,12 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 15,
-          "column": 54
+          "line": 16,
+          "column": 37
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 28,
+          "line": 105,
           "column": 79
         },
         {
@@ -4483,6 +4524,18 @@
         }
       ]
     },
+    "471c788bbad44f50": {
+      "source": "正在读取 Codex 配置…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 88,
+          "column": 29
+        }
+      ]
+    },
     "4736be3eef59c56d": {
       "source": "安装程序已启动，应用将退出；重启后会自动核对是否装上了",
       "kind": "text",
@@ -4507,18 +4560,6 @@
         }
       ]
     },
-    "478cadf041015321": {
-      "source": "接管只替换模型请求的凭据，不会退出登录；但接管后客户端可能找不到登录入口。建议先登录 ChatGPT，再回来应用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 118,
-          "column": 11
-        }
-      ]
-    },
     "4791868cb0a4be4d": {
       "source": "输出价格",
       "kind": "text",
@@ -4533,6 +4574,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 55,
           "column": 65
+        }
+      ]
+    },
+    "47bb10ed54b6bf97": {
+      "source": "接管后客户端可能不再提供登录入口。建议先登录；未登录时自动使用 Codex 本地模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 139,
+          "column": 11
         }
       ]
     },
@@ -4658,7 +4711,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 93,
+          "line": 108,
           "column": 59
         },
         {
@@ -4936,20 +4989,6 @@
         }
       ]
     },
-    "4d25c6e326a482b0": {
-      "source": "已记录 {count} 次 Codex 调用",
-      "kind": "template",
-      "placeholders": [
-        "count"
-      ],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 84,
-          "column": 18
-        }
-      ]
-    },
     "4d4e9f2ad28a4570": {
       "source": "用下面的宿主接入完成",
       "kind": "text",
@@ -5101,8 +5140,8 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 15,
-          "column": 66
+          "line": 16,
+          "column": 49
         }
       ]
     },
@@ -5160,6 +5199,18 @@
         }
       ]
     },
+    "4ec4b2974dd12d98": {
+      "source": "4 条限制",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 112,
+          "column": 20
+        }
+      ]
+    },
     "4f51f91057820e0a": {
       "source": "时间范围数据",
       "kind": "text",
@@ -5177,11 +5228,6 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 78,
-          "column": 139
-        },
         {
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 191,
@@ -5210,18 +5256,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 351,
           "column": 47
-        }
-      ]
-    },
-    "509c099a2b5d07cf": {
-      "source": "已检测到",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 83,
-          "column": 83
         }
       ]
     },
@@ -5348,7 +5382,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 33,
+          "line": 110,
           "column": 52
         },
         {
@@ -5447,6 +5481,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 464,
           "column": 46
+        }
+      ]
+    },
+    "541ea143ad6dc075": {
+      "source": "撤销接管后才能修改",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 22,
+          "column": 26
         }
       ]
     },
@@ -5665,18 +5711,6 @@
         }
       ]
     },
-    "577ff6a2d90f0524": {
-      "source": "尚未应用配置",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 76,
-          "column": 90
-        }
-      ]
-    },
     "5886afc1c71df1fe": {
       "source": "显示在 Cursor 模型说明中。",
       "kind": "text",
@@ -5763,6 +5797,18 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 68,
           "column": 41
+        }
+      ]
+    },
+    "5a593d0217e21edd": {
+      "source": "只替换模型推理；登录、MCP、技能、审批和沙箱保持原样。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 118,
+          "column": 14
         }
       ]
     },
@@ -5962,7 +6008,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 48,
+          "line": 125,
           "column": 47
         }
       ]
@@ -6109,6 +6155,18 @@
         }
       ]
     },
+    "60698f2fd2663bf0": {
+      "source": "未登录时自动保持；登录后还原原来的详细模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 51,
+          "column": 55
+        }
+      ]
+    },
     "60710e4a7b3f99c7": {
       "source": "移除路由：{route}",
       "kind": "template",
@@ -6179,6 +6237,18 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 114,
           "column": 56
+        }
+      ]
+    },
+    "60bb93751dfaa900": {
+      "source": "接管不会退出或替换登录；模型请求仍走本机网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 34,
+          "column": 80
         }
       ]
     },
@@ -6298,18 +6368,6 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 46,
           "column": 45
-        }
-      ]
-    },
-    "62d9cffdb9dd7566": {
-      "source": "受管字段被改过时，点「撤销接管」会把它们还原成接管前的值；想继续用本机网关，就再点「应用到 Codex」。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexConflictCard.tsx",
-          "line": 27,
-          "column": 10
         }
       ]
     },
@@ -6659,18 +6717,6 @@
         }
       ]
     },
-    "676872607e84ea6b": {
-      "source": "检测到客户端处于 ChatGPT Work 模式（未登录时客户端会拒绝本地任务）；接管会自动切回 Codex 本地模式，如未生效请重启客户端。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 24,
-          "column": 91
-        }
-      ]
-    },
     "680680288a6d2ad2": {
       "source": "在 Dock 栏显示",
       "kind": "text",
@@ -6779,6 +6825,18 @@
         }
       ]
     },
+    "6a70df148928fdfe": {
+      "source": "还没登录 ChatGPT",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 133,
+          "column": 14
+        }
+      ]
+    },
     "6a9906c79f26c0ba": {
       "source": "开始时间",
       "kind": "text",
@@ -6798,7 +6856,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 93,
+          "line": 108,
           "column": 47
         },
         {
@@ -7377,18 +7435,6 @@
         }
       ]
     },
-    "77c9314b82af06a1": {
-      "source": "目标目录里已有其他 provider，本机网关没能接管：Codex 现在用的是别人写的配置。处理掉占用后，再点「应用到 Codex」。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexConflictCard.tsx",
-          "line": 18,
-          "column": 10
-        }
-      ]
-    },
     "77c9e582e85583af": {
       "source": "测试失败",
       "kind": "text",
@@ -7415,18 +7461,6 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 496,
           "column": 27
-        }
-      ]
-    },
-    "785799b8490dd771": {
-      "source": "保留原版 Codex 的工具、终端、审批、沙箱和任务循环，只替换模型推理。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 74,
-          "column": 22
         }
       ]
     },
@@ -7540,6 +7574,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 148,
           "column": 20
+        }
+      ]
+    },
+    "7ac7734baa57b81d": {
+      "source": "请取消插件模型：Codex 无法使用它。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 37,
+          "column": 12
         }
       ]
     },
@@ -7840,18 +7886,6 @@
         }
       ]
     },
-    "815175fab3810d54": {
-      "source": "共享模型库中的 API 模型。请先为每个模型填写真实上下文窗口。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 29,
-          "column": 42
-        }
-      ]
-    },
     "81555ea3c83ea647": {
       "source": "停用的模型会从模型列表里消失，指向它的请求也会被拒绝；Cursor 要重启一次才会看到新列表。",
       "kind": "text",
@@ -7948,7 +7982,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 77,
+          "line": 89,
           "column": 91
         }
       ]
@@ -8050,6 +8084,18 @@
         }
       ]
     },
+    "83fb3aa6f8243f51": {
+      "source": "未登录时客户端会拒绝本地任务；接管会自动切回本地模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 53,
+          "column": 58
+        }
+      ]
+    },
     "83fcfb4c1f2c1641": {
       "source": "获取模型",
       "kind": "text",
@@ -8127,18 +8173,6 @@
         }
       ]
     },
-    "84e9d806a2e38f90": {
-      "source": "已检测到 ChatGPT 登录，可以应用接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 22,
-          "column": 37
-        }
-      ]
-    },
     "8519b973928ae5b2": {
       "source": "{name} 占全部用量的 {percent}%",
       "kind": "template",
@@ -8151,6 +8185,18 @@
           "file": "features/home/overview/ModelUsageList.tsx",
           "line": 28,
           "column": 22
+        }
+      ]
+    },
+    "852540abc397dd38": {
+      "source": "登录检测中…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 32,
+          "column": 42
         }
       ]
     },
@@ -8264,7 +8310,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 46,
+          "line": 123,
           "column": 51
         }
       ]
@@ -8531,15 +8577,15 @@
         }
       ]
     },
-    "8f5eba7686e0cf20": {
-      "source": "撤销接管后才能修改设置",
+    "8f5d78a76a946cf4": {
+      "source": "启用网关",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 24,
-          "column": 26
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 73,
+          "column": 40
         }
       ]
     },
@@ -8631,15 +8677,15 @@
         }
       ]
     },
-    "90b646875d28d852": {
-      "source": "配置已应用",
+    "90a81437e6410b19": {
+      "source": "启用网关后，Codex 的模型请求才会走这里。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 76,
-          "column": 77
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 89,
+          "column": 29
         }
       ]
     },
@@ -8718,6 +8764,18 @@
         }
       ]
     },
+    "923375ef6f453de9": {
+      "source": "接管不会退出或替换 ChatGPT 登录；未登录时自动使用 Codex 本地模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 120,
+          "column": 14
+        }
+      ]
+    },
     "92495f5f55b5c39f": {
       "source": "重新读取模型、调用与状态",
       "kind": "text",
@@ -8785,7 +8843,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 56,
+          "line": 68,
           "column": 76
         }
       ]
@@ -8975,18 +9033,6 @@
         }
       ]
     },
-    "97563b4efdd81b5f": {
-      "source": "切换模型或端口前先撤销接管，再保存并重新应用。路由被别人占着时保留原文件，不强制覆盖。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
-          "column": 13
-        }
-      ]
-    },
     "9772d8141d88599b": {
       "source": "读不到这个宿主文件，请检查路径与文件权限。",
       "kind": "text",
@@ -9046,6 +9092,18 @@
           "file": "shared/ui/ModelSelect.tsx",
           "line": 120,
           "column": 44
+        }
+      ]
+    },
+    "98bed6be4955ba0f": {
+      "source": "留空自动检测 .codex",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 41,
+          "column": 48
         }
       ]
     },
@@ -9206,8 +9264,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 82,
-          "column": 18
+          "line": 99,
+          "column": 68
         }
       ]
     },
@@ -9220,6 +9278,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 137,
           "column": 147
+        }
+      ]
+    },
+    "9bb63745df8f62cb": {
+      "source": "未选择模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 90,
+          "column": 108
         }
       ]
     },
@@ -9353,7 +9423,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 78,
+          "line": 90,
           "column": 35
         },
         {
@@ -9419,6 +9489,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 138,
           "column": 99
+        }
+      ]
+    },
+    "9e2ed81fc6e3794c": {
+      "source": "打开下方「启用 Codex 网关」并保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 73,
+          "column": 57
         }
       ]
     },
@@ -9577,6 +9659,18 @@
         }
       ]
     },
+    "a0bc61d7924cd690": {
+      "source": "配置已就绪，点击「应用到 Codex」。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 90,
+          "column": 34
+        }
+      ]
+    },
     "a0c42c24e74f8380": {
       "source": "{name} 副本",
       "kind": "template",
@@ -9709,6 +9803,18 @@
         }
       ]
     },
+    "a2e44b8ce9c1018f": {
+      "source": "Work 模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 53,
+          "column": 23
+        }
+      ]
+    },
     "a3030bf8f16dc63c": {
       "source": "保存",
       "kind": "text",
@@ -9716,7 +9822,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 106,
+          "line": 127,
           "column": 90
         },
         {
@@ -9878,18 +9984,6 @@
         }
       ]
     },
-    "a4ce65f7f54488cf": {
-      "source": "上下文压缩由 Codex 在本地发起；官方托管搜索、远程压缩和实时语音不包含在此接入中。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 98,
-          "column": 13
-        }
-      ]
-    },
     "a4d222236dc1003d": {
       "source": "取消测试失败：{error}",
       "kind": "template",
@@ -9904,15 +9998,15 @@
         }
       ]
     },
-    "a51f4ee7c8ed33e6": {
-      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。接管会保持 Codex 本地模式；如果 Codex 仍显示 Work 界面，请重启客户端。",
+    "a56bbe8c9cb02625": {
+      "source": "ChatGPT 未登录",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 23,
-          "column": 92
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 36,
+          "column": 44
         }
       ]
     },
@@ -10465,7 +10559,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 64,
+          "line": 76,
           "column": 80
         }
       ]
@@ -10733,6 +10827,18 @@
         }
       ]
     },
+    "b11b1a3ff0b3fe09": {
+      "source": "模型请求已走本机网关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 91,
+          "column": 31
+        }
+      ]
+    },
     "b18d072bbb7913bd": {
       "source": "先初始化并信任本地 CA，再切换到本地或混合模式。",
       "kind": "text",
@@ -10784,7 +10890,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 69,
+          "line": 81,
           "column": 77
         },
         {
@@ -10808,18 +10914,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 409,
           "column": 70
-        }
-      ]
-    },
-    "b25ef174b5b518c8": {
-      "source": "未检测到 ChatGPT 登录",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 112,
-          "column": 14
         }
       ]
     },
@@ -10876,7 +10970,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 30,
+          "line": 28,
           "column": 45
         }
       ]
@@ -10914,6 +11008,20 @@
           "file": "features/home/HomePage.tsx",
           "line": 340,
           "column": 24
+        }
+      ]
+    },
+    "b4554754bcd6fa77": {
+      "source": "已记录 {count} 次调用",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 98,
+          "column": 18
         }
       ]
     },
@@ -10991,8 +11099,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 95,
-          "column": 24
+          "line": 111,
+          "column": 14
         }
       ]
     },
@@ -11367,7 +11475,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 45,
+          "line": 122,
           "column": 41
         }
       ]
@@ -11553,6 +11661,30 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 71,
           "column": 70
+        }
+      ]
+    },
+    "bd298ce06b85630d": {
+      "source": "ChatGPT 已登录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 34,
+          "column": 43
+        }
+      ]
+    },
+    "bd3c4f97c5c7f631": {
+      "source": "Codex 配置被其他程序占用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 93,
+          "column": 29
         }
       ]
     },
@@ -11943,6 +12075,18 @@
         }
       ]
     },
+    "c33d9ca76cc7d7ac": {
+      "source": "模型请求走本机网关，工具与审批仍由 Codex 执行",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 145,
+          "column": 15
+        }
+      ]
+    },
     "c36af4716714c239": {
       "source": "网关开关与模型映射",
       "kind": "text",
@@ -11993,6 +12137,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 118,
           "column": 6
+        }
+      ]
+    },
+    "c3f78eeeeb276530": {
+      "source": "建议先登录再接管；未登录时自动保持 Codex 本地模式，接管后可能找不到登录入口",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 36,
+          "column": 83
         }
       ]
     },
@@ -12058,6 +12214,18 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 70,
           "column": 53
+        }
+      ]
+    },
+    "c517f1863958512a": {
+      "source": "关闭时不监听端口",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 22,
+          "column": 43
         }
       ]
     },
@@ -12192,18 +12360,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 118,
           "column": 19
-        }
-      ]
-    },
-    "c75338cbc1e36284": {
-      "source": "把 Codex 的模型请求指到本机网关，由模型库回答",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 124,
-          "column": 15
         }
       ]
     },
@@ -12356,7 +12512,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 42,
+          "line": 119,
           "column": 26
         },
         {
@@ -12475,7 +12631,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 59,
+          "line": 136,
           "column": 24
         }
       ]
@@ -12671,18 +12827,6 @@
         }
       ]
     },
-    "cff176559b36d437": {
-      "source": "留空使用 CODEX_HOME 或用户目录下的 .codex。只在点击应用时修改 config.toml。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 46,
-          "column": 48
-        }
-      ]
-    },
     "cff5e55f1c79f52c": {
       "source": "每日用量",
       "kind": "text",
@@ -12726,7 +12870,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 32,
+          "line": 109,
           "column": 81
         }
       ]
@@ -12879,12 +13023,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 49,
+          "line": 44,
           "column": 25
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 49,
+          "line": 44,
           "column": 65
         }
       ]
@@ -12949,20 +13093,6 @@
           "file": "shared/ui/FormControls.tsx",
           "line": 15,
           "column": 95
-        }
-      ]
-    },
-    "d521191bcf4d3cb9": {
-      "source": "已选的 {count} 个模型已不在模型库里；取消它们或先在模型库补回来。",
-      "kind": "template",
-      "placeholders": [
-        "count"
-      ],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 39,
-          "column": 12
         }
       ]
     },
@@ -13327,6 +13457,18 @@
         }
       ]
     },
+    "d928760ecdd15ede": {
+      "source": "在模型库添加至少一个 API 模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 70,
+          "column": 57
+        }
+      ]
+    },
     "d950f0dcc355294b": {
       "source": "还没有 Devin 调用记录",
       "kind": "text",
@@ -13609,6 +13751,20 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 55,
           "column": 107
+        }
+      ]
+    },
+    "dd36a40ca6244a0a": {
+      "source": "{count} 个已选模型不在模型库",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 34,
+          "column": 12
         }
       ]
     },
@@ -14566,7 +14722,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 113,
+          "line": 134,
           "column": 21
         }
       ]
@@ -14733,6 +14889,18 @@
         }
       ]
     },
+    "ee5e9f5ba3877317": {
+      "source": "官方托管搜索、远程压缩和实时语音不包含在此接入中。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 119,
+          "column": 14
+        }
+      ]
+    },
     "ee884bbd71dfeafa": {
       "source": "当前主题",
       "kind": "text",
@@ -14756,6 +14924,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 468,
           "column": 84
+        }
+      ]
+    },
+    "eeeb3a75eee403d3": {
+      "source": "未登录时自动使用 Codex 本地模式，接管后可能找不到登录入口",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 80,
+          "column": 67
         }
       ]
     },
@@ -14840,7 +15020,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 47,
+          "line": 124,
           "column": 31
         }
       ]
@@ -15132,6 +15312,18 @@
         }
       ]
     },
+    "f86c6ac68a7595be": {
+      "source": "指向本机网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 88,
+          "column": 77
+        }
+      ]
+    },
     "f951b1d9377862f3": {
       "source": "模型库里可用的模型",
       "kind": "text",
@@ -15151,7 +15343,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 30,
+          "line": 107,
           "column": 73
         },
         {
@@ -15209,6 +15401,20 @@
         }
       ]
     },
+    "f9a0d8938bdfeb15": {
+      "source": "{count} 个字段已变化",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 17,
+          "column": 60
+        }
+      ]
+    },
     "f9a319685347fbe8": {
       "source": "把 {route} 设为当前路由",
       "kind": "template",
@@ -15232,6 +15438,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 68,
           "column": 44
+        }
+      ]
+    },
+    "f9cca12c124e9249": {
+      "source": "未写入配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 88,
+          "column": 91
         }
       ]
     },
@@ -15586,12 +15804,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 46,
+          "line": 41,
           "column": 25
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 47,
+          "line": 42,
           "column": 32
         }
       ]

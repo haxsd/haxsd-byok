@@ -1,5 +1,6 @@
 import type { CodexConfigConflict, CodexStatus } from "../../shared/api";
 import type { EntryStatus } from "../../shell/connectionStatus";
+import type { StatusTone } from "../../shared/ui/StatusPill";
 
 export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "taken-over" | "unavailable" | "conflict";
 
@@ -15,6 +16,82 @@ export type CodexLoginState = "checking" | "signed-in" | "signed-out";
 export function codexLoginState(status: CodexStatus | null): CodexLoginState {
   if (!status) return "checking";
   return status.chatgpt_signed_in ? "signed-in" : "signed-out";
+}
+
+/** 登录状态只占一个 pill；详细解释放 title，不再铺成正文。 */
+export interface CodexLoginView {
+  state: CodexLoginState;
+  label: string;
+  tone: StatusTone;
+  title: string;
+}
+
+export function codexLoginView(status: CodexStatus | null): CodexLoginView {
+  switch (codexLoginState(status)) {
+    case "checking":
+      return { state: "checking", label: t("登录检测中…"), tone: "idle", title: t("正在读取 Codex 登录状态") };
+    case "signed-in":
+      return { state: "signed-in", label: t("ChatGPT 已登录"), tone: "ok", title: t("接管不会退出或替换登录；模型请求仍走本机网关") };
+    default:
+      return { state: "signed-out", label: t("ChatGPT 未登录"), tone: "info", title: t("建议先登录再接管；未登录时自动保持 Codex 本地模式，接管后可能找不到登录入口") };
+  }
+}
+
+/** 未登录时客户端实际停在哪个界面：本地模式可用，Work 模式会被客户端拒绝。 */
+export interface CodexClientModeView {
+  label: string;
+  tone: StatusTone;
+  title: string;
+}
+
+export function codexClientModeView(status: CodexStatus | null): CodexClientModeView | null {
+  if (!status || status.chatgpt_signed_in) return null;
+  switch (status.conversation_detail_mode) {
+    case "STEPS_COMMANDS":
+      return { label: t("本地模式"), tone: "info", title: t("未登录时自动保持；登录后还原原来的详细模式") };
+    case "STEPS_PROSE":
+      return { label: t("Work 模式"), tone: "warn", title: t("未登录时客户端会拒绝本地任务；接管会自动切回本地模式") };
+    default:
+      return null;
+  }
+}
+
+/** 没接通时最多显示两条下一步，避免把状态卡变成检查清单。 */
+export interface CodexNextStep {
+  key: string;
+  label: string;
+  hint: string;
+}
+
+export function codexOutstandingSteps(status: CodexStatus | null, modelCount: number): CodexNextStep[] {
+  if (!status || status.configured) return [];
+  const steps: CodexNextStep[] = [];
+  if (modelCount === 0) {
+    steps.push({ key: "models", label: t("添加模型"), hint: t("在模型库添加至少一个 API 模型") });
+  }
+  if (!status.enabled) {
+    steps.push({ key: "enable", label: t("启用网关"), hint: t("打开下方「启用 Codex 网关」并保存") });
+  } else if (!status.listening) {
+    steps.push({ key: "gateway", label: t("启动网关"), hint: t("检查端口是否被占用后保存") });
+  } else if (!status.config_conflict) {
+    steps.push({ key: "apply", label: t("应用到 Codex"), hint: t("点击右上角「应用到 Codex」") });
+  }
+  if (!status.chatgpt_signed_in) {
+    steps.push({ key: "login", label: t("先登录 ChatGPT（推荐）"), hint: t("未登录时自动使用 Codex 本地模式，接管后可能找不到登录入口") });
+  }
+  return steps.slice(0, 2);
+}
+
+/** 状态灯下面只回答“现在通没通”，不重复页面用途。 */
+export function codexVerdictDescription(state: CodexConnectionState): string {
+  switch (state) {
+    case "checking": return t("正在读取 Codex 配置…");
+    case "disabled": return t("启用网关后，Codex 的模型请求才会走这里。");
+    case "pending-apply": return t("配置已就绪，点击「应用到 Codex」。");
+    case "taken-over": return t("模型请求已走本机网关。");
+    case "unavailable": return t("本机网关没有在监听。");
+    case "conflict": return t("Codex 配置被其他程序占用。");
+  }
 }
 
 /** 未检测到 ChatGPT 登录时，应用接管前要多一次确认，避免把未登录当成接管 bug。 */

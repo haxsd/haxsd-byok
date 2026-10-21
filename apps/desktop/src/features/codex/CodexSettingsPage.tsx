@@ -13,9 +13,17 @@ import { PageActions } from "../../shell/PageActions";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
-import { CodexLoginCard } from "./CodexLoginCard";
 import { CodexSettingsForm } from "./CodexSettingsForm";
-import { codexActionGate, codexApplyNeedsSignInConfirm, codexConnectionView } from "./codexConnectionView";
+import {
+  codexActionGate,
+  codexApplyNeedsSignInConfirm,
+  codexClientModeView,
+  codexConnectionView,
+  codexLoginView,
+  codexOutstandingSteps,
+  codexVerdictDescription,
+} from "./codexConnectionView";
+import { informationOutlineIcon, providerIcon, settingsIcon } from "../../shared/ui/icons";
 import styles from "./CodexSettingsPage.module.scss";
 
 export function CodexSettingsPage() {
@@ -37,6 +45,10 @@ export function CodexSettingsPage() {
     return () => { disposed = true; };
   }, []);
   const view = codexConnectionView(codexStatus);
+  const login = codexLoginView(codexStatus);
+  const clientMode = codexClientModeView(codexStatus);
+  const modelCount = saved?.model_hashes.length ?? 0;
+  const steps = codexOutstandingSteps(codexStatus, modelCount);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   const locked = Boolean(codexStatus?.configured || codexStatus?.config_conflict);
   // 两个按钮的可用条件集中在 codexConnectionView 里：撤销看接管凭证（restorable），
@@ -62,43 +74,52 @@ export function CodexSettingsPage() {
     void apply();
   };
   const restore = () => action(async () => { await api.restoreCodex(); message(t("Codex 配置已恢复")); });
-  // 与 Cursor / Devin 接入页同一套：状态、冲突（有才出现）、设置、边界，各自的说明都留在卡片内。
   const content = <div className={styles.page}>
     <TitledCard
       title={t("接入状态")}
+      icon={providerIcon}
       action={<Button size="small" onClick={() => void navigate("/calls")}>{t("查看调用记录")}</Button>}
     >
       <StatusHero
         connected={view.state === "taken-over"}
         title={view.label}
-        description={t("保留原版 Codex 的工具、终端、审批、沙箱和任务循环，只替换模型推理。")}
+        description={codexVerdictDescription(view.state)}
         stages={[
-          { key: "codex", label: "Codex", detail: codexStatus?.configured ? t("配置已应用") : t("尚未应用配置"), state: codexStatus?.configured ? "up" : "down" },
+          { key: "codex", label: "Codex", detail: codexStatus?.configured ? t("指向本机网关") : t("未写入配置"), state: codexStatus?.configured ? "up" : "down" },
           { key: "gateway", label: t("本机网关"), detail: codexStatus?.listening ? t("运行中") : t("未监听"), state: codexStatus?.listening ? "up" : "down" },
-          { key: "models", label: t("模型库"), detail: saved?.model_hashes.length ? t("{count} 个模型", { count: saved.model_hashes.length }) : t("还没有模型"), state: saved?.model_hashes.length ? "up" : "unknown" },
+          { key: "models", label: t("模型库"), detail: modelCount ? t("{count} 个模型", { count: modelCount }) : t("未选择模型"), state: modelCount ? "up" : "unknown" },
         ]}
-        steps={[]}
+        steps={steps}
+        aside={<div className={styles.aside}>
+          <StatusPill tone={login.tone} title={login.title}>{login.label}</StatusPill>
+          {clientMode && <StatusPill tone={clientMode.tone} title={clientMode.title}>{clientMode.label}</StatusPill>}
+        </div>}
         footnotes={<div className={styles.facts}>
-          <span>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
-          <span>{t("ChatGPT 登录")}：{codexStatus ? (codexStatus.chatgpt_signed_in ? t("已检测到") : t("未检测到")) : t("读取中…")}</span>
-          <span>{t("已记录 {count} 次 Codex 调用", { count: codexStatus?.calls ?? 0 })}</span>
+          <span>{t("已记录 {count} 次调用", { count: codexStatus?.calls ?? 0 })}</span>
+          <span className={styles.home} title={codexStatus?.home}>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
         </div>}
       />
+      {(error || codexStatus?.last_error) && <p className={styles.error} role="alert">{clientErrorText(error ?? codexStatus?.last_error)}</p>}
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
-    <CodexLoginCard status={codexStatus} />
-    <TitledCard title={t("接入设置")}>
+    <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
         ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} onChange={setDraft} />
         : <p className={styles.note}>{error ? t("读取失败") : t("加载中…")}</p>}
     </TitledCard>
-    <TitledCard title={t("使用边界")}>
-      <div className={styles.notes}>
-        <p>{t("Codex 只发 Responses 请求；本机网关按模型的接口类型，把它翻译成 Chat Completions 或 Anthropic Messages 后转发给上游。工具仍由 Codex 执行，不会改动登录、MCP、技能或审批设置。")}</p>
-        <p>{t("上下文压缩由 Codex 在本地发起；官方托管搜索、远程压缩和实时语音不包含在此接入中。")}</p>
-        <p>{t("切换模型或端口前先撤销接管，再保存并重新应用。路由被别人占着时保留原文件，不强制覆盖。")}</p>
-        {(error || codexStatus?.last_error) && <p className={styles.error} role="alert">{clientErrorText(error ?? codexStatus?.last_error)}</p>}
-      </div>
+    <TitledCard
+      title={t("使用边界")}
+      description={t("4 条限制")}
+      icon={informationOutlineIcon}
+      collapsible
+      storageKey="codex.boundaries"
+    >
+      <ul className={styles.boundaries}>
+        <li>{t("只替换模型推理；登录、MCP、技能、审批和沙箱保持原样。")}</li>
+        <li>{t("官方托管搜索、远程压缩和实时语音不包含在此接入中。")}</li>
+        <li>{t("接管不会退出或替换 ChatGPT 登录；未登录时自动使用 Codex 本地模式。")}</li>
+        <li>{t("切换模型或端口前，先撤销接管。")}</li>
+      </ul>
     </TitledCard>
   </div>;
   return <>
@@ -109,21 +130,21 @@ export function CodexSettingsPage() {
     </PageActions>
     <ConfirmDialog
       open={confirmApply}
-      title={t("未检测到 ChatGPT 登录")}
+      title={t("还没登录 ChatGPT")}
       confirmLabel={t("仍然应用")}
       busy={busy}
       onCancel={() => setConfirmApply(false)}
       onConfirm={() => { setConfirmApply(false); void apply(); }}
     >
-      <p>{t("接管只替换模型请求的凭据，不会退出登录；但接管后客户端可能找不到登录入口。建议先登录 ChatGPT，再回来应用。")}</p>
+      <p>{t("接管后客户端可能不再提供登录入口。建议先登录；未登录时自动使用 Codex 本地模式。")}</p>
     </ConfirmDialog>
     <PageContent
       title={<PageTitle
         title="Codex"
         status={<StatusPill tone={view.tone}>{view.label}</StatusPill>}
-        meta={t("把 Codex 的模型请求指到本机网关，由模型库回答")}
+        meta={t("模型请求走本机网关，工具与审批仍由 Codex 执行")}
       />}
-      sections={[{ key: "codex", estimatedHeight: 900, content }]}
+      sections={[{ key: "codex", estimatedHeight: 760, content }]}
     />
   </>;
 }
