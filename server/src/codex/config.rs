@@ -284,7 +284,9 @@ fn chatgpt_signed_in(home: &Path) -> bool {
     let Ok(Some(text)) = read(&home.join("auth.json")) else {
         return false;
     };
-    let Ok(auth) = serde_json::from_str::<serde_json::Value>(&text) else {
+    // 有些工具写 JSON 会带 UTF-8 BOM；serde_json 不接受它，先剥掉再判断。
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+    let Ok(auth) = serde_json::from_str::<serde_json::Value>(text) else {
         return false;
     };
     let Some(object) = auth.as_object() else {
@@ -1129,6 +1131,18 @@ mod tests {
             text.contains("conversationDetailMode = \"STEPS_PROSE\""),
             "keyring 用户不应被强行切模式: {text}"
         );
+        assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
+    }
+
+    /// 带 UTF-8 BOM 的 auth.json 也要能识别（一些编辑器/脚本会写 BOM）。
+    #[test]
+    fn auth_json_with_utf8_bom_is_still_recognized() {
+        let directory = tempfile::tempdir().unwrap();
+        fs::write(
+            directory.path().join("auth.json"),
+            "\u{feff}{\"auth_mode\":\"chatgpt\",\"tokens\":{\"access_token\":\"a\",\"refresh_token\":\"r\",\"id_token\":\"i\"}}",
+        )
+        .unwrap();
         assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
     }
 
