@@ -800,7 +800,7 @@
       "refs": [
         {
           "file": "features/codex/CodexLoginCard.tsx",
-          "line": 15,
+          "line": 18,
           "column": 29
         }
       ]
@@ -955,7 +955,7 @@
       "refs": [
         {
           "file": "features/codex/CodexLoginCard.tsx",
-          "line": 18,
+          "line": 21,
           "column": 11
         }
       ]
@@ -3673,7 +3673,7 @@
       "refs": [
         {
           "file": "features/codex/CodexLoginCard.tsx",
-          "line": 17,
+          "line": 20,
           "column": 11
         }
       ]
@@ -6364,12 +6364,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 806,
+          "line": 810,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 880,
+          "line": 887,
           "column": 29
         }
       ]
@@ -6484,7 +6484,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1120,
+          "line": 1127,
           "column": 43
         }
       ]
@@ -6656,6 +6656,18 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 35,
           "column": 67
+        }
+      ]
+    },
+    "676872607e84ea6b": {
+      "source": "检测到客户端处于 ChatGPT Work 模式（未登录时客户端会拒绝本地任务）；接管会自动切回 Codex 本地模式，如未生效请重启客户端。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 24,
+          "column": 91
         }
       ]
     },
@@ -6831,12 +6843,12 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 814,
+          "line": 818,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 880,
+          "line": 887,
           "column": 41
         }
       ]
@@ -7475,7 +7487,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1115,
+          "line": 1122,
           "column": 43
         }
       ]
@@ -7818,7 +7830,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 758,
+          "line": 762,
           "column": 11
         },
         {
@@ -8122,7 +8134,7 @@
       "refs": [
         {
           "file": "features/codex/CodexLoginCard.tsx",
-          "line": 19,
+          "line": 22,
           "column": 37
         }
       ]
@@ -9170,7 +9182,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 771,
+          "line": 775,
           "column": 11
         }
       ]
@@ -11465,7 +11477,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1131,
+          "line": 1138,
           "column": 43
         }
       ]
@@ -14157,18 +14169,6 @@
         }
       ]
     },
-    "e5417c5ae2c0c3ee": {
-      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexLoginCard.tsx",
-          "line": 20,
-          "column": 79
-        }
-      ]
-    },
     "e557f2f5092c32a3": {
       "source": "复制诊断摘要",
       "kind": "text",
@@ -14649,6 +14649,18 @@
           "file": "features/calls/CallTable.tsx",
           "line": 94,
           "column": 69
+        }
+      ]
+    },
+    "ed7d204b42d4c7f2": {
+      "source": "未检测到 ChatGPT 登录：建议先在 Codex 客户端登录，再应用接管。当前客户端已保持在 Codex 本地模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexLoginCard.tsx",
+          "line": 23,
+          "column": 92
         }
       ]
     },

@@ -94,6 +94,10 @@ pub struct CodexStatus {
     /// Codex 配置目录里存在 `auth.json`：ChatGPT 已登录。接管只替换模型请求的
     /// 凭据，不碰这个文件；界面据此提示"先登录再接管"，避免把未登录当成接管 bug。
     pub chatgpt_signed_in: bool,
+    /// 客户端当前界面模式：`STEPS_PROSE` = ChatGPT Work，`STEPS_COMMANDS` = Codex 本地。
+    pub conversation_detail_mode: Option<String>,
+    /// 未登录时我们替用户把详细模式改成了本地模式（登录/撤销后会还原）。
+    pub local_mode_guard: bool,
     pub home: String,
     pub calls: usize,
     pub last_error: Option<String>,

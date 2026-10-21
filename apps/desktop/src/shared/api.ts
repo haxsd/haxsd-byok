@@ -200,8 +200,12 @@ export interface CodexStatus {
   restorable: boolean;
   /** 与接管快照不一致的受管字段；没有差异时是空数组。 */
   conflicts: CodexConfigConflict[];
-  /** Codex 配置目录里存在 auth.json：ChatGPT 已登录。接管只换模型请求凭据，不碰它。 */
+  /** Codex 配置目录里存在有效的 ChatGPT 登录凭据；接管只换模型请求凭据，不碰它。 */
   chatgpt_signed_in: boolean;
+  /** 客户端当前界面模式：`STEPS_PROSE` = ChatGPT Work，`STEPS_COMMANDS` = Codex 本地。 */
+  conversation_detail_mode: string | null;
+  /** 未登录时我们替用户把详细模式改成了本地模式（登录/撤销后会还原）。 */
+  local_mode_guard: boolean;
   home: string;
   calls: number;
   last_error: string | null;
@@ -859,6 +863,9 @@ function usableCodexStatus(payload: unknown): CodexStatus {
     conflicts,
     restorable: typeof status.restorable === "boolean" ? status.restorable : status.configured,
     chatgpt_signed_in: status.chatgpt_signed_in === true,
+    conversation_detail_mode:
+      typeof status.conversation_detail_mode === "string" ? status.conversation_detail_mode : null,
+    local_mode_guard: status.local_mode_guard === true,
   };
 }
 

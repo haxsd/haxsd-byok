@@ -104,7 +104,7 @@ let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
-    chatgpt_signed_in: true,
+    chatgpt_signed_in: true, conversation_detail_mode: "STEPS_COMMANDS", local_mode_guard: false,
     home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
 }
 

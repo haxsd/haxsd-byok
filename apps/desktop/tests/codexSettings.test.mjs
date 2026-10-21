@@ -8,7 +8,7 @@ const loader = await startModuleLoader();
 await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
-const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, home: "test-home", calls: 0, last_error: null };
+const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, conversation_detail_mode: "STEPS_COMMANDS", local_mode_guard: false, home: "test-home", calls: 0, last_error: null };
 
 test("a listening Codex gateway is not presented as applied client configuration", async () => {
   const { codexConnectionView } = await loader.load("/src/features/codex/codexConnectionView.ts");
@@ -285,6 +285,12 @@ test("the login card says takeover does not sign the user out, and to log in bef
   assert.match(signedOut, /不会退出或替换你的 ChatGPT 登录/);
   assert.match(signedOut, /推荐顺序：先在 Codex 客户端登录 ChatGPT，再应用接管/);
   assert.match(signedOut, /未检测到 ChatGPT 登录/);
+  assert.match(signedOut, /已保持在 Codex 本地模式/);
+
+  const workMode = renderToStaticMarkup(createElement(CodexLoginCard, {
+    status: { ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_PROSE" },
+  }));
+  assert.match(workMode, /接管会自动切回 Codex 本地模式/);
 
   const signedIn = renderToStaticMarkup(createElement(CodexLoginCard, { status: { ...state, chatgpt_signed_in: true } }));
   assert.match(signedIn, /已检测到 ChatGPT 登录，可以应用接管/);

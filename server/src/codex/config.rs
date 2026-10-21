@@ -40,6 +40,8 @@ const OWNED_KEYS: &[&str] = &[
 /// account`）；本地模式（`STEPS_COMMANDS`）不要求登录。这个字段不是模型路由，接管只在
 /// 未登录期间把它保持在本地模式，登录后还原用户原来的选择。
 const CLIENT_MODE: &str = ".haxsd-byok-client-mode.json";
+/// 首次接管前整份 `config.toml` 的备份；撤销/重复接管都不会覆盖它。
+const BACKUP: &str = ".haxsd-byok-config-backup.toml";
 const DESKTOP: &str = "desktop";
 const DETAIL_MODE: &str = "conversationDetailMode";
 const DETAIL_PROSE: &str = "STEPS_PROSE";
@@ -64,11 +66,16 @@ pub struct ConfigStatus {
     /// 与接管快照不一致的受管字段（含 `model`）。界面据此说清"哪一项被改成了什么"，
     /// 而不是只丢一句"配置冲突"。
     pub conflicts: Vec<ConfigFieldConflict>,
-    /// Codex 配置目录里存在 `auth.json`：ChatGPT 已登录。
+    /// Codex 配置目录里存在有效的 ChatGPT 登录凭据：ChatGPT 已登录。
     ///
-    /// 接管只改模型路由，不碰登录凭据；但 Codex 的中文界面、云端会话等功能由账号态
+    /// 接管只改模型路由，不碰登录凭据；但 Codex 的中文界面、云端会话、官方插件等由账号态
     /// 决定，未登录时接管后也不可用。界面用这个字段提示"先登录，再接管"。
     pub chatgpt_signed_in: bool,
+    /// 客户端当前生效的界面模式：`STEPS_PROSE` = ChatGPT Work，`STEPS_COMMANDS` = Codex 本地。
+    /// Work 界面在未登录时会拒绝本地任务，界面据此展示我们是否已把客户端保持在本地模式。
+    pub conversation_detail_mode: Option<String>,
+    /// 我们为了未登录可用性，把用户原来的详细模式临时改成了本地模式。
+    pub local_mode_guard: bool,
     pub message: String,
 }
 
@@ -219,10 +226,53 @@ fn receipt(home: &Path) -> Result<Option<Receipt>> {
 }
 
 fn client_mode(home: &Path) -> Result<ClientMode> {
+    // 这个文件只是我们自己的显示偏好记录；损坏时按"没改过"处理，不能让它挡住整个接管。
     Ok(read(&home.join(CLIENT_MODE))?
-        .map(|text| serde_json::from_str::<ClientMode>(&text))
-        .transpose()?
+        .and_then(|text| serde_json::from_str::<ClientMode>(&text).ok())
         .unwrap_or_default())
+}
+
+/// Codex `auth.json` 里是否存在可用的 ChatGPT 登录凭据。
+///
+/// 只认 ChatGPT 登录（`tokens.access_token` / `id_token` / `refresh_token`）；单独的
+/// `OPENAI_API_KEY` 不算——新版客户端的 Work 身份判断也要求账号登录。文件不存在、
+/// JSON 损坏或没有登录材料都按未登录处理，界面提示"先登录，再接管"。
+fn chatgpt_signed_in(home: &Path) -> bool {
+    let Ok(Some(text)) = read(&home.join("auth.json")) else {
+        return false;
+    };
+    let Ok(auth) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    let Some(object) = auth.as_object() else {
+        return false;
+    };
+    if let Some(mode) = object.get("auth_mode").and_then(serde_json::Value::as_str) {
+        if !matches!(mode, "chatgpt" | "chatgptAuthTokens") {
+            return false;
+        }
+    }
+    object
+        .get("tokens")
+        .and_then(serde_json::Value::as_object)
+        .is_some_and(|tokens| {
+            ["access_token", "id_token", "refresh_token"]
+                .iter()
+                .any(|key| {
+                    tokens
+                        .get(*key)
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty())
+                })
+        })
+}
+
+fn detail_mode(document: &DocumentMut) -> Option<String> {
+    document
+        .get(DESKTOP)
+        .and_then(|desktop| desktop.get(DETAIL_MODE))
+        .and_then(Item::as_str)
+        .map(str::to_owned)
 }
 
 fn set_client_mode(home: &Path, mode: &ClientMode) -> Result<()> {
@@ -259,14 +309,11 @@ pub fn ensure_local_mode(home: &Path) -> Result<bool> {
         return Ok(false);
     };
     let mut document = parse(&original)?;
-    let current = document
-        .get(DESKTOP)
-        .and_then(|desktop| desktop.get(DETAIL_MODE))
-        .and_then(Item::as_str);
+    let current = detail_mode(&document);
     let remembered = client_mode(home)?;
-    let signed_in = home.join("auth.json").is_file();
+    let signed_in = chatgpt_signed_in(home);
     if signed_in {
-        if remembered.remembered_prose && current == Some(DETAIL_LOCAL) {
+        if remembered.remembered_prose && current.as_deref() == Some(DETAIL_LOCAL) {
             set_detail_mode(&mut document, DETAIL_PROSE);
             if read(&path)? != Some(original) {
                 return Ok(false);
@@ -277,7 +324,7 @@ pub fn ensure_local_mode(home: &Path) -> Result<bool> {
         }
         return Ok(false);
     }
-    if current == Some(DETAIL_PROSE) {
+    if current.as_deref() == Some(DETAIL_PROSE) {
         set_detail_mode(&mut document, DETAIL_LOCAL);
         if read(&path)? != Some(original) {
             return Ok(false);
@@ -303,11 +350,7 @@ fn restore_client_mode(home: &Path) -> Result<()> {
     let path = home.join("config.toml");
     if let Some(original) = read(&path)? {
         let mut document = parse(&original)?;
-        let current = document
-            .get(DESKTOP)
-            .and_then(|desktop| desktop.get(DETAIL_MODE))
-            .and_then(Item::as_str);
-        if current == Some(DETAIL_LOCAL) {
+        if detail_mode(&document).as_deref() == Some(DETAIL_LOCAL) {
             set_detail_mode(&mut document, DETAIL_PROSE);
             atomic_write(&path, document.to_string().as_bytes())?;
         }
@@ -463,7 +506,9 @@ pub fn inspect(home: &Path) -> Result<ConfigStatus> {
         restorable,
         conflict,
         conflicts,
-        chatgpt_signed_in: home.join("auth.json").is_file(),
+        chatgpt_signed_in: chatgpt_signed_in(home),
+        conversation_detail_mode: detail_mode(&doc),
+        local_mode_guard: client_mode(home)?.remembered_prose,
         message: if conflict {
             "Codex routing is managed by another configuration or was modified"
         } else if applied {
@@ -492,7 +537,9 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     let original = read(&path)?;
     let mut doc = parse(original.as_deref().unwrap_or(""))?;
     let mut rebased_original = None;
-    if let Some(receipt) = receipt(home)? {
+    let existing_receipt = receipt(home)?;
+    let first_takeover = existing_receipt.is_none();
+    if let Some(receipt) = existing_receipt {
         let current = inspect(home)?;
         if current.applied {
             let desired_provider = doc["model_providers"][PROVIDER].clone();
@@ -550,6 +597,14 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
         return Err(Error::Config(
             "Codex config changed while preparing the update".into(),
         ));
+    }
+    // 首次接管前保留整份原文件。用户之后在 Codex 里改插件/审批/沙箱也能从这里找回；
+    // 重复接管不覆盖它，保证备份始终是"接管发生前"的那一份。
+    let backup = home.join(BACKUP);
+    if first_takeover && !backup.exists() {
+        if let Some(original) = original.as_deref() {
+            atomic_write(&backup, original.as_bytes())?;
+        }
     }
     atomic_write(
         &home.join(RECEIPT),
@@ -768,17 +823,19 @@ mod tests {
         edit(home, |doc| doc[MODEL_KEY] = value(slug));
     }
 
-    /// 登录态只读：`auth.json` 存在说明 ChatGPT 已登录；接管与撤销都不应碰它。
-    ///
-    /// 界面靠这个字段提示"先登录，再接管"——接管只换模型请求的凭据，不替用户退出登录，
-    /// 但未登录时客户端的中文界面/云端功能本来就用不了。
+    /// 一份有效的 ChatGPT 登录缓存（新版客户端靠 tokens 判断账号身份）。
+    fn chatgpt_auth() -> &'static str {
+        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh","id_token":"id"}}"#
+    }
+
+    /// 登录态只读：`auth.json` 里有有效 ChatGPT tokens 才算已登录；接管与撤销都不应碰它。
     #[test]
     fn chatgpt_sign_in_is_detected_from_auth_json_and_survives_apply_and_restore() {
         let directory = tempfile::tempdir().unwrap();
         let auth = directory.path().join("auth.json");
         assert!(!inspect(directory.path()).unwrap().chatgpt_signed_in);
 
-        fs::write(&auth, br#"{"tokens":null}"#).unwrap();
+        fs::write(&auth, chatgpt_auth()).unwrap();
         assert!(inspect(directory.path()).unwrap().chatgpt_signed_in);
 
         apply(directory.path(), &route(directory.path())).unwrap();
@@ -792,7 +849,42 @@ mod tests {
             inspect(directory.path()).unwrap().chatgpt_signed_in,
             "撤销也不能动登录凭据"
         );
-        assert!(auth.exists());
+        assert_eq!(fs::read_to_string(&auth).unwrap(), chatgpt_auth());
+    }
+
+    /// API key / 空凭据不算 ChatGPT 登录：界面提示的是"登录账号"，不是"配置了 key"。
+    #[test]
+    fn api_key_or_empty_auth_json_is_not_a_chatgpt_login() {
+        let directory = tempfile::tempdir().unwrap();
+        let auth = directory.path().join("auth.json");
+        for payload in [
+            r#"{}"#,
+            r#"{"OPENAI_API_KEY":"sk-test"}"#,
+            r#"{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}"#,
+            r#"{"auth_mode":"chatgpt","tokens":{"access_token":""}}"#,
+        ] {
+            fs::write(&auth, payload).unwrap();
+            assert!(
+                !inspect(directory.path()).unwrap().chatgpt_signed_in,
+                "{payload}"
+            );
+        }
+    }
+
+    /// 首次接管前保存整份原文件；后续接管/撤销不覆盖它。
+    #[test]
+    fn first_takeover_backs_up_the_whole_config_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let original = "model = 'user-choice'\n\n[desktop]\nscale = 1.25\n";
+        fs::write(directory.path().join("config.toml"), original).unwrap();
+
+        apply(directory.path(), &route(directory.path())).unwrap();
+        let backup = directory.path().join(BACKUP);
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
+
+        restore(directory.path()).unwrap();
+        apply(directory.path(), &route(directory.path())).unwrap();
+        assert_eq!(fs::read_to_string(&backup).unwrap(), original);
     }
 
     fn prose_desktop() -> &'static str {
@@ -824,6 +916,12 @@ mod tests {
             !ensure_local_mode(directory.path()).unwrap(),
             "已经是本地模式，不应重复写"
         );
+        let status = inspect(directory.path()).unwrap();
+        assert_eq!(
+            status.conversation_detail_mode.as_deref(),
+            Some("STEPS_COMMANDS")
+        );
+        assert!(status.local_mode_guard, "应当记录我们替用户切过模式");
     }
 
     /// 登录之后把用户原来的详细模式还回去，且只还原一次。
@@ -834,7 +932,7 @@ mod tests {
         apply(directory.path(), &route(directory.path())).unwrap();
         assert!(config_text(directory.path()).contains("STEPS_COMMANDS"));
 
-        fs::write(directory.path().join("auth.json"), b"{}").unwrap();
+        fs::write(directory.path().join("auth.json"), chatgpt_auth()).unwrap();
         assert!(ensure_local_mode(directory.path()).unwrap());
         assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
         assert!(!directory.path().join(CLIENT_MODE).exists());
@@ -846,9 +944,10 @@ mod tests {
     fn signed_in_takeover_leaves_the_prose_setting_alone() {
         let directory = tempfile::tempdir().unwrap();
         fs::write(directory.path().join("config.toml"), prose_desktop()).unwrap();
-        fs::write(directory.path().join("auth.json"), b"{}").unwrap();
+        fs::write(directory.path().join("auth.json"), chatgpt_auth()).unwrap();
         apply(directory.path(), &route(directory.path())).unwrap();
         assert!(config_text(directory.path()).contains("conversationDetailMode = \"STEPS_PROSE\""));
+        assert!(!inspect(directory.path()).unwrap().local_mode_guard);
     }
 
     /// 撤销接管时把替用户保存的详细模式还回去。

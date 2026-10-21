@@ -249,25 +249,37 @@ impl CodexGateway {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home);
-        let (configured, conflict, restorable, conflicts, chatgpt_signed_in, config_error) =
-            match inspected {
-                Ok(status) => (
-                    status.applied,
-                    status.conflict,
-                    status.restorable,
-                    status.conflicts,
-                    status.chatgpt_signed_in,
-                    None,
-                ),
-                Err(error) => (
-                    false,
-                    true,
-                    false,
-                    Vec::new(),
-                    false,
-                    Some(error.to_string()),
-                ),
-            };
+        let (
+            configured,
+            conflict,
+            restorable,
+            conflicts,
+            chatgpt_signed_in,
+            conversation_detail_mode,
+            local_mode_guard,
+            config_error,
+        ) = match inspected {
+            Ok(status) => (
+                status.applied,
+                status.conflict,
+                status.restorable,
+                status.conflicts,
+                status.chatgpt_signed_in,
+                status.conversation_detail_mode,
+                status.local_mode_guard,
+                None,
+            ),
+            Err(error) => (
+                false,
+                true,
+                false,
+                Vec::new(),
+                false,
+                None,
+                false,
+                Some(error.to_string()),
+            ),
+        };
         let runtime = self.inner.runtime.lock().await;
         let listening = runtime
             .as_ref()
@@ -285,6 +297,8 @@ impl CodexGateway {
             restorable,
             conflicts,
             chatgpt_signed_in,
+            conversation_detail_mode,
+            local_mode_guard,
             home: home.display().to_string(),
             calls: calls.max(0) as usize,
             last_error: config_error.or_else(|| {
