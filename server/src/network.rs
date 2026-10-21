@@ -97,7 +97,9 @@ struct RouteSnapshot {
 
 impl RouteSnapshot {
     fn of(settings: &ProxySettingsSecret) -> Self {
-        let uses_system_proxy = settings.mode == ProxyMode::Default;
+        // 直连模式下模型走直连，但 Cursor 角色仍跟随系统代理（见 `cursor_settings`），
+        // 所以系统代理指纹对 default 与 direct 两种模式都必须参与缓存失效判断。
+        let uses_system_proxy = settings.mode != ProxyMode::Custom;
         Self {
             mode: settings.mode,
             address: settings.address.clone(),
@@ -105,6 +107,21 @@ impl RouteSnapshot {
             bypass_system_proxy: uses_system_proxy && bypassing_system_proxy(),
         }
     }
+}
+
+/// Cursor 角色（官方转发/控制面）实际使用的出网设置。
+///
+/// Cursor 客户端原本就跟随系统代理；接管之后这些请求经过本机代理，如果还按用户的
+/// "直连"设置直连出去，Cursor 自己的控制面请求就会在受限网络里失败并让会话报 502。
+/// 模型请求仍由 `provider_client` 按用户设置出网，不受这里影响。
+fn cursor_settings(settings: &ProxySettingsSecret) -> ProxySettingsSecret {
+    if settings.mode == ProxyMode::Direct {
+        return ProxySettingsSecret {
+            mode: ProxyMode::Default,
+            ..ProxySettingsSecret::default()
+        };
+    }
+    settings.clone()
 }
 
 impl NetworkClients {
@@ -141,10 +158,11 @@ impl NetworkClients {
             return Ok(client);
         }
         let settings = self.store.proxy_settings_secret().await?;
+        let cursor = cursor_settings(&settings);
         // 官方转发是流式的(含 BidiAppend/RunSSE 长连接),所以这里不给总时长上界,只给
         // "连不上"和"连上后一个字节都不回"两种故障一个上界:没有它时 TCP 被中间盒接住
         // 却不回话,请求会永远挂着,连错误日志都不会打一条。
-        let client = settings_builder(&settings)?
+        let client = settings_builder(&cursor)?
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(CURSOR_CONNECT_TIMEOUT)
             .read_timeout(CURSOR_IDLE_TIMEOUT)
@@ -281,6 +299,13 @@ impl NetworkClients {
         self.bypass_system_proxy_if(configured_system_proxy).await
     }
 
+    /// Cursor 角色专用的"绕开系统代理"：直连模式下模型走直连，但 Cursor 控制面仍
+    /// 跟随系统代理；系统代理那一跳断了时，只有 Cursor 角色需要退回直连。
+    pub async fn bypass_system_proxy_for_cursor(&self) -> bool {
+        self.bypass_system_proxy_if_for(configured_system_proxy, true)
+            .await
+    }
+
     /// 兜底判定本体。
     ///
     /// "连不上系统代理"必须是**这一跳**的事实，而 `is_connect()` 分不清代理与目标：
@@ -294,10 +319,19 @@ impl NetworkClients {
     where
         F: Fn() -> Option<String>,
     {
+        self.bypass_system_proxy_if_for(system_proxy, false).await
+    }
+
+    async fn bypass_system_proxy_if_for<F>(&self, system_proxy: F, cursor_role: bool) -> bool
+    where
+        F: Fn() -> Option<String>,
+    {
         // 只有"跟随系统代理"这一种模式会栽在系统代理上；直连或自定义模式下连接失败
         // 跟系统代理无关，别把判定记到它头上（用户之后切回默认模式会被无辜绕过）。
+        // 直连模式下的 Cursor 角色是例外：它显式跟随系统代理（见 `cursor_settings`）。
         match self.store.proxy_settings_secret().await {
             Ok(settings) if settings.mode == ProxyMode::Default => {}
+            Ok(settings) if settings.mode == ProxyMode::Direct && cursor_role => {}
             Ok(_) => return false,
             Err(error) => {
                 tracing::warn!(
@@ -451,8 +485,14 @@ impl OutboundClient {
         if let Some(client) = clients.rebuild_cached_client(cached).await {
             return Some(client);
         }
-        if error.is_connect() && clients.bypass_system_proxy().await {
-            return clients.rebuild_cached_client(cached).await;
+        if error.is_connect() {
+            let bypassed = match cached {
+                CachedClient::Cursor => clients.bypass_system_proxy_for_cursor().await,
+                _ => clients.bypass_system_proxy().await,
+            };
+            if bypassed {
+                return clients.rebuild_cached_client(cached).await;
+            }
         }
         None
     }
@@ -626,7 +666,8 @@ async fn watch_system_proxy_with<F>(
         // 只有"跟随系统代理"的缓存会用到系统配置；自定义与直连模式下缓存的客户端与
         // 系统代理无关，重建只会白白丢掉连接池（那两种模式的变化由保存设置失效缓存）。
         match clients.store.proxy_settings_secret().await {
-            Ok(settings) if settings.mode != ProxyMode::Default => continue,
+            // 自定义模式与系统代理无关；其余两种模式都有客户端跟随系统代理（cursor 角色）。
+            Ok(settings) if settings.mode == ProxyMode::Custom => continue,
             Ok(_) => {}
             Err(error) => {
                 // 读不出来时按"默认模式"处理：重建的成本远低于把用户继续钉在一个
@@ -775,6 +816,39 @@ fn url_host_is_loopback(url: &url::Url) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cursor_role_falls_back_to_the_system_proxy_when_models_are_direct() {
+        use super::{cursor_settings, ProxyMode, ProxySettingsSecret};
+        let direct = ProxySettingsSecret {
+            mode: ProxyMode::Direct,
+            ..Default::default()
+        };
+        let cursor = cursor_settings(&direct);
+        assert_eq!(
+            cursor.mode,
+            ProxyMode::Default,
+            "Cursor control traffic must follow the system proxy"
+        );
+        assert!(cursor.address.is_empty());
+
+        let custom = ProxySettingsSecret {
+            mode: ProxyMode::Custom,
+            address: "http://127.0.0.1:9999".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            cursor_settings(&custom).mode,
+            ProxyMode::Custom,
+            "explicit custom proxy still wins"
+        );
+        assert_eq!(cursor_settings(&custom).address, "http://127.0.0.1:9999");
+
+        let default = ProxySettingsSecret {
+            mode: ProxyMode::Default,
+            ..Default::default()
+        };
+        assert_eq!(cursor_settings(&default).mode, ProxyMode::Default);
+    }
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;

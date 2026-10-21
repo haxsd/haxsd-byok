@@ -300,6 +300,16 @@ fn is_local_path(path: &str) -> bool {
             | "/aiserver.v1.AiService/KnowledgeBaseRemove"
             | "/aiserver.v1.AiService/WriteGitCommitMessage"
             | "/aiserver.v1.NetworkService/IsConnected"
+            // Cursor 的控制面请求：它们由后端按 Cursor 角色的出网设置转发（用户直连
+            // 模型时仍走系统代理），避免 hudsucker 直连失败把 502 抛给会话。
+            | "/aiserver.v1.AnalyticsService/SubmitLogs"
+            | "/aiserver.v1.AnalyticsService/Batch"
+            | "/aiserver.v1.DashboardService/GetCliDownloadUrl"
+            | "/aiserver.v1.DashboardService/GetTeamAdminSettingsOrNotInTeam"
+            | "/aiserver.v1.DashboardService/GetManagedSkills"
+            | "/aiserver.v1.BackgroundComposerService/GetBackgroundComposerUserSettings"
+            | "/aiserver.v1.RepositoryService/FastRepoInitHandshakeV2"
+            | "/aiserver.v1.AiService/ServerTime"
             | "/aiserver.v1.AnalyticsService/BootstrapStatsig"
             | "/auth/full_stripe_profile"
             | "/auth/stripe_profile"
@@ -442,6 +452,14 @@ mod tests {
             "/aiserver.v1.DashboardService/GetUserPrivacyMode",
             "/aiserver.v1.AuthService/GetUserMeta",
             "/agent.v1.AgentService/UpdateConversationMetadata",
+            "/aiserver.v1.AnalyticsService/SubmitLogs",
+            "/aiserver.v1.AnalyticsService/Batch",
+            "/aiserver.v1.DashboardService/GetCliDownloadUrl",
+            "/aiserver.v1.DashboardService/GetTeamAdminSettingsOrNotInTeam",
+            "/aiserver.v1.DashboardService/GetManagedSkills",
+            "/aiserver.v1.BackgroundComposerService/GetBackgroundComposerUserSettings",
+            "/aiserver.v1.RepositoryService/FastRepoInitHandshakeV2",
+            "/aiserver.v1.AiService/ServerTime",
             "/auth/full_stripe_profile",
             "/auth/stripe_profile",
         ] {
