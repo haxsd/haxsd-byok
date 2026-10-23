@@ -2,7 +2,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -22,15 +22,15 @@ const MAX_RESULTS: usize = 15;
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const CACHE_ENTRIES: usize = 16;
 
-/// 查询 → (写入时刻, 结果)。
+/// 查询 → (写入时刻, 结果)。缓存随 `WebSearch` 实例存活：一次 run 的引擎集合是固定的，
+/// 换引擎配置后不会命中上一次 run 的旧结果。
 type ResultCache = HashMap<String, (Instant, Vec<SearchHit>)>;
-
-static RESULTS: OnceLock<parking_lot::Mutex<ResultCache>> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct WebSearch {
     client: SearchClient,
     engines: Vec<SearchEngine>,
+    cache: Arc<parking_lot::Mutex<ResultCache>>,
 }
 
 #[derive(Clone)]
@@ -61,6 +61,7 @@ impl WebSearch {
                 client: Arc::new(OnceCell::new()),
             },
             engines: catalog::engines(),
+            cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
         }
     }
 
@@ -72,6 +73,7 @@ impl WebSearch {
         Self {
             client: SearchClient::Direct(reqwest::Client::new()),
             engines: engines.into_iter().map(Into::into).collect(),
+            cache: Arc::new(parking_lot::Mutex::new(HashMap::new())),
         }
     }
 
@@ -84,7 +86,7 @@ impl WebSearch {
         if query.is_empty() {
             return Err(SearchError("query is empty".into()));
         }
-        if let Some(cached) = cached_results(query) {
+        if let Some(cached) = self.cached_results(query) {
             tracing::debug!(
                 query,
                 results = cached.len(),
@@ -136,7 +138,7 @@ impl WebSearch {
                 .then_with(|| left.url.cmp(&right.url))
         });
         results.truncate(MAX_RESULTS);
-        remember_results(query, &results);
+        self.remember_results(query, &results);
         Ok(results)
     }
 
@@ -155,28 +157,26 @@ impl WebSearch {
     }
 }
 
-fn cache() -> &'static parking_lot::Mutex<HashMap<String, (Instant, Vec<SearchHit>)>> {
-    RESULTS.get_or_init(|| parking_lot::Mutex::new(HashMap::new()))
-}
-
-fn cached_results(query: &str) -> Option<Vec<SearchHit>> {
-    let cache = cache().lock();
-    let (at, hits) = cache.get(query)?;
-    (at.elapsed() < CACHE_TTL).then(|| hits.clone())
-}
-
-fn remember_results(query: &str, hits: &[SearchHit]) {
-    let mut cache = cache().lock();
-    if cache.len() >= CACHE_ENTRIES && !cache.contains_key(query) {
-        let oldest = cache
-            .iter()
-            .min_by_key(|(_, (at, _))| *at)
-            .map(|(key, _)| key.clone());
-        if let Some(oldest) = oldest {
-            cache.remove(&oldest);
-        }
+impl WebSearch {
+    fn cached_results(&self, query: &str) -> Option<Vec<SearchHit>> {
+        let cache = self.cache.lock();
+        let (at, hits) = cache.get(query)?;
+        (at.elapsed() < CACHE_TTL).then(|| hits.clone())
     }
-    cache.insert(query.to_owned(), (Instant::now(), hits.to_vec()));
+
+    fn remember_results(&self, query: &str, hits: &[SearchHit]) {
+        let mut cache = self.cache.lock();
+        if cache.len() >= CACHE_ENTRIES && !cache.contains_key(query) {
+            let oldest = cache
+                .iter()
+                .min_by_key(|(_, (at, _))| *at)
+                .map(|(key, _)| key.clone());
+            if let Some(oldest) = oldest {
+                cache.remove(&oldest);
+            }
+        }
+        cache.insert(query.to_owned(), (Instant::now(), hits.to_vec()));
+    }
 }
 
 impl Default for WebSearch {
@@ -305,7 +305,7 @@ mod tests {
             None,
         );
         let search = WebSearch::with_engines([engine]);
-        // 静态缓存跨用例共享,查询串必须唯一,避免互相命中。
+        // 缓存属于本次 WebSearch 实例；查询串仍保持唯一，便于断言命中次数。
         let query = format!("cache-probe-{}", std::process::id());
 
         let first = search.search(&query).await.unwrap();
@@ -321,13 +321,15 @@ mod tests {
     #[test]
     fn an_expired_cache_entry_is_not_served() {
         let query = format!("expired-probe-{}", std::process::id());
-        remember_results(&query, &[hit("https://example.com/a", "stub", "a")]);
-        assert!(cached_results(&query).is_some());
+        let search = WebSearch::with_engines(Vec::<SearchEngine>::new());
+        search.remember_results(&query, &[hit("https://example.com/a", "stub", "a")]);
+        assert!(search.cached_results(&query).is_some());
 
-        cache()
+        search
+            .cache
             .lock()
             .insert(query.clone(), (Instant::now() - CACHE_TTL, Vec::new()));
 
-        assert!(cached_results(&query).is_none());
+        assert!(search.cached_results(&query).is_none());
     }
 }
