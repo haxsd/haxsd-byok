@@ -32,6 +32,7 @@ export function ClaudeGatewayCard({
   onCopy,
   onRotate,
   rotating,
+  rotateBlockedReason,
 }: {
   /** 服务端已保存的设置：状态结论以它为准。 */
   saved: ClaudeSettings | null;
@@ -46,6 +47,8 @@ export function ClaudeGatewayCard({
   onCopy: (text: string, done: string) => void;
   onRotate: () => void;
   rotating: boolean;
+  /** Desktop 接管生效时服务端拒绝轮换：按钮禁用，并在令牌旁说明先撤销接管。 */
+  rotateBlockedReason: string | null;
 }) {
   const listening = status?.listening ?? false;
   const dirty = Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved));
@@ -155,10 +158,12 @@ export function ClaudeGatewayCard({
               </TooltipTrigger>
               <Button
                 size="small"
-                disabled={!status?.token || rotating || busy}
+                disabled={!status?.token || rotating || busy || rotateBlockedReason !== null}
+                title={rotateBlockedReason ?? undefined}
                 onClick={onRotate}
               >{rotating ? t("轮换中…") : t("重新生成")}</Button>
             </span>
+            {rotateBlockedReason && <small className={styles.rotateHint}>{rotateBlockedReason}</small>}
           </div>
         </div>
       </div>

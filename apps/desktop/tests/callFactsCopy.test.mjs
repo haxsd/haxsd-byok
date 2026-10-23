@@ -111,7 +111,7 @@ test("内部调用显示为界面语言里的名字，不是数据库里的 inte
   assert.doesNotMatch(text, /\binternal\b/, "数据库标记不能出现在界面上");
 });
 
-for (const [source, label] of [["cursor", "Cursor"], ["devin", "Devin"], ["codex", "Codex"]]) {
+for (const [source, label] of [["cursor", "Cursor"], ["devin", "Devin"], ["codex", "Codex"], ["claude", "Claude"]]) {
   test(`${source} 显示为产品名 ${label}`, async () => {
     const text = await renderFacts(call(source));
     assert.match(text, new RegExp(`客户端来源 ${label}`));

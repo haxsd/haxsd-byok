@@ -8,6 +8,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::{
     anthropic::{ClaudeGateway, ClaudeSettings, ClaudeStatus},
@@ -16,7 +17,7 @@ use crate::{
         desktop::{self as claude_desktop, DesktopModel, DesktopPaths, DesktopRoute},
         ownership::{CliEnvironment, DesktopPolicy},
         settings::{self as cli_settings, CliModel, CliPaths, CliRoute, GatewayValues},
-        CliTakeoverStatus, DesktopTakeoverStatus, Family, TakeoverStatus,
+        CliTakeoverStatus, DesktopTakeoverStatus, Family, TakeoverState, TakeoverStatus,
     },
     model::ModelConfig,
     store::Store,
@@ -146,10 +147,190 @@ async fn status(State(state): State<ClaudeControl>) -> Result<Json<ClaudeStatus>
     Ok(Json(state.gateway.status().await?))
 }
 
-/// 立即轮换访问令牌：旧令牌马上失效，已应用的客户端需要重新写入新令牌。
+/// 立即轮换访问令牌。
+///
+/// 已接管 Claude Desktop 时先拒绝：它的 profile 里也有令牌，Desktop 关闭时服务端
+/// 无法把新令牌写进去，轮换只会让用户下次打开 Desktop 时拿着旧令牌报错。
+/// 已接管 Claude Code 时同步重写 `settings.json`；重写失败时令牌已经换掉，状态会
+/// 显示 stale，错误信息要求重新应用。
 async fn rotate_token(State(state): State<ClaudeControl>) -> Result<Json<serde_json::Value>> {
+    let facts = Facts::load(&state).await?;
+    let gateway = facts.gateway_values();
+    let state_dir = state.takeover.state_dir()?;
+
+    let policy = state.takeover.desktop_policy();
+    let desktop = claude_desktop::inspect(
+        &state.takeover.desktop_paths()?,
+        &state_dir,
+        &policy,
+        state.takeover.desktop_running().await,
+        Some(&gateway),
+    )?;
+    match desktop.state {
+        TakeoverState::Applied | TakeoverState::Stale => {
+            return Err(Error::Config(
+                "undo the Claude Desktop takeover before rotating the gateway token".into(),
+            ));
+        }
+        TakeoverState::Running => {
+            return Err(Error::Config(
+                "quit Claude Desktop completely, then undo the takeover or rotate the gateway token"
+                    .into(),
+            ));
+        }
+        _ => {}
+    }
+
+    let cli_paths = state.takeover.cli_paths()?;
+    let environment = state.takeover.cli_environment();
+    let cli = cli_settings::inspect(&cli_paths, &state_dir, &environment, Some(&gateway))?;
+    match cli.state {
+        TakeoverState::Conflict | TakeoverState::Managed => {
+            return Err(Error::Config(
+                "resolve the Claude Code takeover conflict before rotating the gateway token; apply or undo the takeover first"
+                    .into(),
+            ));
+        }
+        _ => {}
+    }
+    let sync_cli = matches!(cli.state, TakeoverState::Applied | TakeoverState::Stale);
+
     let token = state.gateway.rotate_token().await?;
-    Ok(Json(serde_json::json!({ "token": token })))
+    let mut cli_synced = false;
+    if sync_cli {
+        let route = CliRoute {
+            base_url: facts.status.base_url.clone(),
+            token: token.clone(),
+            models: facts.cli_models(),
+        };
+        cli_settings::apply(&cli_paths, &state_dir, &environment, &route).map_err(|error| {
+            Error::Config(format!(
+                "the gateway token was rotated, but the Claude Code settings could not be updated: {error}; apply the Claude Code takeover again"
+            ))
+        })?;
+        cli_synced = true;
+    }
+    Ok(Json(
+        serde_json::json!({ "token": token, "cli_synced": cli_synced }),
+    ))
+}
+
+/// 正常退出时撤销 Claude 接管，避免客户端在网关停止后继续指向本机端口。
+///
+/// 进程被强杀或崩溃时没有机会运行这里；下次启动网关会重新监听同一端口，客户端
+/// 继续可用。清理失败只记日志：进程已经在退出，没有第二次机会。
+pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
+    let state_dir = match claude_code::state_dir() {
+        Ok(directory) => directory,
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the Claude takeover state directory; skipped cleanup");
+            return;
+        }
+    };
+    let facts = match Facts::load_parts(&gateway, &store).await {
+        Ok(facts) => Some(facts),
+        Err(error) => {
+            tracing::warn!(%error, "cannot read the Claude gateway state; only undo takeovers that are still restorable");
+            None
+        }
+    };
+    let gateway_values = facts.as_ref().map(Facts::gateway_values);
+
+    let environment = CliEnvironment::detect();
+    match CliPaths::discover() {
+        Ok(paths) => {
+            match cli_settings::inspect(&paths, &state_dir, &environment, gateway_values.as_ref()) {
+                Ok(status) if take_over(&status.state, status.restorable) => {
+                    match cli_settings::undo(&paths, &state_dir, &environment) {
+                        Ok(_) => {
+                            tracing::info!("restored the Claude Code settings during shutdown")
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "cannot restore the Claude Code settings during shutdown");
+                        }
+                    }
+                }
+                Ok(status) => {
+                    if leaves_something(&status.state) {
+                        tracing::warn!(
+                            state = ?status.state,
+                            conflicts = status.conflicts.len(),
+                            "left the Claude Code takeover in place during shutdown"
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "cannot inspect the Claude Code takeover during shutdown");
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the Claude Code settings path; skipped cleanup");
+        }
+    }
+
+    let policy = DesktopPolicy::detect();
+    match DesktopPaths::discover() {
+        Ok(paths) => {
+            let running = claude_desktop::process_running().await;
+            match claude_desktop::inspect(
+                &paths,
+                &state_dir,
+                &policy,
+                running,
+                gateway_values.as_ref(),
+            ) {
+                Ok(status) if running => {
+                    if status.restorable {
+                        tracing::warn!(
+                            "Claude Desktop is running; left its takeover in place during shutdown"
+                        );
+                    }
+                }
+                Ok(status) if take_over(&status.state, status.restorable) => {
+                    match claude_desktop::undo(&paths, &state_dir, &policy, false) {
+                        Ok(_) => {
+                            tracing::info!("restored the Claude Desktop profile during shutdown");
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "cannot restore the Claude Desktop profile during shutdown");
+                        }
+                    }
+                }
+                Ok(status) => {
+                    if leaves_something(&status.state) {
+                        tracing::warn!(
+                            state = ?status.state,
+                            conflicts = status.conflicts.len(),
+                            "left the Claude Desktop takeover in place during shutdown"
+                        );
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "cannot inspect the Claude Desktop takeover during shutdown");
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the Claude Desktop profile path; skipped cleanup");
+        }
+    }
+}
+
+fn take_over(state: &TakeoverState, restorable: bool) -> bool {
+    restorable && matches!(state, TakeoverState::Applied | TakeoverState::Stale)
+}
+
+/// 有收据却没能撤销的状态：退出时值得留一条日志。
+fn leaves_something(state: &TakeoverState) -> bool {
+    matches!(
+        state,
+        TakeoverState::Applied
+            | TakeoverState::Stale
+            | TakeoverState::Conflict
+            | TakeoverState::Managed
+            | TakeoverState::Running
+    )
 }
 
 async fn takeover_status(State(state): State<ClaudeControl>) -> Result<Json<TakeoverStatus>> {
@@ -221,10 +402,7 @@ async fn build_takeover_status(state: &ClaudeControl) -> Result<TakeoverStatus> 
     let desktop_paths = state.takeover.desktop_paths()?;
     let state_dir = state.takeover.state_dir()?;
     let environment = state.takeover.cli_environment();
-    let gateway = GatewayValues {
-        base_url: &facts.status.base_url,
-        token: &facts.status.token,
-    };
+    let gateway = facts.gateway_values();
     let cli = cli_settings::inspect(&cli_paths, &state_dir, &environment, Some(&gateway))?
         .with_missing_models(facts.missing_models());
     let desktop = claude_desktop::inspect(
@@ -232,6 +410,7 @@ async fn build_takeover_status(state: &ClaudeControl) -> Result<TakeoverStatus> 
         &state_dir,
         &state.takeover.desktop_policy(),
         state.takeover.desktop_running().await,
+        Some(&gateway),
     )?;
     Ok(TakeoverStatus { cli, desktop })
 }
@@ -274,26 +453,95 @@ struct Facts {
     /// 网关当前实际持有的监听端口；`None` 表示没有监听器。
     listening_port: Option<u16>,
     models: BTreeMap<String, ModelConfig>,
+    /// 当前应写入客户端的完整 `env` 映射。
+    desired: BTreeMap<String, Value>,
+    /// 网关已启用、正在监听、端口一致、默认模型存在，并且没有缺失模型。
+    available: bool,
 }
 
 impl Facts {
     async fn load(state: &ClaudeControl) -> Result<Self> {
-        let settings = state.store.claude_settings().await?;
-        let status = state.gateway.status().await?;
-        let listening_port = state.gateway.listening_port().await;
-        let models = state
-            .store
+        Self::load_parts(&state.gateway, &state.store).await
+    }
+
+    async fn load_parts(gateway: &ClaudeGateway, store: &Store) -> Result<Self> {
+        let settings = store.claude_settings().await?;
+        let status = gateway.status().await?;
+        let listening_port = gateway.listening_port().await;
+        let models = store
             .models()
             .await?
             .into_iter()
             .map(|model| (model.model_hash.clone(), model))
             .collect();
-        Ok(Self {
+        let mut facts = Self {
             settings,
             status,
             listening_port,
             models,
-        })
+            desired: BTreeMap::new(),
+            available: false,
+        };
+        facts.available = facts.gateway_available();
+        facts.desired = facts.desired_values();
+        Ok(facts)
+    }
+
+    fn gateway_values(&self) -> GatewayValues<'_> {
+        GatewayValues {
+            base_url: &self.status.base_url,
+            token: &self.status.token,
+            desired: &self.desired,
+            available: self.available,
+        }
+    }
+
+    /// 当前设置对应的 CLI 模型列表；模型库里已经删掉的哈希直接跳过，状态接口靠
+    /// `available = false` 与键集合差异把它报成 stale。
+    fn cli_models(&self) -> Vec<CliModel> {
+        let mut models = Vec::new();
+        for family in Family::ALL {
+            let Some(hash) = configured_hash(&self.settings, family) else {
+                continue;
+            };
+            let Some(model) = self.models.get(hash) else {
+                continue;
+            };
+            models.push(CliModel {
+                family,
+                model_hash: model.model_hash.clone(),
+                display_name: model.display_name.clone(),
+            });
+        }
+        models
+    }
+
+    /// 当前应写入 CLI 的完整 env。构造失败时至少回退到入口地址、令牌与归属头：
+    /// 状态接口不能因为一次参数校验失败变成 500。
+    fn desired_values(&self) -> BTreeMap<String, Value> {
+        let route = CliRoute {
+            base_url: self.status.base_url.clone(),
+            token: self.status.token.clone(),
+            models: self.cli_models(),
+        };
+        match cli_settings::desired_values(&route) {
+            Ok(desired) => desired,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "cannot build the Claude gateway env values; falling back to the base URL, token and attribution header"
+                );
+                cli_settings::base_values(&self.status.base_url, &self.status.token)
+            }
+        }
+    }
+
+    fn gateway_available(&self) -> bool {
+        self.settings.enabled
+            && self.status.listening
+            && self.listening_port == Some(self.settings.port)
+            && self.settings.configured_default().is_some()
+            && self.missing_models().is_empty()
     }
 
     /// 接管写进客户端的是可用的网关地址与模型别名；三者缺一，客户端就会拿着坏地址
@@ -509,6 +757,7 @@ mod tests {
     struct TakeoverFixture {
         _directory: tempfile::TempDir,
         app: Router,
+        store: Store,
         cli: CliPaths,
         desktop: DesktopPaths,
         state_dir: std::path::PathBuf,
@@ -567,7 +816,7 @@ mod tests {
         let state_dir = directory.path().join("state");
         let app = router_with(
             gateway,
-            store,
+            store.clone(),
             TakeoverContext::Fixed(Box::new(FixedTakeover {
                 cli: cli.clone(),
                 desktop: desktop.clone(),
@@ -577,6 +826,7 @@ mod tests {
         TakeoverFixture {
             _directory: directory,
             app,
+            store,
             cli,
             desktop,
             state_dir,
@@ -901,24 +1151,168 @@ mod tests {
         assert!(!fixture.desktop.meta.exists());
     }
 
-    #[tokio::test]
-    async fn rotating_the_token_changes_the_one_status_reports() {
-        let (_directory, _store, app) = fixture().await;
-        let (_, before) = send(&app, Method::GET, "/__byok-api__/api/claude/status", None).await;
-        let old = before["token"].as_str().unwrap().to_owned();
+    fn cli_settings_document(fixture: &TakeoverFixture) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(&fixture.cli.settings).unwrap()).unwrap()
+    }
 
-        let (status, body) = send(
-            &app,
+    async fn rotate(fixture: &TakeoverFixture) -> (StatusCode, Value) {
+        send(
+            &fixture.app,
             Method::POST,
             "/__byok-api__/api/claude/token/rotate",
             None,
         )
+        .await
+    }
+
+    #[tokio::test]
+    async fn rotating_the_token_changes_the_one_status_reports() {
+        let fixture = takeover_fixture(true).await;
+        let (_, before) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/status",
+            None,
+        )
         .await;
+        let old = before["token"].as_str().unwrap().to_owned();
+
+        let (status, body) = rotate(&fixture).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         let new = body["token"].as_str().unwrap().to_owned();
         assert_ne!(new, old);
+        assert_eq!(body["cli_synced"], false, "未接管的 CLI 不该被改写");
 
-        let (_, after) = send(&app, Method::GET, "/__byok-api__/api/claude/status", None).await;
+        let (_, after) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/status",
+            None,
+        )
+        .await;
         assert_eq!(after["token"], new);
+    }
+
+    #[tokio::test]
+    async fn rotating_is_refused_while_claude_desktop_has_the_takeover() {
+        let fixture = takeover_fixture(true).await;
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/desktop",
+            Some(json!({
+                "action": "apply",
+                "models": [{"model_hash": fixture.hashes[0]}],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["state"], "applied");
+        let (_, before) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/status",
+            None,
+        )
+        .await;
+        let old = before["token"].as_str().unwrap().to_owned();
+
+        let (status, body) = rotate(&fixture).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("undo the Claude Desktop takeover before rotating"),
+            "{body}"
+        );
+
+        // 拒绝发生在轮换之前：库里的令牌与 profile 都还是旧的。
+        let (_, after) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/status",
+            None,
+        )
+        .await;
+        assert_eq!(after["token"], old);
+        let meta: Value =
+            serde_json::from_str(&std::fs::read_to_string(&fixture.desktop.meta).unwrap()).unwrap();
+        let uuid = meta["appliedId"].as_str().unwrap();
+        let profile: Value =
+            serde_json::from_str(&std::fs::read_to_string(fixture.desktop.profile(uuid)).unwrap())
+                .unwrap();
+        assert_eq!(profile["inferenceGatewayApiKey"], old.as_str());
+    }
+
+    #[tokio::test]
+    async fn rotating_rewrites_an_applied_cli_takeover() {
+        let fixture = takeover_fixture(true).await;
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/cli",
+            Some(json!({"action": "apply"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["state"], "applied");
+
+        let (status, body) = rotate(&fixture).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let token = body["token"].as_str().unwrap().to_owned();
+        assert_eq!(body["cli_synced"], true);
+
+        let settings = cli_settings_document(&fixture);
+        assert_eq!(settings["env"]["ANTHROPIC_AUTH_TOKEN"], token.as_str());
+        let (_, takeover) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/takeover",
+            None,
+        )
+        .await;
+        assert_eq!(takeover["cli"]["state"], "applied");
+    }
+
+    #[tokio::test]
+    async fn a_changed_gateway_setting_marks_the_cli_takeover_stale() {
+        let fixture = takeover_fixture(true).await;
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/cli",
+            Some(json!({"action": "apply"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["state"], "applied");
+
+        // 接管之后换掉 Sonnet 模型：settings.json 仍与收据一致，但期望值已经变了。
+        let mut settings = fixture.store.claude_settings().await.unwrap();
+        settings.sonnet_model_hash = Some(fixture.hashes[2].clone());
+        fixture.store.set_claude_settings(settings).await.unwrap();
+
+        let (status, body) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/takeover",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["cli"]["state"], "stale");
+        assert_eq!(body["cli"]["restorable"], true);
+        let stale = body["cli"]["conflicts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|conflict| conflict["code"] == "takeover_stale")
+            .expect("stale 状态必须带 takeover_stale");
+        assert_eq!(stale["blocking"], false);
+        assert_eq!(
+            stale["message"],
+            "the gateway settings changed after the takeover; apply again to update the client"
+        );
     }
 }

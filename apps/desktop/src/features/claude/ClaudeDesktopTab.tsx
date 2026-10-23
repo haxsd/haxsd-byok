@@ -106,7 +106,7 @@ export function ClaudeDesktopTab({
       </div>
     </dl>
 
-    <ClaudeConflictList conflicts={takeover?.conflicts ?? []} />
+    <ClaudeConflictList conflicts={takeover?.conflicts ?? []} stale={takeover?.state === "stale"} />
 
     {keptAfterUndo.length > 0 && <section className={styles.kept} aria-label={t("撤销时保留的改动")}>
       <strong>{t("撤销保留了这些改动")}</strong>

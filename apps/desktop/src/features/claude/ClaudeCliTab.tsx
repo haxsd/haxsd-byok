@@ -115,7 +115,7 @@ export function ClaudeCliTab({
       </div>}
     </dl>
 
-    <ClaudeConflictList conflicts={takeover?.conflicts ?? []} />
+    <ClaudeConflictList conflicts={takeover?.conflicts ?? []} stale={takeover?.state === "stale"} />
 
     {takeover && takeover.missing_models.length > 0 && <section className={styles.hint} aria-label={t("模型库里缺少模型")}>
       <strong>{t("模型库里缺少这些模型")}</strong>

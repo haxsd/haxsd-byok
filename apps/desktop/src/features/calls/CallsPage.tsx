@@ -9,7 +9,7 @@ import { Segmented } from "../../shared/ui/Segmented";
 import { Select } from "../../shared/ui/Select";
 import { ServiceOfflineState } from "../../shared/ui/ServiceOfflineState";
 import { Card } from "../../shared/ui/Card";
-import { callClientLabel } from "../../shared/utils/callStatus";
+import { callClientLabel, callClientSources } from "../../shared/utils/callStatus";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
 import toolbar from "../../shared/ui/Toolbar.module.scss";
@@ -106,8 +106,7 @@ export function CallsPage() {
       />
       <Select ariaLabel={t("客户端来源")} value={client} onChange={setClient} options={[
         { value: "all", label: t("全部客户端") },
-        { value: "cursor", label: callClientLabel("cursor") }, { value: "devin", label: callClientLabel("devin") },
-        { value: "codex", label: callClientLabel("codex") }, { value: "internal", label: callClientLabel("internal") },
+        ...callClientSources.map((source) => ({ value: source, label: callClientLabel(source) })),
       ]} />
       <Segmented
         ariaLabel={t("按状态筛选")}

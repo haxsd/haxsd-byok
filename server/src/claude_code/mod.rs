@@ -105,7 +105,11 @@ pub const MANAGED_ENV_KEYS: [&str; 9] = [
 pub enum TakeoverState {
     Missing,
     Ready,
+    /// 文件与收据一致，且收据仍是当前网关的期望值。
     Applied,
+    /// 文件与收据一致，但收据已经不是当前网关的期望值（换令牌、换端口、换模型、
+    /// 网关停用或模型缺失）：客户端配置有效却过期，需要重新应用。
+    Stale,
     Conflict,
     Managed,
     Running,

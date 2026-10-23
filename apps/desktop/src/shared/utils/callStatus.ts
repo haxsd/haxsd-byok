@@ -38,14 +38,37 @@ export function callStatusLabel(status: string): string {
  * 数据库里的 `internal`／`cursor`——同一屏里同一个字段，一处中文一处英文。这里
  * 收成一处：筛选条和明细都从这里取名字。
  *
- * 三个客户端名是固定产品名，不参与翻译；未知来源保留原文。
+ * 客户端名是固定产品名，不参与翻译；未知来源保留原文。
  */
 export function callClientLabel(source: string): string {
   switch (source) {
     case "cursor": return "Cursor";
     case "devin": return "Devin";
     case "codex": return "Codex";
+    case "claude": return "Claude";
     case "internal": return t("内部调用");
     default: return source;
+  }
+}
+
+/**
+ * 调用页来源筛选的取值顺序；新增客户端只改这一处。
+ *
+ * 与 `callClientLabel` 放一起，避免筛选项和表格/明细的称呼各自漂移。
+ */
+export const callClientSources = ["cursor", "devin", "codex", "claude", "internal"] as const;
+
+/**
+ * 路由列：客户端来源 + 路由类型。
+ *
+ * Claude 与 Codex/Devin 一样经由本机网关，必须有独立标签；落到通用 `BYOK` 会让
+ * 三条不同的接入路径在表格里看起来是同一条。
+ */
+export function callRouteLabel(call: { client_source: string; route: string }): string {
+  switch (call.client_source) {
+    case "codex": return "Codex · BYOK";
+    case "devin": return "Devin · BYOK";
+    case "claude": return "Claude · BYOK";
+    default: return call.route === "cursor_official" ? t("官方") : "BYOK";
   }
 }

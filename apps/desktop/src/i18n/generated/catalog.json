@@ -62,7 +62,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 136,
+          "line": 135,
           "column": 42
         }
       ]
@@ -192,7 +192,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 63,
+          "line": 66,
           "column": 12
         },
         {
@@ -350,7 +350,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 117,
+          "line": 116,
           "column": 40
         },
         {
@@ -497,7 +497,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 150,
+          "line": 145,
           "column": 15
         }
       ]
@@ -521,7 +521,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 124,
+          "line": 123,
           "column": 20
         }
       ]
@@ -643,7 +643,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 127,
+          "line": 126,
           "column": 34
         }
       ]
@@ -710,7 +710,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 116,
+          "line": 115,
           "column": 34
         }
       ]
@@ -960,7 +960,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 136,
+          "line": 145,
           "column": 20
         }
       ]
@@ -1156,7 +1156,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 128,
+          "line": 131,
           "column": 22
         }
       ]
@@ -1253,7 +1253,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 58,
+          "line": 61,
           "column": 25
         }
       ]
@@ -1265,7 +1265,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 82,
+          "line": 89,
           "column": 32
         }
       ]
@@ -1431,12 +1431,12 @@
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 56,
+          "line": 61,
           "column": 18
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 84,
+          "line": 91,
           "column": 21
         },
         {
@@ -2025,7 +2025,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 127,
+          "line": 136,
           "column": 47
         }
       ]
@@ -2123,7 +2123,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 101,
+          "line": 104,
           "column": 27
         },
         {
@@ -2152,12 +2152,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 48,
+          "line": 53,
           "column": 83
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 60,
+          "line": 66,
           "column": 18
         }
       ]
@@ -2169,7 +2169,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 61,
+          "line": 67,
           "column": 18
         },
         {
@@ -2247,6 +2247,18 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 96,
           "column": 14
+        }
+      ]
+    },
+    "1fd519aabd211495": {
+      "source": "服务端没有返回令牌同步结果",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shared/api.ts",
+          "line": 1349,
+          "column": 23
         }
       ]
     },
@@ -2413,6 +2425,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 490,
           "column": 132
+        }
+      ]
+    },
+    "234332c6380762c5": {
+      "source": "客户端仍指向旧的网关配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/claudeConnectionView.ts",
+          "line": 248,
+          "column": 26
         }
       ]
     },
@@ -2687,7 +2711,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 161,
+          "line": 156,
           "column": 11
         }
       ]
@@ -2735,7 +2759,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 118,
+          "line": 117,
           "column": 37
         },
         {
@@ -3334,7 +3358,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 160,
+          "line": 164,
           "column": 28
         }
       ]
@@ -3378,7 +3402,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 160,
+          "line": 164,
           "column": 40
         }
       ]
@@ -3460,12 +3484,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 141,
+          "line": 136,
           "column": 11
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 160,
+          "line": 155,
           "column": 11
         }
       ]
@@ -3564,7 +3588,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 159,
+          "line": 169,
           "column": 61
         }
       ]
@@ -3631,12 +3655,12 @@
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 41,
+          "line": 44,
           "column": 65
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 42,
+          "line": 45,
           "column": 67
         },
         {
@@ -3666,12 +3690,12 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
+          "line": 133,
           "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 147,
+          "line": 150,
           "column": 39
         },
         {
@@ -3733,12 +3757,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 131,
+          "line": 140,
           "column": 33
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 207,
+          "line": 241,
           "column": 22
         }
       ]
@@ -4289,12 +4313,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 111,
+          "line": 114,
           "column": 27
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 113,
+          "line": 116,
           "column": 25
         }
       ]
@@ -4558,12 +4582,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 155,
+          "line": 165,
           "column": 60
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 216,
+          "line": 251,
           "column": 28
         }
       ]
@@ -4678,7 +4702,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 47,
+          "line": 51,
           "column": 77
         },
         {
@@ -4944,12 +4968,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 130,
+          "line": 139,
           "column": 35
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 89,
+          "line": 92,
           "column": 19
         }
       ]
@@ -4992,12 +5016,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 44,
+          "line": 47,
           "column": 84
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 59,
+          "line": 65,
           "column": 19
         },
         {
@@ -5286,7 +5310,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 145,
+          "line": 144,
           "column": 15
         },
         {
@@ -5894,7 +5918,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 212,
+          "line": 246,
           "column": 26
         }
       ]
@@ -5970,12 +5994,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 154,
+          "line": 164,
           "column": 60
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 211,
+          "line": 245,
           "column": 9
         }
       ]
@@ -6087,7 +6111,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 102,
+          "line": 104,
           "column": 15
         }
       ]
@@ -6099,12 +6123,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 45,
+          "line": 52,
           "column": 84
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 58,
+          "line": 63,
           "column": 18
         },
         {
@@ -6158,7 +6182,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 193,
+          "line": 189,
           "column": 44
         },
         {
@@ -6341,8 +6365,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 117,
-          "column": 17
+          "line": 113,
+          "column": 56
         }
       ]
     },
@@ -6750,7 +6774,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 144,
+          "line": 143,
           "column": 15
         }
       ]
@@ -7231,17 +7255,17 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 908,
+          "line": 924,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 985,
+          "line": 1001,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1010,
+          "line": 1026,
           "column": 29
         }
       ]
@@ -7301,7 +7325,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 149,
+          "line": 158,
           "column": 59
         }
       ]
@@ -7392,7 +7416,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1384,
+          "line": 1403,
           "column": 43
         }
       ]
@@ -7404,7 +7428,7 @@
       "refs": [
         {
           "file": "shared/utils/callStatus.ts",
-          "line": 48,
+          "line": 49,
           "column": 29
         }
       ]
@@ -7467,7 +7491,7 @@
         },
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 157,
+          "line": 156,
           "column": 30
         },
         {
@@ -7516,7 +7540,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 148,
+          "line": 157,
           "column": 58
         }
       ]
@@ -7780,17 +7804,17 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 916,
+          "line": 932,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 985,
+          "line": 1001,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1010,
+          "line": 1026,
           "column": 41
         }
       ]
@@ -7882,7 +7906,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 142,
+          "line": 141,
           "column": 13
         }
       ]
@@ -8038,7 +8062,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 39,
+          "line": 48,
           "column": 15
         }
       ]
@@ -8136,7 +8160,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 145,
+          "line": 148,
           "column": 22
         }
       ]
@@ -8496,7 +8520,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1379,
+          "line": 1398,
           "column": 43
         }
       ]
@@ -8508,7 +8532,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 142,
+          "line": 137,
           "column": 11
         }
       ]
@@ -8887,7 +8911,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 860,
+          "line": 876,
           "column": 11
         },
         {
@@ -8993,7 +9017,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 68,
+          "line": 71,
           "column": 50
         },
         {
@@ -9034,7 +9058,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 153,
+          "line": 156,
           "column": 62
         }
       ]
@@ -9206,7 +9230,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 58,
+          "line": 61,
           "column": 42
         }
       ]
@@ -9312,7 +9336,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 111,
+          "line": 114,
           "column": 44
         }
       ]
@@ -9564,7 +9588,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1330,
+          "line": 1346,
           "column": 23
         }
       ]
@@ -9576,7 +9600,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 188,
+          "line": 184,
           "column": 14
         }
       ]
@@ -10040,6 +10064,33 @@
         }
       ]
     },
+    "932e825823953c9c": {
+      "source": "配置已过期",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeConflictList.tsx",
+          "line": 20,
+          "column": 61
+        },
+        {
+          "file": "features/claude/ClaudeConflictList.tsx",
+          "line": 21,
+          "column": 16
+        },
+        {
+          "file": "features/claude/claudeConnectionView.ts",
+          "line": 49,
+          "column": 79
+        },
+        {
+          "file": "features/claude/claudeConnectionView.ts",
+          "line": 64,
+          "column": 16
+        }
+      ]
+    },
     "9345151a035212a9": {
       "source": "关闭时不会打开任何 Devin 端口，也不会影响其他接入模块。",
       "kind": "text",
@@ -10179,12 +10230,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 148,
+          "line": 151,
           "column": 38
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 151,
+          "line": 154,
           "column": 31
         }
       ]
@@ -10485,7 +10536,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 150,
+          "line": 159,
           "column": 58
         }
       ]
@@ -10497,7 +10548,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 873,
+          "line": 889,
           "column": 11
         }
       ]
@@ -10620,7 +10671,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 160,
+          "line": 170,
           "column": 64
         }
       ]
@@ -10692,7 +10743,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 101,
+          "line": 104,
           "column": 44
         }
       ]
@@ -10873,7 +10924,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 57,
+          "line": 62,
           "column": 16
         }
       ]
@@ -11132,7 +11183,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 246,
+          "line": 242,
           "column": 47
         },
         {
@@ -11259,6 +11310,18 @@
         }
       ]
     },
+    "a42c83cb800d35e3": {
+      "source": "先撤销 Claude Desktop 接管（运行中先完全退出）再轮换令牌。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/claudeConnectionView.ts",
+          "line": 197,
+          "column": 15
+        }
+      ]
+    },
     "a4685d64ad32d911": {
       "source": "宿主文件里的端口与当前设置不同（{api} · {inference} · {local}）：保存设置后重新应用补丁。",
       "kind": "template",
@@ -11306,12 +11369,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 16,
+          "line": 25,
           "column": 78
         },
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 17,
+          "line": 26,
           "column": 16
         }
       ]
@@ -11398,7 +11461,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 158,
+          "line": 157,
           "column": 9
         }
       ]
@@ -12118,7 +12181,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 215,
+          "line": 250,
           "column": 28
         }
       ]
@@ -12168,7 +12231,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 136,
+          "line": 139,
           "column": 65
         }
       ]
@@ -12306,7 +12369,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 214,
+          "line": 249,
           "column": 29
         }
       ]
@@ -12342,7 +12405,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 213,
+          "line": 247,
           "column": 28
         },
         {
@@ -12359,7 +12422,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 128,
+          "line": 137,
           "column": 47
         }
       ]
@@ -12507,7 +12570,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 252,
+          "line": 248,
           "column": 15
         }
       ]
@@ -12569,7 +12632,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 168,
+          "line": 173,
           "column": 16
         },
         {
@@ -12792,7 +12855,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 210,
+          "line": 244,
           "column": 9
         }
       ]
@@ -12821,7 +12884,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 75,
+          "line": 78,
           "column": 65
         },
         {
@@ -12863,7 +12926,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 52,
+          "line": 57,
           "column": 48
         }
       ]
@@ -12961,6 +13024,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 150,
           "column": 12
+        }
+      ]
+    },
+    "ba126f77d95fc37d": {
+      "source": "网关设置已变化，客户端仍指向旧地址/令牌，请重新应用接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeConflictList.tsx",
+          "line": 22,
+          "column": 15
         }
       ]
     },
@@ -13166,7 +13241,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 26,
+          "line": 35,
           "column": 15
         }
       ]
@@ -13204,7 +13279,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1395,
+          "line": 1414,
           "column": 43
         }
       ]
@@ -13795,12 +13870,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 131,
+          "line": 134,
           "column": 38
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 134,
+          "line": 137,
           "column": 31
         }
       ]
@@ -13877,7 +13952,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 90,
+          "line": 93,
           "column": 19
         },
         {
@@ -14289,7 +14364,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 68,
+          "line": 71,
           "column": 22
         }
       ]
@@ -14361,7 +14436,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 131,
+          "line": 126,
           "column": 15
         }
       ]
@@ -14540,7 +14615,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 189,
+          "line": 185,
           "column": 20
         }
       ]
@@ -14576,7 +14651,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 50,
+          "line": 55,
           "column": 59
         },
         {
@@ -14633,7 +14708,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 177,
+          "line": 182,
           "column": 10
         }
       ]
@@ -14671,7 +14746,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 159,
+          "line": 158,
           "column": 9
         }
       ]
@@ -14695,7 +14770,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 119,
+          "line": 118,
           "column": 36
         }
       ]
@@ -14840,7 +14915,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 144,
+          "line": 153,
           "column": 20
         },
         {
@@ -15508,7 +15583,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 87,
+          "line": 90,
           "column": 17
         }
       ]
@@ -15654,7 +15729,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 64,
+          "line": 67,
           "column": 18
         }
       ]
@@ -15729,7 +15804,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 113,
+          "line": 112,
           "column": 20
         }
       ]
@@ -15825,7 +15900,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 126,
+          "line": 135,
           "column": 56
         }
       ]
@@ -15985,12 +16060,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 83,
+          "line": 86,
           "column": 20
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 93,
+          "line": 96,
           "column": 18
         }
       ]
@@ -16093,7 +16168,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 81,
+          "line": 88,
           "column": 26
         }
       ]
@@ -16276,7 +16351,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 157,
+          "line": 167,
           "column": 20
         }
       ]
@@ -16288,13 +16363,8 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 129,
+          "line": 128,
           "column": 39
-        },
-        {
-          "file": "features/calls/CallTable.tsx",
-          "line": 120,
-          "column": 208
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -16305,6 +16375,11 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 256,
           "column": 43
+        },
+        {
+          "file": "shared/utils/callStatus.ts",
+          "line": 72,
+          "column": 56
         },
         {
           "file": "shell/connectionStatus.ts",
@@ -16484,8 +16559,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 115,
-          "column": 17
+          "line": 113,
+          "column": 27
         }
       ]
     },
@@ -16685,7 +16760,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 104,
+          "line": 107,
           "column": 20
         }
       ]
@@ -16780,7 +16855,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 83,
+          "line": 90,
           "column": 35
         }
       ]
@@ -16885,7 +16960,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 172,
+          "line": 177,
           "column": 71
         }
       ]
@@ -16921,7 +16996,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 129,
+          "line": 138,
           "column": 58
         }
       ]
@@ -17057,7 +17132,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 74,
+          "line": 77,
           "column": 16
         }
       ]
@@ -17069,7 +17144,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 134,
+          "line": 133,
           "column": 20
         }
       ]
@@ -17187,12 +17262,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 29,
+          "line": 38,
           "column": 71
         },
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 30,
+          "line": 39,
           "column": 16
         }
       ]
@@ -17315,7 +17390,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 173,
+          "line": 178,
           "column": 11
         }
       ]
@@ -17411,12 +17486,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 46,
+          "line": 50,
           "column": 73
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 68,
+          "line": 71,
           "column": 61
         },
         {
@@ -17981,17 +18056,17 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 85,
+          "line": 88,
           "column": 15
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 192,
+          "line": 188,
           "column": 36
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 246,
+          "line": 242,
           "column": 35
         },
         {
@@ -18057,7 +18132,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 167,
+          "line": 172,
           "column": 16
         }
       ]

@@ -17,6 +17,7 @@ import { ClaudeGatewayCard } from "./ClaudeGatewayCard";
 import {
   claudeActionGate,
   claudeConnectionView,
+  claudeTokenRotationGate,
   claudeUndoKept,
 } from "./claudeConnectionView";
 import { claudeDesktopModelDraft } from "./claudeTakeoverPlan";
@@ -71,6 +72,7 @@ export function ClaudeSettingsPage() {
 
   const dirty = Boolean(saved && draft && JSON.stringify(saved) !== JSON.stringify(draft));
   const view = claudeConnectionView(claudeStatus, claudeTakeover);
+  const rotation = claudeTokenRotationGate(claudeTakeover);
   const gate = claudeActionGate("cli", { settings: saved, status: claudeStatus, takeover: claudeTakeover, dirty });
   const desktopGate = claudeActionGate("desktop", {
     settings: saved,
@@ -105,17 +107,10 @@ export function ClaudeSettingsPage() {
 
   const rotateToken = () => {
     void run({ scope: "gateway", action: "rotate" }, async () => {
-      await api.rotateClaudeToken();
-      if (saved && claudeTakeover?.cli.state === "applied") {
-        await api.applyClaudeCli({
-          sonnet_model_hash: saved.sonnet_model_hash ?? undefined,
-          opus_model_hash: saved.opus_model_hash ?? undefined,
-          haiku_model_hash: saved.haiku_model_hash ?? undefined,
-        });
-        message(t("token 已重新生成，CLI 接管已同步"));
-      } else {
-        message(t("token 已重新生成"));
-      }
+      // 服务端自己把新令牌写回已接管的 CLI（`cli_synced`）；这里不再二次应用接管，
+      // 否则会用页面上的旧设置覆盖掉刚轮换的令牌。
+      const { cliSynced } = await api.rotateClaudeToken();
+      message(cliSynced ? t("token 已重新生成，CLI 接管已同步") : t("token 已重新生成"));
     });
   };
 
@@ -183,6 +178,7 @@ export function ClaudeSettingsPage() {
       onCopy={copy}
       onRotate={rotateToken}
       rotating={busy?.scope === "gateway" && busy.action === "rotate"}
+      rotateBlockedReason={rotation.reason}
     />
     <TitledCard
       title={t("接管客户端")}

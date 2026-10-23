@@ -145,22 +145,51 @@ impl ToolMap {
     }
 
     pub(super) fn spec_for(&self, upstream_name: &str) -> Option<&ToolSpec> {
-        self.names
-            .iter()
-            .position(|name| name == upstream_name)
-            .map(|index| &self.specs[index])
+        if let Some(index) = self.names.iter().position(|name| name == upstream_name) {
+            return Some(&self.specs[index]);
+        }
+        // Codex 的命名空间工具在上游被扁平化成 `namespace__name`，但模型的 instructions
+        // （base.md）仍然按裸名 `update_plan` 指代它。模型照 instructions 调用裸名时，
+        // 只要这个名字在本次请求里唯一，就应当认回同一个 spec；否则会把模型合法生成的
+        // 工具调用误判成 “upstream returned undeclared tool”。
+        let mut matches = self.specs.iter().filter(|spec| spec.name == upstream_name);
+        let first = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(first)
     }
 
     /// 历史条目与 tool_choice 使用同一套上游名：已声明就取分配名，未声明就按同一规则扁平化。
     pub(super) fn upstream_name(&self, name: &str, namespace: Option<&str>) -> String {
+        if let Some(index) = self.find_index(name, namespace) {
+            return self.names[index].clone();
+        }
+        flatten_name(namespace, name)
+    }
+
+    /// 按 Codex 声明的 `(name, namespace)` 找 spec；裸名在本次请求里唯一时也接受。
+    fn find_index(&self, name: &str, namespace: Option<&str>) -> Option<usize> {
         if let Some(index) = self
             .specs
             .iter()
             .position(|spec| spec.name == name && spec.namespace.as_deref() == namespace)
         {
-            return self.names[index].clone();
+            return Some(index);
         }
-        flatten_name(namespace, name)
+        if namespace.is_some() {
+            return None;
+        }
+        let mut matches = self
+            .specs
+            .iter()
+            .enumerate()
+            .filter(|(_, spec)| spec.name == name);
+        let (index, _) = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        Some(index)
     }
 
     /// 强制选择必须落在已声明的工具上，否则上游会直接拒绝整个请求。
@@ -176,15 +205,11 @@ impl ToolMap {
                 ))
             })?;
         let namespace = tool_choice.get("namespace").and_then(Value::as_str);
-        let index = self
-            .specs
-            .iter()
-            .position(|spec| spec.name == name && spec.namespace.as_deref() == namespace)
-            .ok_or_else(|| {
-                Error::Protocol(format!(
-                    "tool_choice names a tool that this request does not declare: {name}"
-                ))
-            })?;
+        let index = self.find_index(name, namespace).ok_or_else(|| {
+            Error::Protocol(format!(
+                "tool_choice names a tool that this request does not declare: {name}"
+            ))
+        })?;
         Ok(self.names[index].clone())
     }
 
@@ -304,4 +329,64 @@ fn truncate(value: &str, limit: usize) -> String {
 
 fn short_hash(value: &str) -> String {
     hex::encode(&Sha256::digest(value.as_bytes())[..8])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn namespaced_map() -> ToolMap {
+        let tools = json!([{
+            "type": "namespace",
+            "name": "functions",
+            "tools": [
+                {"type": "function", "name": "update_plan", "parameters": {"type": "object", "properties": {}}},
+                {"type": "function", "name": "shell", "parameters": {"type": "object", "properties": {}}}
+            ]
+        }]);
+        ToolMap::parse(Some(&tools)).unwrap()
+    }
+
+    #[test]
+    fn a_bare_namespaced_name_resolves_when_unique() {
+        let map = namespaced_map();
+        assert!(map.spec_for("functions__update_plan").is_some());
+
+        let spec = map
+            .spec_for("update_plan")
+            .expect("bare name should resolve");
+        assert_eq!(spec.name, "update_plan");
+        assert_eq!(spec.namespace.as_deref(), Some("functions"));
+
+        // 上游按裸名返回时，恢复出的 item 必须带上 namespace，Codex 才认。
+        let item = map
+            .restore_call("update_plan", "call-1", "{\"plan\":[]}", "item-1")
+            .unwrap();
+        assert_eq!(item["name"], "update_plan");
+        assert_eq!(item["namespace"], "functions");
+        assert_eq!(item["type"], "function_call");
+
+        // 历史与 tool_choice 也要把裸名映射回上游分配名。
+        assert_eq!(
+            map.upstream_name("update_plan", None),
+            "functions__update_plan"
+        );
+        assert_eq!(
+            map.upstream_name_for_tool_choice(&json!({"name": "update_plan"}))
+                .unwrap(),
+            "functions__update_plan"
+        );
+    }
+
+    #[test]
+    fn a_bare_name_is_rejected_when_it_is_ambiguous() {
+        let tools = json!([
+            {"type": "namespace", "name": "one", "tools": [{"type": "function", "name": "dup"}]},
+            {"type": "namespace", "name": "two", "tools": [{"type": "function", "name": "dup"}]}
+        ]);
+        let map = ToolMap::parse(Some(&tools)).unwrap();
+        assert!(map.spec_for("one__dup").is_some());
+        assert!(map.spec_for("two__dup").is_some());
+        assert!(map.spec_for("dup").is_none());
+    }
 }

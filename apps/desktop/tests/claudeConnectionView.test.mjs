@@ -137,6 +137,81 @@ test("the entry counts Claude only when a client is actually applied", async () 
   );
 });
 
+test("a stale client is amber and outranks applied, but never hides a conflict", async () => {
+  const { claudeConnectionView, claudeTakeoverStateLabel, claudeTakeoverStateTone } = await loadClaude();
+
+  const staleCli = {
+    cli: { ...takeover.cli, state: "stale" },
+    desktop: { ...takeover.desktop, state: "applied" },
+  };
+  const stale = claudeConnectionView(status, staleCli);
+  assert.equal(stale.state, "stale", "a stale client outranks an applied one");
+  assert.equal(stale.tone, "warn", "stale is a warning, not a healthy green");
+  assert.equal(stale.label, "配置已过期");
+  assert.equal(claudeConnectionView(status, {
+    cli: { ...takeover.cli, state: "stale" },
+    desktop: { ...takeover.desktop, state: "conflict" },
+  }).state, "conflict", "conflict still wins over stale");
+  assert.equal(
+    claudeConnectionView({ ...status, enabled: false, listening: false }, staleCli).state,
+    "stale",
+    "a disabled gateway does not turn a stale client back into 'disabled'",
+  );
+
+  // 网关关着或没监听时不能继续显示绿色「已接管」：那样会让用户以为请求正在走网关。
+  const applied = { cli: { ...takeover.cli, state: "applied" }, desktop: takeover.desktop };
+  assert.equal(claudeConnectionView({ ...status, enabled: false, listening: false }, applied).state, "disabled");
+  assert.equal(claudeConnectionView({ ...status, listening: false }, applied).state, "unavailable");
+
+  assert.equal(claudeTakeoverStateLabel("stale"), "配置已过期");
+  assert.equal(claudeTakeoverStateTone("stale"), "warn");
+});
+
+test("stale allows apply and undo; it is not a conflict", async () => {
+  const { claudeActionGate } = await loadClaude();
+
+  const staleRestorable = {
+    cli: { ...takeover.cli, state: "stale", restorable: true },
+    desktop: { ...takeover.desktop, state: "stale", restorable: true },
+  };
+  const cli = claudeActionGate("cli", gateInput({ takeover: staleRestorable }));
+  assert.deepEqual(cli, { apply: true, undo: true, applyBlockedReason: null, applyBlockedLink: null });
+
+  const desktop = claudeActionGate("desktop", gateInput({ takeover: staleRestorable }));
+  assert.equal(desktop.apply, true, "re-applying is the fix for a stale client");
+  assert.equal(desktop.undo, true);
+
+  // 过期不代表可以绕过网关：网关没监听时仍然拦下。
+  assert.match(
+    claudeActionGate("cli", gateInput({
+      status: { ...status, listening: false },
+      takeover: staleRestorable,
+    })).applyBlockedReason,
+    /还没有监听/,
+  );
+});
+
+test("token rotation is refused while the Desktop takeover is applied, stale or running", async () => {
+  const { claudeTokenRotationGate } = await loadClaude();
+
+  assert.deepEqual(claudeTokenRotationGate(null), { allowed: true, reason: null });
+  assert.equal(claudeTokenRotationGate(takeover).allowed, true, "an unapplied Desktop does not block rotation");
+  assert.equal(
+    claudeTokenRotationGate({ ...takeover, cli: { ...takeover.cli, state: "applied" } }).allowed,
+    true,
+    "an applied CLI is synced by the server, so it does not block rotation",
+  );
+
+  for (const state of ["applied", "stale", "running"]) {
+    const gate = claudeTokenRotationGate({
+      ...takeover,
+      desktop: { ...takeover.desktop, state },
+    });
+    assert.equal(gate.allowed, false, `desktop ${state} must disable rotation`);
+    assert.match(gate.reason, /先撤销 Claude Desktop 接管（运行中先完全退出）再轮换令牌。/);
+  }
+});
+
 test("apply stays disabled with a readable reason until the gateway and client are ready", async () => {
   const { claudeActionGate } = await loadClaude();
 
@@ -341,6 +416,7 @@ test("Claude settings, status, takeover and both apply calls stay on the managem
     .route("PUT", `${API_ROOT}/claude/settings`, ({ body }) => ({ body }))
     .route("GET", `${API_ROOT}/claude/status`, () => ({ body: status }))
     .route("GET", `${API_ROOT}/claude/takeover`, () => ({ body: takeover }))
+    .route("POST", `${API_ROOT}/claude/token/rotate`, () => ({ body: { token: "rotated-token", cli_synced: true } }))
     .route("PUT", `${API_ROOT}/claude/takeover/cli`, ({ body }) => ({
       body: body.action === "apply" ? appliedCli : { ...takeover.cli, state: "ready" },
     }))
@@ -354,6 +430,11 @@ test("Claude settings, status, takeover and both apply calls stay on the managem
   assert.deepEqual(await api.setClaudeSettings(settings), settings);
   assert.equal((await api.claudeStatus()).models, 3);
   assert.equal((await api.claudeTakeover()).desktop.config_source, "local");
+  assert.deepEqual(
+    await api.rotateClaudeToken(),
+    { token: "rotated-token", cliSynced: true },
+    "rotation returns both the new token and whether the server synced the CLI",
+  );
 
   const cliApplied = await api.applyClaudeCli({ sonnet_model_hash: "aaaa1111" });
   assert.equal(cliApplied.state, "applied", "apply returns the server status");
@@ -384,6 +465,22 @@ test("a status response without the gateway fields is a read failure, not a fake
   const { api } = await loader.load("/src/shared/api.ts");
 
   await assert.rejects(() => api.claudeStatus(), /读取失败/);
+});
+
+test("a token rotation reply without a token or a sync flag is a localized failure", async () => {
+  let reply = { token: "", cli_synced: true };
+  const backend = new FakeBackend().route("POST", `${API_ROOT}/claude/token/rotate`, () => ({ body: reply }));
+  backend.install();
+  const { api } = await loader.load("/src/shared/api.ts");
+
+  await assert.rejects(() => api.rotateClaudeToken(), /服务端没有返回新令牌/);
+
+  reply = { token: "rotated-token" };
+  await assert.rejects(() => api.rotateClaudeToken(), /服务端没有返回令牌同步结果/);
+
+  // 旧服务端把轮换结果当纯字符串返回：不能把这一整段当成 token 用。
+  backend.route("POST", `${API_ROOT}/claude/token/rotate`, () => ({ body: "rotated-token" }));
+  await assert.rejects(() => api.rotateClaudeToken(), /服务端没有返回新令牌/);
 });
 
 test("Claude configuration errors are shown as readable text", async () => {
@@ -464,6 +561,66 @@ test("the CLI tab renders conflict messages and separates blocking items from hi
   assert.match(markup, /CLAUDE_CODE_ATTRIBUTION_HEADER/);
   assert.match(markup, /应用接管<\/button>/, "the apply button stays rendered");
   assert.match(markup, /disabled/, "apply is disabled while the client conflicts");
+});
+
+test("a stale tab shows the expiry pill and the re-apply notice above the conflict list", async () => {
+  const { ClaudeCliTab } = await loader.load("/src/features/claude/ClaudeCliTab.tsx");
+  const { ClaudeDesktopTab } = await loader.load("/src/features/claude/ClaudeDesktopTab.tsx");
+  const { claudeActionGate } = await loadClaude();
+  const staleCli = {
+    ...takeover.cli,
+    state: "stale",
+    restorable: true,
+    conflicts: [
+      { code: "takeover_stale", key: null, message: "gateway settings changed", blocking: false },
+    ],
+  };
+  const cliGate = claudeActionGate("cli", gateInput({ takeover: { ...takeover, cli: staleCli } }));
+  assert.equal(cliGate.apply, true, "stale is re-appliable, not a conflict");
+
+  const cliMarkup = await renderWithTooltip(createElement(ClaudeCliTab, {
+    saved: settings,
+    draft: settings,
+    status,
+    takeover: staleCli,
+    models: [libraryModel("aaaa1111", "Claude Sonnet")],
+    gate: cliGate,
+    busy: false,
+    error: null,
+    keptAfterUndo: [],
+    onChange: () => {},
+    onApply: () => {},
+    onUndo: () => {},
+    onCopy: () => {},
+    onOpenModels: () => {},
+  }));
+  assert.match(cliMarkup, /配置已过期/, "the tab carries the stale pill");
+  assert.match(cliMarkup, /网关设置已变化，客户端仍指向旧地址\/令牌，请重新应用接管。/);
+  assert.doesNotMatch(cliMarkup, /配置冲突/);
+  assert.ok(
+    cliMarkup.indexOf('aria-label="配置已过期"') < cliMarkup.indexOf('aria-label="提示"'),
+    "the re-apply notice sits above the server hints",
+  );
+
+  const staleDesktop = { ...takeover.desktop, state: "stale" };
+  const desktopMarkup = await renderWithTooltip(createElement(ClaudeDesktopTab, {
+    draft: settings,
+    status,
+    takeover: staleDesktop,
+    models: [libraryModel("aaaa1111", "Claude Sonnet")],
+    desktopModels: ["aaaa1111"],
+    gate: claudeActionGate("desktop", gateInput({ takeover: { ...takeover, desktop: staleDesktop } })),
+    busy: false,
+    error: null,
+    keptAfterUndo: [],
+    onDesktopModelsChange: () => {},
+    onApply: () => {},
+    onUndo: () => {},
+    onCopy: () => {},
+  }));
+  assert.match(desktopMarkup, /配置已过期/);
+  assert.match(desktopMarkup, /网关设置已变化，客户端仍指向旧地址\/令牌，请重新应用接管。/);
+  assert.doesNotMatch(desktopMarkup, /先完全退出 Claude Desktop/, "stale does not mean the client is running");
 });
 
 test("undo results list the entries the server kept instead of claiming a full restore", async () => {

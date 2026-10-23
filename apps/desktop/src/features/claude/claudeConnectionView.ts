@@ -24,6 +24,7 @@ export type ClaudeConnectionState =
   | "unavailable"
   | "pending-apply"
   | "taken-over"
+  | "stale"
   | "conflict"
   | "managed"
   | "idle";
@@ -31,8 +32,10 @@ export type ClaudeConnectionState =
 /**
  * 顶栏与切换带上的一个状态。
  *
- * 优先级：配置冲突 > 已接管 > 网关未启用 / 未监听 > 受管配置 > 待应用。两端都
- * 没检测到时是"未检测到客户端"，不是"未启用"——后者是读到了网关而且关着的结论。
+ * 优先级：配置冲突 > 配置已过期 > 网关未启用 / 未监听 > 已接管 > 受管配置 > 待应用。
+ * 「已接管」只在网关确实监听时出现：网关关着还显示绿色，等于告诉用户请求正在走网关，
+ * 而实际上一条都进不来。两端都没检测到时是"未检测到客户端"，不是"未启用"——后者是
+ * 读到了网关而且关着的结论。
  */
 export function claudeConnectionView(
   status: ClaudeStatus | null,
@@ -42,9 +45,11 @@ export function claudeConnectionView(
   if (!takeover) return { state: "checking", tone: "idle", label: t("读取中…") };
   const states: (ClaudeCliTakeoverState | ClaudeDesktopTakeoverState)[] = [takeover.cli.state, takeover.desktop.state];
   if (states.includes("conflict")) return { state: "conflict", tone: "bad", label: t("配置冲突") };
-  if (states.includes("applied")) return { state: "taken-over", tone: "ok", label: t("已接管") };
+  // 收据与客户端文件仍一致，但网关地址、令牌或模型映射变了：客户端指着旧配置。
+  if (states.includes("stale")) return { state: "stale", tone: "warn", label: t("配置已过期") };
   if (!status.enabled) return { state: "disabled", tone: "idle", label: t("未启用") };
   if (!status.listening) return { state: "unavailable", tone: "bad", label: t("网关不可用") };
+  if (states.includes("applied")) return { state: "taken-over", tone: "ok", label: t("已接管") };
   if (states.includes("managed")) return { state: "managed", tone: "warn", label: t("受管配置") };
   if (states.includes("ready") || states.includes("running")) {
     return { state: "pending-apply", tone: "warn", label: t("待应用配置") };
@@ -56,6 +61,7 @@ const takeoverLabels: Record<ClaudeCliTakeoverState | ClaudeDesktopTakeoverState
   missing: () => t("未检测到"),
   ready: () => t("待接管"),
   applied: () => t("已接管"),
+  stale: () => t("配置已过期"),
   conflict: () => t("配置冲突"),
   managed: () => t("受管配置"),
   running: () => t("运行中"),
@@ -69,6 +75,7 @@ export function claudeTakeoverStateTone(state: ClaudeCliTakeoverState | ClaudeDe
   switch (state) {
     case "applied": return "ok";
     case "conflict": return "bad";
+    case "stale":
     case "ready":
     case "running":
     case "managed": return "warn";
@@ -113,6 +120,8 @@ export interface ClaudeGateInput {
  *
  * 撤销只看服务端的接管收据（`restorable`），不看 enabled/listening，也不从备份文件
  * 推断：网关关掉、配置冲突时，用户仍然要能撤回已经写进客户端的东西。
+ *
+ * `stale` 不是冲突：客户端文件仍归本应用接管，只是内容过期；网关就绪时允许重新应用。
  */
 export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGateInput): ClaudeActionGate {
   const takeover = input.takeover;
@@ -148,6 +157,7 @@ export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGate
     if (takeover.cli.state === "missing") return blocked(t("没有找到 Claude Code 的配置文件，无法接管。"));
     if (takeover.cli.state === "conflict") return blocked(t("Claude Code 的配置存在冲突，先处理下面的条目。"));
     if (takeover.cli.state === "managed") return blocked(t("Claude Code 的配置由系统策略托管，本应用不会改写它。"));
+    // `stale` 只说明客户端指向旧配置，文件仍归本应用接管：重新应用就能修好，不能当冲突拦住。
     return { apply: true, undo, applyBlockedReason: null, applyBlockedLink: null };
   }
 
@@ -164,6 +174,30 @@ export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGate
 /** 引导视图只在受管或明确只能手工配置时出现。 */
 export function claudeDesktopGuided(takeover: ClaudeDesktopTakeover | null): boolean {
   return Boolean(takeover && (takeover.guided || takeover.state === "managed"));
+}
+
+export interface ClaudeTokenRotationGate {
+  /** false 时按钮禁用，并把 `reason` 显示在令牌旁边。 */
+  allowed: boolean;
+  reason: string | null;
+}
+
+/**
+ * 令牌轮换的按钮门槛。
+ *
+ * Desktop 接管处于 applied/stale/running 时服务端直接拒绝轮换（400）：新的令牌写不回
+ * 正在生效的 Desktop 配置，客户端会立刻失效。必须先撤销 Desktop 接管；运行中还要先
+ * 完全退出客户端。CLI 接管由服务端在轮换成功后自己同步，不拦按钮。
+ */
+export function claudeTokenRotationGate(takeover: ClaudeTakeover | null): ClaudeTokenRotationGate {
+  const state = takeover?.desktop.state;
+  if (state === "applied" || state === "stale" || state === "running") {
+    return {
+      allowed: false,
+      reason: t("先撤销 Claude Desktop 接管（运行中先完全退出）再轮换令牌。"),
+    };
+  }
+  return { allowed: true, reason: null };
 }
 
 export interface ClaudeConflictGroups {
@@ -211,6 +245,7 @@ export function claudeTakeoverDescription(
       : t("没有检测到 Claude Desktop。");
     case "ready": return t("配置已就绪，可以应用接管。");
     case "applied": return t("模型请求已走本机网关。");
+    case "stale": return t("客户端仍指向旧的网关配置。");
     case "conflict": return t("配置里已有本应用之外的内容，先处理冲突。");
     case "managed": return t("配置由系统策略托管，本应用不会改写它。");
     case "running": return t("Claude Desktop 正在运行，请先完全退出。");

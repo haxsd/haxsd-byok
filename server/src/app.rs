@@ -23,9 +23,9 @@ use crate::{
     Result,
 };
 
-/// "关键清理"阶段的上界：Codex 路由撤回（它的监听器排水最多 10 秒）+ Cursor 撤回
-/// （本机代理 stop 最多 5 秒）。这一段决定用户机器上还留不留下指向死端口的配置，
-/// 不能被退出预算砍掉。
+/// "关键清理"阶段的上界：Codex 路由撤回（它的监听器排水最多 10 秒）、Claude 接管撤销
+/// （纯文件操作，落在 `SHUTDOWN_BUDGET_MARGIN` 里）与 Cursor 撤回（本机代理 stop 最多
+/// 5 秒）。这一段决定用户机器上还留不留下指向死端口的配置，不能被退出预算砍掉。
 pub const CRITICAL_CLEANUP_BUDGET: Duration = Duration::from_secs(15);
 
 /// 排水阶段的上界：主服务与 Codex 监听器各自最多 10 秒（两者并行）。
@@ -201,6 +201,7 @@ impl App {
         let devin_gateway = self.devin_gateway;
         let codex_gateway = self.codex_gateway;
         let claude_gateway = self.claude_gateway;
+        let store = self.store.clone();
         if let Err(error) = codex_gateway.start().await {
             tracing::error!(%error, "Codex gateway could not start; other integrations remain active");
         }
@@ -256,13 +257,13 @@ impl App {
             tokio::select! {
                 () = &mut maintenance => Ok(()),
                 result = &mut server => {
-                    clean_up_user_files(&codex_gateway, &harness).await;
+                    clean_up_user_files(&codex_gateway, &harness, &claude_gateway, &store).await;
                     codex_cleaned = true;
                     result?;
                     Ok(())
                 },
                 () = shutdown.cancelled() => {
-                    clean_up_user_files(&codex_gateway, &harness).await;
+                    clean_up_user_files(&codex_gateway, &harness, &claude_gateway, &store).await;
                     codex_cleaned = true;
                     registry.shutdown().await;
                     drain_server(&mut server, DRAIN_BUDGET).await?;
@@ -287,18 +288,28 @@ impl App {
     }
 }
 
-/// 退出时收回写在用户机器上的东西，固定顺序：Codex 路由先走，Cursor 的接管后走。
+/// 退出时收回写在用户机器上的东西，固定顺序：Codex 路由先走，Claude 接管随后，
+/// Cursor 的接管最后走。
 ///
 /// Codex 那份是用户**下一次在本应用之外**跑 Codex CLI 时要读的配置，撤回几乎是纯文件
-/// 操作；而 `CursorHarness::disable()` 要清客户端的 `state.vscdb`、再停本机代理
-/// （最多 5 秒）。预算不够时被砍掉的应该是"给客户端撤代理"，不该是"让用户的 Codex
-/// 指向一个没人监听的端口"。
+/// 操作；Claude 接管同理，正常退出时必须撤销，否则客户端会一直指向已经停止的网关。
+/// 崩溃或强杀没有机会运行这里，下次启动网关会重新监听同一端口，客户端继续可用。
+/// 而 `CursorHarness::disable()` 要清客户端的 `state.vscdb`、再停本机代理（最多 5 秒）。
+/// 预算不够时被砍掉的应该是"给客户端撤代理"，不该是"让用户的 Codex/Claude 指向一个
+/// 没人监听的端口"。
 ///
-/// 两步都失败只记日志：进程已经要结束了，这里没有第二次机会，能收多少收多少。
-async fn clean_up_user_files(codex_gateway: &CodexGateway, harness: &CursorHarness) {
+/// 每一步失败只记日志：进程已经要结束了，这里没有第二次机会，能收多少收多少。
+async fn clean_up_user_files(
+    codex_gateway: &CodexGateway,
+    harness: &CursorHarness,
+    claude_gateway: &ClaudeGateway,
+    store: &Store,
+) {
     if let Err(error) = codex_gateway.shutdown().await {
         tracing::warn!(%error, "Codex gateway cleanup failed");
     }
+    // 必须在 `claude_gateway.shutdown()` 之前：撤销时还要读网关的当前状态判断是否 stale。
+    crate::control::claude::shutdown_cleanup(claude_gateway.clone(), store.clone()).await;
     if let Err(error) = harness.disable().await {
         tracing::warn!(%error, "failed to disable Cursor harness during shutdown");
     }

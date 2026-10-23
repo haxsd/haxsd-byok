@@ -54,6 +54,13 @@
 
 .fact strong { color: var(--vscode-foreground); font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
 
+/* 令牌轮换被 Desktop 接管挡住时的说明：按钮禁用后仍要能看到原因。 */
+.rotateHint {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  line-height: type.$line-height-normal;
+}
+
 .copyValue {
   min-width: 0;
   display: flex;
@@ -181,6 +188,19 @@
 }
 
 .conflict small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
+
+/* 配置已过期：客户端文件仍归本应用接管，只是还指着旧地址/令牌。 */
+.stale {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--oa-warn) 40%, transparent);
+  border-radius: var(--oa-radius-sm);
+  background: var(--oa-warn-soft);
+}
+
+.stale strong { color: var(--oa-warn); font-size: type.$font-size-xs; }
+.stale small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 
 .blocker {
   border-color: color-mix(in srgb, var(--oa-warn) 40%, transparent);

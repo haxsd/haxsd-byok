@@ -1,6 +1,6 @@
 {
   "name": "haxsd-byok-desktop",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "description": "haxsd byok desktop management application",
   "type": "module",
   "engines": {
@@ -55,7 +55,7 @@
     "@types/react-dom": "^19.2.4",
     "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-react": "^6.0.5",
-    "code-inspector-plugin": "^1.6.6",
+    "code-inspector-plugin": "^1.6.7",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "sass": "^1.102.0",

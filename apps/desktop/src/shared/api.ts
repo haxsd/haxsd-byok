@@ -227,8 +227,13 @@ export interface ClaudeSettings {
   haiku_model_hash: string | null;
 }
 
-/** Claude Code CLI 的接管状态；`managed` 表示配置由系统策略托管，我们不会改写。 */
-export type ClaudeCliTakeoverState = "missing" | "ready" | "applied" | "conflict" | "managed";
+/**
+ * Claude Code CLI 的接管状态。
+ *
+ * `managed` 表示配置由系统策略托管，我们不会改写；`stale` 表示客户端文件仍与接管
+ * 收据一致，但网关地址、令牌或模型映射已经变了——客户端还指着旧配置，需要重新应用。
+ */
+export type ClaudeCliTakeoverState = "missing" | "ready" | "applied" | "stale" | "conflict" | "managed";
 
 /** Claude Desktop 的接管状态；`running` 表示程序正在运行，必须先完全退出。 */
 export type ClaudeDesktopTakeoverState = ClaudeCliTakeoverState | "running";
@@ -296,6 +301,17 @@ export interface ClaudeStatus {
   default_model_hash: string | null;
   calls: number;
   last_error: string | null;
+}
+
+/**
+ * 一次令牌轮换的结果。
+ *
+ * 服务端轮换后自己把新令牌写回它接管的 CLI（`cli_synced`），前端不再调 `applyClaudeCli`；
+ * Desktop 处于 applied/stale/running 时服务端直接拒绝轮换，要求先撤销 Desktop 接管。
+ */
+export interface ClaudeTokenRotation {
+  token: string;
+  cliSynced: boolean;
 }
 
 export interface ClaudeCliTakeoverInput {
@@ -753,7 +769,7 @@ export interface Overview {
 }
 
 export interface LlmCall {
-  client_source: "cursor" | "devin" | "codex" | "internal";
+  client_source: "cursor" | "devin" | "codex" | "claude" | "internal";
   call_kind: "provider_llm" | "cursor_official";
   route: "local_byok" | "cursor_official";
   call_id: string;
@@ -1033,7 +1049,7 @@ function usableClaudeStatus(payload: unknown): ClaudeStatus {
   };
 }
 
-const claudeCliStates: readonly ClaudeCliTakeoverState[] = ["missing", "ready", "applied", "conflict", "managed"];
+const claudeCliStates: readonly ClaudeCliTakeoverState[] = ["missing", "ready", "applied", "stale", "conflict", "managed"];
 const claudeDesktopStates: readonly ClaudeDesktopTakeoverState[] = [...claudeCliStates, "running"];
 const claudeConfigSources: readonly ClaudeConfigSource[] = ["none", "local", "user_policy", "machine_policy"];
 
@@ -1324,12 +1340,15 @@ export const api = {
   claudeSettings: () => request<unknown>("/claude/settings").then(settings => usableClaudeSettings(settings, false)),
   setClaudeSettings: (settings: ClaudeSettings) => request<unknown>("/claude/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableClaudeSettings(saved, true)),
   claudeStatus: (signal?: AbortSignal) => request<unknown>("/claude/status", { signal }).then(usableClaudeStatus),
-  rotateClaudeToken: () => request<unknown>("/claude/token/rotate", { method: "POST" }).then((payload) => {
-    const token = (payload as { token?: unknown } | null)?.token;
-    if (typeof token !== "string" || token === "") {
+  rotateClaudeToken: () => request<unknown>("/claude/token/rotate", { method: "POST" }).then((payload): ClaudeTokenRotation => {
+    const result = payload as { token?: unknown; cli_synced?: unknown } | null;
+    if (typeof result?.token !== "string" || result.token === "") {
       throw new Error(t("服务端没有返回新令牌"));
     }
-    return token;
+    if (typeof result.cli_synced !== "boolean") {
+      throw new Error(t("服务端没有返回令牌同步结果"));
+    }
+    return { token: result.token, cliSynced: result.cli_synced };
   }),
   claudeTakeover: (signal?: AbortSignal) => request<unknown>("/claude/takeover", { signal }).then(usableClaudeTakeover),
   // 应用/撤销都返回服务端状态：撤销结果可能保留用户改动，页面要显示服务端实际做了什么。

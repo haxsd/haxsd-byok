@@ -63,11 +63,15 @@ impl CliPaths {
     }
 }
 
-/// 状态检查时已知的网关值：只用于判断“这个值是不是我们即将写的”。
+/// 状态检查时已知的网关值：判断“这个值是不是我们即将写的”，以及网关是否还能服务。
 #[derive(Clone, Copy, Debug)]
 pub struct GatewayValues<'a> {
     pub base_url: &'a str,
     pub token: &'a str,
+    /// 当前应写入客户端的完整 `env` 映射：入口地址、令牌、归属头与三组模型/显示名。
+    pub desired: &'a BTreeMap<String, Value>,
+    /// 网关已启用、正在监听、端口一致、默认模型存在，并且没有缺失模型。
+    pub available: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -196,6 +200,22 @@ pub fn inspect(
         }
         _ => false,
     };
+    // 文件仍是收据写下的那一份，但收据已经不是当前网关的期望值：客户端配置有效却
+    // 过期（令牌轮换、换端口、换模型、网关停用）。撤销仍然有依据，所以不改
+    // `restorable`，只把状态降为 stale 并提示重新应用。
+    let stale = applied
+        && receipt.as_ref().is_some_and(|receipt| {
+            gateway.is_some_and(|gateway| {
+                !gateway.available || !receipt_matches(&receipt.keys, gateway.desired)
+            })
+        });
+    if stale {
+        conflicts.push(TakeoverConflict::new(
+            "takeover_stale",
+            "the gateway settings changed after the takeover; apply again to update the client",
+            false,
+        ));
+    }
     if receipt.is_some()
         && !applied
         && raw.is_some()
@@ -212,7 +232,11 @@ pub fn inspect(
         TakeoverState::Managed
     } else if receipt.is_some() {
         if applied {
-            TakeoverState::Applied
+            if stale {
+                TakeoverState::Stale
+            } else {
+                TakeoverState::Applied
+            }
         } else {
             TakeoverState::Conflict
         }
@@ -384,6 +408,8 @@ pub fn apply(
         Some(&GatewayValues {
             base_url: &route.base_url,
             token: &route.token,
+            desired: &desired,
+            available: true,
         }),
     )
 }
@@ -491,38 +517,40 @@ fn read_receipt(state_dir: &Path) -> Result<Option<Receipt>> {
     Ok(Some(receipt))
 }
 
-fn gateway_values(gateway: Option<&GatewayValues>) -> BTreeMap<String, Value> {
-    let Some(gateway) = gateway else {
-        return BTreeMap::new();
-    };
-    BTreeMap::from([
-        (
-            BASE_URL_KEY.to_owned(),
-            Value::String(gateway.base_url.to_owned()),
-        ),
-        (
-            AUTH_TOKEN_KEY.to_owned(),
-            Value::String(gateway.token.to_owned()),
-        ),
-    ])
+/// 收据记录的键与期望值必须一一对应：值相同还不够，期望的键集合变了（例如设置里
+/// 删掉一个家族、或模型库删掉了已接管的模型）同样说明客户端配置已经过期。
+fn receipt_matches(records: &[KeyRecord], desired: &BTreeMap<String, Value>) -> bool {
+    let keys = records
+        .iter()
+        .map(|record| record.key.as_str())
+        .collect::<BTreeSet<_>>();
+    records
+        .iter()
+        .all(|record| desired.get(&record.key) == Some(&record.applied))
+        && desired.keys().all(|key| keys.contains(key.as_str()))
 }
 
-fn desired_values(route: &CliRoute) -> Result<BTreeMap<String, Value>> {
-    validate_route(route)?;
-    let mut desired = BTreeMap::from([
-        (
-            BASE_URL_KEY.to_owned(),
-            Value::String(route.base_url.clone()),
-        ),
-        (
-            AUTH_TOKEN_KEY.to_owned(),
-            Value::String(route.token.clone()),
-        ),
+fn gateway_values(gateway: Option<&GatewayValues>) -> BTreeMap<String, Value> {
+    gateway
+        .map(|gateway| gateway.desired.clone())
+        .unwrap_or_default()
+}
+
+/// 不依赖模型选择的 env 值：入口地址、令牌与归属头。构造期望映射与回退都用它。
+pub(crate) fn base_values(base_url: &str, token: &str) -> BTreeMap<String, Value> {
+    BTreeMap::from([
+        (BASE_URL_KEY.to_owned(), Value::String(base_url.to_owned())),
+        (AUTH_TOKEN_KEY.to_owned(), Value::String(token.to_owned())),
         (
             ATTRIBUTION_HEADER_KEY.to_owned(),
             Value::String(ATTRIBUTION_VALUE.to_owned()),
         ),
-    ]);
+    ])
+}
+
+pub(crate) fn desired_values(route: &CliRoute) -> Result<BTreeMap<String, Value>> {
+    validate_route(route)?;
+    let mut desired = base_values(&route.base_url, &route.token);
     let mut families = BTreeSet::new();
     for model in &route.models {
         if !families.insert(model.family) {
@@ -711,6 +739,34 @@ mod tests {
             models: Vec::new(),
             ..route()
         }
+    }
+
+    fn gateway<'a>(
+        route: &'a CliRoute,
+        desired: &'a BTreeMap<String, Value>,
+        available: bool,
+    ) -> GatewayValues<'a> {
+        GatewayValues {
+            base_url: &route.base_url,
+            token: &route.token,
+            desired,
+            available,
+        }
+    }
+
+    fn desired(route: &CliRoute) -> BTreeMap<String, Value> {
+        desired_values(route).unwrap()
+    }
+
+    fn inspect_with(fixture: &Fixture, route: &CliRoute, available: bool) -> CliTakeoverStatus {
+        let desired = desired(route);
+        inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &CliEnvironment::default(),
+            Some(&gateway(route, &desired, available)),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -1024,5 +1080,127 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("belongs to"), "{error}");
+    }
+
+    #[test]
+    fn a_rotated_gateway_token_marks_the_takeover_stale_but_restorable() {
+        let fixture = Fixture::new(Some(r#"{"env": {"KEEP": "me"}}"#));
+        assert_eq!(fixture.apply().state, TakeoverState::Applied);
+
+        let changed = CliRoute {
+            token: "rotated-token".into(),
+            ..route()
+        };
+        let status = inspect_with(&fixture, &changed, true);
+        assert_eq!(status.state, TakeoverState::Stale);
+        assert!(status.restorable, "stale 之后仍然可以撤销");
+        let stale = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.code == "takeover_stale")
+            .expect("stale 必须带一条提示");
+        assert!(!stale.blocking);
+        assert_eq!(
+            stale.message,
+            "the gateway settings changed after the takeover; apply again to update the client"
+        );
+        // 状态检查不改文件：旧令牌仍在，用户需要重新应用。
+        assert_eq!(
+            fixture.document()["env"][AUTH_TOKEN_KEY],
+            "local-test-token"
+        );
+    }
+
+    #[test]
+    fn a_changed_gateway_port_marks_the_takeover_stale() {
+        let fixture = Fixture::new(None);
+        fixture.apply();
+        let moved = CliRoute {
+            base_url: "http://127.0.0.1:43122".into(),
+            ..route()
+        };
+        assert_eq!(
+            inspect_with(&fixture, &moved, true).state,
+            TakeoverState::Stale
+        );
+    }
+
+    #[test]
+    fn a_changed_or_missing_gateway_model_marks_the_takeover_stale() {
+        let fixture = Fixture::new(None);
+        fixture.apply();
+
+        // 设置里换掉 Opus 模型：值变了。
+        let changed = CliRoute {
+            models: vec![
+                CliModel {
+                    family: Family::Sonnet,
+                    model_hash: "sonnet-hash".into(),
+                    display_name: "Claude Sonnet".into(),
+                },
+                CliModel {
+                    family: Family::Opus,
+                    model_hash: "opus-next".into(),
+                    display_name: "Claude Opus".into(),
+                },
+            ],
+            ..route()
+        };
+        assert_eq!(
+            inspect_with(&fixture, &changed, true).state,
+            TakeoverState::Stale
+        );
+
+        // 删掉一个家族：期望键集合比收据少一个。
+        let fewer = CliRoute {
+            models: vec![CliModel {
+                family: Family::Sonnet,
+                model_hash: "sonnet-hash".into(),
+                display_name: "Claude Sonnet".into(),
+            }],
+            ..route()
+        };
+        assert_eq!(
+            inspect_with(&fixture, &fewer, true).state,
+            TakeoverState::Stale
+        );
+
+        // 新增一个家族：收据里没有这个键。
+        let mut more = route();
+        more.models.push(CliModel {
+            family: Family::Haiku,
+            model_hash: "haiku-hash".into(),
+            display_name: "Claude Haiku".into(),
+        });
+        assert_eq!(
+            inspect_with(&fixture, &more, true).state,
+            TakeoverState::Stale
+        );
+    }
+
+    #[test]
+    fn a_gateway_that_cannot_serve_marks_the_takeover_stale() {
+        let fixture = Fixture::new(None);
+        fixture.apply();
+        // 同一个期望值，但网关被停用/没有监听/端口不一致/缺模型：客户端配置已不可用。
+        assert_eq!(
+            inspect_with(&fixture, &route(), false).state,
+            TakeoverState::Stale
+        );
+    }
+
+    #[test]
+    fn a_takeover_without_a_receipt_is_never_stale() {
+        let fixture = Fixture::new(None);
+        let changed = CliRoute {
+            token: "rotated-token".into(),
+            ..route()
+        };
+        let status = inspect_with(&fixture, &changed, false);
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "takeover_stale"));
     }
 }

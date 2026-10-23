@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::{Error, Result};
 
+use super::settings::GatewayValues;
 use super::{
     atomic_write, backup_once, content_hash, parse_json, read_optional, remove_file_if_exists,
     same_path, ConfigSource, DesktopTakeoverStatus, Family, TakeoverConflict, TakeoverState,
@@ -102,6 +103,7 @@ pub fn inspect(
     state_dir: &Path,
     policy: &super::ownership::DesktopPolicy,
     running: bool,
+    gateway: Option<&GatewayValues>,
 ) -> Result<DesktopTakeoverStatus> {
     let config_source = if policy.machine() {
         ConfigSource::MachinePolicy
@@ -158,6 +160,7 @@ pub fn inspect(
     };
     let mut profile_present = false;
     let mut profile_matches = false;
+    let mut profile_gateway_matches = true;
     let mut receipt_mismatch = false;
     if let Some(receipt) = &receipt {
         if !same_path(Path::new(&receipt.meta_path), &paths.meta) {
@@ -171,6 +174,11 @@ pub fn inspect(
             if let Some(text) = read_optional(profile)? {
                 profile_present = true;
                 profile_matches = content_hash(&text) == receipt.applied_profile_hash;
+                if profile_matches {
+                    if let Some(gateway) = gateway {
+                        profile_gateway_matches = profile_points_at(&text, gateway);
+                    }
+                }
             }
         } else {
             receipt_mismatch = true;
@@ -260,6 +268,17 @@ pub fn inspect(
         && entry_present
         && applied_id_matches
         && profile_matches;
+    // profile 仍是收据写下的那一份，但它指向的网关已经变了：令牌轮换、换端口、
+    // 停用网关或删掉已接管的模型。撤销依据还在，所以仍算 restorable。
+    let stale =
+        applied && gateway.is_some_and(|gateway| !gateway.available || !profile_gateway_matches);
+    if stale {
+        conflicts.push(TakeoverConflict::new(
+            "takeover_stale",
+            "the gateway settings changed after the takeover; apply again to update the client",
+            false,
+        ));
+    }
     let state = if policy.machine() {
         TakeoverState::Managed
     } else if policy.user()
@@ -276,7 +295,11 @@ pub fn inspect(
         TakeoverState::Running
     } else if receipt.is_some() {
         if applied {
-            TakeoverState::Applied
+            if stale {
+                TakeoverState::Stale
+            } else {
+                TakeoverState::Applied
+            }
         } else {
             TakeoverState::Conflict
         }
@@ -416,7 +439,7 @@ pub fn apply(
         ));
     }
     atomic_write(&paths.meta, meta_text.as_bytes())?;
-    inspect(paths, state_dir, policy, false)
+    inspect(paths, state_dir, policy, false, None)
 }
 
 pub fn undo(
@@ -426,7 +449,7 @@ pub fn undo(
     running: bool,
 ) -> Result<DesktopTakeoverStatus> {
     let Some(receipt) = read_receipt(state_dir)? else {
-        return inspect(paths, state_dir, policy, running);
+        return inspect(paths, state_dir, policy, running, None);
     };
     // 与 apply 同一把锁：收据必须属于这套安装，否则撤销会碰到别处的文件。
     if !same_path(Path::new(&receipt.meta_path), &paths.meta) {
@@ -460,7 +483,7 @@ pub fn undo(
                 "the gateway profile changed after the takeover; undo kept it and the configLibrary entry",
                 false,
             ));
-            let mut status = inspect(paths, state_dir, policy, false)?;
+            let mut status = inspect(paths, state_dir, policy, false, None)?;
             status.conflicts.extend(kept);
             return Ok(status);
         }
@@ -516,7 +539,7 @@ pub fn undo(
 
     remove_file_if_exists(profile)?;
     remove_file_if_exists(&state_dir.join(RECEIPT_FILE))?;
-    let mut status = inspect(paths, state_dir, policy, false)?;
+    let mut status = inspect(paths, state_dir, policy, false, None)?;
     status.conflicts.extend(kept);
     Ok(status)
 }
@@ -706,6 +729,22 @@ fn profile_value(route: &DesktopRoute) -> Result<Value> {
     }))
 }
 
+/// profile 里的网关入口与令牌是否仍是当前网关。解析失败按不匹配处理：文件哈希仍
+/// 对得上时它只可能是损坏或手改，状态会显示 stale 让用户重新应用。
+fn profile_points_at(text: &str, gateway: &GatewayValues) -> bool {
+    let Ok(profile) = parse_json(text) else {
+        return false;
+    };
+    profile
+        .get("inferenceGatewayBaseUrl")
+        .and_then(Value::as_str)
+        == Some(gateway.base_url)
+        && profile
+            .get("inferenceGatewayApiKey")
+            .and_then(Value::as_str)
+            == Some(gateway.token)
+}
+
 fn validate_route(route: &DesktopRoute) -> Result<()> {
     let url = url::Url::parse(&route.base_url)
         .map_err(|error| Error::Config(format!("invalid Claude gateway URL: {error}")))?;
@@ -731,7 +770,7 @@ fn pretty(document: &Value) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{collections::BTreeMap, fs};
 
     use super::*;
     use crate::claude_code::ownership::DesktopPolicy;
@@ -918,7 +957,7 @@ mod tests {
             machine_values: vec!["AllowedProviders".into()],
             user_values: vec!["UserSetting".into()],
         };
-        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false).unwrap();
+        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false, None).unwrap();
         assert_eq!(status.state, TakeoverState::Managed);
         assert_eq!(status.config_source, ConfigSource::MachinePolicy);
         assert!(status.guided);
@@ -950,7 +989,7 @@ mod tests {
             machine_values: Vec::new(),
             user_values: vec!["AllowedProviders".into()],
         };
-        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false).unwrap();
+        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false, None).unwrap();
         assert_eq!(status.state, TakeoverState::Conflict);
         assert_eq!(status.config_source, ConfigSource::UserPolicy);
         assert!(status.guided);
@@ -972,6 +1011,7 @@ mod tests {
             fixture.state.path(),
             &DesktopPolicy::default(),
             true,
+            None,
         )
         .unwrap();
         assert_eq!(status.state, TakeoverState::Running);
@@ -1000,6 +1040,7 @@ mod tests {
             fixture.state.path(),
             &DesktopPolicy::default(),
             false,
+            None,
         )
         .unwrap();
         assert_eq!(status.state, TakeoverState::Missing);
@@ -1055,6 +1096,7 @@ mod tests {
             fixture.state.path(),
             &DesktopPolicy::default(),
             false,
+            None,
         )
         .unwrap();
         assert_eq!(status.state, TakeoverState::Conflict);
@@ -1134,5 +1176,91 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("not an array"), "{error}");
         assert_eq!(fixture.meta()["entries"], "legacy");
+    }
+
+    fn desired_env() -> BTreeMap<String, Value> {
+        BTreeMap::new()
+    }
+
+    fn inspect_with_gateway(
+        fixture: &Fixture,
+        gateway: Option<&GatewayValues>,
+    ) -> DesktopTakeoverStatus {
+        inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            gateway,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_rotated_gateway_token_marks_an_applied_desktop_takeover_stale() {
+        let fixture = Fixture::installed();
+        assert_eq!(fixture.apply(two_models()).state, TakeoverState::Applied);
+
+        let desired = desired_env();
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "rotated-token",
+            desired: &desired,
+            available: true,
+        };
+        let status = inspect_with_gateway(&fixture, Some(&gateway));
+        assert_eq!(status.state, TakeoverState::Stale);
+        assert!(status.restorable, "stale 之后仍然可以撤销");
+        let stale = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.code == "takeover_stale")
+            .expect("stale 必须带一条提示");
+        assert!(!stale.blocking);
+        assert_eq!(
+            stale.message,
+            "the gateway settings changed after the takeover; apply again to update the client"
+        );
+
+        // 撤销仍然可用：profile 与条目都按收据还原。
+        let status = fixture.undo();
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(fixture.meta().get("appliedId").is_none());
+    }
+
+    #[test]
+    fn a_stopped_gateway_marks_an_applied_desktop_takeover_stale() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+
+        let desired = desired_env();
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "local-test-token",
+            desired: &desired,
+            available: false,
+        };
+        assert_eq!(
+            inspect_with_gateway(&fixture, Some(&gateway)).state,
+            TakeoverState::Stale
+        );
+    }
+
+    #[test]
+    fn a_desktop_takeover_without_a_receipt_is_never_stale() {
+        let fixture = Fixture::installed();
+        let desired = desired_env();
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:9",
+            token: "other-token",
+            desired: &desired,
+            available: false,
+        };
+        let status = inspect_with_gateway(&fixture, Some(&gateway));
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "takeover_stale"));
     }
 }
