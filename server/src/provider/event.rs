@@ -18,6 +18,9 @@ pub enum ModelEvent {
     TextEnd,
     ThinkingStart,
     ThinkingDelta(String),
+    /// Anthropic 的思考块签名。适配器在 `ThinkingEnd` **之前**发出，入站网关据它
+    /// 生成 `signature_delta`；其它消费者忽略。
+    ThinkingSignature(String),
     ThinkingEnd,
     ToolCallStart {
         index: usize,
@@ -33,6 +36,12 @@ pub enum ModelEvent {
     },
     ProviderReplayState(ProviderReplayState),
     Usage(Usage),
+    /// 上游明确报告了命中的停止序列（Anthropic 的 `delta.stop_sequence`）。
+    ///
+    /// 只有入站 Anthropic 网关会把它翻回 `stop_reason: "stop_sequence"` 与
+    /// `stop_sequence` 字段；其它消费者（Cursor / Devin / Codex 记录）显式忽略——
+    /// 它们的协议里没有这个字段，`Done(Stop)` 已经是全部语义。
+    StopSequence(String),
     Done(FinishReason),
 }
 

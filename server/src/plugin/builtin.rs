@@ -168,10 +168,77 @@ const ANTIGRAVITY_AUTH: &[(&str, &str)] = &[
     ),
 ];
 
+const CLAUDE_CODE_AUTH: &[(&str, &str)] = &[
+    (
+        "plugin.json",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/plugin.json"
+        )),
+    ),
+    (
+        "main.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/main.ts"
+        )),
+    ),
+    (
+        "provider.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/provider.ts"
+        )),
+    ),
+    (
+        "models.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/models.ts"
+        )),
+    ),
+    (
+        "oauth.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/oauth.ts"
+        )),
+    ),
+    (
+        "resources.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/resources.ts"
+        )),
+    ),
+    (
+        "redact.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/redact.ts"
+        )),
+    ),
+    (
+        "runtime.ts",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/runtime.ts"
+        )),
+    ),
+    (
+        "assets/claude.svg",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/plugins/build-in/claude-code-auth/assets/claude.svg"
+        )),
+    ),
+];
+
 const PLUGINS: &[(&str, &[(&str, &str)])] = &[
     ("codex-auth", CODEX_AUTH),
     ("grok-auth", GROK_AUTH),
     ("antigravity-auth", ANTIGRAVITY_AUTH),
+    ("claude-code-auth", CLAUDE_CODE_AUTH),
 ];
 
 /// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
@@ -279,6 +346,11 @@ mod tests {
             .path()
             .join("antigravity-auth/assets/antigravity.svg")
             .is_file());
+        assert!(root
+            .path()
+            .join("claude-code-auth/assets/claude.svg")
+            .is_file());
+        assert!(root.path().join("claude-code-auth/provider.ts").is_file());
 
         // 版本一致:本地改动与额外文件保持原样,不发生任何写盘。
         std::fs::write(plugin.join("main.ts"), "edited").unwrap();
@@ -301,5 +373,68 @@ mod tests {
             embedded_main()
         );
         assert!(!plugin.join("stale.ts").exists());
+    }
+    /// 内置插件的相对导入必须全部在嵌入清单里。
+    ///
+    /// 发布构建只预装清单里的文件：漏一个运行时模块，插件在真实安装里就会
+    /// import 失败，而源码目录跑 Deno 测试完全发现不了。这里直接按源码扫相对
+    /// 导入，把清单和目录绑在一起。
+    #[test]
+    fn every_built_in_plugin_import_is_embedded() {
+        for (name, files) in PLUGINS {
+            let embedded: std::collections::HashSet<&str> =
+                files.iter().map(|(path, _)| *path).collect();
+            let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("plugins/build-in")
+                .join(name);
+            let mut stack = vec![directory.clone()];
+            while let Some(current) = stack.pop() {
+                for entry in std::fs::read_dir(&current).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
+                    }
+                    if path.extension().and_then(|value| value.to_str()) != Some("ts") {
+                        continue;
+                    }
+                    let file_name = path.file_name().unwrap().to_str().unwrap();
+                    if file_name.ends_with("_test.ts") {
+                        continue;
+                    }
+                    let source = std::fs::read_to_string(&path).unwrap();
+                    for import in relative_imports(&source) {
+                        let target = path.parent().unwrap().join(&import);
+                        let relative = target
+                            .strip_prefix(&directory)
+                            .unwrap()
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        assert!(
+                            embedded.contains(relative.as_str()),
+                            "{name}: {relative} is imported but not embedded"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn relative_imports(source: &str) -> Vec<String> {
+        let mut imports = Vec::new();
+        for line in source.lines() {
+            let Some(index) = line.find("from \"./") else {
+                continue;
+            };
+            let rest = &line[index + "from \"./".len()..];
+            let Some(end) = rest.find('"') else {
+                continue;
+            };
+            let target = &rest[..end];
+            if target.ends_with(".ts") {
+                imports.push(target.to_owned());
+            }
+        }
+        imports
     }
 }

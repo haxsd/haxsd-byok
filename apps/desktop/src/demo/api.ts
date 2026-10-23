@@ -1,5 +1,8 @@
 import type {
   CallDetail,
+  ClaudeSettings,
+  ClaudeStatus,
+  ClaudeTakeover,
   CodexSettings,
   CodexStatus,
   CursorHarnessStatus,
@@ -99,13 +102,54 @@ let harnessStatus: CursorHarnessStatus = {
   catalog: { last_success_ms: 1_700_000_000_000, last_failure_ms: null, last_failure: null },
 };
 
-let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };
-let codexConfigured = false;
+let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
     chatgpt_signed_in: true, conversation_detail_mode: "STEPS_COMMANDS", local_mode_guard: false,
     home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
+}
+
+let claudeSettings: ClaudeSettings = {
+  enabled: true,
+  port: 43_121,
+  default_model_hash: models[0].model_hash,
+  sonnet_model_hash: models[0].model_hash,
+  opus_model_hash: models[1].model_hash,
+  haiku_model_hash: models[3].model_hash,
+};
+let claudeTakeover: ClaudeTakeover = {
+  cli: {
+    state: "ready",
+    settings_path: "~/.claude/settings.json",
+    backup_path: "",
+    restorable: false,
+    conflicts: [],
+    missing_models: [],
+    managed_sources: [],
+  },
+  desktop: {
+    state: "ready",
+    config_source: "local",
+    profile_path: "~/Library/Application Support/Claude",
+    backup_path: "",
+    restorable: false,
+    conflicts: [],
+    guided: false,
+  },
+};
+function claudeStatus(): ClaudeStatus {
+  return {
+    enabled: claudeSettings.enabled,
+    listening: claudeSettings.enabled,
+    port: claudeSettings.port,
+    base_url: `http://127.0.0.1:${claudeSettings.port}`,
+    token: "haxsd-demo-claude-token",
+    models: new Set([claudeSettings.default_model_hash, claudeSettings.sonnet_model_hash, claudeSettings.opus_model_hash, claudeSettings.haiku_model_hash].filter(Boolean)).size,
+    default_model_hash: claudeSettings.default_model_hash,
+    calls: 0,
+    last_error: null,
+  };
 }
 
 let devinSettings: DevinSettings = {
@@ -225,6 +269,41 @@ export function installDemoApi() {
       return json(codexStatus());
     }
     if (path === "/codex/restore" && method === "POST") { codexConfigured = false; return json(codexStatus()); }
+    if (path === "/claude/settings" && method === "GET") return json(claudeSettings);
+    if (path === "/claude/settings" && method === "PUT") {
+      claudeSettings = body as ClaudeSettings;
+      return json(claudeSettings);
+    }
+    if (path === "/claude/status") return json(claudeStatus());
+    if (path === "/claude/takeover") return json(claudeTakeover);
+    if (path === "/claude/takeover/cli" && method === "PUT") {
+      const action = (body as { action?: string } | null)?.action ?? "apply";
+      claudeTakeover = {
+        ...claudeTakeover,
+        cli: {
+          ...claudeTakeover.cli,
+          state: action === "apply" ? "applied" : "ready",
+          backup_path: action === "apply" ? "~/.claude/settings.json.haxsd-byok.bak" : "",
+          restorable: action === "apply",
+          conflicts: [],
+        },
+      };
+      return json(claudeTakeover.cli);
+    }
+    if (path === "/claude/takeover/desktop" && method === "PUT") {
+      const action = (body as { action?: string } | null)?.action ?? "apply";
+      claudeTakeover = {
+        ...claudeTakeover,
+        desktop: {
+          ...claudeTakeover.desktop,
+          state: action === "apply" ? "applied" : "ready",
+          backup_path: action === "apply" ? "~/Library/Application Support/Claude/config.json.haxsd-byok.bak" : "",
+          restorable: action === "apply",
+          conflicts: [],
+        },
+      };
+      return json(claudeTakeover.desktop);
+    }
     if (path === "/devin/settings" && method === "GET") return json(devinSettings);
     if (path === "/devin/settings") {
       devinSettings = body as DevinSettings;

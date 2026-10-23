@@ -318,7 +318,6 @@ mod tests {
             base_url: "http://127.0.0.1:43120/v1".into(),
             token: "haxsd-test-token".into(),
             catalog_path: home.join("catalog.json"),
-            context_window: 200_000,
         }
     }
 }

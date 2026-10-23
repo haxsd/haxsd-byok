@@ -27,11 +27,11 @@ type MenuItem =
   | { kind: "page"; path: string; label: string; icon: IconifyIcon | string; status?: { tone: string; label: string } }
   | { kind: "group"; label: string };
 
-const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor", "/harness/devin", "/harness/codex", "/plugins", "/tutorial"];
+const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor", "/harness/devin", "/harness/codex", "/harness/claude", "/plugins", "/tutorial"];
 /** 教程从「外部文档」变成产品内页面后，这个标记表示「打开过」。存在服务端，见 uiPreferences.ts。 */
 
 export function AppLayout() {
-  const { busy, cursorHarness, devinStatus, codexStatus, models, offline, error } = useAppStore();
+  const { busy, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, models, offline, error } = useAppStore();
   const availableUpdate = useAvailableUpdate();
   const location = useLocation();
   const navigate = useNavigate();
@@ -92,7 +92,7 @@ export function AppLayout() {
   // 客户端状态挂在各自的接入页上（见 HarnessTabs）：Cursor 的接管模式和 Devin、
   // Codex 的网关状态互不代表对方，也都不是「整个应用」的状态。顶栏那一个入口只
   // 汇总成「几个客户端在用本机网关」，颜色取最需要注意的那个。
-  const harnessState = { cursorHarness, devinStatus, codexStatus };
+  const harnessState = { cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover };
   const harnessEntry = harnessEntryStatus(harnessState);
   // 接入页多一条切换带，窗口顶部的两条带依次往下排（见 .harnessModule / .harnessBar）。
   const currentClient = harnessClientAt(location.pathname);
@@ -105,7 +105,7 @@ export function AppLayout() {
     { kind: "page", path: "/", label: t("概览"), icon: navOverviewIcon },
     { kind: "page", path: "/calls", label: t("调用"), icon: navCallsIcon },
     { kind: "group", label: t("接入模块") },
-    // 三个客户端收成一个入口：接入页里切换，顶栏不随客户端数量变长。
+    // 客户端收成一个入口：接入页里切换，顶栏不随客户端数量变长。
     { kind: "page", path: currentClient?.path ?? harnessClients[0].path, label: t("接入"), icon: navHarnessIcon, status: harnessEntry },
     { kind: "group", label: t("共享") },
     { kind: "page", path: "/models", label: t("模型库"), icon: navModelsIcon },

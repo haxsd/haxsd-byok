@@ -20,6 +20,14 @@ import { CLIENT_ID, CLIENT_SECRET } from "./google_oauth.ts";
 export const RESOURCE_TYPE = "antigravity-account";
 
 const REFRESH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+/** 令牌端点明确返回 429/5xx 时最多重试 2 次;传输层错误不重试。 */
+const MAX_REFRESH_RETRIES = 2;
+const REFRESH_RETRY_BASE_MS = 400;
+export const AUTH_EXPIRED_MESSAGE = "Google authorization expired; sign in again";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function fetchText(
   network: PluginContext["network"] | undefined,
@@ -220,7 +228,7 @@ function claim(payload: Record<string, unknown> | null, key: string): string | n
 }
 
 export function isJwtExpired(token: string, bufferSeconds = 300): boolean {
-  if (token.startsWith("AIza") || !token.includes(".")) return false;
+  if (!token.includes(".")) return false;
   const payload = decodeJwtPayload(token);
   if (!payload) return false;
   const exp = typeof payload.exp === "number" ? payload.exp : null;
@@ -258,8 +266,7 @@ export async function accountIdentity(
   const identity = (providedDisplayName && !providedDisplayName.includes("Antigravity"))
     ? providedDisplayName
     : (email ?? sub ?? fingerprint);
-  const displayName = providedDisplayName ?? email ?? name ??
-    (token.startsWith("AIza") ? `API Key (${fingerprint.slice(0, 6)})` : identity);
+  const displayName = providedDisplayName ?? email ?? name ?? identity;
   return { key: `antigravity:${identity}`, displayName };
 }
 
@@ -371,66 +378,150 @@ export function presentAccount(resource: ResourceSnapshot): ResourceView {
   };
 }
 
+export type CredentialRefresh =
+  | { status: "refreshed"; data: AccountData }
+  | { status: "invalid"; message: string }
+  | { status: "failed"; message: string };
+
+/**
+ * 用 refresh_token 换新的 access token。只有上游明确 invalid_grant /
+ * unauthorized_client 才判定凭证失效;网络或上游临时故障返回 failed,
+ * 调用方不得据此把账号标成 invalid。429/5xx 是明确的拒绝响应,按有限次数重试;
+ * 传输层错误不重试,因为请求可能已被上游消费。
+ */
+async function refreshCredential(
+  data: AccountData,
+  context: PluginContext,
+): Promise<CredentialRefresh> {
+  const refreshToken = data.refreshToken;
+  if (!refreshToken) return { status: "invalid", message: AUTH_EXPIRED_MESSAGE };
+
+  for (let attempt = 0;; attempt += 1) {
+    let response;
+    try {
+      response = await context.network.fetch(REFRESH_TOKEN_URL, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+        }).toString(),
+      });
+    } catch (error) {
+      return {
+        status: "failed",
+        message: `Google token refresh failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      const bodyText = response.body.toLowerCase();
+      if (
+        response.status === 401 ||
+        bodyText.includes("invalid_grant") ||
+        bodyText.includes("invalid_token") ||
+        bodyText.includes("unauthorized_client")
+      ) {
+        return { status: "invalid", message: AUTH_EXPIRED_MESSAGE };
+      }
+      if (
+        (response.status === 429 || response.status >= 500) && attempt < MAX_REFRESH_RETRIES
+      ) {
+        await sleep(REFRESH_RETRY_BASE_MS * 2 ** attempt);
+        continue;
+      }
+      // 其它失败不能继续用旧 token,也不能谎报 ready,而是抛出可诊断错误让调用方中止。
+      return {
+        status: "failed",
+        message:
+          `Google token refresh failed (HTTP ${response.status}); the stale access token was not used: ${
+            response.body.trim().slice(0, 200)
+          }`,
+      };
+    }
+
+    let body: Record<string, unknown> | null;
+    try {
+      body = object(JSON.parse(response.body));
+    } catch {
+      return { status: "failed", message: "Google token refresh returned invalid JSON" };
+    }
+    const accessToken = text(body?.access_token);
+    if (!accessToken) {
+      return {
+        status: "failed",
+        message: "Google token refresh response did not include an access token",
+      };
+    }
+    const expiresIn = typeof body?.expires_in === "number" ? body.expires_in : 3600;
+    return {
+      status: "refreshed",
+      data: {
+        ...data,
+        accessToken,
+        refreshToken: text(body?.refresh_token) ?? refreshToken,
+        expiresAtMs: Date.now() + expiresIn * 1000,
+      },
+    };
+  }
+}
+
+/**
+ * 同一账号的并发刷新共用一个 Promise。refresh token 会轮换：并发各发一次时，
+ * 后到的一方拿着已经作废的旧值换回 invalid_grant，正常账号会被误标成 invalid。
+ * 成功与失败都共享同一个结果，各调用方只负责回写。
+ */
+const refreshFlights = new Map<string, Promise<CredentialRefresh>>();
+
+function refreshCredentialForAccount(
+  accountKey: string,
+  data: AccountData,
+  context: PluginContext,
+): Promise<CredentialRefresh> {
+  const inflight = refreshFlights.get(accountKey);
+  if (inflight) return inflight;
+  const operation = refreshCredential(data, context).finally(() => {
+    if (refreshFlights.get(accountKey) === operation) refreshFlights.delete(accountKey);
+  });
+  refreshFlights.set(accountKey, operation);
+  return operation;
+}
+
+/** 只给测试用：丢弃进程内刷新记录，避免用例之间互相影响。 */
+export function resetRefreshStateForTests(): void {
+  refreshFlights.clear();
+}
+
 export async function refreshAccount(
   resource: ResourceSnapshot,
   context: PluginContext,
 ): Promise<ResourcePatch> {
   const data = accountData(resource);
-  let accessToken = data.accessToken;
-  let refreshToken = data.refreshToken;
-  let projectId = data.projectId ?? "bamboo-precept-lgxtn";
-  let expiresAtMs = data.expiresAtMs ?? null;
+  let refreshed = data;
 
-  if (refreshToken) {
-    const response = await context.network.fetch(REFRESH_TOKEN_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-      }).toString(),
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      const bodyText = response.body.toLowerCase();
-      // Only mark invalid if token is revoked or client is invalid
-      if (bodyText.includes("invalid_grant") || bodyText.includes("unauthorized_client")) {
-        return {
-          state: {
-            status: "invalid",
-            message: "Google authorization expired or revoked; please sign in again",
-          },
-        };
-      }
-      // On network glitches or temporary Google server errors, keep ready
-      return {
-        state: { status: "ready" },
-      };
+  if (data.refreshToken) {
+    const result = await refreshCredentialForAccount(resource.key, data, context);
+    if (result.status === "invalid") {
+      return { state: { status: "invalid", message: result.message } };
     }
-
-    const body = object(JSON.parse(response.body));
-    accessToken = text(body?.access_token) ?? accessToken;
-    refreshToken = text(body?.refresh_token) ?? refreshToken;
-    const expiresIn = typeof body?.expires_in === "number" ? body.expires_in : 3600;
-    expiresAtMs = Date.now() + expiresIn * 1000;
+    if (result.status === "failed") throw new Error(result.message);
+    refreshed = result.data;
   }
 
   // Fetch real-time quota and project ID
-  const result = await queryAccountQuota(accessToken, context.network);
-  projectId = result.projectId || projectId;
+  const result = await queryAccountQuota(refreshed.accessToken, context.network);
 
   const updatedData: AccountData = {
-    ...data,
-    accessToken,
-    refreshToken,
-    projectId,
-    expiresAtMs,
-    quota: result.quota ?? data.quota,
+    ...refreshed,
+    projectId: result.projectId || refreshed.projectId || "bamboo-precept-lgxtn",
+    quota: result.quota ?? refreshed.quota,
   };
   return {
     privateData: updatedData as unknown as JsonValue,
@@ -460,28 +551,18 @@ function collectCredentials(value: unknown, output: CredentialCandidate[]): void
     }
   }
   const tokens = object(item.tokens) ?? item;
+  // Antigravity 只接受 Google OAuth access token(Bearer)。`AIza…` API key 不是
+  // 可用凭证,按 Bearer 发送必然 401,所以导入路径不再收集任何 API key 字段。
   let accessToken = firstText(tokens, [
     "access",
     "accessToken",
     "access_token",
     "token",
-    "apiKey",
-    "api_key",
-    "key",
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "ANTIGRAVITY_API_KEY",
   ]) ?? firstText(item, [
     "access",
     "accessToken",
     "access_token",
     "token",
-    "apiKey",
-    "api_key",
-    "key",
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "ANTIGRAVITY_API_KEY",
   ]);
   const refreshToken = firstText(tokens, ["refresh", "refresh_token", "refreshToken"]) ??
     firstText(item, ["refresh", "refresh_token", "refreshToken"]);
@@ -499,6 +580,11 @@ function collectCredentials(value: unknown, output: CredentialCandidate[]): void
   output.push({ accessToken, refreshToken, displayName, projectId });
 }
 
+/** Google OAuth access token 的三段式 JWT 形状;AIza API key 不匹配。 */
+function isOAuthToken(value: string): boolean {
+  return /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+}
+
 export async function parseCredentialFiles(
   files: ResourceImportFile[],
   network?: PluginContext["network"],
@@ -512,8 +598,9 @@ export async function parseCredentialFiles(
     const raw = file.content.trim();
     if (!raw) continue;
 
-    // Check if file is raw API key or JWT token string
-    if (raw.startsWith("AIza") || (raw.split(".").length === 3 && !raw.includes(" "))) {
+    // 原始文件只接受 OAuth token 本身;`AIza…` API key 按 Bearer 用必然失败,
+    // 因此直接拒绝而不是造一条永远 invalid 的资源。
+    if (isOAuthToken(raw)) {
       credentials.push({ accessToken: raw, refreshToken: null, displayName: file.name });
       continue;
     }
@@ -524,34 +611,36 @@ export async function parseCredentialFiles(
       content = JSON.parse(raw);
     } catch {
       const envMatch = raw.match(
-        /(?:API_KEY|TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|ANTIGRAVITY_API_KEY)\s*=\s*["']?([^"'\r\n]+)/i,
+        /(ACCESS_TOKEN|REFRESH_TOKEN|TOKEN)\s*=\s*["']?([^"'\r\n]+)/i,
       );
-      if (envMatch?.[1]) {
+      const envValue = envMatch?.[2]?.trim() ?? null;
+      if (envMatch?.[1] && envValue && isOAuthToken(envValue)) {
+        const isRefresh = envMatch[1].toLowerCase() === "refresh_token";
         credentials.push({
-          accessToken: envMatch[1].trim(),
-          refreshToken: null,
+          accessToken: envValue,
+          refreshToken: isRefresh ? envValue : null,
           displayName: file.name,
         });
         continue;
       }
-      const keyMatch = raw.match(/AIza[0-9A-Za-z-_]{35}/);
-      if (keyMatch?.[0]) {
-        credentials.push({ accessToken: keyMatch[0], refreshToken: null, displayName: file.name });
-        continue;
-      }
-      warnings.push(`${file.name}: not valid JSON or API key`);
+      warnings.push(`${file.name}: not valid JSON or Google OAuth token`);
       continue;
     }
 
     if (typeof content === "string") {
-      credentials.push({ accessToken: content.trim(), refreshToken: null, displayName: file.name });
+      const value = content.trim();
+      if (!isOAuthToken(value)) {
+        warnings.push(`${file.name}: not a Google OAuth access token`);
+        continue;
+      }
+      credentials.push({ accessToken: value, refreshToken: null, displayName: file.name });
       continue;
     }
 
     const found: CredentialCandidate[] = [];
     collectCredentials(content, found);
     if (found.length === 0) {
-      warnings.push(`${file.name}: no Google/Antigravity API key or token found`);
+      warnings.push(`${file.name}: no Google OAuth token found`);
       continue;
     }
     for (const candidate of found) {
@@ -593,11 +682,10 @@ export const credentialImport: ResourceImportSupport = {
     "zh-CN": "导入 Google / Antigravity 凭证",
   },
   description: {
-    "en-US":
-      "Import a JSON, TXT, or environment file containing Antigravity tokens or Google API keys.",
-    "zh-CN": "导入包含 Antigravity Token 或 Google API Key 的 JSON、TXT 或环境变量文件。",
+    "en-US": "Import a JSON, TXT, or environment file containing Google OAuth tokens.",
+    "zh-CN": "导入包含 Google OAuth Token 的 JSON、TXT 或环境变量文件。",
   },
-  accept: [".json", ".txt", ".key", ".env"],
+  accept: [".json", ".txt", ".env"],
   multiple: true,
   parse: async (
     files: ResourceImportFile[],
@@ -607,7 +695,7 @@ export const credentialImport: ResourceImportSupport = {
     if (credentials.length === 0) {
       throw new Error(
         warnings.join("; ") ||
-          "credential file does not contain a valid token or API key",
+          "credential file does not contain a Google OAuth token",
       );
     }
     const drafts = await Promise.all(

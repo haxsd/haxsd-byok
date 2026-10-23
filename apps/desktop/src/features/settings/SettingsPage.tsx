@@ -52,7 +52,7 @@ export function SettingsPage() {
       <div className={styles.settingRow}>
         <strong>{t("界面语言")}</strong>
         <div className={styles.languageControl}><Select value={preference} ariaLabel={t("界面语言")} options={[
-          { value: "system", label: t("跟随系统") }, { value: "zh-CN", label: "简体中文" }, { value: "en-US", label: "English" },
+          { value: "system", label: t("跟随系统") }, { value: "zh-CN", label: "简体中文" }, { value: "en-US", label: "English" }, { value: "ru-RU", label: "Русский" },
         ]} onChange={value => setLocalePreference(value as LocalePreference)} /></div>
       </div>
       <div className={styles.settingRow}>

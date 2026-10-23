@@ -1,4 +1,3 @@
-import type { JsonValue } from "cursor-byok:plugin";
 import type { ModelDefinition, ModelSnapshot, ModelSupport } from "cursor-byok:model";
 import { accountData } from "./resources.ts";
 

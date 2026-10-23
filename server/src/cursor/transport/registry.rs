@@ -18,6 +18,7 @@ use crate::{
     },
     plugin::PluginRegistry,
     provider::Provider,
+    run::BackgroundWaitPolicy,
     search::WebCache,
     store::Store,
     Error, Result,
@@ -86,7 +87,36 @@ impl TransportRegistry {
         compiler: PromptCompiler,
         web_cache: WebCache,
     ) -> Self {
-        Self::build(store, provider, compiler, web_cache, None, None)
+        Self::build(
+            store,
+            provider,
+            compiler,
+            web_cache,
+            None,
+            None,
+            BackgroundWaitPolicy::default(),
+        )
+    }
+
+    /// 覆盖父轮等待后台子代理的参数。
+    ///
+    /// 生产用默认值（空闲 45 分钟 / 绝对上限 6 小时）；测试传秒级阈值，才能在不真的
+    /// 等半小时的情况下验证"活动刷新截止时间"。
+    pub fn with_background_wait(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        background_wait: BackgroundWaitPolicy,
+    ) -> Self {
+        Self::build(
+            store,
+            provider,
+            compiler,
+            WebCache::default(),
+            None,
+            None,
+            background_wait,
+        )
     }
 
     /// 附带本地 rules 目录的构造;编译请求上下文时会合并该目录下的 md 规则。
@@ -103,6 +133,7 @@ impl TransportRegistry {
             WebCache::default(),
             None,
             Some(local_rules_dir),
+            BackgroundWaitPolicy::default(),
         )
     }
 
@@ -121,6 +152,7 @@ impl TransportRegistry {
             web_cache,
             Some(plugins),
             Some(local_rules_dir),
+            BackgroundWaitPolicy::default(),
         )
     }
 
@@ -131,6 +163,7 @@ impl TransportRegistry {
         web_cache: WebCache,
         plugins: Option<PluginRegistry>,
         local_rules_dir: Option<std::path::PathBuf>,
+        background_wait: BackgroundWaitPolicy,
     ) -> Self {
         Self {
             inner: Arc::new(RegistryInner {
@@ -139,12 +172,13 @@ impl TransportRegistry {
                 upstream: Mutex::new(HashMap::new()),
                 route_changed: Notify::new(),
                 traces: CursorTraceService::new(store.clone()),
-                conversations: ConversationRegistry::new(
+                conversations: ConversationRegistry::with_background_wait(
                     store.clone(),
                     provider,
                     compiler,
                     web_cache.clone(),
                     local_rules_dir,
+                    background_wait,
                 ),
                 store,
                 web_cache,

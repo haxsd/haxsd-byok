@@ -128,7 +128,7 @@ export type OAuth2AuthorizationCodeAddMethod = {
   displayName: LocalizedText;
   description?: LocalizedText;
   /** 仅在上游 OAuth 客户端要求固定 loopback 地址时指定。 */
-  callback?: { port?: number; path?: string };
+  callback?: { port?: number; path?: string; host?: string };
   begin(
     input: {
       redirectUri: string;

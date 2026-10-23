@@ -5,6 +5,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    anthropic::ClaudeGateway,
     api,
     codex::CodexGateway,
     config::{Config, ConsoleSource},
@@ -52,6 +53,7 @@ pub struct App {
     clients: crate::network::NetworkClients,
     devin_gateway: DevinGateway,
     codex_gateway: CodexGateway,
+    claude_gateway: ClaudeGateway,
     /// 这份数据目录的进程互斥锁，随 `App` 活到进程结束。
     _instance: crate::instance::InstanceLock,
 }
@@ -95,6 +97,7 @@ impl App {
             config.provider_stream_idle_timeout,
         );
         let devin_gateway = DevinGateway::new(store.clone(), provider.clone(), clients.clone());
+        let claude_gateway = ClaudeGateway::new(store.clone(), provider.clone(), clients.clone());
         let registry = TransportRegistry::with_plugins(
             store.clone(),
             provider.clone(),
@@ -116,6 +119,10 @@ impl App {
         // The status endpoint needs both the control service and the gateway's
         // own listening flag, so it is merged here rather than inside either one.
         router = router.merge(control::codex::router(codex_gateway.clone(), store.clone()));
+        router = router.merge(control::claude::router(
+            claude_gateway.clone(),
+            store.clone(),
+        ));
         router = router.merge(control::devin_status_router(
             control.clone(),
             devin_gateway.listening(),
@@ -137,6 +144,7 @@ impl App {
             clients,
             devin_gateway,
             codex_gateway,
+            claude_gateway,
             config,
             _instance: instance,
         })
@@ -192,8 +200,12 @@ impl App {
         let clients = self.clients;
         let devin_gateway = self.devin_gateway;
         let codex_gateway = self.codex_gateway;
+        let claude_gateway = self.claude_gateway;
         if let Err(error) = codex_gateway.start().await {
             tracing::error!(%error, "Codex gateway could not start; other integrations remain active");
+        }
+        if let Err(error) = claude_gateway.start().await {
+            tracing::error!(%error, "Claude gateway could not start; other integrations remain active");
         }
         let graceful = shutdown.clone();
         let server = axum::serve(listener, self.router)
@@ -263,6 +275,9 @@ impl App {
             if let Err(error) = codex_gateway.shutdown().await {
                 tracing::warn!(%error, "Codex gateway cleanup failed");
             }
+        }
+        if let Err(error) = claude_gateway.shutdown().await {
+            tracing::warn!(%error, "Claude gateway cleanup failed");
         }
         gateway_task.abort();
         let _ = gateway_task.await;

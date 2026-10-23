@@ -901,7 +901,8 @@ fn spawn_run_request(
             .activate(conversation_id.clone(), run_id.clone(), run_handle.clone())
             .await;
         let cancellation = run_handle.cancellation();
-        let engine = RunEngine::new(dependencies.store.clone(), dependencies.provider.clone());
+        let engine = RunEngine::new(dependencies.store.clone(), dependencies.provider.clone())
+            .with_background_wait(dependencies.background_wait.clone());
         let core_run = tokio::spawn(async move { engine.run(prepared, port, cancellation).await });
         let output = ConversationOutput::new(
             handle.clone(),

@@ -122,6 +122,8 @@ pub enum RunEvent {
     AutoCompactionStarted,
     AutoCompactionCompleted,
     CycleInterrupted,
+    /// 等待后台子代理期间的保活帧：复用客户端已有的 HeartbeatUpdate，不新造协议。
+    Heartbeat,
     ModelAttemptFailed {
         attempt: u32,
         message: String,

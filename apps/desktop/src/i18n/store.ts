@@ -20,7 +20,8 @@ export function resolveSystemLocale(
 ): Locale {
   const normalized = languages[0]?.toLowerCase() ?? "";
   if (normalized === "zh" || normalized.startsWith("zh-")) return "zh-CN";
-  // 除简体中文外只提供英文，其余系统语言统一回退到英文。
+  if (normalized === "ru" || normalized.startsWith("ru-")) return "ru-RU";
+  // 其余系统语言统一回退到英文。
   return "en-US";
 }
 

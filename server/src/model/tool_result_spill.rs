@@ -233,6 +233,36 @@ pub(crate) fn prune_artifact_files(
     )
 }
 
+/// 删除已经失去记录的压缩归档，返回删掉的文件数。
+///
+/// 只删受管目录里的文件：`compaction_events.archive_path` 是库里的文本，不能让它变成
+/// 任意路径删除。目录与写入时是同一个 `managed_data_dir()`。
+pub(crate) fn remove_compaction_archives(paths: &[String]) -> usize {
+    let Ok(root) = config::managed_data_dir() else {
+        return 0;
+    };
+    let Ok(directory) = root.join(COMPACTION_ARCHIVE_DIR).canonicalize() else {
+        return 0;
+    };
+    remove_archives_in(&directory, paths)
+}
+
+fn remove_archives_in(directory: &Path, paths: &[String]) -> usize {
+    let mut removed = 0;
+    for path in paths {
+        let path = Path::new(path);
+        // 父目录必须就是归档目录；`..` 之类的越界路径在 canonicalize 后不会相等。
+        let inside = path
+            .parent()
+            .and_then(|parent| parent.canonicalize().ok())
+            .is_some_and(|parent| parent == directory);
+        if inside && std::fs::remove_file(path).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// 维护循环调用的实现；目录可注入，便于测试。
 pub(crate) fn prune_artifacts_in(
     spill_directory: &Path,
@@ -501,6 +531,28 @@ mod tests {
         assert_eq!(body.lines().count(), 1, "only the newest line fits");
         let decoded: CanonicalMessage = serde_json::from_str(body.trim_end()).unwrap();
         assert_eq!(decoded, newest);
+    }
+
+    /// 删除孤儿归档只作用于受管归档目录：`archive_path` 是库里的文本，不能变成
+    /// 任意路径删除。
+    #[test]
+    fn orphan_archive_removal_is_confined_to_the_archive_directory() {
+        let archive = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let directory = archive.path().canonicalize().unwrap();
+        let inside = directory.join("orphan.jsonl");
+        std::fs::write(&inside, b"gone").unwrap();
+        let kept = outside.path().join("keep.jsonl");
+        std::fs::write(&kept, b"keep").unwrap();
+
+        let removed = remove_archives_in(
+            &directory,
+            &[inside.display().to_string(), kept.display().to_string()],
+        );
+
+        assert_eq!(removed, 1);
+        assert!(!inside.exists());
+        assert!(kept.exists(), "受管目录之外的文件一个都不能碰");
     }
 
     /// 引用还在的文件不受天数限制：这正是"提示里的路径 7 天后失效"的修复。

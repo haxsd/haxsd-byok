@@ -13,6 +13,7 @@
 use tokio::net::TcpListener;
 
 use crate::{
+    anthropic::ClaudeSettings,
     codex::CodexSettings,
     devin::{gateway::DevinBoundPorts, DevinSettings},
     store::Store,
@@ -119,6 +120,89 @@ pub(super) async fn ensure_codex_port_usable(
     Ok(())
 }
 
+/// The Claude gateway binds one loopback port with the same no-fallback rule as
+/// Codex: a port held by another program, or by this app's own listeners, would
+/// otherwise surface as "saved, not listening" after the settings were written.
+/// `own_listener` is the port the running gateway already holds.
+pub(super) async fn ensure_claude_port_usable(
+    store: &Store,
+    settings: &ClaudeSettings,
+    own_listener: Option<u16>,
+) -> Result<()> {
+    let port = settings.port;
+    if port == 0 {
+        return Err(Error::Config("Claude port must be non-zero".into()));
+    }
+    for (owned, description) in app_ports_for_claude(store).await? {
+        if owned == port {
+            return Err(Error::Config(format!(
+                "Claude gateway port {port} is already used by haxsd byok as the {description}; choose a different port for the gateway"
+            )));
+        }
+    }
+    if own_listener == Some(port) {
+        return Ok(());
+    }
+    if !settings.enabled {
+        return Ok(());
+    }
+    if let Some(error) = bind_conflict(port).await {
+        return Err(Error::Config(match error.kind() {
+            std::io::ErrorKind::AddrInUse => format!(
+                "Claude gateway port {port} is already in use by another program on this machine; \
+                 close it or choose a different port for the gateway"
+            ),
+            _ => format!(
+                "Claude gateway port {port} cannot be listened on by this app: {error}; \
+                 choose a different port for the gateway"
+            ),
+        }));
+    }
+    Ok(())
+}
+
+/// Listeners owned by the other integrations. A settings read that fails only
+/// costs this check one comparison; its own page reports the real problem.
+async fn app_ports_for_claude(store: &Store) -> Result<Vec<(u16, &'static str)>> {
+    let ports = store.port_settings().await?;
+    let mut own = Vec::new();
+    for (port, description) in [
+        (ports.service_port, "management service port"),
+        (ports.proxy_port, "Cursor proxy port"),
+    ] {
+        if port != 0 {
+            own.push((port, description));
+        }
+    }
+    match store.devin_settings().await {
+        Ok(devin) => {
+            for (port, description) in [
+                (devin.api_port, "Devin API port"),
+                (devin.inference_port, "Devin inference port"),
+                (devin.local_api_port, "Devin local API port"),
+            ] {
+                if port != 0 {
+                    own.push((port, description));
+                }
+            }
+        }
+        Err(error) => tracing::warn!(
+            %error,
+            "Devin settings could not be read; the Claude port check skips its ports"
+        ),
+    }
+    match store.codex_settings().await {
+        Ok(codex) if codex.port != 0 => {
+            own.push((codex.port, "Codex gateway port"));
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            %error,
+            "Codex settings could not be read; the Claude port check skips its port"
+        ),
+    }
+    Ok(own)
+}
 /// The other listeners this app owns; the Codex port itself is deliberately not
 /// in the list (saving the same port again must stay a no-op, not a conflict).
 async fn app_ports_for_codex(store: &Store) -> Result<Vec<(u16, &'static str)>> {
@@ -148,6 +232,16 @@ async fn app_ports_for_codex(store: &Store) -> Result<Vec<(u16, &'static str)>> 
         Err(error) => tracing::warn!(
             %error,
             "Devin settings could not be read; the Codex port check skips its ports"
+        ),
+    }
+    match store.claude_settings().await {
+        Ok(claude) if claude.port != 0 => {
+            own.push((claude.port, "Claude gateway port"));
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            %error,
+            "Claude settings could not be read; the Codex port check skips its port"
         ),
     }
     Ok(own)
@@ -182,6 +276,17 @@ async fn app_ports(store: &Store) -> Result<Vec<AppPort>> {
             "Codex settings could not be read; the Devin port check skips its port"
         ),
     }
+    match store.claude_settings().await {
+        Ok(claude) if claude.port != 0 => own.push(AppPort {
+            port: claude.port,
+            description: "Claude gateway port",
+        }),
+        Ok(_) => {}
+        Err(error) => tracing::warn!(
+            %error,
+            "Claude settings could not be read; the Devin port check skips its port"
+        ),
+    }
     Ok(own)
 }
 
@@ -204,7 +309,7 @@ mod tests {
     use std::net::{Ipv4Addr, TcpListener as StdTcpListener};
 
     use super::*;
-    use crate::{codex::CodexSettings, store::Store};
+    use crate::{anthropic::ClaudeSettings, codex::CodexSettings, store::Store};
 
     /// A temp store with an isolated database file.
     async fn temp_store() -> (tempfile::TempDir, Store) {
@@ -530,5 +635,68 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(error.contains("Codex port must be non-zero"), "{error}");
+    }
+
+    /// Claude 页面的端口准入与 Codex 同规则：本应用自己的监听器按名字拒绝，
+    /// 网关自己已持有的端口与空闲端口可以再存。
+    #[tokio::test]
+    async fn claude_ports_are_checked_against_our_own_listeners_and_the_gateway_itself() {
+        let (_directory, store) = temp_store().await;
+        store.set_service_port(43_001).await.unwrap();
+        let error = ensure_claude_port_usable(
+            &store,
+            &ClaudeSettings {
+                enabled: true,
+                port: 43_001,
+                ..ClaudeSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("management service port") && error.contains("43001"),
+            "{error}"
+        );
+
+        ensure_claude_port_usable(
+            &store,
+            &ClaudeSettings {
+                enabled: true,
+                port: 43_002,
+                ..ClaudeSettings::default()
+            },
+            Some(43_002),
+        )
+        .await
+        .unwrap();
+
+        let port = free_port();
+        ensure_claude_port_usable(
+            &store,
+            &ClaudeSettings {
+                enabled: true,
+                port,
+                ..ClaudeSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+        let error = ensure_claude_port_usable(
+            &store,
+            &ClaudeSettings {
+                enabled: true,
+                port: 0,
+                ..ClaudeSettings::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("Claude port must be non-zero"), "{error}");
     }
 }

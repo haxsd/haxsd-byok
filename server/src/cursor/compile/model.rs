@@ -34,6 +34,7 @@ pub fn requested_model(request: &pb::AgentRunRequest) -> Result<ModelSpec> {
             context_window_tokens: None,
             supports_image_generation: false,
             extra_params: serde_json::json!({}),
+            stop_sequences: Vec::new(),
         }
     } else {
         return Err(Error::Protocol("Cursor Run does not select a model".into()));
@@ -102,6 +103,7 @@ fn from_requested(
         context_window_tokens: None,
         supports_image_generation: false,
         extra_params: serde_json::json!({}),
+        stop_sequences: Vec::new(),
     };
     for parameter in &model.parameters {
         match parameter.id.as_str() {

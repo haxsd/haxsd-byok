@@ -329,6 +329,13 @@ fn validate_definition(plugin_id: &str, definition: &PluginModuleDefinition) -> 
                         "plugin '{plugin_id}' OAuth callback port must be greater than zero"
                     )));
                 }
+                if let Some(host) = callback.host.as_deref() {
+                    if !super::descriptor::validate_callback_host(host) {
+                        return Err(Error::Config(format!(
+                            "plugin '{plugin_id}' OAuth callback host '{host}' must be '127.0.0.1' or 'localhost'"
+                        )));
+                    }
+                }
                 if let Some(path) = callback.path.as_deref() {
                     if !path.starts_with('/')
                         || path.len() > 128
@@ -390,6 +397,56 @@ pub(super) mod tests {
             roots: vec![root.join("installed")],
             definition_loader: PluginDefinitionLoader::for_test(root).unwrap(),
             app_version: "1.4.2".into(),
+        }
+    }
+
+    fn authorization_code_definition(host: Option<&str>) -> PluginModuleDefinition {
+        use super::super::descriptor::{
+            AddMethodDefinition, OAuthCallbackDefinition, ProviderDefinition, ResourceDefinition,
+        };
+        PluginModuleDefinition {
+            providers: vec![ProviderDefinition {
+                id: "claude".into(),
+                display_name: serde_json::json!("Claude"),
+                description: serde_json::Value::Null,
+                provider_type: "anthropic".into(),
+                resource_type: Some("account".into()),
+                has_models: true,
+            }],
+            resources: vec![ResourceDefinition {
+                resource_type: "account".into(),
+                display_name: serde_json::json!("Account"),
+                add: vec![AddMethodDefinition {
+                    method_type: super::super::descriptor::OAUTH2_AUTHORIZATION_CODE_ADD_METHOD
+                        .into(),
+                    id: "login".into(),
+                    display_name: serde_json::json!("Log in"),
+                    description: serde_json::Value::Null,
+                    callback: Some(OAuthCallbackDefinition {
+                        port: Some(54545),
+                        path: Some("/callback".into()),
+                        host: host.map(str::to_owned),
+                    }),
+                }],
+                import: None,
+                actions: vec![],
+                can_refresh: true,
+                can_remove: false,
+            }],
+        }
+    }
+
+    #[test]
+    fn oauth_callback_host_must_be_a_loopback_alias() {
+        for host in [None, Some("127.0.0.1"), Some("localhost")] {
+            validate_definition("plugin", &authorization_code_definition(host)).unwrap();
+        }
+        for host in ["example.com", "0.0.0.0", "::1", "127.0.0.1.evil.test"] {
+            let definition = authorization_code_definition(Some(host));
+            assert!(
+                validate_definition("plugin", &definition).is_err(),
+                "host {host} must be rejected"
+            );
         }
     }
 

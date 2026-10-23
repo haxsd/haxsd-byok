@@ -15,14 +15,14 @@ await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
 
-const idle = { cursorHarness: null, devinStatus: null, codexStatus: null };
+const idle = { cursorHarness: null, devinStatus: null, codexStatus: null, claudeStatus: null, claudeTakeover: null };
 const state = (overrides) => ({ ...idle, ...overrides });
 
 test("every client module is declared once, with its own path and status", async () => {
   const { harnessClients, harnessClientAt } = await loader.load("/src/features/harness/harnessClients.ts");
 
-  assert.deepEqual(harnessClients.map((client) => client.id), ["cursor", "devin", "codex"]);
-  assert.deepEqual(harnessClients.map((client) => client.path), ["/harness/cursor", "/harness/devin", "/harness/codex"]);
+  assert.deepEqual(harnessClients.map((client) => client.id), ["cursor", "devin", "codex", "claude"]);
+  assert.deepEqual(harnessClients.map((client) => client.path), ["/harness/cursor", "/harness/devin", "/harness/codex", "/harness/claude"]);
   for (const client of harnessClients) {
     assert.ok(client.label.length > 0, `${client.id} needs a label`);
     assert.ok(client.icon, `${client.id} needs an icon`);
@@ -32,6 +32,7 @@ test("every client module is declared once, with its own path and status", async
   assert.equal(harnessClients[0].entry(idle).status, null, "Cursor reports nothing before the first read");
   assert.equal(harnessClients[1].entry(idle).status, null, "Devin reports nothing before the first read");
   assert.equal(harnessClients[2].entry(idle).status.state, "checking", "Codex reports that it is still reading");
+  assert.equal(harnessClients[3].entry(idle).status.state, "checking", "Claude reports that it is still reading");
 
   assert.equal(harnessClientAt("/harness/devin")?.id, "devin", "an exact client path resolves");
   assert.equal(harnessClientAt("/harness/codex/sessions")?.id, "codex", "a child path resolves to its client");
@@ -50,7 +51,7 @@ test("the top entry counts active clients and takes the tone of the one that nee
   }));
   assert.equal(cursorOnly.state, "1-active");
   assert.equal(cursorOnly.tone, "ok");
-  assert.match(cursorOnly.label, /1\/3/);
+  assert.match(cursorOnly.label, /1\/4/);
 
   // Devin 保存了但端口还没起来：这一项是警告，聚合入口就该是警告色。
   const pending = harnessEntryStatus(state({
@@ -87,7 +88,7 @@ test("the page-level switch renders one entry per declared client with its own s
     ),
   ));
 
-  for (const [path, label] of [["/harness/cursor", "Cursor"], ["/harness/devin", "Devin"], ["/harness/codex", "Codex"]]) {
+  for (const [path, label] of [["/harness/cursor", "Cursor"], ["/harness/devin", "Devin"], ["/harness/codex", "Codex"], ["/harness/claude", "Claude"]]) {
     assert.match(markup, new RegExp(`href="${path}"`), `${path} is reachable from the switch`);
     assert.match(markup, new RegExp(`>${label}<`), `${label} keeps its own label`);
   }

@@ -45,7 +45,7 @@ function parseSession(value: JsonValue): Session {
   return { createdAtMs };
 }
 
-async function begin(
+function begin(
   input: { redirectUri: string; state: string; codeChallenge: string },
   _context: PluginContext,
 ): Promise<OAuth2AuthorizationCodeBegin> {
@@ -60,11 +60,11 @@ async function begin(
     access_type: "offline",
     prompt: "consent",
   });
-  return {
+  return Promise.resolve({
     session: { createdAtMs: Date.now() },
     authorizationUrl: `${GOOGLE_AUTHORIZATION_URL}?${authParams.toString()}`,
     expiresAtMs: Date.now() + AUTHORIZATION_LIFETIME_MS,
-  };
+  });
 }
 
 async function complete(

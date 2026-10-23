@@ -1,6 +1,8 @@
 //! Server library root; exposes the application, API, runtime, persistence, and integration layers.
+pub mod anthropic;
 pub mod api;
 pub mod app;
+pub mod claude_code;
 pub mod codex;
 pub mod config;
 pub mod control;

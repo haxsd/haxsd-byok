@@ -24,6 +24,14 @@
   gap: var(--oa-space-3);
 }
 
+/* 订阅账号不是官方支持的接入方式；这句话要在插件卡片之前出现，不能只藏在某个弹窗里。 */
+.riskNote {
+  margin: calc(var(--oa-space-2) * -1) 0 0;
+  color: var(--oa-warn);
+  font-size: type.$font-size-2xs;
+  line-height: 1.5;
+}
+
 .pluginCard {
   min-width: 0;
   display: flex;

@@ -111,18 +111,30 @@ export const codexModels: ModelSupport = {
       headers: accountHeaders(data),
     });
     if (response.status < 200 || response.status >= 300) {
-      throw new Error(`Codex model discovery failed (HTTP ${response.status}): ${response.body}`);
+      // 宿主在 list 抛错时保留上一次目录;这里必须带够诊断信息,而不是返回空数组
+      // (返回空数组会被宿主当成"成功但没有模型")。
+      throw new Error(discoveryFailure(response.status, response.body));
     }
     let body: unknown;
     try {
       body = JSON.parse(response.body) as JsonValue;
     } catch {
-      throw new Error("Codex model discovery returned invalid JSON");
+      throw new Error("Codex model discovery returned invalid JSON; the previous catalog is kept");
     }
     const models = parseOfficialModels(body);
     if (models.length === 0) {
-      throw new Error("Codex model discovery returned no supported models");
+      throw new Error(
+        "Codex model discovery returned no supported models; the previous catalog is kept",
+      );
     }
     return models;
   },
 };
+
+function discoveryFailure(status: number, body: string): string {
+  const detail = body.trim().slice(0, 200);
+  if (status === 401) {
+    return `Codex model discovery was rejected (HTTP 401); sign in again to refresh the ChatGPT session: ${detail}`;
+  }
+  return `Codex model discovery failed (HTTP ${status}); the previous catalog is kept: ${detail}`;
+}

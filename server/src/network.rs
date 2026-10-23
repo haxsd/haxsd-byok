@@ -719,6 +719,55 @@ pub async fn client_builder(store: &Store) -> Result<reqwest::ClientBuilder> {
     settings_builder(&settings)
 }
 
+/// GitHub Release 的下载域名。`github.com` 收到 `GET` 后 302 到
+/// `release-assets.githubusercontent.com`（偶尔是 `objects.githubusercontent.com`）。
+pub(crate) const GITHUB_RELEASE_HOSTS: &[&str] = &[
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+];
+
+/// 插件运行时下载专用的客户端：沿用同一份代理设置，但允许在 GitHub 的下载域名之间
+/// 跟随重定向。
+///
+/// 其它出网路径仍然只跟随同源重定向；这里放宽的前提是首跳 URL 由代码 pin 住、跳转
+/// 目标在白名单内、最终内容还要对 pin 住的 SHA-256 负责。
+pub async fn release_download_client(store: &Store) -> Result<reqwest::Client> {
+    Ok(client_builder(store)
+        .await?
+        .redirect(allow_listed_redirect(GITHUB_RELEASE_HOSTS))
+        .build()?)
+}
+
+/// 只跟随白名单域名之间的 HTTPS 跳转；其它跳转一律停下。
+pub(crate) fn allow_listed_redirect(hosts: &'static [&'static str]) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        let url = attempt.url();
+        let allowed = redirect_allowed(url, hosts);
+        if !allowed {
+            let from = attempt
+                .previous()
+                .last()
+                .map_or("<none>", reqwest::Url::as_str);
+            tracing::warn!(
+                from,
+                to = %url,
+                "refusing a redirect outside the release allowlist"
+            );
+            return attempt.stop();
+        }
+        attempt.follow()
+    })
+}
+
+/// 白名单判定的全部规则：只走 HTTPS，且目标主机必须在名单里。
+///
+/// 单独抽出来是为了能直接测：策略闭包本身没法在测试里调用，而"哪一跳允许"
+/// 正是这条下载路径唯一放宽的安全边界。
+fn redirect_allowed(url: &reqwest::Url, hosts: &[&str]) -> bool {
+    url.scheme() == "https" && url.host_str().is_some_and(|host| hosts.contains(&host))
+}
+
 /// 由一份代理设置构建请求客户端。缓存构建与 `client_builder` 共用这条路径，
 /// 保证"记进缓存的指纹"和"客户端实际走的路由"来自同一次读取。
 fn settings_builder(settings: &ProxySettingsSecret) -> Result<reqwest::ClientBuilder> {
@@ -1601,5 +1650,26 @@ mod tests {
             &previous,
             &reqwest::Url::parse("https://evil.example.com/v1/chat").unwrap()
         ));
+    }
+}
+
+#[cfg(test)]
+mod release_redirect_tests {
+    use super::*;
+
+    fn url(value: &str) -> reqwest::Url {
+        reqwest::Url::parse(value).unwrap()
+    }
+
+    #[test]
+    fn only_allowlisted_https_hosts_follow() {
+        let hosts = GITHUB_RELEASE_HOSTS;
+        assert!(redirect_allowed(
+            &url("https://release-assets.githubusercontent.com/x.zip"),
+            hosts
+        ));
+        assert!(redirect_allowed(&url("https://github.com/x.zip"), hosts));
+        assert!(!redirect_allowed(&url("http://github.com/x.zip"), hosts));
+        assert!(!redirect_allowed(&url("https://evil.example/x.zip"), hosts));
     }
 }

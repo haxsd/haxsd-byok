@@ -1,11 +1,14 @@
 import type { JsonValue, PluginContext } from "cursor-byok:plugin";
 import type { OAuth2AddMethod, OAuth2Begin, OAuth2Poll } from "cursor-byok:resource";
-import { type CredentialCandidate, credentialDraft } from "./resources.ts";
+import {
+  type CredentialCandidate,
+  credentialDraft,
+  OAUTH_CLIENT_ID as CLIENT_ID,
+  OAUTH_TOKEN_URL,
+} from "./resources.ts";
 
-const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const DEVICE_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
 const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
-const OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
 const VERIFICATION_URI = "https://auth.openai.com/codex/device";
 
@@ -122,7 +125,13 @@ async function exchangeAuthorizationCode(
       errorMessage(body) ?? `Failed to exchange Codex authorization code (HTTP ${response.status})`,
     );
   }
-  return { accessToken, refreshToken: text(body.refresh_token), displayName: null };
+  const expiresIn = number(body.expires_in);
+  return {
+    accessToken,
+    refreshToken: text(body.refresh_token),
+    displayName: null,
+    expiresAtMs: expiresIn === null ? null : Date.now() + expiresIn * 1000,
+  };
 }
 
 async function completed(credential: CredentialCandidate): Promise<OAuth2Poll> {
@@ -162,10 +171,12 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
 
   const directToken = text(body.access_token);
   if (directToken) {
+    const expiresIn = number(body.expires_in);
     return await completed({
       accessToken: directToken,
       refreshToken: text(body.refresh_token),
       displayName: null,
+      expiresAtMs: expiresIn === null ? null : Date.now() + expiresIn * 1000,
     });
   }
 

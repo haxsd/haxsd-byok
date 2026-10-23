@@ -1,10 +1,12 @@
 import type { JsonValue, PluginContext } from "cursor-byok:plugin";
 import type { OAuth2AddMethod, OAuth2Begin, OAuth2Poll } from "cursor-byok:resource";
-import { credentialDraft } from "./resources.ts";
+import {
+  credentialDraft,
+  OAUTH_CLIENT_ID as CLIENT_ID,
+  OAUTH_TOKEN_URL as TOKEN_URL,
+} from "./resources.ts";
 
-const CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 const DEVICE_CODE_URL = "https://auth.x.ai/oauth2/device/code";
-const TOKEN_URL = "https://auth.x.ai/oauth2/token";
 const SCOPE = "openid profile email offline_access grok-cli:access api:access";
 
 type Session = {
@@ -99,6 +101,7 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
     if (!accessToken) {
       return { status: "failed", message: "xAI token response is missing access_token" };
     }
+    const expiresIn = number(body.expires_in);
     return {
       status: "completed",
       resources: [
@@ -106,6 +109,7 @@ async function poll(sessionValue: JsonValue, context: PluginContext): Promise<OA
           accessToken,
           refreshToken: text(body.refresh_token),
           displayName: null,
+          expiresAtMs: expiresIn === null ? null : Date.now() + expiresIn * 1000,
         }),
       ],
     };

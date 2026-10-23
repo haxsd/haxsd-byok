@@ -41,9 +41,11 @@ pub fn response_event(
         | ModelEvent::TextStart
         | ModelEvent::TextEnd
         | ModelEvent::ThinkingStart
+        | ModelEvent::ThinkingSignature(_)
         | ModelEvent::ThinkingEnd
         | ModelEvent::ProviderReplayState(_)
         | ModelEvent::Usage(_)
+        | ModelEvent::StopSequence(_)
         | ModelEvent::Done(_) => return Ok(None),
     };
     Ok(Some(server_interaction(message)))

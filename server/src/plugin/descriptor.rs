@@ -77,6 +77,17 @@ pub struct OAuthCallbackDefinition {
     pub port: Option<u16>,
     #[serde(default)]
     pub path: Option<String>,
+    /// 生成 redirect_uri 时使用的主机名；只允许回环地址。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+/// 插件可声明的回调主机。上游只登记了 `localhost` 时，插件需要让 redirect_uri
+/// 与登记值逐字一致；宿主仍然只把监听 socket 绑在回环地址上。
+pub const OAUTH_CALLBACK_HOSTS: [&str; 2] = ["127.0.0.1", "localhost"];
+
+pub fn validate_callback_host(host: &str) -> bool {
+    OAUTH_CALLBACK_HOSTS.contains(&host)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

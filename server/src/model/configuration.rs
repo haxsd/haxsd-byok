@@ -609,6 +609,13 @@ pub struct ModelSpec {
     pub supports_image_generation: bool,
     #[serde(default)]
     pub extra_params: serde_json::Value,
+    /// 本轮请求要求上游在生成到这些字符串时停止。
+    ///
+    /// 它是**请求**参数而不是模型配置：入站网关把客户端给的停止序列放在这里，
+    /// 适配器按各自协议转发（Anthropic `stop_sequences`、OpenAI Chat `stop`）。
+    /// 协议不支持的适配器（Responses）由入站网关在事件层截断。
+    #[serde(default)]
+    pub stop_sequences: Vec<String>,
 }
 
 impl ModelSpec {
@@ -622,6 +629,7 @@ impl ModelSpec {
             context_window_tokens: None,
             supports_image_generation: false,
             extra_params: serde_json::json!({}),
+            stop_sequences: Vec::new(),
         }
     }
 }

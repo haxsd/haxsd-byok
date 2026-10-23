@@ -15,6 +15,7 @@ use cursor_server::{
     },
     model::{ContentPart, MessageContent, ProjectedContent},
     provider::{FinishReason, ModelEvent},
+    run::BackgroundWaitPolicy,
 };
 use prost::Message;
 
@@ -26,6 +27,11 @@ const TASK_CALL: &str = "call-task";
 /// （`subagents.rs` 的静态集合），两个用例共用 id 会互相去重，所以这里各用一套。
 const STOPPED_TASK_CALL: &str = "call-stopped-task";
 const STOPPED_CHILD_CONVERSATION: &str = "stopped-child-conversation";
+
+/// 「活动度」那条用例自己的身份，理由同上。
+const ACTIVE_TASK_CALL: &str = "call-active-task";
+const ACTIVE_PARENT_CONVERSATION: &str = "active-parent-conversation";
+const ACTIVE_CHILD_CONVERSATION: &str = "active-child-conversation";
 
 /// 父轮第一轮：派一个后台子代理。
 fn task_call_events(call_id: &str) -> Vec<ModelEvent> {
@@ -678,6 +684,291 @@ async fn a_stopped_conversation_is_not_woken_by_a_finished_subagent() {
             .any(|message| message.runtime_event_id.as_deref() == Some(wake_marker.as_str())),
         "被停止的会话的历史里仍然出现了后台子代理的完成通知"
     );
+}
+
+/// 子代理还在持续工作时，父轮必须继续等：活动时间戳不断推进，父轮就不能收尾。
+///
+/// 阈值通过 `BackgroundWaitPolicy` 缩到秒级：空闲 400ms。旧实现按固定截止时间收尾
+/// （与活动无关），或者只看父轮已经等了多久，都会在等待 400ms 后结束这一轮。这里先
+/// 把子代理的 `updated_at_ms` 设成一小时前，再在等待期间持续刷新——只有真正读取活动
+/// 时间戳的实现才能一直等到子代理结束。
+#[tokio::test]
+async fn a_background_subagent_that_keeps_working_is_not_cut_off_by_a_fixed_deadline() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(
+        ACTIVE_PARENT_CONVERSATION,
+        task_call_events(ACTIVE_TASK_CALL),
+    );
+    provider.push_for(
+        ACTIVE_PARENT_CONVERSATION,
+        text_events("waiting for the active subagent"),
+    );
+    let finish_child =
+        provider.push_gated_for(ACTIVE_CHILD_CONVERSATION, text_events("child finished"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::with_background_wait(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+        BackgroundWaitPolicy {
+            poll: std::time::Duration::from_millis(20),
+            completion_grace: std::time::Duration::from_millis(50),
+            idle_timeout: std::time::Duration::from_millis(400),
+            ceiling: std::time::Duration::from_secs(10),
+            heartbeat: std::time::Duration::from_millis(100),
+            progress_log: std::time::Duration::from_secs(60),
+        },
+    );
+
+    let parent = registry
+        .get_or_create("active-parent-request")
+        .await
+        .unwrap();
+    let mut parent_output = parent.subscribe();
+    parent
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                ACTIVE_PARENT_CONVERSATION,
+                "active-parent-request",
+                "active-parent-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+
+    // 驱动父轮派出后台子代理；子代理的流也要有人读，否则它收不了尾。
+    let mut parent_seqno = 1;
+    let mut child_started = false;
+    while !child_started {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), parent_output.recv())
+            .await
+            .expect("父轮没有派出后台子代理")
+            .expect("父轮的流提前关闭");
+        let Some(server) = frame_role(&frame) else {
+            panic!("父轮在派子代理之前就收尾了");
+        };
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await
+                    .unwrap();
+                parent_seqno += 1;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
+                let handle = registry
+                    .get_or_create("active-child-request")
+                    .await
+                    .unwrap();
+                handle
+                    .set_parent(TransportParent {
+                        request_id: Some("active-parent-request".into()),
+                        tool_call_id: Some(ACTIVE_TASK_CALL.into()),
+                    })
+                    .unwrap();
+                handle
+                    .command(TransportCommand::Append {
+                        seqno: 0,
+                        message: Box::new(run_request(
+                            ACTIVE_CHILD_CONVERSATION,
+                            "active-child-request",
+                            "active-child-user",
+                            true,
+                        )),
+                    })
+                    .await
+                    .unwrap();
+                let child_handle = handle.clone();
+                let mut child_output = handle.subscribe();
+                tokio::spawn(async move {
+                    let mut seqno = 1;
+                    while let Some(frame) = child_output.recv().await {
+                        let Some(server) = frame_role(&frame) else {
+                            break;
+                        };
+                        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                            server.message
+                        {
+                            let _ = child_handle
+                                .command(TransportCommand::Append {
+                                    seqno,
+                                    message: Box::new(kv_ack(kv.id)),
+                                })
+                                .await;
+                            seqno += 1;
+                        }
+                    }
+                });
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(task_result(exec.id, ACTIVE_CHILD_CONVERSATION)),
+                    })
+                    .await
+                    .unwrap();
+                parent_seqno += 1;
+                child_started = true;
+            }
+            _ => {}
+        }
+    }
+    wait_for_tool_call_completed(&store, ACTIVE_TASK_CALL).await;
+    // 父轮发起第二次模型调用之前还要回完 blob 的 KV 回执；不读帧它就会停在那里，
+    // 等不到"进入等待"的那一刻。
+    let ready_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while provider.requests().len() < 3 {
+        assert!(
+            tokio::time::Instant::now() < ready_deadline,
+            "父轮没有发起第二次模型调用"
+        );
+        match tokio::time::timeout(std::time::Duration::from_millis(50), parent_output.recv()).await
+        {
+            Ok(Some(frame)) => {
+                let Some(server) = frame_role(&frame) else {
+                    panic!("父轮在进入等待之前就收尾了");
+                };
+                if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message
+                {
+                    parent
+                        .command(TransportCommand::Append {
+                            seqno: parent_seqno,
+                            message: Box::new(kv_ack(kv.id)),
+                        })
+                        .await
+                        .unwrap();
+                    parent_seqno += 1;
+                }
+            }
+            Ok(None) => panic!("父轮在进入等待之前就关闭了流"),
+            Err(_) => {}
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    // 先造出"子代理上次活动是一小时前"：不读活动时间戳的实现会把它当成已经空闲。
+    sqlx::query(
+        "UPDATE runs
+            SET updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER) - 3600000
+          WHERE cursor_request_id = 'active-child-request'",
+    )
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // 之后持续刷新活动，跑过 3 个空闲阈值：父轮必须一直保持等待，并且有保活帧。
+    let mut saw_heartbeat = false;
+    let refresh_deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(1_500);
+    while tokio::time::Instant::now() < refresh_deadline {
+        sqlx::query(
+            "UPDATE runs
+                SET updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+              WHERE cursor_request_id = 'active-child-request'",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        match tokio::time::timeout(std::time::Duration::from_millis(30), parent_output.recv()).await
+        {
+            Ok(Some(frame)) => match frame_role(&frame) {
+                Some(server) => match server.message {
+                    Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                        parent
+                            .command(TransportCommand::Append {
+                                seqno: parent_seqno,
+                                message: Box::new(kv_ack(kv.id)),
+                            })
+                            .await
+                            .unwrap();
+                        parent_seqno += 1;
+                    }
+                    Some(pb::agent_server_message::Message::InteractionUpdate(update)) => {
+                        if matches!(
+                            update.message,
+                            Some(pb::interaction_update::Message::Heartbeat(_))
+                        ) {
+                            saw_heartbeat = true;
+                        }
+                    }
+                    _ => {}
+                },
+                None => panic!("父轮在子代理仍在活动时就收尾了"),
+            },
+            Ok(None) => panic!("父轮在子代理仍在活动时关闭了流"),
+            Err(_) => {}
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    }
+
+    let parent_status: String = sqlx::query_scalar(
+        "SELECT status FROM runs WHERE cursor_request_id = 'active-parent-request'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(parent_status, "running", "子代理持续有活动，父轮却已经收尾");
+    assert_eq!(
+        provider.requests().len(),
+        3,
+        "父轮 2 次 + 子代理那条挂住的调用；等待期间父轮不该再问模型，也不该提前收尾"
+    );
+    assert!(saw_heartbeat, "长等待期间没有发出保活帧");
+
+    // 停止刷新：子代理真的空闲了，父轮应在空闲阈值后收尾，而不是永久挂住。
+    let mut ended = false;
+    let end_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while tokio::time::Instant::now() < end_deadline {
+        match tokio::time::timeout(std::time::Duration::from_millis(500), parent_output.recv())
+            .await
+        {
+            Ok(Some(frame)) => match frame_role(&frame) {
+                Some(server) => {
+                    if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                        server.message
+                    {
+                        parent
+                            .command(TransportCommand::Append {
+                                seqno: parent_seqno,
+                                message: Box::new(kv_ack(kv.id)),
+                            })
+                            .await
+                            .unwrap();
+                        parent_seqno += 1;
+                    }
+                }
+                None => {
+                    ended = true;
+                    break;
+                }
+            },
+            Ok(None) => {
+                ended = true;
+                break;
+            }
+            Err(_) => {}
+        }
+    }
+    assert!(ended, "子代理已经没有活动，父轮却仍未收尾");
+    wait_for_run_status(&store, "active-parent-request", "completed").await;
+    assert_eq!(provider.requests().len(), 3, "空闲收尾不该再问一次模型");
+
+    // 让子代理正常结束，避免测试结束时还留着一条挂住的运行。
+    finish_child.notify_one();
+    wait_for_run_status(&store, "active-child-request", "completed").await;
 }
 
 // 边界说明：为什么这里没有"服务端已自行收尾之后客户端才断开"这条用例——

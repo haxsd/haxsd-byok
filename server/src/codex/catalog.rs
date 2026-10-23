@@ -9,6 +9,10 @@ use serde_json::{json, Value};
 /// `upstream::normalize_reasoning` 原样转给上游。
 const REASONING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
+/// 上下文窗口的合理上限：比当前最大的商用模型高一个数量级，同时保证目录里的
+/// `context * 4 / 5` 不会溢出。
+pub(crate) const MAX_CONTEXT_WINDOW: u64 = 10_000_000;
+
 /// 官方基础指令之外的那些 `model_messages` 段落（持久模式、协作模式、多代理、审批、
 /// 自动复核、权限、Token 预算、确认策略）。
 ///
@@ -105,10 +109,10 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
     for (index, model) in models.iter().enumerate() {
         let context = model
             .context_window_tokens
-            .filter(|n| *n >= 4096 && *n <= i64::MAX as u64)
+            .filter(|n| (4096..=MAX_CONTEXT_WINDOW).contains(n))
             .ok_or_else(|| {
                 Error::Config(format!(
-                    "configure the actual context window for {}",
+                    "configure the actual context window (4096..={MAX_CONTEXT_WINDOW} tokens) for {}",
                     model.display_name
                 ))
             })?;
@@ -124,6 +128,10 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
             Vec::new()
         };
         // 能力字段照官方模型的形状宣告：客户端"能用哪些功能"全看它们，少一个界面就少一块。
+        //
+        // `effective_context_window_percent` 是客户端**实际用来算输入预算**的比例：95 表示
+        // 留 5% 余量（800k 的模型在界面里显示 760k）。它不再由 config.toml 的全局窗口
+        // 覆盖——那份覆盖只按默认模型写一次，客户端换模型时不会更新。
         //
         // 仍然不宣告的、以及为什么不宣告：
         // - `supports_search_tool` / `web_search_tool_type`：托管搜索由模型服务商执行，我们
@@ -290,6 +298,32 @@ mod tests {
         assert_eq!(catalog["models"][0]["default_reasoning_level"], "xhigh");
         let catalog = build_catalog(&[model(ModelType::Anthropic, Some("low"), None)]).unwrap();
         assert_eq!(catalog["models"][0]["default_reasoning_level"], Value::Null);
+    }
+
+    /// 每个模型按自己的配置宣告窗口：800k 的模型不能被另一个模型的 286k 夹住。
+    #[test]
+    fn each_model_publishes_its_own_configured_window() {
+        let mut large = model(ModelType::OpenAi, None, None);
+        large.context_window_tokens = Some(800_000);
+        let mut small = model(ModelType::OpenAi, None, None);
+        small.model_hash = "small".into();
+        small.context_window_tokens = Some(286_000);
+
+        let catalog = build_catalog(&[large, small]).unwrap();
+        assert_eq!(catalog["models"][0]["context_window"], 800_000);
+        assert_eq!(catalog["models"][0]["max_context_window"], 800_000);
+        assert_eq!(catalog["models"][0]["auto_compact_token_limit"], 640_000);
+        assert_eq!(catalog["models"][1]["context_window"], 286_000);
+        assert_eq!(catalog["models"][1]["max_context_window"], 286_000);
+        assert_eq!(catalog["models"][1]["auto_compact_token_limit"], 228_800);
+    }
+
+    /// 离谱的窗口不猜也不截断：直接拒绝，避免目录里的 `* 4 / 5` 溢出。
+    #[test]
+    fn an_absurd_context_window_is_refused() {
+        let mut model = model(ModelType::OpenAi, None, None);
+        model.context_window_tokens = Some(MAX_CONTEXT_WINDOW + 1);
+        assert!(build_catalog(&[model]).is_err());
     }
 
     /// 客户端的功能开关全在这些字段上：少一个，界面上就少一块（以前"用起来丢功能"的根因）。

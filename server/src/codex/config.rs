@@ -14,18 +14,22 @@ const PROVIDER: &str = "haxsd-byok";
 /// `web_search` **不在**这里：Codex 客户端自己的设置界面会写它（联网搜索开关）。把它算作
 /// 路由字段的代价是——用户在客户端里点一下搜索，我们这边就报"配置冲突"、两个按钮都动不了。
 /// 它仍然是我们接管时会写的字段（见 `OWNED_KEYS`），但只作为"与接管快照不一致"的提示，
-/// 不阻断路由判定。
-const ROUTING_KEYS: &[&str] = &[
-    "model_provider",
-    "model_catalog_json",
-    "model_context_window",
-    "model_auto_compact_token_limit",
-];
+/// 不阻断路由判定。旧的全局窗口/压缩阈值（`LEGACY_GLOBAL_LIMITS`）同理：接管期间会被
+/// 删除，客户端或用户重新加回来也只是字段提示。
+const ROUTING_KEYS: &[&str] = &["model_provider", "model_catalog_json"];
+/// 旧版本写在配置里的全局窗口与压缩阈值。
+///
+/// 它们按“接管那一刻的默认模型”写一次，客户端在界面里换模型时不会跟着变：默认模型
+/// 是 286k 的 GPT 时，切到 800k 的 DeepSeek 仍按 286k（的 95%）显示和压缩。窗口与
+/// 压缩阈值现在只由能力目录逐模型声明；这两个键只保留为受管字段，撤销时把用户接管
+/// 前的原值还回去，接管期间一律删除（见 `drop_global_limits`）。
+const LEGACY_GLOBAL_LIMITS: [&str; 2] = ["model_context_window", "model_auto_compact_token_limit"];
 /// 客户端自己会写的字段：Codex 允许用户在它自己的界面里切模型，切换时它会写
 /// `model = "<slug>"`。切换后的 slug 仍在本次发布目录里就不算外部冲突——否则用户
 /// 一切换模型，所有请求都会 409。
 const MODEL_KEY: &str = "model";
-/// 应用与恢复都作用于这一组：路由字段加上我们要负责换回原样的 model。
+/// 应用与恢复都作用于这一组：路由字段、我们要负责换回原样的 model，以及旧版本留下
+/// 的全局窗口字段（接管期间删除，撤销时按收据还原用户原值）。
 const OWNED_KEYS: &[&str] = &[
     MODEL_KEY,
     "model_provider",
@@ -52,7 +56,6 @@ pub struct ConfigRoute {
     pub base_url: String,
     pub token: String,
     pub catalog_path: PathBuf,
-    pub context_window: u64,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ConfigStatus {
@@ -635,8 +638,6 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     let url = url::Url::parse(&route.base_url).map_err(|e| Error::Config(e.to_string()))?;
     if url.scheme() != "http"
         || url.host_str() != Some("127.0.0.1")
-        || route.context_window < 4096
-        || route.context_window > i64::MAX as u64
         || route.token.is_empty()
         || route.model.is_empty()
     {
@@ -658,7 +659,6 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
                 || doc["model"].as_str() != Some(route.model.as_str())
                 || doc["model_catalog_json"].as_str()
                     != Some(route.catalog_path.to_string_lossy().as_ref())
-                || doc["model_context_window"].as_integer() != Some(route.context_window as i64)
                 || desired_provider
                     .get("experimental_bearer_token")
                     .and_then(Item::as_str)
@@ -668,7 +668,10 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
                     "restore the existing Codex route before changing it".into(),
                 ));
             }
-            return Ok(current);
+            // 旧版本把默认模型的窗口写成了全局覆盖：这里顺手清掉，让已接管的用户
+            // 不必先撤销再应用就能拿到逐模型的窗口。
+            drop_global_limits(home)?;
+            return inspect(home);
         }
         if !route_matches(&doc, &parse(receipt.original.as_deref().unwrap_or(""))?) {
             return Err(Error::Config(
@@ -692,8 +695,11 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     doc["web_search"] = value("disabled");
     doc["model_provider"] = value(PROVIDER);
     doc["model_catalog_json"] = value(route.catalog_path.to_string_lossy().as_ref());
-    doc["model_context_window"] = value(route.context_window as i64);
-    doc["model_auto_compact_token_limit"] = value((route.context_window * 4 / 5) as i64);
+    // 窗口与压缩阈值只在能力目录里逐模型声明：全局键会盖住目录，客户端换模型时
+    // 又不会更新它，最终把 800k 的模型压回默认模型的窗口。
+    for key in LEGACY_GLOBAL_LIMITS {
+        doc.remove(key);
+    }
     doc["model_providers"][PROVIDER]["name"] = value("haxsd byok");
     doc["model_providers"][PROVIDER]["base_url"] = value(route.base_url.as_str());
     doc["model_providers"][PROVIDER]["wire_api"] = value("responses");
@@ -813,6 +819,57 @@ pub(super) fn applied_catalog(home: &Path) -> Result<Option<serde_json::Value>> 
     Ok(Some(serde_json::from_slice(&bytes)?))
 }
 
+/// 删除旧版本写下的全局窗口/压缩阈值，并同步收据里的 applied 快照。
+///
+/// 只改这两个键：`model`、其它受管字段与用户自己的配置都原样保留。没有收据
+/// （未接管）时不写任何文件；返回是否真的改过。配置已不是我们发布的那条时拒绝——
+/// 那属于冲突，应该由用户显式撤销，而不是在这里替他改文件。
+pub(super) fn drop_global_limits(home: &Path) -> Result<bool> {
+    absolute(home)?;
+    let Some(receipt) = receipt(home)? else {
+        return Ok(false);
+    };
+    let path = home.join("config.toml");
+    let Some(current) = read(&path)? else {
+        return Ok(false);
+    };
+    let mut doc = parse(&current)?;
+    let mut applied = parse(&receipt.applied)?;
+    if !route_matches(&doc, &applied) {
+        return Err(Error::Config(
+            "Codex managed configuration was modified; refusing to drop its global limits".into(),
+        ));
+    }
+    let mut changed = false;
+    for key in LEGACY_GLOBAL_LIMITS {
+        changed |= doc.remove(key).is_some();
+        changed |= applied.remove(key).is_some();
+    }
+    if !changed {
+        return Ok(false);
+    }
+    if read(&path)?.as_deref() != Some(current.as_str()) {
+        return Err(Error::Config(
+            "Codex config changed while preparing the update".into(),
+        ));
+    }
+    atomic_write(
+        &home.join(RECEIPT),
+        &serde_json::to_vec(&Receipt {
+            version: 1,
+            original: receipt.original,
+            applied: applied.to_string(),
+        })?,
+    )?;
+    if read(&path)?.as_deref() != Some(current.as_str()) {
+        return Err(Error::Config(
+            "Codex config changed before replacement; restore receipt retained".into(),
+        ));
+    }
+    atomic_write(&path, doc.to_string().as_bytes())?;
+    Ok(true)
+}
+
 pub(super) fn write_catalog(home: &Path, bytes: &[u8]) -> Result<PathBuf> {
     use sha2::{Digest, Sha256};
     absolute(home)?;
@@ -923,7 +980,6 @@ mod tests {
             base_url: "http://127.0.0.1:43120/v1".into(),
             token: "local-test-token".into(),
             catalog_path: catalog(home, &["model-a", "model-b"]),
-            context_window: 32768,
         }
     }
 
@@ -1198,6 +1254,94 @@ mod tests {
         assert!(status.conflict, "{}", status.message);
     }
 
+    /// 接管只发布逐模型的能力目录，不写全局窗口覆盖。
+    ///
+    /// 全局键只覆盖“接管时的默认模型”，客户端换模型不会更新它：286k 的默认模型会把
+    /// 800k 的模型压回 286k（再乘目录里的 95% 就是用户看到的 272k）。
+    #[test]
+    fn applying_leaves_each_models_window_to_the_catalog() {
+        let directory = applied_home(None);
+        let doc = parse(&config_text(directory.path())).unwrap();
+        for key in LEGACY_GLOBAL_LIMITS {
+            assert!(
+                doc.get(key).is_none(),
+                "{key} 会盖住目录里的窗口: {}",
+                config_text(directory.path())
+            );
+        }
+    }
+
+    /// 旧版本写下的全局窗口仍算受管字段：接管期间删除，撤销时按收据还原用户原值。
+    #[test]
+    fn legacy_global_limits_are_dropped_while_applied_and_restored_on_restore() {
+        let original =
+            "model = 'user-choice'\nmodel_context_window = 286000\nmodel_auto_compact_token_limit = 228800\n";
+        let directory = applied_home(Some(original));
+        let doc = parse(&config_text(directory.path())).unwrap();
+        assert!(doc.get("model_context_window").is_none());
+        assert!(doc.get("model_auto_compact_token_limit").is_none());
+
+        restore(directory.path()).unwrap();
+        assert_eq!(config_text(directory.path()), original);
+    }
+
+    /// 已经接管的旧配置：再应用一次只清掉全局键，路由仍然是我们的，不需要先撤销。
+    #[test]
+    fn reapplying_an_old_takeover_drops_its_global_limits() {
+        let directory = applied_home(None);
+        edit(directory.path(), |doc| {
+            doc["model_context_window"] = value(286000);
+            doc["model_auto_compact_token_limit"] = value(228800);
+        });
+        let drifted = inspect(directory.path()).unwrap();
+        assert!(drifted.applied, "{}", drifted.message);
+        assert_eq!(drifted.conflicts.len(), 2, "{:?}", drifted.conflicts);
+
+        apply(directory.path(), &route(directory.path())).unwrap();
+        let doc = parse(&config_text(directory.path())).unwrap();
+        for key in LEGACY_GLOBAL_LIMITS {
+            assert!(
+                doc.get(key).is_none(),
+                "{key} 还在: {}",
+                config_text(directory.path())
+            );
+        }
+        let status = inspect(directory.path()).unwrap();
+        assert!(
+            status.applied && status.conflicts.is_empty(),
+            "{}",
+            status.message
+        );
+    }
+
+    /// 请求路径上的自愈：不改路由、不碰用户的其它键，只删两个全局覆盖。
+    #[test]
+    fn dropping_global_limits_is_idempotent_and_keeps_the_rest_of_the_file() {
+        let directory = applied_home(Some("[desktop]\nscale = 1.25\n"));
+        edit(directory.path(), |doc| {
+            doc["model_context_window"] = value(286000);
+            doc["model_auto_compact_token_limit"] = value(228800);
+        });
+        assert!(drop_global_limits(directory.path()).unwrap());
+        assert!(
+            !drop_global_limits(directory.path()).unwrap(),
+            "第二次没有可删的键"
+        );
+        let doc = parse(&config_text(directory.path())).unwrap();
+        assert_eq!(doc["desktop"]["scale"].as_float(), Some(1.25));
+        assert!(inspect(directory.path()).unwrap().applied);
+    }
+
+    /// 没有接管凭证时，清理不会碰用户自己的全局窗口设置。
+    #[test]
+    fn dropping_global_limits_without_a_receipt_does_nothing() {
+        let directory = tempfile::tempdir().unwrap();
+        let original = "model_context_window = 286000\n";
+        fs::write(directory.path().join("config.toml"), original).unwrap();
+        assert!(!drop_global_limits(directory.path()).unwrap());
+        assert_eq!(config_text(directory.path()), original);
+    }
+
     /// 路由字段被外部改动：仍然报冲突（应用不能覆盖别家的路由），但撤销永远可用——
     /// 只把 `OWNED_KEYS` 与 provider 表还回接管前的样子，用户自己的其它键原样保留。
     #[test]
@@ -1208,7 +1352,7 @@ mod tests {
             |doc| {
                 doc["model_providers"][PROVIDER]["experimental_bearer_token"] = value("other-token")
             },
-            |doc| doc["model_context_window"] = value(16384),
+            |doc| doc["model_catalog_json"] = value("C:/elsewhere/models.json"),
         ];
         for change in changes {
             let directory = applied_home(Some(original));

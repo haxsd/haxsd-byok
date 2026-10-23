@@ -58,6 +58,7 @@ struct CallbackQuery {
 }
 
 pub(super) async fn bind(
+    host: &str,
     port: Option<u16>,
     path: &str,
     expected_state: String,
@@ -65,6 +66,13 @@ pub(super) async fn bind(
     plugin_icon: String,
     resource_name: serde_json::Value,
 ) -> Result<CallbackHandle> {
+    if !super::descriptor::validate_callback_host(host) {
+        return Err(Error::Config(format!(
+            "plugin OAuth callback host '{host}' must be '127.0.0.1' or 'localhost'"
+        )));
+    }
+    // redirect_uri 用清单声明的 host，监听始终只落在 IPv4 回环地址上；
+    // localhost 只是浏览器侧的别名，不会把回调端口暴露到局域网。
     let address = SocketAddr::from(([127, 0, 0, 1], port.unwrap_or(0)));
     let listener = tokio::net::TcpListener::bind(address)
         .await
@@ -74,7 +82,7 @@ pub(super) async fn bind(
             ))
         })?;
     let local_address = listener.local_addr()?;
-    let redirect_uri = format!("http://127.0.0.1:{}{path}", local_address.port());
+    let redirect_uri = format!("http://{}:{}{}", host, local_address.port(), path);
     let (sender, receiver) = oneshot::channel();
     let shutdown = CancellationToken::new();
     let state = CallbackState {
@@ -104,13 +112,33 @@ pub(super) async fn bind(
     })
 }
 
+/// 授权码可能以 `code#state` 的形式返回。返回去掉片段后的 code 与片段里的 state；
+/// 空片段视为没有 state。
+fn split_code_state(raw: &str) -> (&str, Option<&str>) {
+    let raw = raw.trim();
+    match raw.split_once('#') {
+        Some((code, state)) => {
+            let state = state.trim();
+            (code.trim(), (!state.is_empty()).then_some(state))
+        }
+        None => (raw, None),
+    }
+}
+
 async fn handle_callback(
     State(state): State<CallbackState>,
     headers: HeaderMap,
     Query(query): Query<CallbackQuery>,
 ) -> Html<String> {
     let locale = callback_locale(&headers);
-    if query.state.as_deref() != Some(state.expected_state.as_str()) {
+    // 少数上游把 state 附在授权码后面返回（`code#state`），回环回调的查询串
+    // 里却只有 code。两种形式都接受：查询参数里的 state 优先，其次才是片段。
+    let (code, fragment_state) = match query.code.as_deref() {
+        Some(code) => split_code_state(code),
+        None => ("", None),
+    };
+    let state_value = query.state.as_deref().or(fragment_state);
+    if state_value != Some(state.expected_state.as_str()) {
         return Html(render_page(
             &state,
             locale,
@@ -123,8 +151,8 @@ async fn handle_callback(
         ));
     }
 
-    let result = match query.code.filter(|code| !code.trim().is_empty()) {
-        Some(code) => Ok(code),
+    let result = match Some(code).filter(|code| !code.is_empty()) {
+        Some(code) => Ok(code.to_owned()),
         None => Err(query.error_description.or(query.error).unwrap_or_else(|| {
             localized(locale, "授权被取消。", "Authorization was cancelled.").to_owned()
         })),
@@ -298,6 +326,7 @@ mod tests {
     #[tokio::test]
     async fn callback_rejects_wrong_state_then_delivers_code() {
         let mut callback = bind(
+            "127.0.0.1",
             None,
             "/oauth-callback",
             "expected".into(),
@@ -343,5 +372,88 @@ mod tests {
             })
             .unwrap();
         assert!(browser.await.unwrap().contains("Resource added"));
+    }
+
+    #[tokio::test]
+    async fn callback_host_is_limited_to_loopback_aliases() {
+        for host in ["127.0.0.1", "localhost"] {
+            let callback = bind(
+                host,
+                None,
+                "/callback",
+                "expected".into(),
+                "Plugin".into(),
+                "data:image/svg+xml;base64,abc".into(),
+                serde_json::json!("Account"),
+            )
+            .await
+            .unwrap();
+            assert!(
+                callback
+                    .redirect_uri
+                    .starts_with(&format!("http://{}:", host)),
+                "redirect_uri must use the declared host, got {}",
+                callback.redirect_uri
+            );
+        }
+
+        for host in ["example.com", "0.0.0.0", "::1", "localhost.evil.test"] {
+            let result = bind(
+                host,
+                None,
+                "/callback",
+                "expected".into(),
+                "Plugin".into(),
+                "data:image/svg+xml;base64,abc".into(),
+                serde_json::json!("Account"),
+            )
+            .await;
+            assert!(result.is_err(), "host {host} must be rejected");
+        }
+    }
+
+    #[tokio::test]
+    async fn callback_accepts_state_in_the_code_fragment() {
+        let mut callback = bind(
+            "localhost",
+            None,
+            "/callback",
+            "fragment-state".into(),
+            "Plugin".into(),
+            "data:image/svg+xml;base64,abc".into(),
+            serde_json::json!("Account"),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+        let redirect_uri = callback.redirect_uri.clone();
+        let browser = tokio::spawn(async move {
+            client
+                .get(redirect_uri + "?code=accepted%23fragment-state")
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap()
+        });
+        let request = (&mut callback.receiver).await.unwrap();
+        assert_eq!(request.result.unwrap(), "accepted");
+        request
+            .response
+            .send(CallbackOutcome {
+                success: true,
+                message: None,
+            })
+            .unwrap();
+        assert!(browser.await.unwrap().contains("Resource added"));
+    }
+
+    #[test]
+    fn splits_code_state_fragments() {
+        assert_eq!(split_code_state("code#state"), ("code", Some("state")));
+        assert_eq!(split_code_state("code"), ("code", None));
+        assert_eq!(split_code_state("code#"), ("code", None));
+        assert_eq!(split_code_state(" code # state "), ("code", Some("state")));
     }
 }

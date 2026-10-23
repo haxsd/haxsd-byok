@@ -1,13 +1,12 @@
 import type {
-  LlmContentPart,
   LlmMessage,
-  LlmRequest,
   ProviderInvokeInput,
   ProviderOutput,
   ProviderResult,
   ProviderSupport,
 } from "cursor-byok:provider";
 import type { JsonValue, PluginContext } from "cursor-byok:plugin";
+import type { ResourcePatch, ResourceSnapshot } from "cursor-byok:resource";
 import { HttpError } from "cursor-byok:protocol/openai-chat";
 import {
   ANTIGRAVITY_CLIENT_HEADERS,
@@ -18,6 +17,7 @@ import {
 import {
   type AccountData,
   accountData,
+  AUTH_EXPIRED_MESSAGE,
   isTokenExpired,
   quotaExhaustedPatch,
   refreshAccount,
@@ -49,12 +49,44 @@ function isQuotaHttpError(error: HttpError): boolean {
     body.includes("too many requests");
 }
 
-function invalidResult(message: string, stateMessage: string): ProviderResult {
+function invalidResult(
+  message: string,
+  stateMessage: string,
+  privateData: JsonValue | null = null,
+): ProviderResult {
   return {
     status: "resource-error",
     message,
-    patch: { state: { status: "invalid", message: stateMessage } },
+    patch: {
+      ...(privateData ? { privateData } : {}),
+      state: { status: "invalid", message: stateMessage },
+    },
   };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** 不触发刷新的失败分类;刷新后的重试也走这里。 */
+function failure(error: unknown, data: AccountData): ProviderResult {
+  if (error instanceof HttpError) {
+    // 401 是授权失败;403 还可能是权限/模型限制,不能据此停用整个账号。
+    if (error.status === 401) return invalidResult(error.message, AUTH_EXPIRED_MESSAGE);
+    if (isQuotaHttpError(error)) {
+      return {
+        status: "resource-error",
+        message: error.message,
+        patch: quotaExhaustedPatch(data, error.body),
+      };
+    }
+    return { status: "request-error", message: error.message };
+  }
+  const message = errorMessage(error);
+  if (isQuotaError(message)) {
+    return { status: "resource-error", message, patch: quotaExhaustedPatch(data, message) };
+  }
+  return { status: "request-error", message };
 }
 
 async function readBody(lines: AsyncIterable<string>): Promise<string> {
@@ -133,6 +165,25 @@ function randomHex(length = 8): string {
 
 function generateRequestId(): string {
   return `agent/${Date.now()}/${randomHex(8)}`;
+}
+
+/** 上游 CloudCode 的默认输出上限;模型目录没有声明值时使用。 */
+const DEFAULT_MAX_OUTPUT_TOKENS = 65_536;
+
+/**
+ * 输出上限来自客户端请求,并夹到模型目录声明的上限内:
+ * 请求更大时按目录截断,请求更小时尊重请求。
+ */
+export function outputTokenLimit(requested: number | null, declared: number | null): number {
+  const declaredLimit = declared !== null && Number.isFinite(declared) && declared > 0
+    ? Math.floor(declared)
+    : null;
+  const requestedLimit = requested !== null && Number.isFinite(requested) && requested > 0
+    ? Math.floor(requested)
+    : null;
+  if (requestedLimit === null) return declaredLimit ?? DEFAULT_MAX_OUTPUT_TOKENS;
+  if (declaredLimit === null) return requestedLimit;
+  return Math.min(requestedLimit, declaredLimit);
 }
 
 // Keys the CloudCode v1internal Schema proto rejects with "Cannot find field"
@@ -351,7 +402,10 @@ async function streamCloudCode(
       ...(tools ? { tools } : {}),
       ...(toolConfig ? { toolConfig } : {}),
       generationConfig: {
-        maxOutputTokens: 65536,
+        maxOutputTokens: outputTokenLimit(
+          input.request.maxOutputTokens,
+          input.model.maxOutputTokens ?? null,
+        ),
       },
     },
   };
@@ -598,6 +652,11 @@ async function streamCloudCode(
       if (hasEmittedAnyChunk) {
         throw lastError;
       }
+      // 授权失败与端点无关:换端点重试只会把同一个 401 再发两遍。
+      // 交给上层刷新凭证后重试一次。
+      if (lastError instanceof HttpError && lastError.status === 401) {
+        throw lastError;
+      }
     }
   }
 
@@ -609,87 +668,128 @@ async function invoke(
   output: ProviderOutput,
   context: PluginContext,
 ): Promise<ProviderResult> {
-  if (!input.resource) {
+  const resource = input.resource;
+  if (!resource) {
     return {
       status: "request-error",
-      message: "Add a Google Antigravity account or API key before calling Antigravity",
+      message: "Add a Google Antigravity account before calling Antigravity",
     };
   }
   let data: AccountData;
   try {
-    data = accountData(input.resource);
+    data = accountData(resource);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return invalidResult(message, message);
   }
 
-  let patchData: AccountData | null = null;
+  let patch: ResourcePatch | null = null;
 
-  // Auto-refresh token if expired or close to expiration (skew 5 mins)
+  // Auto-refresh token if expired or close to expiration (skew 5 mins).
+  // 失效结果必须原样上报:没有 privateData 的 patch 不意味着可以继续用旧 token。
   if (data.refreshToken && isTokenExpired(data)) {
     try {
-      const refreshed = await refreshAccount(input.resource, context);
-      if (refreshed.privateData) {
-        data = refreshed.privateData as unknown as AccountData;
-        patchData = data;
-      }
-    } catch {
-      // Continue with existing token
+      patch = await refreshAccount(resource, context);
+    } catch (error) {
+      return {
+        status: "request-error",
+        message: `Antigravity token refresh failed: ${errorMessage(error)}`,
+      };
     }
+    if (patch.state?.status === "invalid") {
+      return {
+        status: "resource-error",
+        message: patch.state.message ?? AUTH_EXPIRED_MESSAGE,
+        patch,
+      };
+    }
+    if (!patch.privateData) {
+      return {
+        status: "request-error",
+        message: "Antigravity token refresh returned no credential",
+      };
+    }
+    data = patch.privateData as unknown as AccountData;
   }
 
-  let projectId = data.projectId ?? "bamboo-precept-lgxtn";
+  const projectId = data.projectId ?? "bamboo-precept-lgxtn";
 
   try {
     await streamCloudCode(data.accessToken, projectId, input.model.id, input, output, context);
-    return patchData
-      ? {
-        status: "completed",
-        patch: { privateData: patchData as unknown as JsonValue, state: { status: "ready" } },
-      }
-      : { status: "completed" };
+    return patch === null ? { status: "completed" } : { status: "completed", patch };
   } catch (error) {
-    if (error instanceof HttpError) {
-      if (
-        (error.status === 401 || error.status === 403) && data.refreshToken &&
-        !isQuotaHttpError(error)
-      ) {
-        try {
-          const refreshed = await refreshAccount(input.resource, context);
-          if (refreshed.privateData) {
-            const freshData = refreshed.privateData as unknown as AccountData;
-            const freshProj = freshData.projectId ?? projectId;
-            await streamCloudCode(
-              freshData.accessToken,
-              freshProj,
-              input.model.id,
-              input,
-              output,
-              context,
-            );
-            return {
-              status: "completed",
-              patch: { privateData: freshData as unknown as JsonValue, state: { status: "ready" } },
-            };
-          }
-        } catch {
-          // Failed refresh
-        }
-      }
-      if (isQuotaHttpError(error)) {
-        return {
-          status: "resource-error",
-          message: error.message,
-          patch: quotaExhaustedPatch(data, error.body),
-        };
-      }
-      return { status: "request-error", message: error.message };
+    if (
+      error instanceof HttpError && (error.status === 401 || error.status === 403) &&
+      !isQuotaHttpError(error)
+    ) {
+      return await recoverAuthorization(error, resource, data, patch, input, output, context);
     }
-    const message = error instanceof Error ? error.message : String(error);
-    if (isQuotaError(message)) {
-      return { status: "resource-error", message, patch: quotaExhaustedPatch(data, message) };
-    }
-    return { status: "request-error", message };
+    return failure(error, data);
+  }
+}
+
+/**
+ * 授权被拒后的恢复:刷新一次并重试一次。刷新判定 invalid 时把资源标为 invalid;
+ * 刷新只是暂时失败时中止本次请求,绝不拿旧 token 再发一次。
+ * 401/403 在读到响应头时抛出,首轮尚未发出任何事件,重试不会重复输出。
+ */
+async function recoverAuthorization(
+  authError: HttpError,
+  resource: ResourceSnapshot,
+  data: AccountData,
+  patch: ResourcePatch | null,
+  input: ProviderInvokeInput,
+  output: ProviderOutput,
+  context: PluginContext,
+): Promise<ProviderResult> {
+  // 本次请求已经主动刷新过:刷新后的令牌仍被拒,授权确实失效,不再刷新第二次。
+  // 401 是授权失败;403 还可能是权限/模型限制,不能据此停用整个账号。
+  if (patch !== null) {
+    return authError.status === 401
+      ? invalidResult(authError.message, AUTH_EXPIRED_MESSAGE, patch.privateData ?? null)
+      : { status: "request-error", message: authError.message };
+  }
+  if (!data.refreshToken) {
+    // 没有刷新令牌时,401 只能重新登录;403 仍按请求错误上报。
+    return authError.status === 401
+      ? invalidResult(authError.message, AUTH_EXPIRED_MESSAGE)
+      : { status: "request-error", message: authError.message };
+  }
+  let refreshed: ResourcePatch;
+  try {
+    refreshed = await refreshAccount(resource, context);
+  } catch (error) {
+    return {
+      status: "request-error",
+      message: `${authError.message}; token refresh failed: ${errorMessage(error)}`,
+    };
+  }
+  if (refreshed.state?.status === "invalid") {
+    return {
+      status: "resource-error",
+      message: refreshed.state.message ?? AUTH_EXPIRED_MESSAGE,
+      patch: refreshed,
+    };
+  }
+  if (!refreshed.privateData) {
+    return {
+      status: "request-error",
+      message: `${authError.message}; token refresh returned no credential`,
+    };
+  }
+  const fresh = refreshed.privateData as unknown as AccountData;
+  try {
+    await streamCloudCode(
+      fresh.accessToken,
+      fresh.projectId ?? "bamboo-precept-lgxtn",
+      input.model.id,
+      input,
+      output,
+      context,
+    );
+    return { status: "completed", patch: refreshed };
+  } catch (retryError) {
+    return failure(retryError, fresh);
   }
 }
 

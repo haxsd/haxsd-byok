@@ -16,6 +16,16 @@ export const RESOURCE_TYPE = "grok-account";
 const CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+/** 设备码与刷新令牌共用同一个 xAI OAuth 客户端与交换端点。 */
+export const OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
+export const OAUTH_TOKEN_URL = "https://auth.x.ai/oauth2/token";
+/** 过期前 5 分钟刷新,给时钟偏差留余量。 */
+const REFRESH_SKEW_MS = 5 * 60 * 1000;
+/** 令牌端点明确返回 429/5xx 时最多重试 2 次;传输层错误不重试。 */
+const MAX_REFRESH_RETRIES = 2;
+const REFRESH_RETRY_BASE_MS = 400;
+export const AUTH_EXPIRED_MESSAGE = "Grok authorization expired; sign in again";
+
 export type AccountQuota = {
   planLabel: string | null;
   usedPercent: number | null;
@@ -30,6 +40,7 @@ export type AccountData = {
   accessToken: string;
   refreshToken: string | null;
   displayName: string;
+  expiresAtMs: number | null;
   quota: AccountQuota | null;
 };
 
@@ -37,6 +48,7 @@ export type CredentialCandidate = {
   accessToken: string;
   refreshToken: string | null;
   displayName: string | null;
+  expiresAtMs?: number | null;
 };
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -75,6 +87,12 @@ function claim(payload: Record<string, unknown> | null, key: string): string | n
   return payload ? text(payload[key]) : null;
 }
 
+/** access token 自带的过期时间;拿不到时返回 null。 */
+export function jwtExpiresAtMs(token: string): number | null {
+  const exp = decodeJwtPayload(token)?.exp;
+  return typeof exp === "number" && Number.isFinite(exp) ? exp * 1000 : null;
+}
+
 async function tokenFingerprint(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(
@@ -103,6 +121,7 @@ export async function credentialDraft(credential: CredentialCandidate): Promise<
     accessToken: credential.accessToken,
     refreshToken: credential.refreshToken,
     displayName: credential.displayName ?? identity.displayName,
+    expiresAtMs: credential.expiresAtMs ?? jwtExpiresAtMs(credential.accessToken),
     quota: null,
   };
   return { key: identity.key, privateData: data as unknown as JsonValue };
@@ -116,8 +135,137 @@ export function accountData(resource: ResourceSnapshot): AccountData {
     accessToken,
     refreshToken: text(data?.refreshToken),
     displayName: text(data?.displayName) ?? "Grok account",
+    expiresAtMs: typeof data?.expiresAtMs === "number"
+      ? data.expiresAtMs
+      : jwtExpiresAtMs(accessToken),
     quota: (data?.quota ?? null) as AccountQuota | null,
   };
+}
+
+export type CredentialRefresh =
+  | { status: "refreshed"; data: AccountData }
+  | { status: "invalid"; message: string }
+  | { status: "failed"; message: string };
+
+/**
+ * access token 是否已进入刷新窗口。没有 refresh token 时不主动刷新,
+ * 由调用方在 401 后决定账号状态。
+ */
+export function accessTokenNeedsRefresh(data: AccountData, nowMs = Date.now()): boolean {
+  if (!data.refreshToken) return false;
+  const expiresAtMs = data.expiresAtMs ?? jwtExpiresAtMs(data.accessToken);
+  return expiresAtMs !== null && nowMs >= expiresAtMs - REFRESH_SKEW_MS;
+}
+
+function parseJsonBody(body: string): Record<string, unknown> {
+  try {
+    return object(JSON.parse(body)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 用 refresh_token 换新的 access token(`https://auth.x.ai/oauth2/token`)。
+ * 只有上游明确 invalid_grant 才判定凭证失效;网络或上游临时故障返回 failed,
+ * 调用方不得据此把账号标成 invalid。429/5xx 是明确的拒绝响应,按有限次数重试;
+ * 传输层错误不重试,因为请求可能已被上游消费。
+ */
+async function refreshCredential(
+  data: AccountData,
+  context: PluginContext,
+): Promise<CredentialRefresh> {
+  const refreshToken = data.refreshToken;
+  if (!refreshToken) return { status: "invalid", message: AUTH_EXPIRED_MESSAGE };
+  for (let attempt = 0;; attempt += 1) {
+    let response;
+    try {
+      response = await context.network.fetch(OAUTH_TOKEN_URL, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+          client_id: OAUTH_CLIENT_ID,
+        }).toString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { status: "failed", message: `Grok token refresh failed: ${message}` };
+    }
+    const body = parseJsonBody(response.body);
+    if (response.status >= 200 && response.status < 300) {
+      const accessToken = text(body.access_token);
+      if (!accessToken) {
+        return {
+          status: "failed",
+          message: `Grok token refresh returned no access token (HTTP ${response.status})`,
+        };
+      }
+      const expiresIn = number(body.expires_in);
+      return {
+        status: "refreshed",
+        data: {
+          ...data,
+          accessToken,
+          refreshToken: text(body.refresh_token) ?? refreshToken,
+          expiresAtMs: expiresIn !== null
+            ? Date.now() + expiresIn * 1000
+            : jwtExpiresAtMs(accessToken),
+        },
+      };
+    }
+    const code = text(object(body.error)?.code ?? body.error) ?? "";
+    const detail = text(body.error_description ?? body.message);
+    if (code === "invalid_grant" || code === "invalid_token" || response.status === 401) {
+      return { status: "invalid", message: AUTH_EXPIRED_MESSAGE };
+    }
+    if (
+      (response.status === 429 || response.status >= 500) && attempt < MAX_REFRESH_RETRIES
+    ) {
+      await sleep(REFRESH_RETRY_BASE_MS * 2 ** attempt);
+      continue;
+    }
+    return {
+      status: "failed",
+      message: `Grok token refresh failed (HTTP ${response.status}${code ? ` ${code}` : ""})${
+        detail ? `: ${detail}` : ""
+      }`,
+    };
+  }
+}
+
+/**
+ * 同一账号的并发刷新共用一个 Promise。refresh token 会轮换：并发各发一次时，
+ * 后到的一方拿着已经作废的旧值换回 invalid_grant，正常账号会被误标成 invalid。
+ * 成功与失败都共享同一个结果，各调用方只负责回写。
+ */
+const refreshFlights = new Map<string, Promise<CredentialRefresh>>();
+
+export function refreshCredentialForAccount(
+  accountKey: string,
+  data: AccountData,
+  context: PluginContext,
+): Promise<CredentialRefresh> {
+  const inflight = refreshFlights.get(accountKey);
+  if (inflight) return inflight;
+  const operation = refreshCredential(data, context).finally(() => {
+    if (refreshFlights.get(accountKey) === operation) refreshFlights.delete(accountKey);
+  });
+  refreshFlights.set(accountKey, operation);
+  return operation;
+}
+
+/** 只给测试用：丢弃进程内刷新记录，避免用例之间互相影响。 */
+export function resetRefreshStateForTests(): void {
+  refreshFlights.clear();
 }
 
 function clampPercent(value: number): number {
@@ -146,10 +294,7 @@ export function parseGrokUsage(body: unknown, nowMs = Date.now()): AccountQuota 
       used = (onDemandUsed / onDemandCap) * 100;
     }
   }
-  // 存在计费周期但没有用量字段时视为未使用。
-  if (used === null && (config.currentPeriod ?? config.current_period) !== undefined) {
-    used = 0;
-  }
+  // 用量字段缺失时保持未知:不能当成 0 已用,否则界面会显示"额度满"。
   const remaining = used === null ? null : clampPercent(100 - used);
   const period = object(config.currentPeriod ?? config.current_period);
   return {
@@ -235,17 +380,41 @@ export async function refreshAccount(
   resource: ResourceSnapshot,
   context: PluginContext,
 ): Promise<ResourcePatch> {
-  const data = accountData(resource);
-  const response = await context.network.fetch(CREDITS_URL, {
+  let data = accountData(resource);
+  let refreshed = false;
+
+  if (accessTokenNeedsRefresh(data)) {
+    const result = await refreshCredentialForAccount(resource.key, data, context);
+    if (result.status === "invalid") {
+      return { state: { status: "invalid", message: result.message } };
+    }
+    if (result.status === "failed") throw new Error(result.message);
+    data = result.data;
+    refreshed = true;
+  }
+
+  let response = await context.network.fetch(CREDITS_URL, {
     method: "GET",
     headers: accountHeaders(data),
   });
+  // 401 只说明当前 access token 被拒;先刷新一次再判定账号失效。
+  if (response.status === 401 && !refreshed && data.refreshToken) {
+    const result = await refreshCredentialForAccount(resource.key, data, context);
+    if (result.status === "invalid") {
+      return { state: { status: "invalid", message: result.message } };
+    }
+    if (result.status === "failed") throw new Error(result.message);
+    data = result.data;
+    refreshed = true;
+    response = await context.network.fetch(CREDITS_URL, {
+      method: "GET",
+      headers: accountHeaders(data),
+    });
+  }
   if (response.status < 200 || response.status >= 300) {
     // 计费接口的 403 不证明推理令牌失效;报告查询失败但保留账号状态。
     if (response.status === 401) {
-      return {
-        state: { status: "invalid", message: "Grok authorization expired; sign in again" },
-      };
+      return { state: { status: "invalid", message: AUTH_EXPIRED_MESSAGE } };
     }
     throw new Error(`Grok usage lookup failed (HTTP ${response.status}): ${response.body}`);
   }

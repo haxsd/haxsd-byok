@@ -86,6 +86,9 @@ impl Provider for AnthropicProvider {
                     value
                 }).collect::<Vec<_>>());
             }
+            if !request.model.stop_sequences.is_empty() {
+                body["stop_sequences"] = json!(request.model.stop_sequences);
+            }
             apply_model(&mut body, &request.model, max_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             let request_headers = recorded_headers(
@@ -217,6 +220,16 @@ impl Provider for AnthropicProvider {
                         if let Some(usage) = value.get("usage") {
                             merge_usage(final_usage.get_or_insert_default(), anthropic_usage(usage));
                         }
+                        // `stop_sequence` 只在上游确实按停止序列收尾时出现；把它单独交付，
+                        // 入站网关才能回 `stop_reason: "stop_sequence"` 与命中的那段文本，
+                        // 而不是把所有正常结束都折成 `end_turn`。
+                        if let Some(sequence) = value
+                            .pointer("/delta/stop_sequence")
+                            .and_then(Value::as_str)
+                            .filter(|sequence| !sequence.is_empty())
+                        {
+                            yield ModelEvent::StopSequence(sequence.into());
+                        }
                         finish = match value.pointer("/delta/stop_reason").and_then(Value::as_str) {
                             Some("tool_use") => Some(FinishReason::ToolUse),
                             Some("max_tokens" | "model_context_window_exceeded") => Some(FinishReason::Length),
@@ -295,14 +308,19 @@ fn close_anthropic_block(
         "thinking" => {
             let thinking = thinking_text.remove(&index).unwrap_or_default();
             let signature = thinking_signatures.remove(&index).unwrap_or_default();
+            let mut events = Vec::new();
             if !signature.is_empty() {
                 thinking_blocks.push(json!({
                     "type": "thinking",
                     "thinking": thinking,
                     "signature": signature,
                 }));
+                // 签名在 `ThinkingEnd` 之前交付：入站网关要把它写进同一个
+                // `content_block_delta`（`signature_delta`），而块一关就不能再追加了。
+                events.push(ModelEvent::ThinkingSignature(signature));
             }
-            vec![ModelEvent::ThinkingEnd]
+            events.push(ModelEvent::ThinkingEnd);
+            events
         }
         "tool_use" => vec![ModelEvent::ToolCallEnd { index }],
         _ => Vec::new(),
@@ -792,6 +810,44 @@ mod tests {
 
         assert_eq!(testing::text_of(&events), "半句");
         assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+    }
+
+    /// 上游按停止序列收尾时，命中的那段文本要单独交付：入站网关只有拿到它才能回
+    /// `stop_reason: "stop_sequence"` 与 `stop_sequence`，而不是一律 `end_turn`。
+    #[tokio::test]
+    async fn a_stop_sequence_is_delivered_as_its_own_event() {
+        let url = testing::sse_upstream(
+            "/v1/messages",
+            vec![
+                json!({"type":"message_start","message":{"usage":{"input_tokens":3}}}),
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello "}}),
+                json!({"type":"content_block_stop","index":0}),
+                json!({"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"STOP"},"usage":{"output_tokens":2}}),
+                json!({"type":"message_stop"}),
+            ],
+        )
+        .await;
+        let provider = AnthropicProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::Anthropic, url),
+        );
+
+        let events = testing::drain(provider.stream(
+            testing::invocation("claude-sonnet-4"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .unwrap();
+
+        assert_eq!(testing::text_of(&events), "hello ");
+        assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, ModelEvent::StopSequence(sequence) if sequence == "STOP")
+            ),
+            "命中的停止序列必须出现在事件流里: {events:?}"
+        );
     }
 
     /// 结束条件三：既没有 stop_reason 也没有 message_stop 就断开——必须报错，不能当作

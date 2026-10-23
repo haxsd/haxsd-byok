@@ -12,7 +12,7 @@ use crate::{
     cursor::{prompting::PromptCompiler, transport::TransportHandle},
     model::{ConversationId, RunId},
     provider::Provider,
-    run::{CommandResult, RunHandle},
+    run::{BackgroundWaitPolicy, CommandResult, RunHandle},
     search::WebCache,
     store::Store,
 };
@@ -32,6 +32,8 @@ pub(crate) struct ConversationDependencies {
     pub web_cache: WebCache,
     /// 本地 rules 服务的 md 存储目录;编译请求上下文时合并其中的规则。
     pub local_rules_dir: Option<std::path::PathBuf>,
+    /// 父轮等待后台子代理的参数；生产用默认值，测试用短值。
+    pub background_wait: BackgroundWaitPolicy,
 }
 
 struct RegistryInner {
@@ -81,6 +83,24 @@ impl ConversationRegistry {
         web_cache: WebCache,
         local_rules_dir: Option<std::path::PathBuf>,
     ) -> Self {
+        Self::with_background_wait(
+            store,
+            provider,
+            compiler,
+            web_cache,
+            local_rules_dir,
+            BackgroundWaitPolicy::default(),
+        )
+    }
+
+    pub(crate) fn with_background_wait(
+        store: Store,
+        provider: Arc<dyn Provider>,
+        compiler: PromptCompiler,
+        web_cache: WebCache,
+        local_rules_dir: Option<std::path::PathBuf>,
+        background_wait: BackgroundWaitPolicy,
+    ) -> Self {
         Self {
             inner: Arc::new(RegistryInner {
                 current: Mutex::new(HashMap::new()),
@@ -93,6 +113,7 @@ impl ConversationRegistry {
                     compiler,
                     web_cache,
                     local_rules_dir,
+                    background_wait,
                 },
             }),
         }

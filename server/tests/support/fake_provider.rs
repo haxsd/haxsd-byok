@@ -7,7 +7,7 @@ use std::{
 };
 
 use cursor_server::{
-    model::{ModelInvocation, ModelRequest},
+    model::{CallPurpose, ModelInvocation, ModelRequest},
     provider::{ModelEvent, Provider, ProviderStream},
     Error,
 };
@@ -28,6 +28,7 @@ pub struct FakeProvider {
     responses: Arc<Mutex<VecDeque<FakeResponse>>>,
     by_conversation: Arc<Mutex<std::collections::HashMap<String, VecDeque<FakeResponse>>>>,
     requests: Arc<Mutex<Vec<ModelRequest>>>,
+    purposes: Arc<Mutex<Vec<CallPurpose>>>,
 }
 
 impl FakeProvider {
@@ -93,6 +94,10 @@ impl FakeProvider {
     pub fn requests(&self) -> Vec<ModelRequest> {
         self.requests.lock().unwrap().clone()
     }
+    /// 每次调用带下来的用途，顺序与 `requests` 一致。
+    pub fn purposes(&self) -> Vec<CallPurpose> {
+        self.purposes.lock().unwrap().clone()
+    }
 }
 
 impl Provider for FakeProvider {
@@ -105,6 +110,7 @@ impl Provider for FakeProvider {
             .lock()
             .unwrap()
             .push(invocation.request.clone());
+        self.purposes.lock().unwrap().push(invocation.purpose);
         let per_conversation = self
             .by_conversation
             .lock()

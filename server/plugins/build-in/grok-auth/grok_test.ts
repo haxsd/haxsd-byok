@@ -7,9 +7,11 @@ import type {
 import type { LlmRequest, ModelEvent } from "cursor-byok:provider";
 import type { ResourceSnapshot } from "cursor-byok:resource";
 import { grokDeviceOAuth } from "./oauth.ts";
-import { FALLBACK_MODELS, grokModels, parseGrokModels } from "./models.ts";
+import { grokModels, parseGrokModels } from "./models.ts";
 import { grokProvider, isQuotaError } from "./provider.ts";
 import {
+  accessTokenNeedsRefresh,
+  accountData,
   accountIdentity,
   credentialDraft,
   parseCredentialFiles,
@@ -145,10 +147,12 @@ Deno.test("credit usage percent is inverted to remaining and drives cooling", ()
   });
 });
 
-Deno.test("missing usage with a billing period counts as unused", () => {
+Deno.test("missing usage stays unknown instead of counting as unused", () => {
   const quota = parseGrokUsage({ config: { currentPeriod: { end: 1_900_000_000 } } });
-  assertEquals(quota.remainingPercent, 100);
+  assertEquals(quota.usedPercent, null);
+  assertEquals(quota.remainingPercent, null);
   assertEquals(quota.limitReached, false);
+  assertEquals(quota.resetAtMs, 1_900_000_000_000);
 });
 
 Deno.test("model discovery parses both language-models and standard list shapes", () => {
@@ -169,24 +173,242 @@ Deno.test("model discovery parses both language-models and standard list shapes"
   assertEquals(plainModels[0].displayName, "Grok 4 Fast");
 });
 
-Deno.test("model discovery falls back to known models when the account cannot list", async () => {
-  const token = jwt({ sub: "user-1" });
+Deno.test("model discovery propagates failures instead of substituting a static catalog", async () => {
   const draft = await credentialDraft({
-    accessToken: token,
+    accessToken: jwt({ sub: "user-1" }),
     refreshToken: null,
     displayName: null,
   });
-  const models = await grokModels.list(
-    { resource: snapshot(draft.privateData) },
-    context({
-      fetch: () => ({
-        status: 403,
-        headers: {},
-        body: JSON.stringify({ code: "personal-team-blocked:spending-limit" }),
+  const requested: string[] = [];
+  let rejected = false;
+  try {
+    await grokModels.list(
+      { resource: snapshot(draft.privateData) },
+      context({
+        fetch: (url) => {
+          requested.push(url);
+          return {
+            status: 403,
+            headers: {},
+            body: JSON.stringify({ code: "personal-team-blocked:spending-limit" }),
+          };
+        },
       }),
+    );
+  } catch (error) {
+    rejected = true;
+    const message = String(error);
+    assert(message.includes("HTTP 403"), `expected the status in ${message}`);
+    assert(message.includes("previous catalog is kept"), `expected a hint in ${message}`);
+  }
+  assert(rejected, "a failed discovery must not resolve with a static catalog");
+  assertEquals(requested, [
+    "https://api.x.ai/v1/language-models",
+    "https://api.x.ai/v1/models",
+  ]);
+});
+
+Deno.test("model discovery surfaces a rejected credential instead of falling back", async () => {
+  const draft = await credentialDraft({
+    accessToken: jwt({ sub: "user-1" }),
+    refreshToken: null,
+    displayName: null,
+  });
+  let rejected = false;
+  try {
+    await grokModels.list(
+      { resource: snapshot(draft.privateData) },
+      context({
+        fetch: () => ({ status: 401, headers: {}, body: '{"error":"token expired"}' }),
+      }),
+    );
+  } catch (error) {
+    rejected = true;
+    const message = String(error);
+    assert(message.includes("HTTP 401"), `expected the status in ${message}`);
+    assert(message.includes("sign in again"), `expected a re-auth hint in ${message}`);
+  }
+  assert(rejected, "a 401 must reach the caller");
+});
+
+Deno.test("refresh is scheduled from the stored expiry and the JWT expiry", () => {
+  const token = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) + 3600 });
+  const fresh = accountData(snapshot({
+    accessToken: token,
+    refreshToken: "refresh-secret",
+    displayName: "Fixture",
+    quota: null,
+  }));
+  assert(!accessTokenNeedsRefresh(fresh), "a fresh token must not be refreshed");
+  assert(
+    accessTokenNeedsRefresh({ ...fresh, expiresAtMs: Date.now() - 1 }),
+    "a stored expiry in the past must refresh",
+  );
+  assert(
+    !accessTokenNeedsRefresh({ ...fresh, refreshToken: null }),
+    "no refresh token means no preflight refresh",
+  );
+  const expiredToken = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) - 60 });
+  const expired = accountData(snapshot({
+    accessToken: expiredToken,
+    refreshToken: "refresh-secret",
+    displayName: "Fixture",
+    quota: null,
+  }));
+  assert(accessTokenNeedsRefresh(expired), "an expired JWT must be refreshed");
+});
+
+Deno.test("an expired access token is refreshed before calling Grok and persisted", async () => {
+  const staleToken = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) - 60 });
+  const freshToken = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) + 3600 });
+  let refreshes = 0;
+  let authorization: string | null = null;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({
+        accessToken: staleToken,
+        refreshToken: "refresh-old",
+        displayName: "person@x.ai",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: (url, init) => {
+        refreshes += 1;
+        assertEquals(url, "https://auth.x.ai/oauth2/token");
+        const body = new URLSearchParams(init?.body);
+        assertEquals(body.get("grant_type"), "refresh_token");
+        assertEquals(body.get("refresh_token"), "refresh-old");
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            access_token: freshToken,
+            refresh_token: "refresh-new",
+            expires_in: 3600,
+          }),
+        };
+      },
+      stream: (_url, init) => {
+        authorization = init?.headers?.authorization ?? null;
+        return {
+          status: 200,
+          headers: {},
+          lines: sse(['data: {"choices":[{"delta":{},"finish_reason":"stop"}]}', "data: [DONE]"]),
+        };
+      },
     }),
   );
-  assertEquals(models, FALLBACK_MODELS);
+  assertEquals(refreshes, 1);
+  assertEquals(authorization, `Bearer ${freshToken}`);
+  assert(result.status === "completed", `expected completed, received ${result.status}`);
+  const privateData = result.patch?.privateData as Record<string, unknown>;
+  assertEquals(privateData.accessToken, freshToken);
+  assertEquals(privateData.refreshToken, "refresh-new");
+  assert(typeof privateData.expiresAtMs === "number" && privateData.expiresAtMs > Date.now());
+});
+
+Deno.test("a rejected access token is refreshed once and the request retried once", async () => {
+  const freshToken = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) + 3600 });
+  let streams = 0;
+  let refreshes = 0;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({
+        accessToken: jwt({ sub: "user-1" }),
+        refreshToken: "refresh-old",
+        displayName: "person@x.ai",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => {
+        refreshes += 1;
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ access_token: freshToken, expires_in: 3600 }),
+        };
+      },
+      stream: () => {
+        streams += 1;
+        return streams === 1
+          ? { status: 401, headers: {}, lines: sse(['{"error":"token expired"}']) }
+          : {
+            status: 200,
+            headers: {},
+            lines: sse(['data: {"choices":[{"delta":{},"finish_reason":"stop"}]}', "data: [DONE]"]),
+          };
+      },
+    }),
+  );
+  assertEquals(streams, 2);
+  assertEquals(refreshes, 1);
+  assert(result.status === "completed", `expected completed, received ${result.status}`);
+  assertEquals((result.patch?.privateData as Record<string, unknown>).accessToken, freshToken);
+});
+
+Deno.test("a revoked refresh token invalidates the Grok credential", async () => {
+  let streams = 0;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({
+        accessToken: jwt({ sub: "user-1" }),
+        refreshToken: "revoked",
+        displayName: "person@x.ai",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => ({
+        status: 400,
+        headers: {},
+        body: JSON.stringify({ error: "invalid_grant", error_description: "revoked" }),
+      }),
+      stream: () => {
+        streams += 1;
+        return { status: 401, headers: {}, lines: sse(['{"error":"token expired"}']) };
+      },
+    }),
+  );
+  assertEquals(streams, 1);
+  assert(result.status === "resource-error", `expected resource-error, received ${result.status}`);
+  assertEquals(result.patch.state?.status, "invalid");
+});
+
+Deno.test("a transient refresh failure neither retries with the stale token nor invalidates", async () => {
+  let streams = 0;
+  const result = await grokProvider.invoke(
+    {
+      model: { id: "grok-4", displayName: "Grok 4" },
+      resource: snapshot({
+        accessToken: jwt({ sub: "user-1" }),
+        refreshToken: "refresh-old",
+        displayName: "person@x.ai",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => ({ status: 503, headers: {}, body: "token service unavailable" }),
+      stream: () => {
+        streams += 1;
+        return { status: 401, headers: {}, lines: sse(['{"error":"token expired"}']) };
+      },
+    }),
+  );
+  assert(streams === 1, "the stale token must not be reused");
+  assert(result.status === "request-error", `expected request-error, received ${result.status}`);
 });
 
 Deno.test("device OAuth begins with a host-held session and completes with a resource draft", async () => {
@@ -379,7 +601,10 @@ Deno.test("temporary rate limits preserve credits and honor Retry-After", async 
   );
   assert(result.status === "resource-error");
   assert(result.patch.state?.status === "cooling");
-  assert(result.patch.privateData === undefined, "rate limiting must not mark credits as exhausted");
+  assert(
+    result.patch.privateData === undefined,
+    "rate limiting must not mark credits as exhausted",
+  );
   const retryAt = result.patch.state.retryAtMs ?? 0;
   assert(
     retryAt >= before + 120_000 && retryAt <= Date.now() + 120_000,
@@ -457,15 +682,60 @@ Deno.test("usage refresh releases exhausted credits when the server grants quota
   assertEquals(patch.state, { status: "ready" });
 });
 
+Deno.test("usage refresh rotates a rejected credential instead of invalidating it", async () => {
+  const freshToken = jwt({ sub: "user-1", exp: Math.floor(Date.now() / 1000) + 3600 });
+  let refreshes = 0;
+  let usageCalls = 0;
+  const patch = await refreshAccount(
+    snapshot({
+      accessToken: jwt({ sub: "user-1" }),
+      refreshToken: "refresh-old",
+      displayName: "person@x.ai",
+      quota: null,
+    }),
+    context({
+      fetch: (url, init) => {
+        if (url === "https://auth.x.ai/oauth2/token") {
+          refreshes += 1;
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ access_token: freshToken, expires_in: 3600 }),
+          };
+        }
+        assertEquals(url, "https://cli-chat-proxy.grok.com/v1/billing?format=credits");
+        usageCalls += 1;
+        if (usageCalls === 1) return { status: 401, headers: {}, body: "expired" };
+        assertEquals(init?.headers?.authorization, `Bearer ${freshToken}`);
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ config: { creditUsagePercent: 34 } }),
+        };
+      },
+    }),
+  );
+  assertEquals(refreshes, 1);
+  assertEquals(usageCalls, 2);
+  assertEquals((patch.privateData as Record<string, unknown>).accessToken, freshToken);
+  assertEquals(patch.state, { status: "ready" });
+});
+
 Deno.test("billing permission errors do not invalidate inference authorization", async () => {
   const resource = snapshot({
-    accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null,
+    accessToken: "fixture-only",
+    refreshToken: null,
+    displayName: "Fixture",
+    quota: null,
   });
   let rejected = false;
   try {
-    await refreshAccount(resource, context({
-      fetch: () => ({ status: 403, headers: {}, body: "Billing access is forbidden" }),
-    }));
+    await refreshAccount(
+      resource,
+      context({
+        fetch: () => ({ status: 403, headers: {}, body: "Billing access is forbidden" }),
+      }),
+    );
   } catch (error) {
     rejected = true;
     assert(String(error).includes("403"));
@@ -477,13 +747,22 @@ Deno.test("a forbidden model does not invalidate the entire Grok account", async
   const result = await grokProvider.invoke(
     {
       model: { id: "grok-4", displayName: "Grok 4" },
-      resource: snapshot({ accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null }),
+      resource: snapshot({
+        accessToken: "fixture-only",
+        refreshToken: null,
+        displayName: "Fixture",
+        quota: null,
+      }),
       request: request(),
     },
     { emit: () => {} },
-    context({ stream: () => ({
-      status: 403, headers: {}, lines: sse(['{"error":"model access is forbidden"}']),
-    }) }),
+    context({
+      stream: () => ({
+        status: 403,
+        headers: {},
+        lines: sse(['{"error":"model access is forbidden"}']),
+      }),
+    }),
   );
   assertEquals(result.status, "request-error");
 });
@@ -492,13 +771,22 @@ Deno.test("an unauthorized token still invalidates the Grok account", async () =
   const result = await grokProvider.invoke(
     {
       model: { id: "grok-4", displayName: "Grok 4" },
-      resource: snapshot({ accessToken: "fixture-only", refreshToken: null, displayName: "Fixture", quota: null }),
+      resource: snapshot({
+        accessToken: "fixture-only",
+        refreshToken: null,
+        displayName: "Fixture",
+        quota: null,
+      }),
       request: request(),
     },
     { emit: () => {} },
-    context({ stream: () => ({
-      status: 401, headers: {}, lines: sse(['{"error":"token expired"}']),
-    }) }),
+    context({
+      stream: () => ({
+        status: 401,
+        headers: {},
+        lines: sse(['{"error":"token expired"}']),
+      }),
+    }),
   );
   assert(result.status === "resource-error");
   assertEquals(result.patch.state?.status, "invalid");

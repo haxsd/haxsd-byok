@@ -112,6 +112,27 @@ export function installAppBackend(overrides = {}) {
     cursorHarness: cursorHarnessStatus(),
     devinStatus: { enabled: false, listening: false, calls: 0 },
     codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], home: "test-home", calls: 0, last_error: null },
+    claudeStatus: { enabled: false, listening: false, port: 43121, base_url: "http://127.0.0.1:43121", token: "test-token", models: 0, default_model_hash: null, calls: 0, last_error: null },
+    claudeTakeover: {
+      cli: {
+        state: "missing",
+        settings_path: "",
+        backup_path: "",
+        restorable: false,
+        conflicts: [],
+        missing_models: [],
+        managed_sources: [],
+      },
+      desktop: {
+        state: "missing",
+        config_source: "none",
+        profile_path: "",
+        backup_path: "",
+        restorable: false,
+        conflicts: [],
+        guided: false,
+      },
+    },
     pluginRuntime: pluginRuntimeStatus(),
     plugins: [],
     desktop: { silent_start: false, show_dock_icon: true, developer_mode: false },
@@ -119,6 +140,8 @@ export function installAppBackend(overrides = {}) {
   };
 
   backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body: state.codexStatus }));
+  backend.route("GET", `${API_ROOT}/claude/status`, () => ({ body: state.claudeStatus }));
+  backend.route("GET", `${API_ROOT}/claude/takeover`, () => ({ body: state.claudeTakeover }));
   backend.route("GET", `${API_ROOT}/models`, () => ({ body: state.models }));
   backend.route("GET", `${API_ROOT}/llm-calls`, () => ({ body: state.calls }));
   backend.route("GET", `${API_ROOT}/overview`, () => ({ body: state.overview }));

@@ -1,6 +1,7 @@
 //! Executes one Run across model cycles, Tool rounds, and message commits.
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
@@ -24,6 +25,7 @@ pub struct RunEngine {
     store: Store,
     provider: Arc<dyn Provider>,
     images: ImageCache,
+    background_wait: BackgroundWaitPolicy,
 }
 
 /// 同一次 Run 内按 `BlobId` 复用图片字节。
@@ -87,20 +89,68 @@ impl ImageCache {
 const CONTINUE_MESSAGE_ID: &str = crate::model::CONTINUE_TAIL_MESSAGE_ID;
 const CONTINUE_INSTRUCTION: &str = "Continue from where you left off.";
 
-/// 父轮等后台子代理时重查"还有子代理在跑吗"的间隔。
-const BACKGROUND_WORK_POLL: std::time::Duration = std::time::Duration::from_secs(5);
+/// 父轮等后台子代理时的参数。
+///
+/// 截止条件看"子代理还有没有活动"，不看父轮已经等了多久：只要 45 分钟内还有模型调用
+/// 或工具轮推进，就继续等。`ceiling` 是防永久挂住的绝对上限——活动查询取的是离散的
+/// 时间戳，单次调用/工具一直不返回时它不会动，光有空闲阈值仍然可能永远等下去。
+///
+/// 测试可以传入更短的值（见 `TransportRegistry::with_background_wait`），不必真的等
+/// 半小时去覆盖"活动刷新截止时间"。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackgroundWaitPolicy {
+    /// 重查子代理活动的间隔。
+    pub poll: Duration,
+    /// 子运行落成终态后，等它的完成消息投进来的宽限期。
+    pub completion_grace: Duration,
+    /// 这么久没有任何活动才认为子代理卡住了。
+    pub idle_timeout: Duration,
+    /// 父轮等待的绝对上限。
+    pub ceiling: Duration,
+    /// 等待期间向客户端发保活帧的间隔。
+    pub heartbeat: Duration,
+    /// 等待期间记录活动年龄的间隔。
+    pub progress_log: Duration,
+}
 
-/// 子运行落成终态之后再宽限这么久，等它那条完成消息投进来再收尾。
-const BACKGROUND_COMPLETION_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+impl Default for BackgroundWaitPolicy {
+    fn default() -> Self {
+        Self {
+            poll: Duration::from_secs(5),
+            completion_grace: Duration::from_secs(2),
+            idle_timeout: Duration::from_secs(45 * 60),
+            ceiling: Duration::from_secs(6 * 60 * 60),
+            heartbeat: Duration::from_secs(45),
+            progress_log: Duration::from_secs(5 * 60),
+        }
+    }
+}
 
-/// 等后台子代理的上限：超时就照常收尾。宁可少一次唤醒，也不能把父轮永久挂住。
-const BACKGROUND_WORK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// 父轮该收尾了吗：子代理空闲超过阈值，或等待到了绝对上限。
+///
+/// 空闲起点取"最近活动"与"开始等待"的较晚者：父轮进入等待本身算一次活动，否则子
+/// 代理在父轮收尾发言之前就已经静默很久时，父轮会被立刻收尾——又要靠客户端补发完成
+/// 通知才能继续。
+fn background_wait_expired(
+    policy: &BackgroundWaitPolicy,
+    now_ms: i64,
+    last_activity_ms: i64,
+    started_at_ms: i64,
+) -> bool {
+    let idle_since_ms = last_activity_ms.max(started_at_ms);
+    now_ms.saturating_sub(idle_since_ms) >= duration_ms(policy.idle_timeout)
+        || now_ms.saturating_sub(started_at_ms) >= duration_ms(policy.ceiling)
+}
+
+fn duration_ms(duration: Duration) -> i64 {
+    duration.as_millis().min(i64::MAX as u128) as i64
+}
 
 /// 父轮收尾前等待后台子代理的结果。
 enum BackgroundWait {
     /// 等到了完成消息并已写进历史：模型循环继续。
     Continued,
-    /// 没有在跑的子代理了（或超时）：照常收尾。
+    /// 没有在跑的子代理了（或空闲/到等待上限）：照常收尾。
     Drained,
 }
 
@@ -188,7 +238,14 @@ impl RunEngine {
             store,
             provider,
             images: ImageCache::default(),
+            background_wait: BackgroundWaitPolicy::default(),
         }
+    }
+
+    /// 覆盖父轮等待后台子代理的参数。生产用默认值；测试传短值。
+    pub fn with_background_wait(mut self, policy: BackgroundWaitPolicy) -> Self {
+        self.background_wait = policy;
+        self
     }
 
     #[tracing::instrument(
@@ -608,7 +665,13 @@ impl RunEngine {
                     format!("{}:{provider_call_index}:retry-{retries}", prepared.run_id)
                 };
                 let invocation = crate::model::ModelInvocation {
-                    purpose: crate::model::CallPurpose::Chat,
+                    // 手动 `/summarize` 与自动压缩是同一类调用：输入是被裁剪过的重放
+                    // 历史，不能当上下文用量锚点。同一个循环也处理普通回合。
+                    purpose: if prepared.action == RunAction::Compact {
+                        crate::model::CallPurpose::CompactionSummary
+                    } else {
+                        crate::model::CallPurpose::Chat
+                    },
                     client_source: crate::model::CallClient::Cursor,
                     call_id,
                     run_id: prepared.run_id.to_string(),
@@ -1263,7 +1326,7 @@ impl RunEngine {
     /// 这个 run 还有在跑的后台子代理吗。
     ///
     /// 查库失败按"没有"处理：宁可早收尾（完成通知会排进父会话的 pending，用户下次
-    /// 开口时看到），也不能因为一次查询失败把父轮挂到 `BACKGROUND_WORK_TIMEOUT`。
+    /// 开口时看到），也不能因为一次查询失败把父轮挂到空闲阈值或等待上限。
     /// 但失败必须留痕——这条路径过去连日志都没有，收尾早了完全看不出为什么。
     async fn has_background_work(&self, prepared: &PreparedRun) -> bool {
         match self
@@ -1350,7 +1413,9 @@ impl RunEngine {
     ///
     /// 消息由上层（子代理运行结束时的唤醒）通过 `InsertMessages` 投进这条运行；
     /// 写进历史后回到模型循环，父代就带着子代理的结果继续工作。等不到也有两条出路：
-    /// 子运行都结束了、或等超时——都按"没有后台活"收尾，最坏情况等于没有这个特性。
+    /// 子运行都结束了、或子代理长时间没有活动/到了等待上限——都按"没有后台活"收尾，
+    /// 最坏情况等于没有这个特性。等待期间按 `heartbeat` 发保活帧，避免长等被客户端
+    /// 或中间代理当成静默连接断开。
     async fn await_background_subagents(
         &self,
         prepared: &PreparedRun,
@@ -1359,9 +1424,19 @@ impl RunEngine {
         checkpoint: &mut crate::model::CheckpointId,
         pending: &mut Vec<MessageBatch>,
     ) -> Result<BackgroundWait, RunOutcome> {
-        let deadline = tokio::time::Instant::now() + BACKGROUND_WORK_TIMEOUT;
+        let policy = self.background_wait.clone();
+        let started_at_ms = crate::store::now_ms();
+        let waiting_since = tokio::time::Instant::now();
+        let mut next_heartbeat = waiting_since + policy.heartbeat;
+        let mut next_progress = waiting_since + policy.progress_log;
         let mut drained_since: Option<tokio::time::Instant> = None;
-        let mut announced = false;
+        tracing::info!(
+            conversation_id = %prepared.conversation_id,
+            run_id = %prepared.run_id,
+            idle_timeout_secs = policy.idle_timeout.as_secs(),
+            ceiling_secs = policy.ceiling.as_secs(),
+            "parent turn is waiting for background subagents"
+        );
         loop {
             if !pending.is_empty() {
                 let batches = std::mem::take(pending);
@@ -1379,59 +1454,98 @@ impl RunEngine {
                     return Ok(BackgroundWait::Continued);
                 }
             }
-            match self
+            let activity = self
                 .store
-                .has_running_background_subagents(&prepared.run_id)
-                .await
-            {
-                Ok(true) => drained_since = None,
-                Ok(false) => {
+                .background_subagent_activity(&prepared.run_id)
+                .await;
+            let now_ms = crate::store::now_ms();
+            let mut last_activity_ms = None;
+            match activity {
+                Ok(Some(last_activity)) => {
+                    drained_since = None;
+                    last_activity_ms = Some(last_activity);
+                    if background_wait_expired(&policy, now_ms, last_activity, started_at_ms) {
+                        let ceiling_reached =
+                            now_ms.saturating_sub(started_at_ms) >= duration_ms(policy.ceiling);
+                        if ceiling_reached {
+                            tracing::warn!(
+                                conversation_id = %prepared.conversation_id,
+                                run_id = %prepared.run_id,
+                                reason = "ceiling",
+                                waited_secs = now_ms.saturating_sub(started_at_ms) / 1000,
+                                last_activity_age_secs =
+                                    now_ms.saturating_sub(last_activity) / 1000,
+                                ceiling_secs = policy.ceiling.as_secs(),
+                                "background subagents reached the absolute wait ceiling; ending the turn"
+                            );
+                        } else {
+                            tracing::warn!(
+                                conversation_id = %prepared.conversation_id,
+                                run_id = %prepared.run_id,
+                                reason = "idle",
+                                last_activity_age_secs =
+                                    now_ms.saturating_sub(last_activity) / 1000,
+                                idle_timeout_secs = policy.idle_timeout.as_secs(),
+                                "background subagents have been idle too long; ending the turn"
+                            );
+                        }
+                        return Ok(BackgroundWait::Drained);
+                    }
+                    tracing::debug!(
+                        run_id = %prepared.run_id,
+                        last_activity_age_secs = now_ms.saturating_sub(last_activity) / 1000,
+                        "background wait check"
+                    );
+                }
+                Ok(None) => {
                     // 子代理的 run 落成终态、与它的完成消息投到我们这儿之间有一个很短的
                     // 窗口；直接收尾会把那条消息留到父会话的下一轮，所以先宽限一瞬。
                     let since = *drained_since.get_or_insert_with(tokio::time::Instant::now);
-                    if since.elapsed() >= BACKGROUND_COMPLETION_GRACE {
+                    if since.elapsed() >= policy.completion_grace {
                         return Ok(BackgroundWait::Drained);
                     }
+                    tracing::debug!(
+                        run_id = %prepared.run_id,
+                        "background wait check: no running subagents, waiting for the completion message"
+                    );
                 }
                 Err(error) => {
                     tracing::warn!(
                         run_id = %prepared.run_id,
                         %error,
-                        "failed to check for running subagents; ending the turn"
+                        "failed to check background subagent activity; ending the turn"
                     );
                     return Ok(BackgroundWait::Drained);
                 }
             }
-            if !announced {
-                announced = true;
+            let now = tokio::time::Instant::now();
+            if now >= next_progress {
                 tracing::info!(
                     conversation_id = %prepared.conversation_id,
                     run_id = %prepared.run_id,
-                    "parent turn is waiting for background subagents"
+                    last_activity_age_secs = last_activity_ms
+                        .map(|last_activity| now_ms.saturating_sub(last_activity) / 1000)
+                        .unwrap_or(0),
+                    waited_secs = now_ms.saturating_sub(started_at_ms) / 1000,
+                    "parent turn is still waiting for background subagents"
                 );
+                next_progress = now + policy.progress_log;
             }
-            tracing::debug!(
-                run_id = %prepared.run_id,
-                drained = drained_since.is_some(),
-                "background wait check"
-            );
+            if now >= next_heartbeat {
+                if emit(client, RunEvent::Heartbeat).await.is_err() {
+                    return Err(client_failure());
+                }
+                next_heartbeat = now + policy.heartbeat;
+            }
             let wait = match drained_since {
-                Some(since) => BACKGROUND_COMPLETION_GRACE.saturating_sub(since.elapsed()),
-                None => BACKGROUND_WORK_POLL,
+                Some(since) => policy.completion_grace.saturating_sub(since.elapsed()),
+                None => policy.poll,
             };
             tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => {
                     let _ = emit(client, RunEvent::CycleInterrupted).await;
                     return Err(RunOutcome::Cancelled);
-                }
-                _ = tokio::time::sleep_until(deadline) => {
-                    tracing::warn!(
-                        run_id = %prepared.run_id,
-                        timeout_secs = BACKGROUND_WORK_TIMEOUT.as_secs(),
-                        "background subagents did not report back in time; ending the turn"
-                    );
-                    return Ok(BackgroundWait::Drained);
                 }
                 _ = tokio::time::sleep(wait) => {}
                 command = client.commands.recv() => match command {
@@ -2111,6 +2225,62 @@ fn learn_provider_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 父轮等待的截止条件看"子代理还有没有活动"：30 分钟过去但活动刚刷新就不收尾；
+    /// 真正空闲超过阈值、或到了绝对上限才收尾。
+    #[test]
+    fn background_wait_deadline_follows_subagent_activity() {
+        let policy = BackgroundWaitPolicy::default();
+        let second = 1_000;
+        let minute = 60 * second;
+        assert_eq!(policy.idle_timeout, Duration::from_secs(45 * 60));
+        assert_eq!(policy.ceiling, Duration::from_secs(6 * 60 * 60));
+
+        // 旧上限是 30 分钟；现在已经过去 31 分钟，但子代理 1 秒前还有活动：继续等。
+        assert!(!background_wait_expired(
+            &policy,
+            31 * minute,
+            31 * minute - second,
+            0
+        ));
+        // 子代理已经 46 分钟没有活动：收尾。
+        assert!(background_wait_expired(&policy, 50 * minute, 4 * minute, 0));
+        // 44 分钟没有活动：仍在空闲阈值内。
+        assert!(!background_wait_expired(
+            &policy,
+            60 * minute,
+            16 * minute,
+            0
+        ));
+        // 开始等待本身算一次活动：父轮刚进来时即便子代理上次活动很旧，也先给满一个
+        // 空闲窗口，不会立刻收尾。
+        assert!(!background_wait_expired(
+            &policy,
+            50 * minute,
+            minute,
+            50 * minute
+        ));
+        // 绝对上限：活动一直在刷新也收尾，防止永久挂住。
+        let ceiling = duration_ms(policy.ceiling);
+        assert!(background_wait_expired(
+            &policy,
+            ceiling + second,
+            ceiling,
+            0
+        ));
+    }
+
+    /// 阈值可注入：测试用秒级值也能覆盖同样的语义，不必真的等半小时。
+    #[test]
+    fn background_wait_policy_is_injectable() {
+        let policy = BackgroundWaitPolicy {
+            idle_timeout: Duration::from_secs(1),
+            ceiling: Duration::from_secs(60),
+            ..BackgroundWaitPolicy::default()
+        };
+        assert!(!background_wait_expired(&policy, 1_500, 1_000, 0));
+        assert!(background_wait_expired(&policy, 2_000, 1_000, 0));
+    }
 
     /// 溢出压缩阶梯（审计 09/F8）：计数按"当前溢出 episode"走——一次成功的模型调用就
     /// 清零，同一 run 里第二次**相距很远**的溢出仍然先用保留近期轮的压缩，而不是因为

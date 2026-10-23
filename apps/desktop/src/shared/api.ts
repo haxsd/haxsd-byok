@@ -217,6 +217,104 @@ export interface DevinStatus {
   calls: number;
 }
 
+/** Claude 网关设置：模型字段存模型库里的 `model_hash`，不是显示名。 */
+export interface ClaudeSettings {
+  enabled: boolean;
+  port: number;
+  default_model_hash: string | null;
+  sonnet_model_hash: string | null;
+  opus_model_hash: string | null;
+  haiku_model_hash: string | null;
+}
+
+/** Claude Code CLI 的接管状态；`managed` 表示配置由系统策略托管，我们不会改写。 */
+export type ClaudeCliTakeoverState = "missing" | "ready" | "applied" | "conflict" | "managed";
+
+/** Claude Desktop 的接管状态；`running` 表示程序正在运行，必须先完全退出。 */
+export type ClaudeDesktopTakeoverState = ClaudeCliTakeoverState | "running";
+
+/** Claude Desktop 读到的配置来源：本地配置或两级系统策略。 */
+export type ClaudeConfigSource = "none" | "local" | "user_policy" | "machine_policy";
+
+/**
+ * 服务端判定的冲突或提示。
+ *
+ * `code` 是稳定标识（同一类问题永远同一个值），`message` 是给人看的说明；`blocking`
+ * 为 true 时写入会覆盖别人的配置，界面必须把它和"只提示"分开呈现。
+ */
+export interface ClaudeTakeoverConflict {
+  code: string;
+  key: string | null;
+  message: string;
+  blocking: boolean;
+}
+
+export interface ClaudeCliTakeover {
+  state: ClaudeCliTakeoverState;
+  /** Claude Code 的 settings.json；`missing` 时为空串。 */
+  settings_path: string;
+  /** 接管前留下的备份；没有接管过时为空串。备份只供人工查看，撤销不读它。 */
+  backup_path: string;
+  /** 接管收据存在且属于当前配置目录：撤销只在这时为 true。 */
+  restorable: boolean;
+  conflicts: ClaudeTakeoverConflict[];
+  /** 设置里选中、但模型库已不存在的哈希；应用前必须先处理。 */
+  missing_models: string[];
+  /** 生效的受管策略文件；任意一个存在就说明 settings.json 被忽略。 */
+  managed_sources: string[];
+}
+
+export interface ClaudeDesktopTakeover {
+  state: ClaudeDesktopTakeoverState;
+  config_source: ClaudeConfigSource;
+  profile_path: string;
+  backup_path: string;
+  /** 接管收据存在且属于当前安装：撤销只在这时为 true。 */
+  restorable: boolean;
+  conflicts: ClaudeTakeoverConflict[];
+  /** Claude Desktop 只能手工填第三方推理配置：为 true 时页面走引导视图。 */
+  guided: boolean;
+}
+
+export interface ClaudeTakeover {
+  cli: ClaudeCliTakeover;
+  desktop: ClaudeDesktopTakeover;
+}
+
+/**
+ * Claude 网关的运行状态。
+ *
+ * `models` 是当前映射里实际可用、且 `GET /v1/models` 会返回的模型数，不是哈希数组。
+ */
+export interface ClaudeStatus {
+  enabled: boolean;
+  listening: boolean;
+  port: number;
+  base_url: string;
+  token: string;
+  models: number;
+  default_model_hash: string | null;
+  calls: number;
+  last_error: string | null;
+}
+
+export interface ClaudeCliTakeoverInput {
+  action: "apply" | "undo";
+  sonnet_model_hash?: string;
+  opus_model_hash?: string;
+  haiku_model_hash?: string;
+}
+
+export interface ClaudeDesktopModel {
+  model_hash: string;
+  label?: string;
+}
+
+export interface ClaudeDesktopTakeoverInput {
+  action: "apply" | "undo";
+  models: ClaudeDesktopModel[];
+}
+
 export interface DevinHostPorts {
   api_port: number;
   inference_port: number;
@@ -354,7 +452,7 @@ export interface PendingUpdateRecord {
 export interface DesktopUiPreferences {
   /** "midnight" | "default-dark" | "default-light" */
   theme?: string | null;
-  /** "system" | "zh-CN" | "en-US" */
+  /** "system" | "zh-CN" | "en-US" | "ru-RU" */
   locale?: string | null;
   tutorial_read?: boolean | null;
   pending_update?: PendingUpdateRecord | null;
@@ -899,6 +997,149 @@ function usableCodexSettings(payload: unknown, write: boolean): CodexSettings {
   return { ...settings, model_hashes: hashes };
 }
 
+/** 模型哈希字段：空串与 null 都按"没选"处理，避免界面显示一个空选项。 */
+function optionalHash(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** Claude 设置：`enabled`/`port` 缺失时不能把"关闭"当成事实，按读取/保存失败处理。 */
+function usableClaudeSettings(payload: unknown, write: boolean): ClaudeSettings {
+  const settings = usableSettings<ClaudeSettings>(payload, [], "Claude 设置", write);
+  if (typeof settings.enabled !== "boolean" || typeof settings.port !== "number") {
+    console.warn("[api] Claude 设置：缺少 enabled 或 port");
+    throw new Error(write ? t("保存失败") : t("读取失败"));
+  }
+  return {
+    enabled: settings.enabled,
+    port: settings.port,
+    default_model_hash: optionalHash(settings.default_model_hash),
+    sonnet_model_hash: optionalHash(settings.sonnet_model_hash),
+    opus_model_hash: optionalHash(settings.opus_model_hash),
+    haiku_model_hash: optionalHash(settings.haiku_model_hash),
+  };
+}
+
+/** Claude 状态：`models` 不是数字时按 0 处理（它只用于显示数量，不该让整页读失败）。 */
+function usableClaudeStatus(payload: unknown): ClaudeStatus {
+  const status = requireStatus(payload as ClaudeStatus, "Claude 状态");
+  if (typeof status.models !== "number") console.warn("[api] Claude 状态：models 不是数字，已按 0 处理");
+  return {
+    ...status,
+    base_url: typeof status.base_url === "string" ? status.base_url : "",
+    token: typeof status.token === "string" ? status.token : "",
+    models: typeof status.models === "number" ? status.models : 0,
+    default_model_hash: optionalHash(status.default_model_hash),
+    last_error: typeof status.last_error === "string" ? status.last_error : null,
+  };
+}
+
+const claudeCliStates: readonly ClaudeCliTakeoverState[] = ["missing", "ready", "applied", "conflict", "managed"];
+const claudeDesktopStates: readonly ClaudeDesktopTakeoverState[] = [...claudeCliStates, "running"];
+const claudeConfigSources: readonly ClaudeConfigSource[] = ["none", "local", "user_policy", "machine_policy"];
+
+function takeoverState<T extends string>(value: unknown, allowed: readonly T[], fallback: T, label: string): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) return value as T;
+  console.warn(`[api] Claude 接管状态：${label} 的 state 无法识别（${String(value)}），按 ${fallback} 处理`);
+  return fallback;
+}
+
+function stringList(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) {
+    if (value !== undefined) console.warn(`[api] Claude 接管状态：${label} 不是数组，已按空列表处理`);
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function stringField(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * 冲突条目。缺 `code` 或 `message` 的条目既不能呈现也不能分支，直接丢掉；`key`
+ * 缺失按"不针对单一键"处理。布尔值只认真正的 `true`，避免把字符串 "false" 当成阻断。
+ */
+function takeoverConflicts(value: unknown, label: string): ClaudeTakeoverConflict[] {
+  if (!Array.isArray(value)) {
+    if (value !== undefined) console.warn(`[api] Claude 接管状态：${label} 不是数组，已按空列表处理`);
+    return [];
+  }
+  const conflicts: ClaudeTakeoverConflict[] = [];
+  let dropped = 0;
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) {
+      dropped += 1;
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.code !== "string" || typeof record.message !== "string") {
+      dropped += 1;
+      continue;
+    }
+    conflicts.push({
+      code: record.code,
+      key: typeof record.key === "string" && record.key !== "" ? record.key : null,
+      message: record.message,
+      blocking: record.blocking === true,
+    });
+  }
+  if (dropped > 0) console.warn(`[api] Claude 接管状态：${label} 丢弃了 ${dropped} 条结构不完整的条目`);
+  return conflicts;
+}
+
+function cliTakeover(raw: Record<string, unknown>): ClaudeCliTakeover {
+  return {
+    state: takeoverState(raw.state, claudeCliStates, "missing", "cli"),
+    settings_path: stringField(raw.settings_path),
+    backup_path: stringField(raw.backup_path),
+    restorable: raw.restorable === true,
+    conflicts: takeoverConflicts(raw.conflicts, "cli.conflicts"),
+    missing_models: stringList(raw.missing_models, "cli.missing_models"),
+    managed_sources: stringList(raw.managed_sources, "cli.managed_sources"),
+  };
+}
+
+function desktopTakeover(raw: Record<string, unknown>): ClaudeDesktopTakeover {
+  const configSource = typeof raw.config_source === "string"
+    && (claudeConfigSources as readonly string[]).includes(raw.config_source)
+    ? raw.config_source as ClaudeConfigSource
+    : "none";
+  return {
+    state: takeoverState(raw.state, claudeDesktopStates, "missing", "desktop"),
+    config_source: configSource,
+    profile_path: stringField(raw.profile_path),
+    backup_path: stringField(raw.backup_path),
+    restorable: raw.restorable === true,
+    conflicts: takeoverConflicts(raw.conflicts, "desktop.conflicts"),
+    guided: raw.guided === true,
+  };
+}
+
+/** 接管状态：cli/desktop 任一缺失时整份读取失败，界面不能把"没读到"画成"未接管"。 */
+function usableClaudeTakeover(payload: unknown): ClaudeTakeover {
+  const raw = payload as { cli?: unknown; desktop?: unknown } | null;
+  if (typeof raw !== "object" || raw === null
+    || typeof raw.cli !== "object" || raw.cli === null
+    || typeof raw.desktop !== "object" || raw.desktop === null) {
+    throw unusableRead("Claude 接管状态");
+  }
+  return {
+    cli: cliTakeover(raw.cli as Record<string, unknown>),
+    desktop: desktopTakeover(raw.desktop as Record<string, unknown>),
+  };
+}
+
+/** 应用/撤销的回包就是对应客户端的接管状态：页面直接用返回的结论，不再猜。 */
+function usableClaudeCliTakeover(payload: unknown): ClaudeCliTakeover {
+  if (typeof payload !== "object" || payload === null) throw unusableRead("Claude Code 接管状态");
+  return cliTakeover(payload as Record<string, unknown>);
+}
+
+function usableClaudeDesktopTakeover(payload: unknown): ClaudeDesktopTakeover {
+  if (typeof payload !== "object" || payload === null) throw unusableRead("Claude Desktop 接管状态");
+  return desktopTakeover(payload as Record<string, unknown>);
+}
+
 /** Devin 设置的可用部分：坏绑定与坏路由丢掉，缺字段交给界面按"读不到就当空"处理。 */
 function usableDevinSettings(payload: unknown, write: boolean): DevinSettings {
   const settings = usableSettings<DevinSettings>(payload, ["bindings"], "Devin 设置", write);
@@ -1080,6 +1321,22 @@ export const api = {
   codexStatus: (signal?: AbortSignal) => request<unknown>("/codex/status", { signal }).then(usableCodexStatus),
   applyCodex: () => request<unknown>("/codex/apply", { method: "POST" }).then(usableCodexStatus),
   restoreCodex: () => request<unknown>("/codex/restore", { method: "POST" }).then(usableCodexStatus),
+  claudeSettings: () => request<unknown>("/claude/settings").then(settings => usableClaudeSettings(settings, false)),
+  setClaudeSettings: (settings: ClaudeSettings) => request<unknown>("/claude/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableClaudeSettings(saved, true)),
+  claudeStatus: (signal?: AbortSignal) => request<unknown>("/claude/status", { signal }).then(usableClaudeStatus),
+  rotateClaudeToken: () => request<unknown>("/claude/token/rotate", { method: "POST" }).then((payload) => {
+    const token = (payload as { token?: unknown } | null)?.token;
+    if (typeof token !== "string" || token === "") {
+      throw new Error(t("服务端没有返回新令牌"));
+    }
+    return token;
+  }),
+  claudeTakeover: (signal?: AbortSignal) => request<unknown>("/claude/takeover", { signal }).then(usableClaudeTakeover),
+  // 应用/撤销都返回服务端状态：撤销结果可能保留用户改动，页面要显示服务端实际做了什么。
+  applyClaudeCli: (input: Omit<ClaudeCliTakeoverInput, "action">) => request<unknown>("/claude/takeover/cli", { method: "PUT", body: JSON.stringify({ action: "apply", ...input }) }).then(usableClaudeCliTakeover),
+  undoClaudeCli: () => request<unknown>("/claude/takeover/cli", { method: "PUT", body: JSON.stringify({ action: "undo" }) }).then(usableClaudeCliTakeover),
+  applyClaudeDesktop: (models: ClaudeDesktopModel[]) => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "apply", models }) }).then(usableClaudeDesktopTakeover),
+  undoClaudeDesktop: () => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "undo", models: [] }) }).then(usableClaudeDesktopTakeover),
   devinSettings: () => request<unknown>("/devin/settings").then(settings => usableDevinSettings(settings, false)),
   devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }).then(status => requireStatus(status, "Devin 状态")),
   setDevinSettings: (settings: DevinSettings) => request<unknown>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableDevinSettings(saved, true)),

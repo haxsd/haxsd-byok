@@ -1,6 +1,7 @@
 //! Exposes the local control API.
 mod app_info;
 mod calls;
+pub mod claude;
 pub mod codex;
 mod devin;
 mod harness;

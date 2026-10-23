@@ -155,6 +155,51 @@ async fn configured_gateway(
     (directory, store, gateway, model.model_hash)
 }
 
+/// 端到端：模型库里配 800k，发布的目录逐模型写 800k，config.toml 不再有全局窗口。
+///
+/// 旧版本把“默认模型”的窗口写成 `model_context_window`：客户端在界面里切到 800k 的
+/// 模型后，配置不会更新，客户端仍按默认模型的 286k × 95% 显示（用户看到的 272k），
+/// 自动压缩也停在 228k。窗口现在只由目录里的 `context_window` 决定。
+#[tokio::test]
+async fn a_configured_800k_window_reaches_the_catalog_without_a_global_override() {
+    let (directory, store, gateway, id) =
+        configured_gateway("responses", "http://127.0.0.1:1".into()).await;
+    let model = store.model(&id).await.unwrap().unwrap();
+    let mut input = model.config_input("800k model".into(), model.sort_order);
+    input.context_window_tokens = Some(800_000);
+    store.update_model(&id, &input).await.unwrap();
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+
+    let home = directory.path().join("codex-home");
+    let doc = std::fs::read_to_string(home.join("config.toml"))
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    assert!(
+        doc.get("model_context_window").is_none(),
+        "全局窗口会盖住目录里的逐模型窗口: {doc}"
+    );
+    assert!(
+        doc.get("model_auto_compact_token_limit").is_none(),
+        "全局压缩阈值会压住目录里的逐模型阈值: {doc}"
+    );
+
+    let catalog: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(published_catalog_path(&home)).unwrap()).unwrap();
+    let entry = &catalog["models"][0];
+    assert_eq!(entry["slug"], id.as_str());
+    assert_eq!(entry["context_window"], 800_000);
+    assert_eq!(entry["max_context_window"], 800_000);
+    assert_eq!(entry["auto_compact_token_limit"], 640_000);
+}
+
 /// 已发布目录的路径：客户端读的就是 config.toml 里的这个指针。
 fn published_catalog_path(home: &std::path::Path) -> std::path::PathBuf {
     let doc = std::fs::read_to_string(home.join("config.toml"))
@@ -256,10 +301,11 @@ async fn a_model_edited_after_apply_republishes_the_catalog_instead_of_failing()
     task.abort();
 }
 
-/// 目录被外部改过（文件名哈希与实际内容不匹配）不是“模型被编辑”：不能自愈，
-/// 这次请求仍然被拒绝。
+/// 目录被外部改过（文件名哈希与实际内容不匹配）不是"模型被编辑"：不能自愈。
+/// 但请求路径上的刷新是旁路——这次请求仍会发给上游（这里上游不可达，所以是 502），
+/// 篡改过的目录保持原样，不会被覆盖。
 #[tokio::test]
-async fn an_externally_tampered_catalog_is_still_rejected() {
+async fn an_externally_tampered_catalog_is_never_overwritten_by_the_request_path() {
     let (_dir, store, gateway, id) =
         configured_gateway("responses", "http://127.0.0.1:1/responses".into()).await;
     let mut settings = store.codex_settings().await.unwrap();
@@ -287,8 +333,16 @@ async fn an_externally_tampered_catalog_is_still_rejected() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::CONFLICT);
-    assert!(store.llm_calls(10).await.unwrap().is_empty());
+    assert_ne!(
+        response.status(),
+        StatusCode::CONFLICT,
+        "目录刷新是旁路，失败不能把整轮请求挡在 409"
+    );
+    assert_eq!(
+        std::fs::read_to_string(published_catalog_path(&home)).unwrap(),
+        "[]",
+        "刷新失败不能覆盖外部改动"
+    );
     gateway.shutdown().await.unwrap();
 }
 
@@ -1417,8 +1471,8 @@ async fn the_real_engine_survives_a_client_model_switch_and_a_placeholder_thinki
             &format!("model = \"{second}\""),
         )
         .replace(
-            "model_auto_compact_token_limit",
-            "model_reasoning_effort = \"none\"\nmodel_auto_compact_token_limit",
+            "model_provider = \"haxsd-byok\"",
+            "model_reasoning_effort = \"none\"\nmodel_provider = \"haxsd-byok\"",
         );
     assert_ne!(switched, applied);
     std::fs::write(&path, &switched).unwrap();

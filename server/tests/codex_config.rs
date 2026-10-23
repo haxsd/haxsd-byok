@@ -6,7 +6,6 @@ fn route(home: &std::path::Path) -> ConfigRoute {
         base_url: "http://127.0.0.1:43120/v1".into(),
         token: "local-test-token".into(),
         catalog_path: home.join("models.json"),
-        context_window: 32768,
     }
 }
 #[test]

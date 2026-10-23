@@ -83,6 +83,15 @@ impl Provider for OpenAiChatProvider {
                     "name": tool.name, "description": tool.description, "parameters": tool.parameters
                 }})).collect::<Vec<_>>());
             }
+            if !request.model.stop_sequences.is_empty() {
+                // OpenAI Chat 最多接受 4 条停止序列；多出来的由入站网关在事件层截断。
+                body["stop"] = json!(request
+                    .model
+                    .stop_sequences
+                    .iter()
+                    .take(4)
+                    .collect::<Vec<_>>());
+            }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;

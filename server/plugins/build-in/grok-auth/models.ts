@@ -4,20 +4,6 @@ import { accountData } from "./resources.ts";
 const LANGUAGE_MODELS_URL = "https://api.x.ai/v1/language-models";
 const MODELS_URL = "https://api.x.ai/v1/models";
 
-/** 免费账号无权调用模型列表接口(403 spending-limit);退回已知模型。 */
-export const FALLBACK_MODELS: ModelDefinition[] = [
-  {
-    id: "grok-4.6",
-    displayName: "Grok 4.6",
-    capabilities: { images: true },
-  },
-  {
-    id: "grok-4.5",
-    displayName: "Grok 4.5",
-    capabilities: { images: true },
-  },
-];
-
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -68,6 +54,23 @@ export function parseGrokModels(body: unknown): ModelDefinition[] {
   return models;
 }
 
+type Attempt = { url: string; status: number; detail: string };
+
+function failure(attempts: Attempt[]): Error {
+  const unauthorized = attempts.find((attempt) => attempt.status === 401);
+  if (unauthorized) {
+    return new Error(
+      `Grok model discovery was rejected (HTTP 401); sign in again to refresh the Grok credential: ${unauthorized.detail}`,
+    );
+  }
+  const summary = attempts
+    .map((attempt) => `${attempt.url} → HTTP ${attempt.status}: ${attempt.detail}`)
+    .join("; ");
+  return new Error(
+    `Grok model discovery failed; the previous catalog is kept: ${summary}`,
+  );
+}
+
 export const grokModels: ModelSupport = {
   list: async ({ resource }, context): Promise<ModelDefinition[]> => {
     if (!resource) throw new Error("add a Grok account before syncing models");
@@ -77,20 +80,33 @@ export const grokModels: ModelSupport = {
       authorization: `Bearer ${data.accessToken}`,
     };
     // language-models 带模态与上下文元数据;不可用时回退到标准列表。
-    let response = await context.network.fetch(LANGUAGE_MODELS_URL, { method: "GET", headers });
-    if (response.status < 200 || response.status >= 300) {
-      response = await context.network.fetch(MODELS_URL, { method: "GET", headers });
+    // 两个端点都失败时抛出可诊断错误,由宿主保留上一次的模型目录;
+    // 绝不用静态清单覆盖已发现的目录,401 也不降级成"部分可用"。
+    const attempts: Attempt[] = [];
+    for (const url of [LANGUAGE_MODELS_URL, MODELS_URL]) {
+      const response = await context.network.fetch(url, { method: "GET", headers });
+      if (response.status < 200 || response.status >= 300) {
+        attempts.push({
+          url,
+          status: response.status,
+          detail: response.body.trim().slice(0, 160),
+        });
+        continue;
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(response.body);
+      } catch {
+        attempts.push({ url, status: response.status, detail: "invalid JSON" });
+        continue;
+      }
+      const models = parseGrokModels(body);
+      if (models.length === 0) {
+        attempts.push({ url, status: response.status, detail: "no models in response" });
+        continue;
+      }
+      return models;
     }
-    if (response.status < 200 || response.status >= 300) {
-      return FALLBACK_MODELS;
-    }
-    let body: unknown;
-    try {
-      body = JSON.parse(response.body);
-    } catch {
-      throw new Error("Grok model discovery returned invalid JSON");
-    }
-    const models = parseGrokModels(body);
-    return models.length > 0 ? models : FALLBACK_MODELS;
+    throw failure(attempts);
   },
 };

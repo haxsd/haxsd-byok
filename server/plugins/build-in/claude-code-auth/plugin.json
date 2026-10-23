@@ -1,0 +1,17 @@
+{
+  "apiVersion": 1,
+  "id": "dev.cursorbyok.plugins.claude-code-auth",
+  "name": "Claude Code",
+  "version": "0.1.1",
+  "author": "@haxsd",
+  "minAppVersion": "0.1.0",
+  "icon": "assets/claude.svg",
+  "entry": "main.ts",
+  "permissions": {
+    "network": [
+      "api.anthropic.com",
+      "claude.ai",
+      "platform.claude.com"
+    ]
+  }
+}

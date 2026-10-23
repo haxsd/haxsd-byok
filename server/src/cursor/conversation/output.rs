@@ -317,6 +317,9 @@ impl ConversationOutput {
                         streams.clear();
                         presentation.discard_model_output();
                     }
+                    RunEvent::Heartbeat => {
+                        self.handle.emit(&events::heartbeat())?;
+                    }
                     RunEvent::ModelAttemptFailed { attempt, message } => {
                         tracing::warn!(
                             run_id = %self.run.run_id(),

@@ -1,10 +1,12 @@
 import type { IconifyIcon } from "@iconify/react";
 import cursorIconUrl from "../../shared/assets/icons/cursor.svg";
 import { navCodexIcon, navDevinIcon } from "../../shared/ui/navIcons";
-import type { CodexStatus, CursorHarnessStatus, DevinStatus } from "../../shared/api";
+import { terminalIcon } from "../../shared/ui/icons";
+import type { ClaudeStatus, ClaudeTakeover, CodexStatus, CursorHarnessStatus, DevinStatus } from "../../shared/api";
 import type { EntryStatus, StatusTone } from "../../shell/connectionStatus";
 import { cursorEntryStatus, devinEntryStatus } from "../../shell/connectionStatus";
 import { codexConnectionView } from "../codex/codexConnectionView";
+import { claudeConnectionView } from "../claude/claudeConnectionView";
 
 /**
  * 客户端接入模块的清单。
@@ -31,6 +33,8 @@ export interface HarnessState {
   cursorHarness: CursorHarnessStatus | null;
   devinStatus: DevinStatus | null;
   codexStatus: CodexStatus | null;
+  claudeStatus: ClaudeStatus | null;
+  claudeTakeover: ClaudeTakeover | null;
 }
 
 export const harnessClients: HarnessClient[] = [
@@ -61,6 +65,17 @@ export const harnessClients: HarnessClient[] = [
     icon: navCodexIcon,
     entry: ({ codexStatus }) => {
       const status = codexConnectionView(codexStatus);
+      return { active: status.state === "taken-over", status };
+    },
+  },
+  {
+    id: "claude",
+    path: "/harness/claude",
+    label: "Claude",
+    // 通用终端图标：这里不打包 Anthropic / Claude 的商标 Logo。
+    icon: terminalIcon,
+    entry: ({ claudeStatus, claudeTakeover }) => {
+      const status = claudeConnectionView(claudeStatus, claudeTakeover);
       return { active: status.state === "taken-over", status };
     },
   },

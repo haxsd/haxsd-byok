@@ -9,6 +9,7 @@ import { CursorSettingsPage } from "./features/models/CursorSettingsPage";
 import { ModelLibraryPage } from "./features/models/ModelLibraryPage";
 import { DevinSettingsPage } from "./features/devin/DevinSettingsPage";
 import { CodexSettingsPage } from "./features/codex/CodexSettingsPage";
+import { ClaudeSettingsPage } from "./features/claude/ClaudeSettingsPage";
 import { HomePage } from "./features/home/HomePage";
 import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -31,6 +32,7 @@ export function App() {
                 <Route path="harness/cursor" element={<CursorSettingsPage />} />
                 <Route path="harness/devin" element={<DevinSettingsPage />} />
                 <Route path="harness/codex" element={<CodexSettingsPage />} />
+                <Route path="harness/claude" element={<ClaudeSettingsPage />} />
                 <Route path="plugins" element={<PluginManagementPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="tutorial" element={<TutorialPage />} />

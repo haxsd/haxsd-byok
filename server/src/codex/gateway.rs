@@ -128,6 +128,15 @@ impl CodexGateway {
     pub async fn start(&self) -> Result<()> {
         let _operation = self.inner.operations.lock().await;
         let settings = self.inner.store.codex_settings().await?;
+        // 旧版本把默认模型的窗口写成全局覆盖；启动时清一次，客户端界面不必等到
+        // 下一次模型编辑或重新应用才显示逐模型窗口。
+        if let Ok(home) = settings.resolved_home() {
+            if config::inspect(&home).is_ok_and(|status| status.applied) {
+                if let Err(error) = config::drop_global_limits(&home) {
+                    tracing::warn!(%error, "Codex global context limit cleanup failed");
+                }
+            }
+        }
         self.sync_listener(&settings).await
     }
 
@@ -364,9 +373,6 @@ impl CodexGateway {
                 base_url: format!("http://127.0.0.1:{}/v1", settings.port),
                 token: self.inner.store.codex_token().await?,
                 catalog_path,
-                context_window: default
-                    .context_window_tokens
-                    .ok_or_else(|| Error::Config("configure the model context window".into()))?,
             },
         )?;
         self.status().await
@@ -401,12 +407,23 @@ impl CodexGateway {
     /// `apply` / `restore` / `save_settings` 同样在锁内读写收据——两边并发就会互相覆盖。
     /// 这里不自己取锁（调用方已持有），锁的作用是"每次请求与配置生命周期操作互斥"，
     /// 不是"与无活跃请求前提互斥"。
+    ///
+    /// 读写都是同步文件 IO，放到阻塞线程池：这条路径每次请求都会走，不能占住
+    /// async 工作线程。旧版本全局窗口的清理不在这里——请求路径不做强制修改，
+    /// 它留在 `start` / `apply`。
     async fn publish_current_catalog(
         &self,
         home: &std::path::Path,
         settings: &CodexSettings,
     ) -> Result<()> {
-        let Some(catalog) = config::applied_catalog(home)? else {
+        let path = home.to_path_buf();
+        let applied = tokio::task::spawn_blocking({
+            let path = path.clone();
+            move || config::applied_catalog(&path)
+        })
+        .await
+        .map_err(|error| Error::Store(format!("catalog read task failed: {error}")))??;
+        let Some(catalog) = applied else {
             return Ok(());
         };
         let fresh: serde_json::Value =
@@ -414,7 +431,10 @@ impl CodexGateway {
         if fresh == catalog {
             return Ok(());
         }
-        config::republish_catalog(home, &serde_json::to_vec_pretty(&fresh)?)?;
+        let bytes = serde_json::to_vec_pretty(&fresh)?;
+        tokio::task::spawn_blocking(move || config::republish_catalog(&path, &bytes))
+            .await
+            .map_err(|error| Error::Store(format!("catalog republish task failed: {error}")))??;
         Ok(())
     }
 
@@ -515,9 +535,13 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
         Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
     // 目录过期（模型在 apply 之后被编辑）不是错误：把目录刷新成当前配置后继续
-    // 服务，只有刷新本身失败（例如目录被外部改过）才拒绝这次请求。
+    // 服务。刷新失败也只留 warn——请求用的是模型库里的最新配置，目录只影响客户端
+    // 下一次会话；让一次旁路自愈失败把整轮请求变成 409 并不划算。
     if let Err(error) = gateway.publish_current_catalog(&home, &settings).await {
-        return protocol_error(StatusCode::CONFLICT, error.to_string());
+        tracing::warn!(
+            error = %crate::diagnostics::error_chain(&error),
+            "Codex model catalog refresh failed; serving with the model store"
+        );
     }
     gateway.inner.active.fetch_add(1, Ordering::SeqCst);
     let active = ActiveRequest {

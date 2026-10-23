@@ -1,6 +1,7 @@
 //! Exposes the local persistence interface.
 mod cas;
 mod checkpoints;
+mod claude;
 mod codex;
 mod compactions;
 mod conversations;

@@ -410,6 +410,9 @@ impl PluginRegistry {
                     URL_SAFE_NO_PAD.encode(Sha256::digest(code_verifier.as_bytes()));
                 let callback = method.callback.as_ref();
                 let callback = oauth_callback::bind(
+                    callback
+                        .and_then(|value| value.host.as_deref())
+                        .unwrap_or("127.0.0.1"),
                     callback.and_then(|value| value.port),
                     callback
                         .and_then(|value| value.path.as_deref())

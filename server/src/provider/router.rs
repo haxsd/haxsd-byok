@@ -209,12 +209,14 @@ fn event_name(event: &super::ModelEvent) -> &'static str {
         super::ModelEvent::TextEnd => "TextEnd",
         super::ModelEvent::ThinkingStart => "ThinkingStart",
         super::ModelEvent::ThinkingDelta(_) => "ThinkingDelta",
+        super::ModelEvent::ThinkingSignature(_) => "ThinkingSignature",
         super::ModelEvent::ThinkingEnd => "ThinkingEnd",
         super::ModelEvent::ToolCallStart { .. } => "ToolCallStart",
         super::ModelEvent::ToolCallArgumentsDelta { .. } => "ToolCallArgsDelta",
         super::ModelEvent::ToolCallEnd { .. } => "ToolCallEnd",
         super::ModelEvent::ProviderReplayState(_) => "ReplayState",
         super::ModelEvent::Usage(_) => "Usage",
+        super::ModelEvent::StopSequence(_) => "StopSequence",
         super::ModelEvent::Done(_) => "Done",
     }
 }
@@ -251,7 +253,9 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
     CallRecorder::start(
         store.clone(),
         NewLlmCall {
-            purpose: crate::model::CallPurpose::Chat,
+            // 调用用途随 invocation 一路带下来：压缩摘要与普通对话共用记录表，
+            // 但只有普通对话能当上下文用量锚点（见 `CallPurpose`）。
+            purpose: invocation.purpose,
             client_source: invocation.client_source,
             call_id: invocation.call_id.clone(),
             run_id: invocation.run_id.clone(),
@@ -441,9 +445,171 @@ fn build_inner(
 mod tests {
     use super::*;
     use crate::model::{
-        ContentPart, ModelRequest, ModelSpec, ProjectedContent, ProjectedMessage, PromptSpec, Role,
-        CONTINUE_TAIL_MESSAGE_ID,
+        CallClient, CallPurpose, ContentPart, ModelConfigInput, ModelRequest, ModelSpec, ModelType,
+        ProjectedContent, ProjectedMessage, PromptSpec, Role, CONTINUE_TAIL_MESSAGE_ID,
     };
+    use crate::store::ContextUsageAnchor;
+
+    /// 压缩摘要的用途必须一路到达记录层。
+    ///
+    /// 记录层以前把 purpose 写死成 `Chat`，于是摘要调用被当成普通对话：`llm_calls`
+    /// 里看不出它，更糟的是它会成为上下文用量锚点（输入是被裁剪过的重放历史，
+    /// 系统性低估下一步的估算）。这里走**真实路由**（ProviderRouter + 本地上游 +
+    /// recorder）而不是直接调 `start_recorder`。
+    #[tokio::test]
+    async fn a_compaction_summary_call_is_recorded_with_its_own_purpose() {
+        // `PluginRegistry::managed` 只接受托管数据目录；即使这条路径用不到插件，
+        // 也要把它指到本进程专属的临时目录，不能碰用户真实数据。
+        static ISOLATE: std::sync::Once = std::sync::Once::new();
+        ISOLATE.call_once(|| {
+            let directory = Box::leak(Box::new(tempfile::tempdir().unwrap()));
+            std::env::set_var("HAXSD_BYOK_DATA_DIR", directory.path());
+        });
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("purpose.db").display()
+        ))
+        .await
+        .unwrap();
+        // 两个上游给不同的输入用量：摘要行更新，但锚点必须还是 chat 行。
+        let model = |base_url: String| ModelConfigInput {
+            sort_order: 0,
+            display_name: "Purpose Model".into(),
+            group_name: None,
+            model_type: ModelType::Anthropic,
+            base_url,
+            use_full_url: true,
+            api_key: "key".into(),
+            tooltip_data: "Purpose model".into(),
+            model_id: "vendor-claude".into(),
+            reasoning_effort: None,
+            openai_endpoint: String::new(),
+            openai_extra_params_enabled: false,
+            openai_extra_params: serde_json::json!({}),
+            custom_headers_enabled: false,
+            custom_headers: serde_json::json!({}),
+            anthropic_extra_params_enabled: false,
+            anthropic_extra_params: serde_json::json!({}),
+            context_window_tokens: Some(200_000),
+            max_completion_tokens: None,
+            anthropic_max_tokens: Some(8_192),
+            anthropic_thinking_effort: None,
+            thinking_budget_tokens: None,
+        };
+        let upstream = |input_tokens: u64| {
+            crate::provider::testing::sse_upstream(
+                "/v1/messages",
+                vec![
+                    serde_json::json!({"type":"message_start","message":{"usage":{"input_tokens":input_tokens}}}),
+                    serde_json::json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                    serde_json::json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}),
+                    serde_json::json!({"type":"content_block_stop","index":0}),
+                    serde_json::json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}),
+                    serde_json::json!({"type":"message_stop"}),
+                ],
+            )
+        };
+        let chat_model = store
+            .create_model(&model(upstream(42).await))
+            .await
+            .unwrap();
+        let summary_model = store.create_model(&model(upstream(7).await)).await.unwrap();
+        let clients = crate::network::NetworkClients::new(store.clone());
+        let plugins = PluginRegistry::managed(
+            store.clone(),
+            crate::plugin::PluginRuntime::managed().unwrap(),
+            "purpose-test".into(),
+        )
+        .unwrap();
+        let router = ProviderRouter::new(
+            store.clone(),
+            plugins,
+            clients,
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+        );
+        let invocation = |call_id: &str, model_hash: &str, purpose: CallPurpose, history: usize| {
+            ModelInvocation {
+                purpose,
+                client_source: CallClient::Internal,
+                call_id: call_id.into(),
+                run_id: "purpose-run".into(),
+                conversation_id: "purpose-conversation".into(),
+                provider_call_index: 0,
+                request: ModelRequest {
+                    prompt: PromptSpec {
+                        instructions: String::new(),
+                        tools: Vec::new(),
+                    },
+                    model: ModelSpec::new(model_hash.to_owned()),
+                    history: (0..history)
+                        .map(|index| ProjectedMessage {
+                            message_id: format!("m-{}", index),
+                            role: Role::User,
+                            content: ProjectedContent::Parts(vec![ContentPart::Text {
+                                text: "hi".into(),
+                            }]),
+                        })
+                        .collect(),
+                },
+            }
+        };
+
+        for (call_id, model_hash, purpose, history) in [
+            (
+                "chat-call",
+                chat_model.model_hash.as_str(),
+                CallPurpose::Chat,
+                3,
+            ),
+            (
+                "summary-call",
+                summary_model.model_hash.as_str(),
+                CallPurpose::CompactionSummary,
+                1,
+            ),
+        ] {
+            let events = crate::provider::testing::drain(router.stream(
+                invocation(call_id, model_hash, purpose, history),
+                CancellationToken::new(),
+            ))
+            .await
+            .unwrap();
+            assert_eq!(
+                crate::provider::testing::finish_of(&events),
+                Some(crate::provider::FinishReason::Stop)
+            );
+        }
+
+        let calls = store.llm_calls(10).await.unwrap();
+        let purpose_of = |call_id: &str| {
+            calls
+                .iter()
+                .find(|call| call.call_id == call_id)
+                .unwrap_or_else(|| panic!("call_id missing: {}", call_id))
+                .purpose
+                .clone()
+        };
+        assert_eq!(purpose_of("chat-call"), "chat");
+        assert_eq!(
+            purpose_of("summary-call"),
+            "compaction-summary",
+            "摘要调用的用途必须原样落库"
+        );
+        assert_eq!(
+            store
+                .latest_context_usage("purpose-conversation")
+                .await
+                .unwrap(),
+            Some(ContextUsageAnchor {
+                context_input_tokens: 42,
+                message_count: 3,
+            }),
+            "更新的摘要行不是锚点；锚点仍是最近一次 chat"
+        );
+    }
 
     /// 上下文用量锚点的计数（09/F7）：只数**持久化**消息，不含只对 provider 可见的
     /// 瞬时尾巴（`runtime:continue`）——否则下一个 run 按这个偏大的下标切片会漏掉

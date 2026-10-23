@@ -160,6 +160,23 @@ impl Store {
         ] {
             sqlx::query(statement).execute(&mut *tx).await?;
         }
+        // 会话被回收后，它的压缩记录既没有界面入口（调用详情按会话/run 找），归档
+        // 文件也失去了引用。runs 只随会话一起删，所以按会话判断就覆盖了 run 孤儿行。
+        // 先把归档路径收出来，事务提交之后再删文件——事务里做文件 IO 会拉长写锁。
+        let orphaned_archives: Vec<String> = sqlx::query_scalar(
+            "SELECT archive_path FROM compaction_events
+             WHERE archive_path IS NOT NULL
+               AND conversation_id NOT IN (SELECT conversation_id FROM conversations)",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let pruned_compactions = sqlx::query(
+            "DELETE FROM compaction_events
+             WHERE conversation_id NOT IN (SELECT conversation_id FROM conversations)",
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
         for statement in [
             "DELETE FROM llm_call_requests WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
             "DELETE FROM llm_call_response_chunks WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
@@ -228,17 +245,37 @@ impl Store {
                 .await?;
         }
         tx.commit().await?;
+        // 压缩归档是文件系统上的旁路：行删掉之后再删文件，失败只留 warn（下一趟
+        // `prune_artifact_files` 也会按失去会话引用的规则收走它们）。删文件不占写锁。
+        if !orphaned_archives.is_empty() {
+            drop(_write);
+            let removed = tokio::task::spawn_blocking(move || {
+                crate::model::remove_compaction_archives(&orphaned_archives)
+            })
+            .await
+            .unwrap_or_default();
+            tracing::info!(
+                deleted_compaction_archives = removed,
+                "storage retention removed orphan compaction archives"
+            );
+        }
         // Freed pages are reused by later writes. Automatic VACUUM would rewrite
         // the whole database while holding the same lock that blocked startup.
         //
         // 这一段每 60 秒跑一次：什么都没收走时记 debug。否则一份正常日志会被
         // "retention pass completed" 填满，用户真正要找的那几行反而找不到。
-        if orphans > 0 || references > 0 || pruned_traces > 0 || expired > 0 {
+        if orphans > 0
+            || references > 0
+            || pruned_traces > 0
+            || expired > 0
+            || pruned_compactions > 0
+        {
             tracing::info!(
                 retained_blobs = retained,
                 deleted_blobs = orphans,
                 deleted_references = references,
                 deleted_traces = pruned_traces,
+                deleted_compactions = pruned_compactions,
                 recycled_conversations = expired,
                 "storage retention pass completed"
             );
@@ -1022,6 +1059,62 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// 压缩记录只对"会话还在"有意义：会话回收之后调用详情也打不开它，归档文件
+    /// 同样失去了引用。孤儿行（会话从未落库）也一并收走，留下来的行不带任何会话
+    /// 之外的悬空引用。
+    #[tokio::test]
+    async fn compaction_events_follow_their_conversation() {
+        use crate::store::NewCompactionEvent;
+        let (_dir, store) = fixture().await;
+        let now = crate::store::now_ms();
+        seed_conversation(&store, "live", now, false).await;
+        seed_conversation(&store, "idle", now - CONVERSATION_RETENTION_MS - 1, false).await;
+        for (conversation, run, archive) in [
+            ("live-conversation", "live-run", None),
+            (
+                "idle-conversation",
+                "idle-run",
+                Some("/tmp/compaction-history/idle.jsonl"),
+            ),
+            (
+                "never-created",
+                "orphan-run",
+                Some("/tmp/compaction-history/orphan.jsonl"),
+            ),
+        ] {
+            store
+                .record_compaction_event(&NewCompactionEvent {
+                    conversation_id: conversation,
+                    run_id: run,
+                    checkpoint_id: 1,
+                    trigger: "preflight",
+                    retention: "window",
+                    estimated_tokens: Some(100),
+                    calibration: None,
+                    compactable_messages: 10,
+                    replacement_messages: 3,
+                    summary_chars: 40,
+                    archive_path: archive,
+                })
+                .await
+                .unwrap();
+        }
+
+        store.prune_inactive_storage(now).await.unwrap();
+
+        let remaining: Vec<String> = sqlx::query_scalar(
+            "SELECT conversation_id FROM compaction_events ORDER BY conversation_id",
+        )
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            remaining,
+            vec!["live-conversation".to_string()],
+            "会话回收要带走它的压缩记录，孤儿行也不能留"
+        );
     }
 
     const TRACE_SEED_BASE: i64 = 1_000;

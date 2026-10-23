@@ -78,6 +78,14 @@ const knownReasons: KnownReason[] = [
   { match: "Codex model selections must be non-empty and unique", text: () => t("可用模型不能为空，也不能重复。") },
   { match: "Codex port must be non-zero", text: () => t("端口不能为 0。") },
   { match: "Codex home must be an absolute path", text: () => t("配置目录要填绝对路径。") },
+  // ---- Claude 网关 ----
+  { match: "Claude port must be non-zero", text: () => t("端口不能为 0。") },
+  { match: "select a default Claude model before enabling the gateway", text: () => t("先在网关里选择默认模型，再启用。") },
+  { match: "Claude has active requests", text: () => t("Claude 正在处理请求，等它空闲后再改配置。") },
+  { match: "unknown Claude", text: () => t("选中的模型已不在模型库里，请重新选择。") },
+  { match: "model must not be blank", text: () => t("模型映射不能为空；留空时请选择「使用默认模型」。") },
+  { match: "is already used by haxsd byok as the Claude gateway port", text: () => t("这个端口是本应用的 Claude 网关端口。给网关换一个端口，或先改 Claude 端口。") },
+  { match: "is already used by haxsd byok as the Devin", text: () => t("这个端口是本应用的 Devin 网关端口。给网关换一个端口，或先改 Devin 端口。") },
   // ---- 插件模型 ----
   { match: "is disabled; enable it in the plugin", text: () => t("这个插件模型已经停用。到插件页的「模型管理」里启用它，或改用别的模型。") },
 ];

@@ -172,6 +172,40 @@ impl Store {
         Ok(running)
     }
 
+    /// 仍在跑的后台子代理最近一次活动的时刻（毫秒）；没有在跑的后台子代理时返回 `None`。
+    ///
+    /// 父轮用它判断"子代理还在动"而不是"已经等了多久"：子运行自身、最近一次模型调用、
+    /// 最近一轮工具各有一处时间戳，但都只在阶段切换时更新，单次模型调用或工具执行期间
+    /// 不动，所以调用方还要配一个足够宽的空闲阈值。
+    pub async fn background_subagent_activity(&self, run_id: &RunId) -> Result<Option<i64>> {
+        let activity: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(activity) FROM (
+                 SELECT MAX(
+                     child.updated_at_ms,
+                     COALESCE(
+                         (SELECT MAX(call.created_at_ms) FROM llm_calls call
+                           WHERE call.run_id = child.run_id),
+                         child.updated_at_ms
+                     ),
+                     COALESCE(
+                         (SELECT MAX(tround.updated_at_ms) FROM tool_rounds tround
+                           WHERE tround.run_id = child.run_id),
+                         child.updated_at_ms
+                     )
+                 ) AS activity
+                   FROM runs child
+                   JOIN tool_round_calls call ON call.call_id = child.parent_tool_call_id
+                  WHERE child.parent_run_id = ?
+                    AND child.status = 'running'
+                    AND call.status = 'completed'
+             )",
+        )
+        .bind(run_id.as_str())
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(activity)
+    }
+
     /// 父会话里那次 Task 调用：只有"结果已经提交"的才是后台子代理。
     ///
     /// 阻塞式 Task 的工具结果要等子代理跑完才提交，而后台子代理的结果在它开跑后立刻
@@ -598,6 +632,123 @@ mod tests {
                 .await
                 .unwrap(),
             vec![("task-call".to_owned(), RunStatus::Completed, 3)]
+        );
+    }
+
+    /// 活动度只看"仍在跑的后台子代理"，取子运行、模型调用、工具轮三处时间戳的最大值。
+    ///
+    /// 父轮靠它区分"子代理还在动"与"已经很久没动静"：没有活动时间就没法把固定截止
+    /// 时间换成空闲阈值。
+    #[tokio::test]
+    async fn background_subagent_activity_tracks_the_latest_child_progress() {
+        let (_dir, store) = fixture().await;
+        let conversation = crate::model::ConversationId("activity-conversation".into());
+        let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('parent-run',?,?,?,'root','running',1,1)",
+        )
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tool_rounds(round_id,run_id,base_checkpoint_id,assistant_json,status,created_at_ms,updated_at_ms)
+             VALUES ('parent-round','parent-run',?,'{}','completed',1,1)",
+        )
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tool_round_calls(round_id,call_index,call_id,model_call_id,name,arguments_json,status,completed_at_ms)
+             VALUES ('parent-round',0,'task-call','model-call','Task','{}','completed',2)",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        let parent = RunId::from("parent-run");
+
+        // 没有在跑的后台子代理：没有可等待的对象。
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            None
+        );
+
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,parent_run_id,parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('child-run',?,?,?,'parent-run','task-call','subagent','running',10,100)",
+        )
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        // 子运行刚起步：只有 runs.updated_at_ms。
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            Some(100)
+        );
+
+        // 子代理发起了一次新的模型调用：活动时刻推进到调用开始。
+        sqlx::query(
+            "INSERT INTO llm_calls(call_id,run_id,conversation_id,provider_call_index,provider_type,provider_url,request_type,request_url,model_id,display_name,status,created_at_ms,message_count,tool_count,detailed)
+             VALUES ('child-call','child-run',?,0,'openai-chat','https://example.com','openai-chat','https://example.com','model','Model','running',200,1,0,0)",
+        )
+        .bind(conversation.as_str())
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            Some(200)
+        );
+
+        // 工具轮的状态更新更晚：活动时刻取三者的最大值。
+        sqlx::query(
+            "INSERT INTO tool_rounds(round_id,run_id,base_checkpoint_id,assistant_json,status,created_at_ms,updated_at_ms)
+             VALUES ('child-round','child-run',?,'{}','running',200,300)",
+        )
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            Some(300)
+        );
+
+        // 子代理活着但很久没有活动：仍然返回那个旧时刻，交给调用方按空闲阈值收尾。
+        sqlx::query("UPDATE runs SET updated_at_ms = 50 WHERE run_id = 'child-run'")
+            .execute(store.pool())
+            .await
+            .unwrap();
+        sqlx::query("UPDATE llm_calls SET created_at_ms = 50 WHERE call_id = 'child-call'")
+            .execute(store.pool())
+            .await
+            .unwrap();
+        sqlx::query("UPDATE tool_rounds SET updated_at_ms = 50 WHERE round_id = 'child-round'")
+            .execute(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            Some(50)
+        );
+
+        // 子运行落成终态：不再有可等待的活动。
+        sqlx::query(
+            "UPDATE runs SET status = 'completed', updated_at_ms = 400 WHERE run_id = 'child-run'",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            store.background_subagent_activity(&parent).await.unwrap(),
+            None
         );
     }
 

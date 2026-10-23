@@ -177,6 +177,14 @@ enum AttemptFailure {
     RangeRejected(String),
     /// 连接被中断、读取失败等传输层问题。
     Transport(String),
+    /// 服务端要求跳到白名单之外的地址：跟随它等于把请求交给任意站点。
+    Redirected {
+        status: reqwest::StatusCode,
+        location: Option<String>,
+    },
+    /// 服务端回了一个空响应体。GitHub 的 302 正文就是 0 字节，没跟随时会走到这里；
+    /// 空串的 SHA-256 与 pin 住的摘要必然不符，所以必须当成下载失败而不是校验失败。
+    EmptyBody,
     /// 本地读写失败（打开、写入、扫描断点）。
     Local(String),
     TooLarge,
@@ -192,7 +200,11 @@ impl AttemptFailure {
     fn retryable(&self) -> bool {
         matches!(
             self,
-            Self::Stalled { .. } | Self::Status(_) | Self::RangeRejected(_) | Self::Transport(_)
+            Self::Stalled { .. }
+                | Self::Status(_)
+                | Self::RangeRejected(_)
+                | Self::Transport(_)
+                | Self::EmptyBody
         )
     }
 
@@ -204,7 +216,9 @@ impl AttemptFailure {
             | Self::Expired
             | Self::Status(_)
             | Self::RangeRejected(_)
-            | Self::Transport(_) => true,
+            | Self::Transport(_)
+            | Self::Redirected { .. }
+            | Self::EmptyBody => true,
         }
     }
 
@@ -222,6 +236,14 @@ impl AttemptFailure {
                 format!("下载失败：断点续传没谈成（{details}），请重试")
             }
             Self::Transport(details) => format!("下载中断：{details}"),
+            Self::Redirected { status, location } => format!(
+                "下载失败：服务端要求跳转到白名单之外的地址（HTTP {} → {}）",
+                status.as_u16(),
+                location.as_deref().unwrap_or("<没有 Location>")
+            ),
+            Self::EmptyBody => {
+                "下载失败：服务端返回了空文件（0 字节），请检查网络或代理后重试".into()
+            }
             Self::Local(details) => format!("本地读写失败：{details}"),
             Self::TooLarge => format!(
                 "运行时文件超过 {} MB 上限",
@@ -279,7 +301,12 @@ async fn install_with(
     remove_if_exists(&paths.ready_marker).await?;
     // 注意：`.part` 不在这里删。它是上一次没下完的断点，续传就从它开始。
 
-    let client = network::client(store).await?;
+    // 运行时归档来自 GitHub Release：`github.com` 会 302 到
+    // `release-assets.githubusercontent.com`。普通出网客户端只跟随同源重定向
+    // （防止上游把请求带去任意站点），这里必须放行这一条白名单跳转，否则拿到的
+    // 是那个 302 的空响应体，SHA-256 正好是空串的摘要——用户看到的"校验失败"
+    // 其实是"下载被重定向后没跟"。
+    let client = network::release_download_client(store).await?;
     download_archive(&client, &paths, &asset, &cancellation, &on_progress, tuning).await?;
 
     // 到这里 `.part` 已经通过 SHA-256：剩下的步骤与"下载"无关了，无论成败都删掉它，
@@ -400,6 +427,19 @@ async fn download_once(
         )
     })?;
 
+    // 3xx 出现在这里说明重定向没有被跟随（白名单之外的地址）。把它说清楚，
+    // 而不是等空响应体算出一个空串摘要再报「校验失败」。
+    if response.status().is_redirection() {
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        return Err(AttemptFailure::Redirected {
+            status: response.status(),
+            location,
+        });
+    }
     // 206 是接着断点发，200 是服务端忽略了 `Range`：后者必须从头写，否则新旧两段
     // 会拼成一个既不是旧文件也不是新文件的四不像。
     let mut downloaded = resume_from;
@@ -424,6 +464,10 @@ async fn download_once(
         return Err(AttemptFailure::TooLarge);
     }
 
+    if total_bytes == Some(0) {
+        remove_archive(&paths.archive).await;
+        return Err(AttemptFailure::EmptyBody);
+    }
     on_progress(PluginRuntimePhase::Downloading, downloaded, total_bytes);
     let mut archive = if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
         tokio::fs::OpenOptions::new()
@@ -470,6 +514,10 @@ async fn download_once(
             .await
             .map_err(|error| AttemptFailure::Local(format!("写入断点文件失败: {error}")))?;
         on_progress(PluginRuntimePhase::Downloading, downloaded, total_bytes);
+    }
+    if downloaded == 0 {
+        remove_archive(&paths.archive).await;
+        return Err(AttemptFailure::EmptyBody);
     }
     archive
         .flush()
@@ -1275,5 +1323,89 @@ mod tests {
         })
         .await
         .expect("the runtime never reached the expected state")
+    }
+    /// 服务端回了一个 0 字节的 200：必须报「空文件」，而不是拿空串摘要去报校验失败。
+    /// GitHub 的 302 正文就是 0 字节，这条断言盯的就是用户实际看到的那条错误。
+    #[tokio::test]
+    async fn an_empty_download_reports_an_empty_body_instead_of_a_checksum_error() {
+        let stub = Stub::start(|_, _| {
+            Reply::whole("200 OK", vec!["Content-Length: 0".into()], Vec::new())
+        })
+        .await;
+        let directory = tempfile::tempdir().unwrap();
+        let (paths, asset) =
+            download_harness(directory.path(), &stub.archive_url(), &digest(b"missing")).await;
+
+        let failure = download_archive(
+            &local_client(),
+            &paths,
+            &asset,
+            &CancellationToken::new(),
+            &|_, _, _| {},
+            test_tuning(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(failure, AttemptFailure::EmptyBody),
+            "failure: {failure:?}"
+        );
+        assert!(failure.retryable(), "空响应可能是暂时性的，值得重试");
+        assert!(
+            failure.reason().contains("空文件"),
+            "错误必须说清楚是空文件：{}",
+            failure.reason()
+        );
+        assert!(
+            !failure.reason().contains("SHA-256"),
+            "空响应不该被描述成校验失败"
+        );
+    }
+
+    /// 白名单之外的重定向必须被停下并说清楚——停下来之后再拿空响应体去算摘要，
+    /// 用户就会看到一条与真实原因无关的「校验失败」。
+    #[tokio::test]
+    async fn a_redirect_outside_the_allowlist_is_reported_as_a_redirect() {
+        let stub = Stub::start(|_, _| {
+            Reply::whole(
+                "302 Found",
+                vec!["Location: https://evil.example/deno.zip".into()],
+                Vec::new(),
+            )
+        })
+        .await;
+        let directory = tempfile::tempdir().unwrap();
+        let (paths, asset) = download_harness(
+            directory.path(),
+            &stub.archive_url(),
+            &digest(b"redirected"),
+        )
+        .await;
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(crate::network::allow_listed_redirect(&["127.0.0.1"]))
+            .build()
+            .unwrap();
+
+        let failure = download_archive(
+            &client,
+            &paths,
+            &asset,
+            &CancellationToken::new(),
+            &|_, _, _| {},
+            test_tuning(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(failure, AttemptFailure::Redirected { .. }),
+            "failure: {failure:?}"
+        );
+        let reason = failure.reason();
+        assert!(reason.contains("跳转"), "reason: {reason}");
+        assert!(reason.contains("evil.example"), "reason: {reason}");
+        assert!(!failure.retryable(), "换一个网络出口也还是同一跳");
     }
 }

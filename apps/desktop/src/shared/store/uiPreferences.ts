@@ -54,7 +54,7 @@ export type LegacyStorage = Pick<Storage, "getItem" | "removeItem"> & Partial<Pi
 const PREFERENCE_FIELDS = ["theme", "locale", "tutorial_read", "pending_update", "devin_host_path", "disclosure"] as const;
 
 export function isLocalePreference(value: string | null | undefined): value is LocalePreference {
-  return value === "system" || value === "zh-CN" || value === "en-US";
+  return value === "system" || value === "zh-CN" || value === "en-US" || value === "ru-RU";
 }
 
 function activeStorage(): LegacyStorage | null {

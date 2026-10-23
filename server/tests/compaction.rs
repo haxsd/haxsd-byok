@@ -13,8 +13,8 @@ use cursor_server::{
         TransportCommand, TransportRegistry,
     },
     model::{
-        ContentPart, ConversationId, MessageContent, ModelConfigInput, ModelType, Origin,
-        ProjectedContent, ProjectedMessage, Role, Usage, OPENAI_CHAT_ENDPOINT,
+        CallPurpose, ContentPart, ConversationId, MessageContent, ModelConfigInput, ModelType,
+        Origin, ProjectedContent, ProjectedMessage, Role, Usage, OPENAI_CHAT_ENDPOINT,
     },
     provider::{FinishReason, ModelEvent},
 };
@@ -173,6 +173,16 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         .starts_with(&compacted_state.root_prompt_messages_json));
     let requests = provider.requests();
     assert_eq!(requests.len(), 3);
+    assert_eq!(
+        provider.purposes(),
+        vec![
+            CallPurpose::Chat,
+            CallPurpose::CompactionSummary,
+            CallPurpose::Chat
+        ],
+        "摘要调用必须带着自己的用途走到 provider：否则记录层会把它当成普通对话，\
+         它还会顶掉上下文用量锚点"
+    );
     assert!(requests[1].prompt.tools.is_empty());
     assert!(requests[1]
         .prompt

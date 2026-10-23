@@ -88,6 +88,7 @@ export function __descriptor(definition: ProviderPluginDefinition) {
           ? {
             port: method.callback?.port ?? null,
             path: method.callback?.path ?? "/oauth-callback",
+            ...(method.callback?.host ? { host: method.callback.host } : {}),
           }
           : null,
       })),

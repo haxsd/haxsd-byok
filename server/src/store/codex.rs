@@ -20,9 +20,12 @@ impl Store {
                 .model(id)
                 .await?
                 .ok_or_else(|| Error::Config(format!("unknown Codex model: {id}")))?;
-            if model.context_window_tokens.unwrap_or(0) < 4096 {
+            if !(4096..=crate::codex::catalog::MAX_CONTEXT_WINDOW)
+                .contains(&model.context_window_tokens.unwrap_or(0))
+            {
                 return Err(Error::Config(format!(
-                    "configure a context window of at least 4096 tokens for {}",
+                    "configure a context window between 4096 and {} tokens for {}",
+                    crate::codex::catalog::MAX_CONTEXT_WINDOW,
                     model.display_name
                 )));
             }

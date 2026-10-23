@@ -123,6 +123,8 @@ pub fn stream_event(state: &mut ResponseState, event: ModelEvent) -> Result<Vec<
         ModelEvent::TextStart
         | ModelEvent::TextEnd
         | ModelEvent::ThinkingStart
+        | ModelEvent::ThinkingSignature(_)
+        | ModelEvent::StopSequence(_)
         | ModelEvent::ThinkingEnd => Ok(Vec::new()),
     }
 }

@@ -105,6 +105,8 @@ pub enum CallClient {
     Cursor,
     Devin,
     Codex,
+    /// Claude Code 经入站 Anthropic Messages 网关发起的调用。
+    Claude,
     Internal,
 }
 impl CallClient {
@@ -113,6 +115,7 @@ impl CallClient {
             Self::Cursor => "cursor",
             Self::Devin => "devin",
             Self::Codex => "codex",
+            Self::Claude => "claude",
             Self::Internal => "internal",
         }
     }

@@ -151,6 +151,16 @@ pub async fn consume_model_cycle(
                     send(client, RunEvent::ThinkingDelta(delta)).await
                 }
             }
+            ModelEvent::ThinkingSignature(_) => {
+                // 签名只对入站 Anthropic 网关有意义（它要写成 `signature_delta`）；
+                // Cursor 会话的续轮身份由 `ProviderReplayState` 统一保存。
+                Ok(())
+            }
+            ModelEvent::StopSequence(_) => {
+                // 停止序列的命中是 Anthropic 入站协议的形状；Cursor 只关心
+                // `Done(Stop)`，而且停止序列在这里本来就由 provider 执行完。
+                Ok(())
+            }
             ModelEvent::ThinkingEnd => {
                 if let Some(started) = thinking_started.take() {
                     send(

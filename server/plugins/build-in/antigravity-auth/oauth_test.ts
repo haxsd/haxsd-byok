@@ -8,10 +8,10 @@ function assert(condition: unknown, message: string): asserts condition {
 function context(requests: Array<{ url: string; body?: string }>): PluginContext {
   return {
     network: {
-      fetch: async (url, init = {}) => {
+      fetch: (url, init = {}) => {
         requests.push({ url, body: init.body });
         if (url === "https://oauth2.googleapis.com/token") {
-          return {
+          return Promise.resolve({
             status: 200,
             headers: {},
             body: JSON.stringify({
@@ -19,12 +19,16 @@ function context(requests: Array<{ url: string; body?: string }>): PluginContext
               refresh_token: "refresh-token",
               expires_in: 3600,
             }),
-          };
+          });
         }
         if (url.startsWith("https://www.googleapis.com/oauth2/v1/userinfo")) {
-          return { status: 200, headers: {}, body: JSON.stringify({ email: "user@example.com" }) };
+          return Promise.resolve({
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ email: "user@example.com" }),
+          });
         }
-        return { status: 500, headers: {}, body: "{}" };
+        return Promise.resolve({ status: 500, headers: {}, body: "{}" });
       },
       stream: () => Promise.reject(new Error("stream is not expected")),
     },

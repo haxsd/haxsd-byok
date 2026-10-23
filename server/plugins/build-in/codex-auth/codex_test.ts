@@ -7,18 +7,22 @@ import type {
 import type { LlmRequest, ModelEvent } from "cursor-byok:provider";
 import type { ResourceSnapshot } from "cursor-byok:resource";
 import { codexDeviceOAuth } from "./oauth.ts";
-import { parseOfficialModels } from "./models.ts";
+import { codexModels, parseOfficialModels } from "./models.ts";
 import { buildResponsesBody } from "cursor-byok:protocol/openai-responses";
 import { codexProvider, isQuotaError } from "./provider.ts";
 import {
+  accessTokenNeedsRefresh,
+  accountData,
   accountIdentity,
   consumeResetCardAction,
   credentialDraft,
+  isApiKeyToken,
   listResetCardsAction,
   parseCodexUsage,
   parseCredentialFiles,
   presentAccount,
   quotaState,
+  refreshAccount,
   RESOURCE_TYPE,
 } from "./resources.ts";
 
@@ -287,6 +291,306 @@ Deno.test("official model discovery excludes hidden models and puts the default 
   assertEquals(models[1].privateData, { reasoningEfforts: ["low", "medium"] });
 });
 
+Deno.test("model discovery reports a diagnostic error instead of an empty catalog", async () => {
+  let rejected = false;
+  try {
+    await codexModels.list(
+      {
+        resource: snapshot({
+          accessToken: "fixture-only",
+          refreshToken: null,
+          displayName: "Fixture",
+          quota: null,
+        }),
+      },
+      context({
+        fetch: () => ({ status: 500, headers: {}, body: "upstream exploded" }),
+      }),
+    );
+  } catch (error) {
+    rejected = true;
+    const message = String(error);
+    assert(message.includes("HTTP 500"), `expected the status in ${message}`);
+    assert(message.includes("previous catalog is kept"), `expected a hint in ${message}`);
+  }
+  assert(rejected, "a failed discovery must not resolve with a fallback catalog");
+});
+
+Deno.test("refresh is scheduled from the JWT expiry when no stored timestamp exists", () => {
+  const expiredToken = jwt({ sub: "subject-1", exp: Math.floor(Date.now() / 1000) - 60 });
+  const expired = accountData(snapshot({
+    accessToken: expiredToken,
+    refreshToken: "refresh-secret",
+    displayName: "Fixture",
+    quota: null,
+  }));
+  assert(accessTokenNeedsRefresh(expired), "an expired JWT must be refreshed before use");
+  assert(
+    !accessTokenNeedsRefresh({ ...expired, refreshToken: null }),
+    "no refresh token, no refresh",
+  );
+  const freshToken = jwt({ sub: "subject-1", exp: Math.floor(Date.now() / 1000) + 3600 });
+  const fresh = accountData(snapshot({
+    accessToken: freshToken,
+    refreshToken: "refresh-secret",
+    displayName: "Fixture",
+    quota: null,
+  }));
+  assert(
+    !accessTokenNeedsRefresh(fresh),
+    "a fresh JWT must not be refreshed",
+  );
+});
+
+Deno.test("an expired access token is refreshed before calling Codex and persisted", async () => {
+  const staleToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" },
+    exp: Math.floor(Date.now() / 1000) - 60,
+  });
+  const freshToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  let refreshes = 0;
+  let authorization: string | null = null;
+  const result = await codexProvider.invoke(
+    {
+      model: { id: "gpt-test", displayName: "GPT Test" },
+      resource: snapshot({
+        accessToken: staleToken,
+        refreshToken: "refresh-old",
+        accountId: "acct-1",
+        displayName: "person@example.com",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: (url, init) => {
+        refreshes += 1;
+        assertEquals(url, "https://auth.openai.com/oauth/token");
+        const body = new URLSearchParams(init?.body);
+        assertEquals(body.get("grant_type"), "refresh_token");
+        assertEquals(body.get("refresh_token"), "refresh-old");
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            access_token: freshToken,
+            refresh_token: "refresh-new",
+            expires_in: 3600,
+          }),
+        };
+      },
+      stream: (_url, init) => {
+        authorization = init?.headers?.authorization ?? null;
+        return {
+          status: 200,
+          headers: {},
+          lines: sse(['data: {"type":"response.completed","response":{"id":"resp-1"}}']),
+        };
+      },
+    }),
+  );
+  assertEquals(refreshes, 1);
+  assertEquals(authorization, `Bearer ${freshToken}`);
+  assert(result.status === "completed", `expected completed, received ${result.status}`);
+  const privateData = result.patch?.privateData as Record<string, unknown>;
+  assertEquals(privateData.accessToken, freshToken);
+  assertEquals(privateData.refreshToken, "refresh-new");
+  assert(
+    typeof privateData.expiresAtMs === "number" && privateData.expiresAtMs > Date.now(),
+    "the new expiry must be persisted",
+  );
+});
+
+Deno.test("a rejected access token is refreshed once and the request retried once", async () => {
+  const rejectedToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  const freshToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  let streams = 0;
+  let refreshes = 0;
+  const result = await codexProvider.invoke(
+    {
+      model: { id: "gpt-test", displayName: "GPT Test" },
+      resource: snapshot({
+        accessToken: rejectedToken,
+        refreshToken: "refresh-old",
+        accountId: "acct-1",
+        displayName: "person@example.com",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => {
+        refreshes += 1;
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ access_token: freshToken, expires_in: 3600 }),
+        };
+      },
+      stream: () => {
+        streams += 1;
+        return streams === 1
+          ? { status: 401, headers: {}, lines: sse(['{"detail":"token expired"}']) }
+          : {
+            status: 200,
+            headers: {},
+            lines: sse(['data: {"type":"response.completed","response":{"id":"resp-1"}}']),
+          };
+      },
+    }),
+  );
+  assertEquals(streams, 2);
+  assertEquals(refreshes, 1);
+  assert(result.status === "completed", `expected completed, received ${result.status}`);
+  assertEquals(
+    (result.patch?.privateData as Record<string, unknown>).accessToken,
+    freshToken,
+  );
+});
+
+Deno.test("usage refresh rotates a rejected credential and persists the new token", async () => {
+  const staleToken = jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } });
+  const freshToken = jwt({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" },
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+  let refreshes = 0;
+  let usageCalls = 0;
+  const patch = await refreshAccount(
+    snapshot({
+      accessToken: staleToken,
+      refreshToken: "refresh-old",
+      accountId: "acct-1",
+      displayName: "person@example.com",
+      quota: null,
+    }),
+    context({
+      fetch: (url, init) => {
+        if (url === "https://auth.openai.com/oauth/token") {
+          refreshes += 1;
+          return {
+            status: 200,
+            headers: {},
+            body: JSON.stringify({ access_token: freshToken, expires_in: 3600 }),
+          };
+        }
+        assertEquals(url, "https://chatgpt.com/backend-api/wham/usage");
+        usageCalls += 1;
+        if (usageCalls === 1) {
+          return { status: 401, headers: {}, body: "expired" };
+        }
+        assertEquals(init?.headers?.authorization, `Bearer ${freshToken}`);
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({ rate_limit: { primary_window: { used_percent: 20 } } }),
+        };
+      },
+    }),
+  );
+  assertEquals(refreshes, 1);
+  assertEquals(usageCalls, 2);
+  assertEquals((patch.privateData as Record<string, unknown>).accessToken, freshToken);
+  assertEquals(patch.state, { status: "ready" });
+});
+
+Deno.test("a revoked refresh token invalidates the credential", async () => {
+  let streams = 0;
+  const result = await codexProvider.invoke(
+    {
+      model: { id: "gpt-test", displayName: "GPT Test" },
+      resource: snapshot({
+        accessToken: jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } }),
+        refreshToken: "revoked-refresh",
+        accountId: "acct-1",
+        displayName: "person@example.com",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => ({
+        status: 400,
+        headers: {},
+        body: JSON.stringify({ error: "invalid_grant", error_description: "token revoked" }),
+      }),
+      stream: () => {
+        streams += 1;
+        return { status: 401, headers: {}, lines: sse(['{"detail":"token expired"}']) };
+      },
+    }),
+  );
+  assertEquals(streams, 1);
+  assert(result.status === "resource-error", `expected resource-error, received ${result.status}`);
+  assertEquals(result.patch.state?.status, "invalid");
+  assertEquals(result.patch.privateData, undefined);
+});
+
+Deno.test("a transient refresh failure neither retries with the stale token nor invalidates", async () => {
+  let streams = 0;
+  const result = await codexProvider.invoke(
+    {
+      model: { id: "gpt-test", displayName: "GPT Test" },
+      resource: snapshot({
+        accessToken: jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } }),
+        refreshToken: "refresh-old",
+        accountId: "acct-1",
+        displayName: "person@example.com",
+        quota: null,
+      }),
+      request: request(),
+    },
+    { emit: () => {} },
+    context({
+      fetch: () => ({ status: 503, headers: {}, body: "token service unavailable" }),
+      stream: () => {
+        streams += 1;
+        return { status: 401, headers: {}, lines: sse(['{"detail":"token expired"}']) };
+      },
+    }),
+  );
+  assert(streams === 1, "the stale token must not be reused");
+  assert(result.status === "request-error", `expected request-error, received ${result.status}`);
+  assertEquals(result.patch, undefined);
+});
+
+Deno.test("credential import rejects OpenAI API keys as ChatGPT access tokens", () => {
+  assertEquals(isApiKeyToken("sk-proj-abc"), true);
+  const rejected = parseCredentialFiles([
+    { name: "env.json", content: JSON.stringify({ OPENAI_API_KEY: "sk-proj-abc" }) },
+  ]);
+  assertEquals(rejected.credentials, []);
+  assertEquals(rejected.warnings, ["env.json: no ChatGPT access token found"]);
+
+  const validToken = jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } });
+  const mixed = parseCredentialFiles([
+    {
+      name: "mixed.json",
+      content: JSON.stringify([
+        { tokens: { access_token: "sk-proj-abc" } },
+        { tokens: { access_token: validToken, refresh_token: "refresh-secret" } },
+      ]),
+    },
+  ]);
+  assertEquals(mixed.credentials.length, 1);
+  assertEquals(mixed.credentials[0].accessToken, validToken);
+  assertEquals(mixed.warnings, [
+    "mixed.json: ignored OpenAI API keys; import a ChatGPT OAuth credential instead",
+  ]);
+});
+
 Deno.test("device OAuth begins with a host-held session and completes with a resource draft", async () => {
   const accessToken = jwt({
     "https://api.openai.com/auth": { chatgpt_account_id: "acct-oauth" },
@@ -454,10 +758,12 @@ Deno.test("reasoning replay projects response items to valid input items", () =>
 
   // 归属不匹配（换上游或换模型）时必须整段丢弃：把密文发给别的上游会被
   // `encrypted content could not be verified` 拒掉整轮请求。
-  for (const [url, model] of [
-    ["https://other.example.com/responses", "gpt-test"],
-    ["https://example.com/responses", "gpt-other"],
-  ] as const) {
+  for (
+    const [url, model] of [
+      ["https://other.example.com/responses", "gpt-test"],
+      ["https://example.com/responses", "gpt-other"],
+    ] as const
+  ) {
     const dropped = buildResponsesBody({ url, model, request: replayRequest });
     assertEquals(dropped.input, []);
   }

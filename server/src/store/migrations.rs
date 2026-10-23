@@ -580,7 +580,7 @@ mod tests {
                 versions,
                 vec![
                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                    23, 24
+                    23, 24, 25
                 ]
             );
             assert_eq!(checkpoint_table_exists, 1);
@@ -747,6 +747,239 @@ mod tests {
         );
     }
 
+    /// 迁移 0025 重建 `llm_calls` 只为放开 `client_source` 的 CHECK：旧值必须原样保留，
+    /// 新来源 `claude` 必须能写入，明细子表与索引也要跟着回到新表上。
+    #[tokio::test]
+    async fn the_client_source_rebuild_keeps_history_and_accepts_claude() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        run(&pool, Path::new("client-source-claude.db"))
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index, provider_type, provider_url,
+                request_type, request_url, model_id, display_name, status, created_at_ms, message_count, tool_count,
+                detailed, client_source, purpose)
+             VALUES ('claude-1', 'run', 'conv', 0, 'anthropic', 'https://example.com', 'anthropic',
+                'https://example.com/v1/messages', 'm', 'M', 'completed', 1, 2, 1, 0, 'claude', 'chat')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO llm_call_requests(call_id, headers_json, body_json, byte_count)
+             VALUES ('claude-1', '{}', '{}', 2)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let stored: (String, String) = sqlx::query_as(
+            "SELECT client_source, purpose FROM llm_calls WHERE call_id = 'claude-1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(stored, ("claude".into(), "chat".into()));
+
+        let unknown = sqlx::query(
+            "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index, provider_type,
+                provider_url, request_type, request_url, model_id, display_name, status, created_at_ms,
+                message_count, tool_count, detailed, client_source)
+             VALUES ('bad', 'run', 'conv', 0, 'anthropic', 'url', 'anthropic', 'url', 'm', 'M',
+                'completed', 1, 1, 0, 0, 'not-a-client')",
+        )
+        .execute(&pool)
+        .await;
+        assert!(unknown.is_err(), "CHECK 必须继续拒绝未知来源");
+
+        let plan: Vec<String> = sqlx::query(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM llm_calls WHERE client_source = 'claude'",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| row.try_get("detail").unwrap())
+        .collect();
+        assert!(
+            plan.iter()
+                .any(|step| step.contains("llm_calls_client_source")),
+            "按来源计数必须继续走索引: {plan:?}"
+        );
+    }
+
+    /// 迁移 0025 的升级路径：表里已经有调用与两张子表的数据、五个索引也都在，
+    /// 重建后这些都必须原样回到新表上（不是只在空库上跑通）。
+    #[tokio::test]
+    async fn the_client_source_rebuild_preserves_a_populated_database() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        // 升级前的库：只跑到 0024。
+        let historical = migrator_with_line_endings(MigrationLineEndings::Lf);
+        let before_claude = Migrator {
+            migrations: Cow::Owned(historical.iter().take(24).cloned().collect()),
+            ..Migrator::DEFAULT
+        };
+        before_claude.run(&pool).await.unwrap();
+        // 真实连接开着外键：重建必须在 deferred 检查下也能过。
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        for (call_id, source, purpose, usage) in [
+            (
+                "legacy-chat",
+                "cursor",
+                "chat",
+                r#"{"input_tokens":10,"context_input_tokens":100}"#,
+            ),
+            (
+                "legacy-summary",
+                "devin",
+                "compaction-summary",
+                r#"{"input_tokens":3,"context_input_tokens":30}"#,
+            ),
+        ] {
+            sqlx::query(
+                "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index, model_hash,
+                    provider_type, provider_url, request_type, request_url, model_id, display_name, status,
+                    finish_reason, created_at_ms, input_tokens, output_tokens, usage_json, message_count,
+                    tool_count, detailed, client_source, purpose)
+                 VALUES (?, 'run', 'conv', 0, 'hash', 'anthropic', 'https://example.com', 'anthropic',
+                    'https://example.com/v1/messages', 'model', 'Model', 'completed', 'end_turn',
+                    1700000000000, 10, 5, ?, 7, 2, 0, ?, ?)",
+            )
+            .bind(call_id)
+            .bind(usage)
+            .bind(source)
+            .bind(purpose)
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO llm_call_requests(call_id, headers_json, body_json, byte_count)
+                 VALUES (?, '{\"x\":\"y\"}', '{}', 10)",
+            )
+            .bind(call_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        sqlx::query(
+            "INSERT INTO llm_call_response_chunks(call_id, seq, received_offset_ms, data, byte_count)
+             VALUES ('legacy-chat', 0, 1, X'6869', 2), ('legacy-chat', 1, 2, X'21', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        run(&pool, Path::new("client-source-upgrade.db"))
+            .await
+            .unwrap();
+
+        let calls: Vec<(String, String, String, i64, Option<String>)> = sqlx::query_as(
+            "SELECT call_id, client_source, purpose, message_count, usage_json
+             FROM llm_calls ORDER BY call_id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            calls,
+            vec![
+                (
+                    "legacy-chat".to_string(),
+                    "cursor".to_string(),
+                    "chat".to_string(),
+                    7,
+                    Some(r#"{"input_tokens":10,"context_input_tokens":100}"#.to_string()),
+                ),
+                (
+                    "legacy-summary".to_string(),
+                    "devin".to_string(),
+                    "compaction-summary".to_string(),
+                    7,
+                    Some(r#"{"input_tokens":3,"context_input_tokens":30}"#.to_string()),
+                ),
+            ],
+            "旧行必须原样回到重建后的表上"
+        );
+        let requests: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM llm_call_requests")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let chunks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM llm_call_response_chunks")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((requests, chunks), (2, 2), "子表数据跟着调用一起保留");
+
+        let mut indexes: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master
+             WHERE type = 'index' AND tbl_name = 'llm_calls' AND name NOT LIKE 'sqlite_%'
+             ORDER BY name",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        indexes.sort();
+        assert_eq!(
+            indexes,
+            vec![
+                "llm_calls_client_source",
+                "llm_calls_conversation_created",
+                "llm_calls_created",
+                "llm_calls_model",
+                "llm_calls_run",
+            ],
+            "重建后五个索引一个都不能少"
+        );
+
+        // 新来源可写、未知来源仍被 CHECK 拒绝。
+        sqlx::query(
+            "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index,
+                provider_type, provider_url, request_type, request_url, model_id, display_name,
+                status, created_at_ms, message_count, tool_count, detailed, client_source)
+             VALUES ('claude-after-upgrade', 'run', 'conv', 0, 'anthropic', 'url', 'anthropic',
+                'url', 'm', 'M', 'completed', 1, 1, 0, 0, 'claude')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let unknown = sqlx::query(
+            "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index,
+                provider_type, provider_url, request_type, request_url, model_id, display_name,
+                status, created_at_ms, message_count, tool_count, detailed, client_source)
+             VALUES ('bad-after-upgrade', 'run', 'conv', 0, 'anthropic', 'url', 'anthropic',
+                'url', 'm', 'M', 'completed', 1, 1, 0, 0, 'not-a-client')",
+        )
+        .execute(&pool)
+        .await;
+        assert!(unknown.is_err(), "CHECK 在升级后的表上仍然生效");
+
+        // 子表的外键仍指回新表：删父行会级联删明细。
+        sqlx::query("DELETE FROM llm_calls WHERE call_id = 'legacy-chat'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let orphaned: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM llm_call_response_chunks WHERE call_id = 'legacy-chat'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(orphaned, 0, "重建后的子表必须继续级联到新父表");
+    }
+
     /// 迁移 0017 会给已有消息里的工具图片补一条引用登记。不补的话，这些图片在无根
     /// 窗口之后会被回收趟当成垃圾删掉，而消息还指着它们。
     #[tokio::test]
@@ -900,7 +1133,7 @@ mod tests {
 
     /// 分级预算：重建类迁移（`ALTER TABLE … RENAME TO`）给半小时，普通迁移五分钟。
     ///
-    /// 这一条同时钉住仓库里的真实分类：`0004` / `0006` / `0007` 是重建类，其余不是——
+    /// 这一条同时钉住仓库里的真实分类：`0004` / `0006` / `0007` / `0025` 是重建类，其余不是——
     /// 以后新增重建迁移忘了分类，这里会红。
     #[test]
     fn rebuild_migrations_get_the_long_budget() {
@@ -915,7 +1148,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("migration {version} must exist"));
             stage_timeout(migration)
         };
-        for version in [4, 6, 7] {
+        for version in [4, 6, 7, 25] {
             assert_eq!(
                 budget(version),
                 MIGRATION_REBUILD_TIMEOUT,

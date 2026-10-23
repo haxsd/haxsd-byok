@@ -103,6 +103,7 @@ export function PluginManagementPage() {
         <span className={toolbar.spacer} />
         <span className={toolbar.count}>{t("共 {count} 个插件", { count: plugins.length })}</span>
       </Card>
+      <p className={styles.riskNote}>{t("订阅账号接入可能违反服务条款，风险由使用者承担。")}</p>
       <PluginCards plugins={visiblePlugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
     </div>
     : offline
