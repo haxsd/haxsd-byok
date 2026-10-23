@@ -132,6 +132,13 @@ Cursor 与 Devin 是并列模块，只用 Cursor 时无需开启 Devin。完整�
 - `HKCU\SOFTWARE\Policies\Claude` 有策略时同样只给引导；本应用不写组策略，需要先移除该策略才能改回 profile 接管。
 - 手工引导在 Claude Desktop 里打开 Developer → Configure Third-Party Inference，逐项填写：Gateway base URL、Static API key（本机网关令牌）、Auth 选 Bearer、模型列表（`claude-<哈希>` 与显示名）、Model discovery 选 Off、Allow Code 选 On。页面上的复制按钮只复制对应字段，不会替你在客户端里保存。
 
+### 接管状态与令牌轮换
+
+- 网关由本应用进程提供。正常退出应用（从托盘选择退出）会撤销 CLI 接管；Claude Desktop 未运行时也撤销 Desktop 接管，正在运行时服务端无法改写它的 profile，接管保留到下次启动。下次启动后重新应用接管。
+- 改端口、轮换令牌或改模型映射后，页面状态可能显示「配置已过期」：客户端里仍是旧值，重新应用接管即可；Desktop 还要先完全退出。
+- 「重新生成」会立即让旧令牌失效。Claude Desktop 正在运行或已接管时，先完全退出 Claude Desktop，已接管再撤销 Desktop 接管，然后轮换；CLI 已接管时，应用会自动把新令牌写回 `settings.json`。
+- 强制结束或崩溃不会执行退出清理：接管文件会保留，下次启动网关会重新监听同一端口，通常可以直接继续使用；改过端口、令牌或模型映射时按「配置已过期」重新应用。
+
 ### 订阅账号（可选）
 
 在「插件配置」页使用内置插件 `claude-code-auth`，它把 Claude Pro/Max 订阅的 OAuth 授权当作模型来源；登录后模型出现在模型库，可以像普通模型一样绑给 Claude 网关。完整说明、已核实事实和排查表见 [Claude 订阅账号接入](./claude-account.md)。
@@ -152,6 +159,8 @@ Cursor 与 Devin 是并列模块，只用 Cursor 时无需开启 Devin。完整�
 | 保存网关时提示端口被占用 | 换一个端口再保存；保存失败时原来的监听与设置保持不变，不会出现「已保存、未监听」 |
 | `/model` 里显示的是哈希 | 映射写入的是模型库哈希；支持 `ANTHROPIC_DEFAULT_*_NAME` 的版本会显示显示名，不支持的版本直接显示哈希，这是预期行为 |
 | 应用了 Desktop 接管但不生效 | 先完全退出 Claude Desktop（含托盘）再启动；仍不生效就看「配置来源」与冲突条目，受管状态只能手工配置 |
+| 改了端口、令牌或模型映射后连不上 | 状态可能显示「配置已过期」，重新应用接管；Desktop 还要先完全退出。轮换令牌时 Desktop 正在运行或已接管要先退出/撤销，CLI 会自动同步新令牌 |
+| 退出应用后 Claude Code / Desktop 连不上 | 正常退出会撤销 CLI 接管，Desktop 未运行时也撤销；Desktop 运行中则保留。下次启动后重新应用接管。强制结束或崩溃后接管文件保留，下次启动通常可以直接继续使用 |
 
 ## 调用与价值估算
 

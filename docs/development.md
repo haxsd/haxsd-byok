@@ -13,7 +13,10 @@ apps/desktop/
 server/
 ├─ src/local_app/       # Cursor 代理、CA、配置与退出清理
 ├─ src/cursor/          # Cursor 协议、会话、工具与传输
-├─ src/devin/           # Devin 网关、绑定与宿主补丁
+├─ src/devin/           # Devin 网关、模型绑定与宿主补丁
+├─ src/codex/           # Codex 网关、模型目录与 config.toml 接管
+├─ src/anthropic/       # 入站 Anthropic Messages 网关，把客户端请求投影成共享模型调用
+├─ src/claude_code/     # Claude Code CLI 与 Claude Desktop 的配置接管、还原与冲突检测
 ├─ src/control/         # 配置、模型与统计管理 API
 ├─ src/provider/        # OpenAI / Anthropic 请求适配
 ├─ src/run/             # 模型运行、重试、取消与工具轮次
@@ -24,7 +27,14 @@ crates/semble-core/     # 代码索引与搜索
 .github/workflows/      # CI、构建与签名发布
 ```
 
-桌面启动服务 → 客户端进入 Cursor 或 Devin 模块 → 解析模型与会话 → Provider 请求 → 流式结果回到客户端 → Store 保存调用与统计。界面经本机 API 读取和修改配置。
+桌面启动服务 → 四条接入链路接收客户端请求 → 解析模型与会话 → Provider 请求 → 流式结果回到客户端 → Store 保存调用与统计。界面经本机 API 读取和修改配置。
+
+| 链路 | 入口 | 边界 |
+| --- | --- | --- |
+| Cursor | `local_app` + `cursor` | 本机代理、CA 与账号接管；Cursor 协议、会话、工具与传输 |
+| Devin | `devin` | 三个回环端口上的 Devin 网关、模型绑定与可选宿主补丁 |
+| Codex | `codex` | 本机网关与 `config.toml` 模型路由；任务循环留在原版客户端 |
+| Claude | `anthropic` + `claude_code` | 入站 Anthropic Messages 网关；CLI `settings.json` 与 Desktop profile 接管 |
 
 ## 构建与验证
 

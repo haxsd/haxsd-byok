@@ -25,6 +25,72 @@
 
 界面与完整步骤见 [Codex 接入](./codex-go-live.md)。
 
+## Claude 网关未监听、401 或客户端不生效
+
+先确认三件事：网关已启用并保存、页面显示「已监听」、对应客户端是在应用接管之后重新打开的。网关由本应用进程提供，退出应用后端口不再监听。
+
+### 网关未监听或端口被占用
+
+- 「未启用」：网关开关没打开。先在网关里选默认模型，再启用并保存。
+- 「未监听」但已启用：端口被本应用其它网关或别的程序占用。保存时会被拒绝，不会留下「已保存、未监听」的状态；换一个端口保存即可。
+- 改过端口后状态会显示「配置已过期」：CLI 的 `settings.json` 与 Desktop 的 profile 里仍是旧地址，重新应用接管即可；Desktop 还要先完全退出。
+- 网关只监听 `127.0.0.1`，不要把它暴露到局域网，也不要把网关地址填成机器名或外部 IP。
+
+### 401 / 未授权
+
+401 表示请求带的 Bearer 令牌与网关当前令牌不一致，通常是轮换后客户端还在用旧值。
+
+1. 在「Claude」页复制当前访问令牌。
+2. 重新应用对应客户端的接管；Claude Code 需要重新打开。
+3. Claude Desktop 正在运行或已接管时，服务端会拒绝轮换：先完全退出 Desktop，已接管再撤销 Desktop 接管，然后轮换。CLI 已接管时，轮换会自动把新令牌写回 `settings.json`。
+4. 用户环境变量里的同名键也会影响从本应用之外启动的 Claude Code；页面只提示、不阻断，按提示清理后再启动客户端。
+
+订阅账号的 OAuth 授权是模型来源，不是网关令牌；不要把订阅 access token 填进客户端的网关鉴权。
+
+### Claude Code CLI 显示「未检测到」
+
+配置目录、`settings.json` 和 `claude` 可执行文件都不存在时才是「未检测到」。先安装 Claude Code 并运行一次，再回到页面应用。
+
+配置目录或 CLI 已存在、只是还没有 `settings.json` 时，应用会新建该文件。设置了 `CLAUDE_CONFIG_DIR` 时，页面写的目录必须和客户端实际读取的目录一致，否则会出现「应用成功但客户端不生效」。
+
+### 显示「受管配置」
+
+以下任一来源存在时，`settings.json` 不再是唯一配置来源，本应用不会改写它：
+
+- `%ProgramFiles%\ClaudeCode\managed-settings.json`
+- 同目录下 `managed-settings.d\*.json`
+- 注册表 `HKLM\SOFTWARE\Policies\ClaudeCode` 或 `HKCU\SOFTWARE\Policies\ClaudeCode` 里的 `Settings`
+
+需要管理员调整或移除策略，或按组织要求手工配置。不要直接改 `Program Files` 下的文件来绕过策略。
+
+### Claude Desktop 写入被拒绝或接管不生效
+
+- 状态「运行中」时服务端会拒绝写入。只关窗口不算退出，要从托盘退出或用任务管理器结束进程，再应用或撤销。
+- 应用后重新打开 Claude Desktop。仍不生效时先完全退出再启动，再看「配置来源」与冲突条目；受管状态只能手工配置。
+- 状态为「机器策略」（`HKLM\SOFTWARE\Policies\Claude`）或「用户策略」（`HKCU\SOFTWARE\Policies\Claude`）时，本应用不写 profile，也不写组策略；在 Claude Desktop 里打开 Developer → Configure Third-Party Inference 逐项填写。
+
+### 出现 `[1m]` 或 `unrecognized_model`
+
+Claude Code 会在模型 ID 后追加 `[1m]` 表示 1M 上下文变体，模型库里没有这个独立模型。网关会先去掉后缀再解析。
+
+如果客户端仍提示 `unrecognized_model`，依次检查：应用是当前版本；接管里选的模型还在模型库；重新应用接管并重启 Claude Code。仍不行时，把对应的 Sonnet / Opus / Haiku 别名改成一个明确存在的模型，不要只依赖默认模型回落。
+
+### 显示「配置已过期」
+
+状态「配置已过期」表示客户端文件仍是本应用写下的那一份，但网关端口、访问令牌或模型映射已经变了，客户端指向旧值。
+
+- 重新应用对应客户端的接管即可；Desktop 还要先完全退出。
+- 改端口或模型映射后、轮换令牌后都可能出现这个状态。它不算配置冲突，不要点「撤销接管」再重来，直接重新应用。
+- 重新应用后仍显示过期：检查网关是否已监听、默认模型是否还在模型库，以及页面是否有未保存的改动。
+
+### 应用退出后接管失效
+
+正常退出应用（从托盘选择退出）会撤销 CLI 接管；Claude Desktop 未运行时也撤销 Desktop 接管。Claude Desktop 正在运行时服务端无法改写它的 profile，接管保留，下次启动后重新应用。
+
+- 进程被强制结束或崩溃时不会执行退出清理，接管文件保留。下次启动网关会重新监听同一端口，通常可以直接继续使用；改过端口、令牌或模型映射时按「配置已过期」重新应用。
+- 退出应用后网关停止，未撤销的 Desktop 接管会连接失败；让应用保持运行，或下次启动后重新应用。
+- 想手工还原客户端文件，点「撤销接管」；不要手工删除 `settings.json` 里的键或 Desktop 的 profile。
+
 ## Cursor 报 `Failed to establish a socket connection to proxies: PROXY 127.0.0.1:<BYOK 代理端口>`
 
 ### 现象

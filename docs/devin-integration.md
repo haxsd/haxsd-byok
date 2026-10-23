@@ -1,27 +1,27 @@
 # Devin integration
 
-This branch packages an independent product named `haxsd byok`. It adds an
-optional Devin-compatible gateway to the existing Cursor model harness. The
-Devin listener is isolated from the Cursor listener and is disabled by default.
+`haxsd byok` is the product on this repository's `main` line. It combines four
+client paths — Cursor, Devin, Codex, and Claude — on one shared model library
+and model harness. The Devin-compatible gateway described here is optional, has
+its own listeners, and is disabled by default.
 
-This branch is intentionally isolated from `main`, which remains the Cursor
-BYOK product line. Do not merge the branches or reuse the Cursor release/update
-channel. The product uses its own Tauri identifier (`dev.haxsd.byok`) and
-storage directory (`.haxsd-byok-devin-v3`).
+The product uses its own Tauri identifier (`dev.haxsd.byok`) and storage
+directory (`.haxsd-byok-devin-v3`). It does not share the upstream Cursor BYOK
+release channel or data directory.
 
 ## What is integrated
 
 - Devin Connect request framing, gzip, protobuf-like fields, streaming text,
   thinking, tool calls, signatures, stop reasons, and usage.
-- Devin model catalog responses backed by the existing Cursor BYOK model store.
+- Devin model catalog responses backed by the shared model library.
 - `AssignModel` sessions with opaque 12-hour tokens. The implementation does
   not copy the reference router's commercial license or JWT behavior.
-- Devin model UID to Cursor BYOK model-hash bindings, persisted in the existing
-  settings store. API keys remain in the existing model records.
+- Devin model UID to model-hash bindings, persisted in the existing settings
+  store. API keys remain in the existing model records.
 - Optional candidate routes per binding and a binding kind that marks a Devin
   UID as a context-compression binding.
 - The existing provider router and Devin tool definitions are reused. Devin
-  remains responsible for executing its tools; Cursor BYOK supplies model
+  remains responsible for executing its tools; this product supplies model
   inference and forwards model events.
 - An opt-in host patch boundary for a known Devin/Windsurf `extension.js`.
   The user must provide an absolute file path. The patcher requires all four
@@ -183,6 +183,8 @@ This is intentional: the Devin adapter is a separate opt-in path, and the
 Cursor listener/harness continues to run independently when Devin is disabled
 or when the Devin listener stops.
 
-Automatic updates are intentionally disabled in this product build. Do not
-point it at the Cursor BYOK release manifest; create a dedicated `haxsd byok`
-release channel before adding updates back.
+Updates ship through this product's own release channel. `release.yml` builds
+the installer, signs the Tauri update, and publishes `latest.json` for tags such
+as `haxsd-byok-v<version>`; the in-app updater reads that manifest. Do not point
+the updater at the upstream Cursor BYOK release channel: the two products have
+separate identifiers, data directories, and signing keys.
