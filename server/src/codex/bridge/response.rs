@@ -746,6 +746,7 @@ impl BridgeStream {
         let mut events = Vec::new();
         let mut output = Vec::new();
         let slots = std::mem::take(&mut self.slots);
+        let mut skipped_plan = false;
         for (index, slot) in slots.into_iter().enumerate() {
             match slot {
                 Slot::Text { id, text, added } => {
@@ -829,6 +830,12 @@ impl BridgeStream {
                     } else {
                         arguments
                     };
+                    if name == "update_plan" && self.tools.spec_for(&name).is_none() {
+                        // 模型按静态提示词调用了本次请求没有声明的计划工具。丢掉这次调用，
+                        // 总比把整个回合变成 “undeclared tool” 并触发客户端重连好。
+                        skipped_plan = true;
+                        continue;
+                    }
                     let item = self.tools.restore_call(&name, &call_id, &arguments, &id)?;
                     let custom = item["type"] == "custom_tool_call";
                     if !added {
@@ -858,7 +865,7 @@ impl BridgeStream {
                 }
             }
         }
-        if output.is_empty() {
+        if output.is_empty() && !skipped_plan {
             return Err(Error::Provider(
                 "Codex upstream finished the turn without any usable output".into(),
             ));
@@ -1118,5 +1125,22 @@ mod tests {
             vec![("call_a".to_string(), "shell".to_string())]
         );
         assert_eq!(bridge.output().len(), 1);
+    }
+
+    #[test]
+    fn an_undeclared_update_plan_call_is_dropped_instead_of_failing_the_turn() {
+        let mut bridge = BridgeStream::new(UpstreamFormat::Chat, "vendor".into(), shell_tools());
+        bridge
+            .push(&chat_chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_plan", "type": "function",
+                    "function": {"name": "update_plan", "arguments": "{\"plan\":[]}"}}]}),
+                json!("tool_calls"),
+            ))
+            .unwrap();
+        let events = bridge.finish().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event["type"] == "response.completed"));
+        assert!(bridge.output().is_empty());
     }
 }

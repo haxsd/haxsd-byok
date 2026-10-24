@@ -127,6 +127,31 @@ fn system_parts(source: &Map<String, Value>, items: &[Value]) -> Result<Vec<Stri
     Ok(parts)
 }
 
+/// 系统指令按工具声明裁剪：`base.md` 的目录模板会在每个模型上静态提到 `update_plan`，
+/// 但 Codex 在默认模式/压缩后的回合可能不声明这个工具。模型按提示词调用一个不存在的
+/// 工具时，bridge 只能报 “upstream returned undeclared tool”，所以这里先删掉相关段落。
+fn system_text(source: &Map<String, Value>, items: &[Value], tools: &ToolMap) -> Result<String> {
+    let mut text = system_parts(source, items)?.join("\n\n");
+    if !tools.declares("update_plan") {
+        text = strip_update_plan_instructions(&text);
+    }
+    Ok(text)
+}
+
+fn strip_update_plan_instructions(text: &str) -> String {
+    let mut kept = Vec::new();
+    let mut skipping = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("## ") {
+            skipping = matches!(line.trim(), "## Planning" | "## `update_plan`");
+        }
+        if !skipping && !line.contains("update_plan") {
+            kept.push(line);
+        }
+    }
+    kept.join("\n").trim().to_string()
+}
+
 // ===================== 回合累积 =====================
 
 #[derive(Clone)]
@@ -233,10 +258,10 @@ fn chat_body(
     tools: &ToolMap,
     owner: &str,
 ) -> Result<Value> {
-    let system = system_parts(source, items)?;
+    let system = system_text(source, items, tools)?;
     let mut messages: Vec<Value> = Vec::new();
     if !system.is_empty() {
-        messages.push(json!({"role": "system", "content": system.join("\n\n")}));
+        messages.push(json!({"role": "system", "content": system}));
     }
     let mut turn = Turn::default();
     let mut pending_reasoning: Option<String> = None;
@@ -427,7 +452,7 @@ fn anthropic_body(
     tools: &ToolMap,
     owner: &str,
 ) -> Result<Value> {
-    let system = system_parts(source, items)?;
+    let system = system_text(source, items, tools)?;
     let mut messages: Vec<Value> = Vec::new();
     let mut turn = Turn::default();
     let mut pending_thinking: Vec<Value> = Vec::new();
@@ -477,7 +502,7 @@ fn anthropic_body(
     let mut body =
         json!({"model": model, "max_tokens": max_tokens, "stream": true, "messages": messages});
     if !system.is_empty() {
-        body["system"] = json!(system.join("\n\n"));
+        body["system"] = json!(system);
     }
     let definitions = tools.definitions(true);
     let mut tool_choice = None;
@@ -974,5 +999,26 @@ mod tests {
                 .body["max_tokens"],
             json!(4_096)
         );
+    }
+
+    #[test]
+    fn update_plan_instructions_are_removed_when_the_tool_is_not_declared() {
+        let text = "intro\n\n## Planning\nuse update_plan to plan\n\n## Other\nkeep this\n\n## `update_plan`\nnot available";
+        let stripped = strip_update_plan_instructions(text);
+        assert!(!stripped.contains("update_plan"), "{stripped}");
+        assert!(stripped.contains("## Other"), "{stripped}");
+        assert!(stripped.contains("keep this"), "{stripped}");
+
+        let source = json!({"instructions": text});
+        let tools = ToolMap::parse(Some(&json!([]))).unwrap();
+        let system = system_text(source.as_object().unwrap(), &[], &tools).unwrap();
+        assert!(!system.contains("update_plan"), "{system}");
+
+        let tools = ToolMap::parse(Some(&json!([
+            {"type": "function", "name": "update_plan"}
+        ])))
+        .unwrap();
+        let system = system_text(source.as_object().unwrap(), &[], &tools).unwrap();
+        assert!(system.contains("update_plan"), "{system}");
     }
 }

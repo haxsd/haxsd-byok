@@ -144,6 +144,11 @@ impl ToolMap {
             .collect()
     }
 
+    /// 本次请求是否声明了某个 Codex 工具（按原始名，不管命名空间）。
+    pub(super) fn declares(&self, name: &str) -> bool {
+        self.specs.iter().any(|spec| spec.name == name)
+    }
+
     pub(super) fn spec_for(&self, upstream_name: &str) -> Option<&ToolSpec> {
         if let Some(index) = self.names.iter().position(|name| name == upstream_name) {
             return Some(&self.specs[index]);
