@@ -496,6 +496,67 @@ async fn chat_model_can_request_a_codex_custom_tool_and_receive_its_result() {
 }
 
 #[tokio::test]
+async fn an_update_plan_call_is_not_advertised_when_the_request_omits_the_tool() {
+    use axum::{routing::post, Json, Router};
+    use serde_json::{json, Value};
+
+    let seen = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<Value>::new()));
+    let captured = seen.clone();
+    let router = Router::new().route(
+        "/chat",
+        post(move |Json(body): Json<Value>| {
+            let captured = captured.clone();
+            async move {
+                captured.lock().await.push(body);
+                let stream = concat!(
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-plan\",\"type\":\"function\",\"function\":{\"name\":\"update_plan\",\"arguments\":\"{\\\"plan\\\":[]}\"}}]},\"finish_reason\":null}]}\n\n",
+                    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+                    "data: [DONE]\n\n"
+                );
+                ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], stream)
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/chat", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, store, gateway, id) = configured_gateway("chat", url).await;
+    let body = json!({
+        "model": id,
+        "stream": false,
+        "instructions": "## Planning\ncall update_plan when useful\n\n## Other\nkeep this",
+        "input": [{"role": "user", "content": "hi"}],
+        "tools": [{"type": "function", "name": "shell", "parameters": {"type": "object"}}]
+    });
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", store.codex_token().await.unwrap()),
+                )
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let output: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
+            .unwrap();
+    assert_eq!(output["status"], "completed");
+    assert_eq!(output["output"], json!([]));
+    let upstream = seen.lock().await;
+    let system = upstream[0]["messages"][0]["content"].as_str().unwrap();
+    assert!(!system.contains("update_plan"), "{system}");
+    assert!(system.contains("## Other"), "{system}");
+    task.abort();
+}
+
+#[tokio::test]
 async fn enabling_and_disabling_the_gateway_changes_the_real_listener() {
     let (_dir, store, gateway, _id) =
         configured_gateway("responses", "http://127.0.0.1:1/responses".into()).await;
