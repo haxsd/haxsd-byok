@@ -170,7 +170,7 @@ test("devin settings drop bindings whose routes are not a list", async () => {
     active_route_id: "route-1",
   };
   backend.route("GET", `${API_ROOT}/devin/settings`, () => ({
-    body: { enabled: true, auth_token: "", bindings: [{ model_uid: "byok-2", routes: null }, binding] },
+    body: { enabled: true, auth_token: "", default_model_uid: "byok-1", bindings: [{ model_uid: "byok-2", routes: null }, binding] },
   }));
 
   const api = await loadApi();
@@ -180,6 +180,18 @@ test("devin settings drop bindings whose routes are not a list", async () => {
   assert.equal(warnings.length, 1, "a dropped binding must leave exactly one diagnosable warning");
   assert.match(warnings[0], /丢弃了 1 条/);
 });
+
+  test("devin settings without the explicit default field fail readably", async () => {
+    const { backend } = installAppBackend();
+    backend.route("GET", `${API_ROOT}/devin/settings`, () => ({
+      body: { enabled: true, auth_token: "", bindings: [] },
+    }));
+
+    const api = await loadApi();
+    await captureWarnings(async () => {
+      await assert.rejects(() => api.devinSettings(), /读取失败/);
+    });
+  });
 
 test("codex settings keep only string model hashes", async () => {
   const { backend } = installAppBackend();
@@ -202,6 +214,26 @@ test("a codex status without its listening flag reads as a failure, not as a fal
   await captureWarnings(async () => {
     // 缺 listening 会让界面把"没在监听"当事实显示，用户照着假状态去改配置。
     await assert.rejects(() => api.codexStatus(), /读取失败/);
+  });
+});
+
+test("a devin status without its readiness flag reads as a failure, not as a false state", async () => {
+  const { backend } = installAppBackend();
+  backend.route("GET", `${API_ROOT}/devin/status`, () => ({
+    body: {
+      enabled: true,
+      listening: true,
+      bound_ports: null,
+      calls: 0,
+      last_call_success: null,
+      last_call_at_ms: null,
+    },
+  }));
+
+  const api = await loadApi();
+  await captureWarnings(async () => {
+    // ready 缺失时不能退回 listening：旧端口仍在监听会被误画成绿色。
+    await assert.rejects(() => api.devinStatus(), /读取失败/);
   });
 });
 

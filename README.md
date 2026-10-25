@@ -28,7 +28,7 @@
 |---|---|
 | 模型库 | 地址、API Key、模型 ID；支持 OpenAI Chat / Responses 与 Anthropic 协议；带连接测试 |
 | Cursor 接入 | 官方 / 本地 / 混合三种模型来源，含本机代理、本地 CA 与接管状态 |
-| Devin 接入 | 可选本机网关、模型绑定与宿主补丁 |
+| Devin 接入 | 可选本机网关、显式默认模型与模型映射、Devin 3.11.216 版本化兼容补丁；支持自定义安装目录 |
 | Codex 接入 | ChatGPT 客户端里的本地 Codex 保留工具、终端、审批、沙箱与任务循环，只替换模型推理；支持 Responses / Chat Completions / Anthropic |
 | Claude 接入 | 本机 Anthropic 网关（`/v1/messages`），适配 Claude Code CLI 与 Claude Desktop；Desktop 受组织策略托管时只给手工配置引导 |
 | 调用观测 | 调用成败、耗时、Token 用量，按参考单价估算金额 |
@@ -39,7 +39,7 @@
 | 客户端 | 接管方式 | 注意 |
 |---|---|---|
 | Cursor | 官方 / 本地 / 混合模型来源 + 本地 CA | **开启本地或混合模式会结束正在运行的 Cursor，先保存工作**；只想让自配模型生效选本地，想让官方模型同时可用选混合 |
-| Devin | 可选本机网关 + 模型映射 | 默认关闭，只监听 `127.0.0.1`；改动端口后需重启应用并重新应用宿主补丁 |
+| Devin | 可选本机网关 + 模型映射 | 默认关闭，只监听 `127.0.0.1`；改动端口后需重启应用，退出 Devin 后重新写入接入配置 |
 | Codex（ChatGPT 客户端） | 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；默认关闭，只监听 `127.0.0.1` |
 | Claude Code CLI | 本机 Anthropic 网关 + 写入 `~/.claude/settings.json` 的 `env` | 默认关闭，只监听 `127.0.0.1`；应用后重新打开 Claude Code；已有 Anthropic API Key、Bedrock/Vertex/Foundry 或 `apiKeyHelper` 时拒绝覆盖；存在 `managed-settings.json` 或注册表策略时状态为「受管配置」，不改写 |
 | Claude Desktop | 本机 Anthropic 网关 + 写入 `%LOCALAPPDATA%\Claude-3p\configLibrary` 的 profile | **应用前完全退出 Claude Desktop（含托盘），应用后重新启动**；组织策略（HKLM/HKCU）托管时只读并给手工引导，本应用不写策略 |
@@ -51,7 +51,7 @@
 1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的安装包并安装。
 2. 在「模型」页添加地址、API Key 与模型 ID，选择协议，用「测试」确认可用。
 3. **用 Cursor**：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。开启本地或混合模式会结束正在运行的 Cursor，先保存工作。
-4. **用 Devin**：设置模型映射、启用网关并保存，重启应用后按 [Devin 接入](./docs/devin-go-live.md) 完成宿主侧。
+4. **用 Devin**：选择默认模型、设置模型映射、启用网关并保存；如果 Devin 不在默认位置，在「高级」里填写安装目录。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
 5. **用 Codex**：在「Codex」页选择模型、启用网关并保存，点「应用到 Codex」，然后重新打开客户端或新建会话；详见 [Codex 接入](./docs/codex-go-live.md)。
 6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，然后按客户端应用接管：Claude Code CLI 应用后重新打开 Claude Code；Claude Desktop 需先完全退出（含托盘），应用接管后再启动。详见 [用户指南](./docs/user-guide.md)。
 

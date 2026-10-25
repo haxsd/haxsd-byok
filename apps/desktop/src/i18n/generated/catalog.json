@@ -43,6 +43,18 @@
         }
       ]
     },
+    "00aed73540223d17": {
+      "source": "默认模型映射已停用，请重新选择。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 63,
+          "column": 63
+        }
+      ]
+    },
     "00c9ed1580dc1307": {
       "source": "上下文压缩绑定",
       "kind": "text",
@@ -50,8 +62,20 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 188,
-          "column": 21
+          "line": 235,
+          "column": 42
+        }
+      ]
+    },
+    "00d9b6f96a209f36": {
+      "source": "Devin 接入配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 121,
+          "column": 6
         }
       ]
     },
@@ -64,6 +88,18 @@
           "file": "features/calls/CallsPage.tsx",
           "line": 135,
           "column": 42
+        }
+      ]
+    },
+    "016988ab2c596729": {
+      "source": "Devin 接入配置已写入；重新打开 Devin 后生效",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 324,
+          "column": 15
         }
       ]
     },
@@ -146,7 +182,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 61,
+          "line": 69,
           "column": 8
         }
       ]
@@ -185,6 +221,18 @@
         }
       ]
     },
+    "02e19182d5a372fc": {
+      "source": "恢复原设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 599,
+          "column": 124
+        }
+      ]
+    },
     "030d4446c3bfda99": {
       "source": "本机网关",
       "kind": "text",
@@ -202,7 +250,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 159,
+          "line": 185,
           "column": 14
         },
         {
@@ -372,6 +420,18 @@
         }
       ]
     },
+    "054594a3f614e036": {
+      "source": "尚未选择备用路由；当前仍使用上面的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 524,
+          "column": 86
+        }
+      ]
+    },
     "05468af47054d488": {
       "source": "模型 {model} 连通性测试成功（{duration} ms）",
       "kind": "template",
@@ -396,6 +456,23 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 74,
           "column": 54
+        }
+      ]
+    },
+    "0586ce3420448d15": {
+      "source": "模型已删除或不可用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 151,
+          "column": 19
+        },
+        {
+          "file": "features/devin/devinModelOptions.ts",
+          "line": 46,
+          "column": 62
         }
       ]
     },
@@ -435,8 +512,20 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 163,
+          "line": 166,
           "column": 13
+        }
+      ]
+    },
+    "06421761133cc72e": {
+      "source": "Devin 设置已经指向其它地址。请先恢复原来的值，再写入本机网关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 48,
+          "column": 92
         }
       ]
     },
@@ -449,8 +538,20 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 159,
+          "line": 162,
           "column": 13
+        }
+      ]
+    },
+    "0650d32fcb0fbba3": {
+      "source": "添加备用模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 521,
+          "column": 119
         }
       ]
     },
@@ -562,7 +663,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 428,
+          "line": 528,
           "column": 39
         }
       ]
@@ -595,6 +696,18 @@
         }
       ]
     },
+    "0799b24e029a87b2": {
+      "source": "未设置备用模型。当前直接使用上面的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 523,
+          "column": 69
+        }
+      ]
+    },
     "07c657ed4747126e": {
       "source": "Anthropic 额外参数",
       "kind": "text",
@@ -619,7 +732,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 139,
+          "line": 157,
           "column": 14
         }
       ]
@@ -691,6 +804,18 @@
         }
       ]
     },
+    "09d49fe6a62b30da": {
+      "source": "兼容补丁已写入，缺服务地址",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 95,
+          "column": 19
+        }
+      ]
+    },
     "09ebc2643631ba25": {
       "source": "价值估算",
       "kind": "text",
@@ -753,18 +878,6 @@
         }
       ]
     },
-    "0a9f9aa653c56c31": {
-      "source": "Devin 设置已保存，重启软件后监听端口生效",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 306,
-          "column": 15
-        }
-      ]
-    },
     "0ad1106dc0952e5e": {
       "source": "可清理的观测数据已超过 {threshold}：清理详细记录能收回这部分空间，调用列表与用量统计不受影响。",
       "kind": "template",
@@ -817,7 +930,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 121,
+          "line": 132,
           "column": 12
         }
       ]
@@ -904,7 +1017,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 105,
+          "line": 116,
           "column": 21
         }
       ]
@@ -979,11 +1092,6 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 140,
           "column": 18
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 371,
-          "column": 23
         }
       ]
     },
@@ -996,6 +1104,18 @@
           "file": "features/codex/CodexConflictCard.tsx",
           "line": 17,
           "column": 43
+        }
+      ]
+    },
+    "0dd788500e78f643": {
+      "source": "Devin 安装路径要填绝对路径，例如 D:\\devin\\Devin。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 36,
+          "column": 68
         }
       ]
     },
@@ -1028,6 +1148,18 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 68,
           "column": 24
+        }
+      ]
+    },
+    "0e576b83c48b7a51": {
+      "source": "这个路径不是 Devin 的设置文件或数据目录。留空可自动探测，也可以填 User\\settings.json。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 35,
+          "column": 74
         }
       ]
     },
@@ -1226,17 +1358,17 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 56,
+          "line": 67,
           "column": 49
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 79,
+          "line": 90,
           "column": 55
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 82,
+          "line": 93,
           "column": 56
         }
       ]
@@ -1255,6 +1387,11 @@
           "file": "features/claude/ClaudeGatewayCard.tsx",
           "line": 61,
           "column": 25
+        },
+        {
+          "file": "shared/ui/ModelSelect.tsx",
+          "line": 122,
+          "column": 46
         }
       ]
     },
@@ -1279,6 +1416,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 245,
           "column": 7
+        }
+      ]
+    },
+    "12005257555c0e0e": {
+      "source": "找不到这个 Devin 安装路径，请检查路径是否仍然存在。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 39,
+          "column": 61
         }
       ]
     },
@@ -1337,30 +1486,6 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 424,
           "column": 15
-        }
-      ]
-    },
-    "1336a59b408f47a2": {
-      "source": "宿主文件版本不匹配：要改写的锚点没找到，补丁已拒绝。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 42,
-          "column": 53
-        }
-      ]
-    },
-    "137e5b26e1ffc342": {
-      "source": "留空即自动探测；也可以填安装目录，或 extension.js 的完整路径。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 502,
-          "column": 72
         }
       ]
     },
@@ -1475,7 +1600,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 351,
+          "line": 450,
           "column": 24
         },
         {
@@ -1532,6 +1657,11 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 70,
           "column": 40
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 471,
+          "column": 78
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
@@ -1612,7 +1742,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 89,
+          "line": 97,
           "column": 16
         }
       ]
@@ -1629,17 +1759,29 @@
         }
       ]
     },
-    "18231f90263c2e8a": {
-      "source": "Devin 的请求正在走本机网关，由 {model} 回答。",
+    "18644f32aaf1c332": {
+      "source": "扩展文件：{path}",
       "kind": "template",
       "placeholders": [
-        "model"
+        "path"
       ],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 184,
-          "column": 11
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 585,
+          "column": 48
+        }
+      ]
+    },
+    "186759b73810959f": {
+      "source": "退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 105,
+          "column": 15
         }
       ]
     },
@@ -1650,7 +1792,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 146,
+          "line": 149,
           "column": 12
         }
       ]
@@ -1771,6 +1913,18 @@
         }
       ]
     },
+    "1add43f798162a38": {
+      "source": "已运行",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 186,
+          "column": 31
+        }
+      ]
+    },
     "1ade5ec88a5dad11": {
       "source": "移除 {model}",
       "kind": "template",
@@ -1809,7 +1963,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 489,
+          "line": 604,
           "column": 27
         }
       ]
@@ -1822,18 +1976,6 @@
         {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 475,
-          "column": 54
-        }
-      ]
-    },
-    "1b604c18930bcb15": {
-      "source": "从 Devin 的模型列表里选；也可以直接填写标识。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 395,
           "column": 54
         }
       ]
@@ -1896,7 +2038,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 62,
+          "line": 73,
           "column": 61
         }
       ]
@@ -1946,7 +2088,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 84,
+          "line": 95,
           "column": 54
         }
       ]
@@ -1958,12 +2100,12 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 111,
+          "line": 112,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 138,
+          "line": 141,
           "column": 7
         }
       ]
@@ -2104,18 +2246,6 @@
         }
       ]
     },
-    "1df8c3c45a2d82f2": {
-      "source": "宿主文件路径要填绝对路径，例如 D:\\Devin。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 33,
-          "column": 65
-        }
-      ]
-    },
     "1e2933c6b813322a": {
       "source": "默认模型",
       "kind": "text",
@@ -2130,6 +2260,11 @@
           "file": "features/codex/CodexSettingsForm.tsx",
           "line": 40,
           "column": 25
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 548,
+          "column": 23
         }
       ]
     },
@@ -2179,18 +2314,13 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 103,
+          "line": 118,
           "column": 13
         },
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 113,
-          "column": 11
-        },
-        {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 46,
-          "column": 32
+          "line": 47,
+          "column": 11
         },
         {
           "file": "shell/connectionStatus.ts",
@@ -2233,7 +2363,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 156,
+          "line": 157,
           "column": 21
         }
       ]
@@ -2257,8 +2387,32 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1349,
+          "line": 1449,
           "column": 23
+        }
+      ]
+    },
+    "1ffaa10e41043e8d": {
+      "source": "找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 443,
+          "column": 17
+        }
+      ]
+    },
+    "20094bcf5351b6cd": {
+      "source": "选择默认模型后保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 146,
+          "column": 15
         }
       ]
     },
@@ -2284,15 +2438,27 @@
         }
       ]
     },
-    "2043039208119bd7": {
-      "source": "Devin / Windsurf extension.js 路径",
+    "204c491478c54868": {
+      "source": "Devin 设置里只有一部分网关地址。请先补全或删除这两项，再写入当前配置。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 502,
-          "column": 27
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 47,
+          "column": 85
+        }
+      ]
+    },
+    "20a9f0a3115ca1fc": {
+      "source": "设置在本应用写入之后又被改过，为避免覆盖你的修改，恢复已拒绝。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 43,
+          "column": 92
         }
       ]
     },
@@ -2317,13 +2483,18 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 98,
+          "line": 113,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 110,
-          "column": 11
+          "line": 213,
+          "column": 13
+        },
+        {
+          "file": "features/settings/DiagnosticsCard.tsx",
+          "line": 53,
+          "column": 15
         },
         {
           "file": "shell/connectionStatus.ts",
@@ -2353,6 +2524,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 460,
           "column": 50
+        }
+      ]
+    },
+    "21c6503a425e4ccd": {
+      "source": "暂时不能自动接入，请查看下面的技术详情。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 448,
+          "column": 21
         }
       ]
     },
@@ -2411,7 +2594,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 51,
+          "line": 58,
           "column": 52
         }
       ]
@@ -2423,7 +2606,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 490,
+          "line": 605,
           "column": 132
         }
       ]
@@ -2495,6 +2678,18 @@
         }
       ]
     },
+    "2431e84666942bce": {
+      "source": "尚未接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 97,
+          "column": 12
+        }
+      ]
+    },
     "249358f79f2f7fba": {
       "source": "按 Token 总量排序，含输入与输出。",
       "kind": "text",
@@ -2540,7 +2735,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 609,
           "column": 27
         }
       ]
@@ -2583,18 +2778,6 @@
         }
       ]
     },
-    "25b8a738223f3dac": {
-      "source": "网关在运行，还差宿主补丁",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/onboarding.ts",
-          "line": 120,
-          "column": 15
-        }
-      ]
-    },
     "2604b7dafd97652f": {
       "source": "上下文压缩绑定必须是单线路；切换为该类型会清空候选路由。",
       "kind": "text",
@@ -2602,7 +2785,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 412,
+          "line": 511,
           "column": 52
         }
       ]
@@ -2616,6 +2799,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 301,
           "column": 20
+        }
+      ]
+    },
+    "2646a7b47bbe7dd7": {
+      "source": "把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是写入设置文件里的服务地址与扩展读取开关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 119,
+          "column": 15
         }
       ]
     },
@@ -2642,6 +2837,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 201,
           "column": 36
+        }
+      ]
+    },
+    "2717052f81ecc243": {
+      "source": "设置已保存。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 357,
+          "column": 27
         }
       ]
     },
@@ -2747,7 +2954,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 73,
+          "line": 84,
           "column": 63
         }
       ]
@@ -2781,6 +2988,18 @@
         }
       ]
     },
+    "29670b8d502d88e5": {
+      "source": "文件不是 UTF-8 文本，无法安全改写。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 54,
+          "column": 37
+        }
+      ]
+    },
     "296de0e31f8c22d9": {
       "source": "正常",
       "kind": "text",
@@ -2790,6 +3009,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 166,
           "column": 11
+        }
+      ]
+    },
+    "297f385572d8b6fe": {
+      "source": "选择默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 140,
+          "column": 14
         }
       ]
     },
@@ -2829,18 +3060,6 @@
         }
       ]
     },
-    "2a9019891547b89c": {
-      "source": "补丁已应用",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 140,
-          "column": 31
-        }
-      ]
-    },
     "2adabcae4c29ab9e": {
       "source": "服务未连接",
       "kind": "text",
@@ -2872,6 +3091,30 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 226,
           "column": 13
+        }
+      ]
+    },
+    "2c17457eed409113": {
+      "source": "四件事：选择默认模型、启用本机网关、把 Devin 的模型标识绑定到模型库、写入本机服务地址与兼容补丁。绑定之后 Devin 才认识这些模型；Devin 不在默认位置时，在「高级」里填写安装目录。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 127,
+          "column": 13
+        }
+      ]
+    },
+    "2c3bcd1571c15e8d": {
+      "source": "打开“使用自选模型”并选择模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 142,
+          "column": 11
         }
       ]
     },
@@ -3009,7 +3252,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 59,
+          "line": 70,
           "column": 82
         }
       ]
@@ -3201,6 +3444,18 @@
         }
       ]
     },
+    "2fa3d4cb7470b264": {
+      "source": "正在检查 Devin 配置…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 437,
+          "column": 11
+        }
+      ]
+    },
     "2fe0e3339ac4d1bb": {
       "source": "已过期",
       "kind": "text",
@@ -3298,7 +3553,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 60,
+          "line": 71,
           "column": 83
         }
       ]
@@ -3346,7 +3601,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 151,
+          "line": 154,
           "column": 13
         }
       ]
@@ -3390,7 +3645,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 161,
+          "line": 164,
           "column": 75
         }
       ]
@@ -3535,7 +3790,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 511,
+          "line": 521,
           "column": 35
         }
       ]
@@ -3614,8 +3869,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 433,
+          "line": 533,
           "column": 160
+        }
+      ]
+    },
+    "33c70d8cc70996e1": {
+      "source": "Devin 的设置文件不是有效的 JSONC；本应用不会覆盖它，请先修正文件。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 49,
+          "column": 66
         }
       ]
     },
@@ -3735,7 +4002,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 51,
+          "line": 59,
           "column": 19
         },
         {
@@ -3745,7 +4012,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 117,
+          "line": 120,
           "column": 13
         }
       ]
@@ -3829,6 +4096,18 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 152,
           "column": 18
+        }
+      ]
+    },
+    "368d442333ec5b18": {
+      "source": "用下面的接入设置完成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 164,
+          "column": 15
         }
       ]
     },
@@ -4032,11 +4311,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 403,
-          "column": 41
-        },
-        {
           "file": "features/models/CursorModelCards.tsx",
           "line": 172,
           "column": 26
@@ -4226,7 +4500,7 @@
         },
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 232,
+          "line": 233,
           "column": 102
         }
       ]
@@ -4240,18 +4514,6 @@
           "file": "shared/ui/ServiceOfflineState.tsx",
           "line": 18,
           "column": 18
-        }
-      ]
-    },
-    "3ac9a8dcf9a430e3": {
-      "source": "Devin 模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 395,
-          "column": 33
         }
       ]
     },
@@ -4323,6 +4585,18 @@
         }
       ]
     },
+    "3bf171da03ce5c0c": {
+      "source": "备份文件与写入设置时记下的内容不一致，恢复已拒绝。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 44,
+          "column": 69
+        }
+      ]
+    },
     "3c12c48063432e9a": {
       "source": "0 表示启动时随机分配；端口被占用时会自动改用随机端口。修改后需重启软件。",
       "kind": "text",
@@ -4385,7 +4659,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 158,
+          "line": 161,
           "column": 12
         }
       ]
@@ -4493,8 +4767,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 618,
           "column": 111
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 621,
+          "column": 125
         }
       ]
     },
@@ -4521,23 +4800,6 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 78,
           "column": 21
-        }
-      ]
-    },
-    "3f8fc1eb209634c8": {
-      "source": "模型库模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 396,
-          "column": 33
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 396,
-          "column": 114
         }
       ]
     },
@@ -4683,18 +4945,6 @@
         }
       ]
     },
-    "40dfd2c673e87fa1": {
-      "source": "Devin 宿主文件已恢复",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 293,
-          "column": 15
-        }
-      ]
-    },
     "40e03cb5580bfb0f": {
       "source": "网关不可用",
       "kind": "text",
@@ -4736,7 +4986,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 87,
+          "line": 95,
           "column": 29
         },
         {
@@ -4775,6 +5025,20 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 63,
           "column": 18
+        }
+      ]
+    },
+    "416ce424454c766a": {
+      "source": "在 Devin 里直接对话，会由 {model} 回答。",
+      "kind": "template",
+      "placeholders": [
+        "model"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 231,
+          "column": 11
         }
       ]
     },
@@ -5035,6 +5299,11 @@
           "column": 79
         },
         {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 570,
+          "column": 40
+        },
+        {
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 238,
           "column": 61
@@ -5083,18 +5352,6 @@
         }
       ]
     },
-    "45655337dff172e3": {
-      "source": "兼容版本，尚未应用补丁",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 476,
-          "column": 36
-        }
-      ]
-    },
     "45a6d115fdfb29bf": {
       "source": "常见问题",
       "kind": "text",
@@ -5104,6 +5361,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 199,
           "column": 24
+        }
+      ]
+    },
+    "45c046758ded3c2b": {
+      "source": "没有找到 Devin 安装。请先安装或启动一次 Devin；如果装在自定义位置，请在高级里填写安装目录。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 31,
+          "column": 56
         }
       ]
     },
@@ -5135,6 +5404,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 55,
           "column": 15
+        }
+      ]
+    },
+    "4695e555b80d891c": {
+      "source": "选择 Devin 默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 552,
+          "column": 20
         }
       ]
     },
@@ -5253,18 +5534,6 @@
         }
       ]
     },
-    "47ff1e5adcc2390c": {
-      "source": "退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的宿主补丁会保留，在恢复原文件之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 105,
-          "column": 15
-        }
-      ]
-    },
     "48851fb1b87f0eff": {
       "source": "已删除的摘要模型",
       "kind": "text",
@@ -5327,7 +5596,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 64,
+          "line": 75,
           "column": 70
         }
       ]
@@ -5354,7 +5623,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 350,
+          "line": 449,
           "column": 62
         },
         {
@@ -5480,6 +5749,18 @@
         }
       ]
     },
+    "4a746a07e74dc2f4": {
+      "source": "Devin 网关还没有开始监听：先启用并保存网关，再重启软件，然后回到这里写入设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 78,
+          "column": 52
+        }
+      ]
+    },
     "4a7e4113530b4206": {
       "source": "受管策略",
       "kind": "text",
@@ -5504,6 +5785,18 @@
         }
       ]
     },
+    "4a8670b4ea4e5b34": {
+      "source": "打开 Devin 时默认选中的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 548,
+          "column": 50
+        }
+      ]
+    },
     "4a8d6841b4023edf": {
       "source": "确认导入",
       "kind": "text",
@@ -5513,6 +5806,18 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 59,
           "column": 21
+        }
+      ]
+    },
+    "4ab33be20f029134": {
+      "source": "一般不用改；留空表示使用模型库中的设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 510,
+          "column": 57
         }
       ]
     },
@@ -5534,14 +5839,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 116,
-          "column": 13
-        },
-        {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 46,
-          "column": 66
+          "line": 51,
+          "column": 15
         },
         {
           "file": "shell/connectionStatus.ts",
@@ -5598,6 +5898,18 @@
         }
       ]
     },
+    "4bc4692340effbef": {
+      "source": "Devin 还在运行。请先完全退出 Devin，再写入或恢复设置；文件没有被改动。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 40,
+          "column": 50
+        }
+      ]
+    },
     "4bf0fb2140bae8f4": {
       "source": "展开详情",
       "kind": "text",
@@ -5619,6 +5931,18 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 129,
           "column": 20
+        }
+      ]
+    },
+    "4c0e640d5f7357f5": {
+      "source": "让本机网关就绪",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 130,
+          "column": 16
         }
       ]
     },
@@ -5653,18 +5977,6 @@
         }
       ]
     },
-    "4d4e9f2ad28a4570": {
-      "source": "用下面的宿主接入完成",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 140,
-          "column": 44
-        }
-      ]
-    },
     "4d6a4bc105dd3f07": {
       "source": "共享",
       "kind": "text",
@@ -5684,7 +5996,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 87,
+          "line": 98,
           "column": 14
         }
       ]
@@ -5703,18 +6015,6 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 524,
           "column": 42
-        }
-      ]
-    },
-    "4da277ca861f9d2a": {
-      "source": "补丁已写入宿主文件，但状态没能读回来：点「检查宿主」确认结果，不要重复应用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 273,
-          "column": 22
         }
       ]
     },
@@ -5757,6 +6057,18 @@
         }
       ]
     },
+    "4dd8640539962604": {
+      "source": "兼容补丁已写入，重新写入服务地址",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 163,
+          "column": 15
+        }
+      ]
+    },
     "4df523f20fb65eb8": {
       "source": "已配置 {count} 个",
       "kind": "template",
@@ -5766,7 +6078,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 188,
+          "line": 235,
           "column": 58
         }
       ]
@@ -5930,8 +6242,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 433,
+          "line": 533,
           "column": 432
+        }
+      ]
+    },
+    "507f62a7c6958d58": {
+      "source": "设置与兼容补丁均已写入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 159,
+          "column": 11
         }
       ]
     },
@@ -6078,18 +6402,6 @@
         }
       ]
     },
-    "5261711eb48e0eb8": {
-      "source": "已打补丁",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 452,
-          "column": 34
-        }
-      ]
-    },
     "52b8d00ea2e830c4": {
       "source": "已计入金额：{cost}",
       "kind": "template",
@@ -6148,7 +6460,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 142,
+          "line": 145,
           "column": 11
         },
         {
@@ -6187,7 +6499,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 508,
+          "line": 627,
           "column": 14
         }
       ]
@@ -6286,15 +6598,15 @@
         }
       ]
     },
-    "54aa147eebae64ce": {
-      "source": "绑定一个模型",
+    "549755f5c158d6f0": {
+      "source": "设置已保存，Devin 会使用新模型。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 133,
-          "column": 14
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 374,
+          "column": 13
         }
       ]
     },
@@ -6329,20 +6641,8 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 54,
+          "line": 65,
           "column": 65
-        }
-      ]
-    },
-    "555613db0aa7b17a": {
-      "source": "宿主接入只对 Devin 自己的 extension.js 操作，应用前会校验版本锚点并创建备份；路径已自动探测。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 477,
-          "column": 103
         }
       ]
     },
@@ -6450,8 +6750,20 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 50,
+          "line": 58,
           "column": 7
+        }
+      ]
+    },
+    "56b20cbe6a0d47f4": {
+      "source": "没有可用的恢复记录：设置不是通过本应用写入的，或记录已被改动。文件保持原样。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 42,
+          "column": 71
         }
       ]
     },
@@ -6474,20 +6786,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 411,
+          "line": 510,
           "column": 35
-        }
-      ]
-    },
-    "5886afc1c71df1fe": {
-      "source": "显示在 Cursor 模型说明中。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorModelEditor.tsx",
-          "line": 172,
-          "column": 69
         }
       ]
     },
@@ -6499,6 +6799,18 @@
         {
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 125,
+          "column": 15
+        }
+      ]
+    },
+    "58ed625d4c290f97": {
+      "source": "端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的设置文件与 extension.js）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 109,
           "column": 15
         }
       ]
@@ -6616,15 +6928,15 @@
         }
       ]
     },
-    "5b00a781812f61e1": {
-      "source": "把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是改宿主文件的端口。",
+    "5ad9d457d81d9dda": {
+      "source": "Devin 目前指向其他地址。请在“高级”里恢复原设置后再试。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 119,
-          "column": 15
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 447,
+          "column": 21
         }
       ]
     },
@@ -6675,6 +6987,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 100,
           "column": 7
+        }
+      ]
+    },
+    "5be0323e8adcaeae": {
+      "source": "已连接",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 210,
+          "column": 9
         }
       ]
     },
@@ -6779,6 +7103,18 @@
         }
       ]
     },
+    "5d2800baf6b2a73b": {
+      "source": "可以使用了",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 226,
+          "column": 11
+        }
+      ]
+    },
     "5d66e36a70ae29d3": {
       "source": "超过 {seconds} 秒的连通性测试上限，已按取消收尾；这次测试没有算作失败。",
       "kind": "template",
@@ -6824,25 +7160,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 427,
+          "line": 527,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 427,
-          "column": 117
-        }
-      ]
-    },
-    "5e74d0012baa635d": {
-      "source": "还没有映射。添加一条映射后，Devin 才能请求模型库里的模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 377,
-          "column": 72
+          "line": 527,
+          "column": 84
         }
       ]
     },
@@ -6855,18 +7179,6 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 197,
           "column": 30
-        }
-      ]
-    },
-    "5f47bd0c2759cb94": {
-      "source": "先启用并保存 Devin 网关，再应用补丁。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 340,
-          "column": 11
         }
       ]
     },
@@ -6896,18 +7208,6 @@
           "file": "features/settings/PortSettingsCard.tsx",
           "line": 40,
           "column": 54
-        }
-      ]
-    },
-    "5f78e17a41c8fdbf": {
-      "source": "添加候选路由",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 422,
-          "column": 119
         }
       ]
     },
@@ -6980,7 +7280,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 434,
+          "line": 534,
           "column": 83
         }
       ]
@@ -7032,6 +7332,18 @@
         }
       ]
     },
+    "609219a8b8352106": {
+      "source": "一般保持默认即可。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 494,
+          "column": 56
+        }
+      ]
+    },
     "609640f72d422b57": {
       "source": "快捷时间范围",
       "kind": "text",
@@ -7068,12 +7380,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 405,
+          "line": 505,
           "column": 151
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 434,
+          "line": 534,
           "column": 218
         }
       ]
@@ -7087,18 +7399,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 87,
           "column": 13
-        }
-      ]
-    },
-    "618b9380083b3b9c": {
-      "source": "改写 Devin 自己的 extension.js，把它的上游地址指向本机端口。应用前会校验版本锚点并备份原文件。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
-          "column": 17
         }
       ]
     },
@@ -7192,6 +7492,45 @@
         }
       ]
     },
+    "62758b601ee71bd0": {
+      "source": "还差一步：关闭 Devin，然后点右上角“保存并接入”。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 441,
+          "column": 15
+        }
+      ]
+    },
+    "629f2e9447dba3e3": {
+      "source": "端口已更改，重启后生效",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 120,
+          "column": 15
+        },
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 132,
+          "column": 13
+        },
+        {
+          "file": "features/settings/DiagnosticsCard.tsx",
+          "line": 50,
+          "column": 15
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 115,
+          "column": 11
+        }
+      ]
+    },
     "62cdc8713bcf7667": {
       "source": "未运行",
       "kind": "text",
@@ -7255,17 +7594,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 924,
+          "line": 973,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1001,
+          "line": 1075,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1026,
+          "line": 1100,
+          "column": 29
+        },
+        {
+          "file": "shared/api.ts",
+          "line": 1252,
           "column": 29
         }
       ]
@@ -7289,7 +7633,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 86,
+          "line": 97,
           "column": 51
         }
       ]
@@ -7416,7 +7760,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1403,
+          "line": 1503,
           "column": 43
         }
       ]
@@ -7564,8 +7908,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 74,
+          "line": 85,
           "column": 62
+        }
+      ]
+    },
+    "667ac7a7a97ab4cb": {
+      "source": "连接到 Devin",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 563,
+          "column": 14
         }
       ]
     },
@@ -7593,7 +7949,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 99,
+          "line": 114,
           "column": 11
         },
         {
@@ -7603,20 +7959,8 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 46,
-          "column": 77
-        }
-      ]
-    },
-    "674ec60367bccb88": {
-      "source": "没有可用的恢复记录：这个文件不是通过本应用打的补丁，或补丁记录已被改动。文件保持原样。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 35,
-          "column": 67
+          "line": 54,
+          "column": 15
         }
       ]
     },
@@ -7644,20 +7988,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 433,
+          "line": 533,
           "column": 420
-        }
-      ]
-    },
-    "689b2f2a8c90b66f": {
-      "source": "恢复原文件",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 461,
-          "column": 123
         }
       ]
     },
@@ -7690,15 +8022,15 @@
         }
       ]
     },
-    "692873ddd8f40e66": {
-      "source": "基础设置",
+    "697d37e016e7688f": {
+      "source": "Devin 的接入设置可以随时「恢复设置」，恢复后 Devin 回到厂商直连。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 362,
-          "column": 14
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 233,
+          "column": 18
         }
       ]
     },
@@ -7713,18 +8045,6 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 44,
           "column": 12
-        }
-      ]
-    },
-    "69fc2c0afd1e9ec2": {
-      "source": "三件事：启用本机网关、把 Devin 的模型标识绑定到模型库、给 Devin 的宿主文件打补丁。绑定之后 Devin 才认识这些模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/onboarding.ts",
-          "line": 124,
-          "column": 13
         }
       ]
     },
@@ -7774,7 +8094,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 52,
+          "line": 60,
           "column": 18
         },
         {
@@ -7799,22 +8119,27 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 115,
+          "line": 118,
           "column": 11
         },
         {
           "file": "shared/api.ts",
-          "line": 932,
+          "line": 981,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1001,
+          "line": 1075,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1026,
+          "line": 1100,
+          "column": 41
+        },
+        {
+          "file": "shared/api.ts",
+          "line": 1252,
           "column": 41
         }
       ]
@@ -7951,7 +8276,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 328,
+          "line": 405,
           "column": 53
         }
       ]
@@ -7963,12 +8288,12 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 113,
-          "column": 9
+          "line": 116,
+          "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 140,
+          "line": 143,
           "column": 9
         }
       ]
@@ -8026,7 +8351,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 63,
+          "line": 74,
           "column": 68
         }
       ]
@@ -8038,7 +8363,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 113,
+          "line": 121,
           "column": 77
         }
       ]
@@ -8050,8 +8375,25 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 123,
+          "line": 126,
           "column": 12
+        }
+      ]
+    },
+    "6e65c93bf705e215": {
+      "source": "默认模型已删除或已停用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 148,
+          "column": 17
+        },
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 197,
+          "column": 15
         }
       ]
     },
@@ -8088,6 +8430,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 347,
           "column": 24
+        }
+      ]
+    },
+    "6f1e40c26a8851f8": {
+      "source": "Devin 里的模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 494,
+          "column": 33
         }
       ]
     },
@@ -8213,20 +8567,8 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 104,
-          "column": 13
-        }
-      ]
-    },
-    "71aae065c7afd146": {
-      "source": "读不到 Devin 客户端文件，请检查上面的路径。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 46,
-          "column": 56
+          "line": 121,
+          "column": 15
         }
       ]
     },
@@ -8261,6 +8603,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 406,
           "column": 37
+        }
+      ]
+    },
+    "72a378e2eb610b1c": {
+      "source": "设置已写入，缺兼容补丁",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 94,
+          "column": 22
         }
       ]
     },
@@ -8314,7 +8668,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 61,
+          "line": 72,
           "column": 80
         }
       ]
@@ -8342,6 +8696,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 288,
           "column": 66
+        }
+      ]
+    },
+    "75fa289e1b4f35b4": {
+      "source": "写入设置时留下的备份文件找不到了，恢复已拒绝；文件保持原样。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 45,
+          "column": 52
         }
       ]
     },
@@ -8434,7 +8800,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 611,
           "column": 27
         }
       ]
@@ -8484,7 +8850,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 145,
+          "line": 169,
           "column": 14
         }
       ]
@@ -8508,8 +8874,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 87,
+          "line": 98,
           "column": 84
+        }
+      ]
+    },
+    "79f0e0a3440400ec": {
+      "source": "正在检查连接…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 229,
+          "column": 13
         }
       ]
     },
@@ -8520,7 +8898,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1398,
+          "line": 1498,
           "column": 43
         }
       ]
@@ -8677,6 +9055,18 @@
         }
       ]
     },
+    "7ce520d926a43ea0": {
+      "source": "这个路径不是 Devin 安装目录。请检查安装位置，或直接填写其中的 extension.js。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 38,
+          "column": 65
+        }
+      ]
+    },
     "7cea2f3c46565d29": {
       "source": "OpenAI 额外参数",
       "kind": "text",
@@ -8776,6 +9166,18 @@
         }
       ]
     },
+    "7f1d029aa805b8c5": {
+      "source": "Devin 设置文件路径",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 617,
+          "column": 27
+        }
+      ]
+    },
     "7f329568f46a7c24": {
       "source": "预留比例（%）",
       "kind": "text",
@@ -8817,6 +9219,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 217,
+          "column": 13
+        },
         {
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 140,
@@ -8881,11 +9288,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 188,
-          "column": 110
-        },
-        {
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 349,
           "column": 80
@@ -8899,7 +9301,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 83,
+          "line": 94,
           "column": 85
         }
       ]
@@ -8911,7 +9313,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 876,
+          "line": 925,
           "column": 11
         },
         {
@@ -9046,7 +9448,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 128,
+          "line": 131,
           "column": 13
         }
       ]
@@ -9089,18 +9491,6 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 112,
           "column": 16
-        }
-      ]
-    },
-    "837b801f2b566931": {
-      "source": "有未保存的改动：先保存设置，再应用补丁。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 342,
-          "column": 13
         }
       ]
     },
@@ -9329,6 +9719,18 @@
         }
       ]
     },
+    "86492c1135a49b66": {
+      "source": "选择模型后保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 144,
+          "column": 13
+        }
+      ]
+    },
     "8687a27d7f83d956": {
       "source": "保存后立即按新端口监听",
       "kind": "text",
@@ -9458,7 +9860,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 87,
+          "line": 95,
           "column": 51
         }
       ]
@@ -9482,7 +9884,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 49,
+          "line": 56,
           "column": 61
         }
       ]
@@ -9557,6 +9959,18 @@
         }
       ]
     },
+    "8b27c041b6486e27": {
+      "source": "左侧是 Devin 里的模型，右侧是实际使用的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 470,
+          "column": 50
+        }
+      ]
+    },
     "8b6ff498515bcc2f": {
       "source": "时间",
       "kind": "text",
@@ -9588,7 +10002,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1346,
+          "line": 1446,
           "column": 23
         }
       ]
@@ -9641,12 +10055,12 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 56,
+          "line": 64,
           "column": 8
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 93,
+          "line": 101,
           "column": 16
         }
       ]
@@ -9694,8 +10108,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 75,
+          "line": 86,
           "column": 56
+        }
+      ]
+    },
+    "8ecc3d5db4dba9d0": {
+      "source": "保存并接入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 426,
+          "column": 9
         }
       ]
     },
@@ -9785,18 +10211,6 @@
         }
       ]
     },
-    "8fe3dec68b60bece": {
-      "source": "Devin 的宿主补丁可以随时「恢复原文件」，恢复后 Devin 回到厂商直连。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 233,
-          "column": 18
-        }
-      ]
-    },
     "90800c48a1dd0655": {
       "source": "{label} 必须是 JSON 对象",
       "kind": "template",
@@ -9823,6 +10237,18 @@
         }
       ]
     },
+    "90c4e86b471ed327": {
+      "source": "当前默认模型已停用或不可用，请重新选择。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 397,
+          "column": 9
+        }
+      ]
+    },
     "90c70831c051f048": {
       "source": "最近调用",
       "kind": "text",
@@ -9844,6 +10270,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 284,
           "column": 19
+        }
+      ]
+    },
+    "90fa70c5628ad00e": {
+      "source": "Devin 的对话会由你选择的模型回答。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 462,
+          "column": 20
         }
       ]
     },
@@ -10016,18 +10454,6 @@
         }
       ]
     },
-    "92e589f025034ee9": {
-      "source": "应用补丁",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 460,
-          "column": 170
-        }
-      ]
-    },
     "92fcae1cb14bc3d5": {
       "source": "Codex 配置已应用，请重新打开 Codex 或新建会话",
       "kind": "text",
@@ -10091,18 +10517,6 @@
         }
       ]
     },
-    "9345151a035212a9": {
-      "source": "关闭时不会打开任何 Devin 端口，也不会影响其他接入模块。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 367,
-          "column": 57
-        }
-      ]
-    },
     "934d154b52a7fb91": {
       "source": "先完全退出 Claude Desktop",
       "kind": "text",
@@ -10115,6 +10529,18 @@
         }
       ]
     },
+    "937e41db92acd62c": {
+      "source": "只有本应用写入的配置才能一键恢复。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 624,
+          "column": 55
+        }
+      ]
+    },
     "93a8734cce300531": {
       "source": "搜索模型",
       "kind": "text",
@@ -10123,6 +10549,18 @@
         {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 399,
+          "column": 22
+        }
+      ]
+    },
+    "93b2ebaa889958be": {
+      "source": "设置已写入，但状态没能读回来：点「检查设置」确认结果，不要重复写入。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 312,
           "column": 22
         }
       ]
@@ -10259,12 +10697,12 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 57,
+          "line": 65,
           "column": 8
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 97,
+          "line": 105,
           "column": 16
         }
       ]
@@ -10305,15 +10743,15 @@
         }
       ]
     },
-    "9772d8141d88599b": {
-      "source": "读不到这个宿主文件，请检查路径与文件权限。",
+    "97a5a925e6b7b75f": {
+      "source": "先选择一个默认模型，再保存并启用 Devin 网关。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 45,
-          "column": 67
+          "line": 61,
+          "column": 64
         }
       ]
     },
@@ -10329,15 +10767,15 @@
         }
       ]
     },
-    "9812411521ae6126": {
-      "source": "宿主文件不是 UTF-8 文本，无法安全改写。",
+    "982d8d7cf97fc714": {
+      "source": "留空即自动探测；也可以填 Devin 数据目录，或 User\\settings.json 的完整路径。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 47,
-          "column": 37
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 617,
+          "column": 52
         }
       ]
     },
@@ -10415,18 +10853,6 @@
         }
       ]
     },
-    "99049e59a6e85025": {
-      "source": "添加映射",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 372,
-          "column": 78
-        }
-      ]
-    },
     "992be0ed1abad5e7": {
       "source": "清掉筛选条件再试，或先在 Cursor / Devin / Codex 里发起一次对话。",
       "kind": "text",
@@ -10439,18 +10865,6 @@
         }
       ]
     },
-    "994d57382c62ada4": {
-      "source": "候选路由",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 421,
-          "column": 26
-        }
-      ]
-    },
     "995df83caefc80dc": {
       "source": "移除映射：{model}",
       "kind": "template",
@@ -10460,8 +10874,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 405,
+          "line": 505,
           "column": 77
+        }
+      ]
+    },
+    "9962b8d0a836eee9": {
+      "source": "开启后，Devin 的请求会交给你下面选择的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 466,
+          "column": 52
         }
       ]
     },
@@ -10486,6 +10912,23 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 71,
           "column": 70
+        }
+      ]
+    },
+    "99d6840591418cb4": {
+      "source": "使用自选模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 466,
+          "column": 23
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 467,
+          "column": 51
         }
       ]
     },
@@ -10548,7 +10991,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 889,
+          "line": 938,
           "column": 11
         }
       ]
@@ -10572,8 +11015,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 495,
+          "line": 610,
           "column": 27
+        }
+      ]
+    },
+    "9b359ce879931193": {
+      "source": "显示在 Cursor 模型说明中，也会用于 Devin 的模型选择器。建议每个模型写不同的备注。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorModelEditor.tsx",
+          "line": 172,
+          "column": 69
         }
       ]
     },
@@ -10637,7 +11092,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 611,
           "column": 49
         }
       ]
@@ -10683,7 +11138,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 72,
+          "line": 83,
           "column": 79
         }
       ]
@@ -10697,18 +11152,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 49,
           "column": 35
-        }
-      ]
-    },
-    "9c9e69a6af633cb9": {
-      "source": "当前宿主文件不是可打补丁的原版；按上面的说明恢复或改用其他路径。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 344,
-          "column": 15
         }
       ]
     },
@@ -10748,15 +11191,15 @@
         }
       ]
     },
-    "9d1781d29fcb3e17": {
-      "source": "备份不是可识别的原版文件，恢复已拒绝。",
+    "9ccc3bc31ea747a1": {
+      "source": "设置文件路径要填绝对路径，例如 C:\\Users\\你\\AppData\\Roaming\\Devin。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 39,
-          "column": 71
+          "line": 33,
+          "column": 64
         }
       ]
     },
@@ -10777,8 +11220,13 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 168,
+          "line": 191,
           "column": 14
+        },
+        {
+          "file": "features/devin/devinModelOptions.ts",
+          "line": 50,
+          "column": 49
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
@@ -10841,6 +11289,18 @@
         }
       ]
     },
+    "9e0e1441805feb75": {
+      "source": "Devin 接入配置已恢复",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 342,
+          "column": 15
+        }
+      ]
+    },
     "9e2ed81fc6e3794c": {
       "source": "打开下方「启用 Codex 网关」并保存",
       "kind": "text",
@@ -10876,6 +11336,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 153,
           "column": 7
+        }
+      ]
+    },
+    "9e445ec84f2a42a7": {
+      "source": "实际使用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 496,
+          "column": 49
         }
       ]
     },
@@ -11008,18 +11480,6 @@
         }
       ]
     },
-    "a0643d500918814f": {
-      "source": "已保存，重启应用后端口才会打开",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 127,
-          "column": 13
-        }
-      ]
-    },
     "a0bc61d7924cd690": {
       "source": "配置已就绪，点击「应用到 Codex」。",
       "kind": "text",
@@ -11046,15 +11506,15 @@
         }
       ]
     },
-    "a1175d022c6a0da2": {
-      "source": "改写 Devin 自己的配置文件，把它的请求指到本机网关",
+    "a10ed9ecd2427cfe": {
+      "source": "使用哪个模型",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 450,
-          "column": 20
+          "line": 461,
+          "column": 14
         }
       ]
     },
@@ -11077,7 +11537,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 419,
+          "line": 518,
           "column": 69
         }
       ]
@@ -11089,7 +11549,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 53,
+          "line": 60,
           "column": 46
         }
       ]
@@ -11101,12 +11561,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 412,
+          "line": 511,
           "column": 35
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 413,
+          "line": 512,
           "column": 81
         }
       ]
@@ -11159,7 +11619,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 79,
+          "line": 87,
           "column": 15
         }
       ]
@@ -11208,8 +11668,8 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 509,
-          "column": 114
+          "line": 431,
+          "column": 11
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
@@ -11305,7 +11765,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 84,
+          "line": 93,
           "column": 11
         }
       ]
@@ -11319,22 +11779,6 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 197,
           "column": 15
-        }
-      ]
-    },
-    "a4685d64ad32d911": {
-      "source": "宿主文件里的端口与当前设置不同（{api} · {inference} · {local}）：保存设置后重新应用补丁。",
-      "kind": "template",
-      "placeholders": [
-        "api",
-        "inference",
-        "local"
-      ],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 473,
-          "column": 17
         }
       ]
     },
@@ -11480,6 +11924,20 @@
         }
       ]
     },
+    "a67ff73208bc1191": {
+      "source": "端口：{ports}",
+      "kind": "template",
+      "placeholders": [
+        "ports"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 586,
+          "column": 64
+        }
+      ]
+    },
     "a688483901146f46": {
       "source": "重试安装",
       "kind": "text",
@@ -11535,18 +11993,6 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 135,
           "column": 122
-        }
-      ]
-    },
-    "a6c510487fdaedde": {
-      "source": "宿主文件与受支持的版本不一致，无法自动改写。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 44,
-          "column": 73
         }
       ]
     },
@@ -11652,6 +12098,18 @@
         }
       ]
     },
+    "a83c79e351c98bd7": {
+      "source": "默认模型只能选标准映射，不能选上下文压缩。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 64,
+          "column": 74
+        }
+      ]
+    },
     "a8420f0321bdc15e": {
       "source": "范围数据加载失败，暂时无法按模型统计。",
       "kind": "text",
@@ -11719,20 +12177,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 401,
+          "line": 501,
           "column": 78
         }
       ]
     },
-    "a8c91a109ec4a70d": {
-      "source": "已指向其他路由器",
+    "a8e0aeb545a635be": {
+      "source": "登录、套餐和额度仍由 Devin 管理。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 85,
-          "column": 16
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 594,
+          "column": 35
         }
       ]
     },
@@ -11792,11 +12250,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 410,
-          "column": 35
-        },
-        {
           "file": "features/models/CursorModelEditor.tsx",
           "line": 169,
           "column": 25
@@ -11825,18 +12278,6 @@
         }
       ]
     },
-    "aa6a832170bd1a7b": {
-      "source": "打开上面的开关并保存",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 128,
-          "column": 11
-        }
-      ]
-    },
     "aab0fe17fae0dfbb": {
       "source": "数据存在哪？怎么清理？",
       "kind": "text",
@@ -11861,6 +12302,18 @@
         }
       ]
     },
+    "aac774d8083b0be9": {
+      "source": "读不到 Devin 客户端文件，请检查安装是否完整。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 52,
+          "column": 56
+        }
+      ]
+    },
     "aaeaa3b5c7dacb53": {
       "source": "启用模型映射：{model}",
       "kind": "template",
@@ -11870,7 +12323,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 440,
+          "line": 540,
           "column": 58
         }
       ]
@@ -11916,7 +12369,7 @@
         },
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 233,
+          "line": 234,
           "column": 67
         }
       ]
@@ -11965,7 +12418,19 @@
         {
           "file": "features/models/CursorModelEditor.tsx",
           "line": 172,
-          "column": 118
+          "column": 149
+        }
+      ]
+    },
+    "ac5b1e5416af3d63": {
+      "source": "第一次使用时完成一次；之后打开 Devin 就能直接对话。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 564,
+          "column": 20
         }
       ]
     },
@@ -12077,7 +12542,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 71,
+          "line": 82,
           "column": 83
         }
       ]
@@ -12138,15 +12603,17 @@
         }
       ]
     },
-    "aefa8f5ad614c351": {
-      "source": "宿主文件在打补丁之后又被改过，为避免覆盖你的修改，恢复已拒绝。",
-      "kind": "text",
-      "placeholders": [],
+    "af073c0a9631f1cd": {
+      "source": "设置文件：{path}",
+      "kind": "template",
+      "placeholders": [
+        "path"
+      ],
       "refs": [
         {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 37,
-          "column": 50
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 584,
+          "column": 38
         }
       ]
     },
@@ -12162,18 +12629,6 @@
         }
       ]
     },
-    "af367eea272924e2": {
-      "source": "把 Devin 的模型请求指到本机网关，由模型库回答",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 516,
-          "column": 13
-        }
-      ]
-    },
     "af64c0e8fb60a3ea": {
       "source": "配置由系统策略托管，本应用不会改写它。",
       "kind": "text",
@@ -12186,6 +12641,18 @@
         }
       ]
     },
+    "af9d1cf04b0cf919": {
+      "source": "未选择默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 199,
+          "column": 15
+        }
+      ]
+    },
     "afd4b783536b8297": {
       "source": "收起",
       "kind": "text",
@@ -12193,7 +12660,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 403,
+          "line": 503,
           "column": 31
         }
       ]
@@ -12209,18 +12676,6 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 469,
           "column": 84
-        }
-      ]
-    },
-    "b00f0bd0310df3ab": {
-      "source": "正在检查或写入，稍候。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 338,
-          "column": 9
         }
       ]
     },
@@ -12303,13 +12758,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 86,
-          "column": 12
-        },
-        {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 454,
+          "line": 568,
           "column": 38
         }
       ]
@@ -12381,7 +12831,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 78,
+          "line": 89,
           "column": 79
         }
       ]
@@ -12393,8 +12843,22 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 169,
-          "column": 74
+          "line": 196,
+          "column": 15
+        }
+      ]
+    },
+    "b102e97e8711e601": {
+      "source": "Devin 版本：{version}",
+      "kind": "template",
+      "placeholders": [
+        "version"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 588,
+          "column": 51
         }
       ]
     },
@@ -12483,7 +12947,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 351,
+          "line": 450,
           "column": 100
         },
         {
@@ -12539,6 +13003,18 @@
         }
       ]
     },
+    "b28c0ae300620849": {
+      "source": "没有找到 Devin 用户设置目录。先启动一次 Devin，或在高级里填写 settings.json 的绝对路径。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 32,
+          "column": 67
+        }
+      ]
+    },
     "b329392fed697a69": {
       "source": "当前是官方模式，本应用不介入",
       "kind": "text",
@@ -12584,18 +13060,6 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 130,
           "column": 19
-        }
-      ]
-    },
-    "b41f9e2a816e3204": {
-      "source": "Devin 网关正在监听的端口与当前设置不一致：重启软件让它按保存的端口重新监听，再来应用补丁。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 68,
-          "column": 49
         }
       ]
     },
@@ -12663,6 +13127,20 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 194,
           "column": 15
+        }
+      ]
+    },
+    "b50078cb449d8933": {
+      "source": "已选择 {model}",
+      "kind": "template",
+      "placeholders": [
+        "model"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 150,
+          "column": 19
         }
       ]
     },
@@ -12769,6 +13247,18 @@
         }
       ]
     },
+    "b69f1eed3e0dfa2b": {
+      "source": "路径已修改。点“重新检查”确认新的位置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 435,
+          "column": 9
+        }
+      ]
+    },
     "b72353403a3289e9": {
       "source": "按出现频率排序，点开看答案。",
       "kind": "text",
@@ -12778,18 +13268,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 199,
           "column": 48
-        }
-      ]
-    },
-    "b72794ddec86805f": {
-      "source": "这个路径不是 Devin 的宿主文件。请填写安装目录，或 extension.js 的完整路径。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 32,
-          "column": 52
         }
       ]
     },
@@ -12824,18 +13302,6 @@
         }
       ]
     },
-    "b76decbc4d053ebd": {
-      "source": "备份文件与打补丁时记下的内容不一致，恢复已拒绝。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 38,
-          "column": 54
-        }
-      ]
-    },
     "b840d73cc5204ebb": {
       "source": "还没解决的问题？",
       "kind": "text",
@@ -12857,6 +13323,18 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 244,
           "column": 9
+        }
+      ]
+    },
+    "b86001a13b31dbe0": {
+      "source": "设置已写入，但 Devin 仍不读取；重新写入接入配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 161,
+          "column": 13
         }
       ]
     },
@@ -12943,15 +13421,15 @@
         }
       ]
     },
-    "b8a435464572ab21": {
-      "source": "端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的宿主文件）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。",
+    "b928d067d7d75750": {
+      "source": "这个路径不是 Devin 的 extension.js。请填写安装目录，或其中的 extension.js。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 109,
-          "column": 15
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 37,
+          "column": 60
         }
       ]
     },
@@ -13099,18 +13577,6 @@
         }
       ]
     },
-    "bab702ecf3ddd16f": {
-      "source": "宿主文件版本不匹配：要改写的锚点缺失或出现多次，补丁已拒绝。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 41,
-          "column": 51
-        }
-      ]
-    },
     "baff6c144180b185": {
       "source": "连通性测试完成：成功 {successful}，失败 {failed}",
       "kind": "template",
@@ -13200,20 +13666,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 431,
+          "line": 531,
           "column": 60
-        }
-      ]
-    },
-    "bb7d2e5d5f248dec": {
-      "source": "把 Devin 的模型标识指向模型库里的模型；Devin 只会用到这里配置的映射。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 371,
-          "column": 50
         }
       ]
     },
@@ -13272,6 +13726,32 @@
         }
       ]
     },
+    "bc49ba835edb3fb7": {
+      "source": "最近一次调用成功（共 {count} 条）",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 173,
+          "column": 13
+        }
+      ]
+    },
+    "bc78619242d664f8": {
+      "source": "Devin 设置已经指向一个本机网关。请先恢复之前的设置，再写入当前配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 46,
+          "column": 78
+        }
+      ]
+    },
     "bcb7f9ea5643eb05": {
       "source": "请在桌面应用中打开日志目录",
       "kind": "text",
@@ -13279,7 +13759,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1414,
+          "line": 1514,
           "column": 43
         }
       ]
@@ -13394,22 +13874,6 @@
         }
       ]
     },
-    "bd881de2557bc637": {
-      "source": "已接入：API {api} · 推理 {inference} · 本地 API {local}",
-      "kind": "template",
-      "placeholders": [
-        "api",
-        "inference",
-        "local"
-      ],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 472,
-          "column": 17
-        }
-      ]
-    },
     "bda74b5674b6a57d": {
       "source": "初始化插件",
       "kind": "text",
@@ -13429,7 +13893,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 52,
+          "line": 59,
           "column": 61
         }
       ]
@@ -13460,7 +13924,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 329,
+          "line": 406,
           "column": 64
         },
         {
@@ -13472,6 +13936,18 @@
           "file": "features/settings/settingsNavigation.ts",
           "line": 22,
           "column": 34
+        }
+      ]
+    },
+    "be0588621eb83a37": {
+      "source": "写入 Devin 用户设置里的 API 与推理地址，并仅对 Devin 3.11.216 的扩展放开读取这两个设置；不改模型协议、不写入模型地址。写入前会备份设置文件和 extension.js，并保留其他设置；请先完全退出 Devin。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 121,
+          "column": 23
         }
       ]
     },
@@ -13681,15 +14157,15 @@
         }
       ]
     },
-    "c1521ee6f1941f26": {
-      "source": "恢复记录不可用：补丁不是本应用打的，或记录已被改动；只能手工用旁边的备份文件恢复。",
+    "c1a326b9a937d1bc": {
+      "source": "所有 Devin 模型都已添加。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 348,
-          "column": 7
+          "line": 474,
+          "column": 117
         }
       ]
     },
@@ -13700,7 +14176,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 147,
+          "line": 171,
           "column": 11
         }
       ]
@@ -13748,6 +14224,30 @@
         }
       ]
     },
+    "c25fb86b1e96e063": {
+      "source": "重新检查",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 573,
+          "column": 109
+        }
+      ]
+    },
+    "c26fb419db3c86cb": {
+      "source": "技术详情",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 582,
+          "column": 21
+        }
+      ]
+    },
     "c2a3aa5d757ab1b1": {
       "source": "缓存命中率一直是 0？",
       "kind": "text",
@@ -13769,8 +14269,8 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 182,
-          "column": 37
+          "line": 228,
+          "column": 13
         }
       ]
     },
@@ -13798,15 +14298,15 @@
         }
       ]
     },
-    "c36af4716714c239": {
-      "source": "网关开关与模型映射",
+    "c35285bc2d08718e": {
+      "source": "请选择一个默认模型，保存后才能使用。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 363,
-          "column": 20
+          "line": 398,
+          "column": 9
         }
       ]
     },
@@ -13887,7 +14387,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 493,
+          "line": 608,
           "column": 27
         }
       ]
@@ -13899,7 +14399,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 90,
+          "line": 101,
           "column": 64
         }
       ]
@@ -13928,7 +14428,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 55,
+          "line": 66,
           "column": 56
         }
       ]
@@ -13969,7 +14469,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 489,
+          "line": 604,
           "column": 44
         }
       ]
@@ -14120,18 +14620,6 @@
         }
       ]
     },
-    "c8096fa980f2bc63": {
-      "source": "版本不匹配",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 456,
-          "column": 40
-        }
-      ]
-    },
     "c812741847bc05cb": {
       "source": "开启接管",
       "kind": "text",
@@ -14156,15 +14644,15 @@
         }
       ]
     },
-    "c869b9a6ef6986a4": {
-      "source": "宿主文件已经是打过补丁的版本。请先恢复原文件，再应用这次的补丁。",
+    "c8550237ba701f64": {
+      "source": "保存设置",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 36,
-          "column": 65
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 430,
+          "column": 13
         }
       ]
     },
@@ -14194,6 +14682,18 @@
           "file": "features/calls/CallDetailsPage.tsx",
           "line": 69,
           "column": 18
+        }
+      ]
+    },
+    "c9122f3ad2d37c97": {
+      "source": "设置文件的属性位置无法安全解析；本应用没有改动它。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 53,
+          "column": 56
         }
       ]
     },
@@ -14228,7 +14728,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 77,
+          "line": 88,
           "column": 53
         }
       ]
@@ -14299,6 +14799,18 @@
         }
       ]
     },
+    "caa85e531bb27330": {
+      "source": "Devin 的设置文件顶层不是对象；本应用不会覆盖它，请先修正文件。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 50,
+          "column": 68
+        }
+      ]
+    },
     "cb2f1709f983d2f4": {
       "source": "模型名称",
       "kind": "text",
@@ -14352,7 +14864,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 50,
+          "line": 57,
           "column": 53
         }
       ]
@@ -14485,6 +14997,18 @@
         }
       ]
     },
+    "ce62236a6f157b1c": {
+      "source": "已连接。重新打开 Devin 就可以对话。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 439,
+          "column": 13
+        }
+      ]
+    },
     "cea1aafe9416de7b": {
       "source": "请求头",
       "kind": "text",
@@ -14499,6 +15023,20 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 55,
           "column": 51
+        }
+      ]
+    },
+    "cea1c0de8d5e55e8": {
+      "source": "兼容补丁：{state}",
+      "kind": "template",
+      "placeholders": [
+        "state"
+      ],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 587,
+          "column": 32
         }
       ]
     },
@@ -14536,15 +15074,15 @@
         }
       ]
     },
-    "cf6e22f60c2fd8a3": {
-      "source": "宿主文件里已有部分补丁痕迹，本应用不动它，避免叠加出无法恢复的状态。",
+    "cf4a8a59e8d37d3b": {
+      "source": "这个路径不是 Devin 的 settings.json。请填写 Devin 数据目录，或 User\\settings.json 的完整路径。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 43,
-          "column": 58
+          "line": 34,
+          "column": 61
         }
       ]
     },
@@ -14567,7 +15105,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 58,
+          "line": 69,
           "column": 88
         }
       ]
@@ -14627,7 +15165,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 147,
+          "line": 150,
           "column": 13
         }
       ]
@@ -14658,32 +15196,6 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 109,
           "column": 81
-        }
-      ]
-    },
-    "d11ace6a54f45bab": {
-      "source": "Devin 宿主补丁已应用；重启 Devin 后生效",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 281,
-          "column": 15
-        }
-      ]
-    },
-    "d124edaace6389d4": {
-      "source": "已绑定 {count} 个",
-      "kind": "template",
-      "placeholders": [
-        "count"
-      ],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 134,
-          "column": 35
         }
       ]
     },
@@ -14862,11 +15374,28 @@
         }
       ]
     },
+    "d3a86ac2c0d106ef": {
+      "source": "模型库为空。请先在模型库添加一个模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 473,
+          "column": 60
+        }
+      ]
+    },
     "d3d21191f32e79a5": {
       "source": "处理中…",
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 424,
+          "column": 7
+        },
         {
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 459,
@@ -14879,19 +15408,26 @@
         }
       ]
     },
+    "d3d7d53ea4ee0290": {
+      "source": "通常不用改；端口、凭据、Devin 文件路径和安装目录都在这里。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 598,
+          "column": 20
+        }
+      ]
+    },
     "d4386388046da7cc": {
       "source": "已接通",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 182,
-          "column": 26
-        },
-        {
           "file": "features/tutorial/onboarding.ts",
-          "line": 119,
+          "line": 122,
           "column": 15
         }
       ]
@@ -14920,12 +15456,12 @@
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 76,
+          "line": 87,
           "column": 47
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 85,
+          "line": 96,
           "column": 42
         }
       ]
@@ -14961,12 +15497,12 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 60,
+          "line": 68,
           "column": 8
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 109,
+          "line": 117,
           "column": 16
         }
       ]
@@ -15075,18 +15611,6 @@
         }
       ]
     },
-    "d6b65d80e25bd9c9": {
-      "source": "接入 Devin",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 449,
-          "column": 14
-        }
-      ]
-    },
     "d6c71e6084717dde": {
       "source": "请求没有走通，通常是本机到 github.com 的连接或系统代理不稳定。请换直连或代理后重试，或手动下载安装包。",
       "kind": "text",
@@ -15118,7 +15642,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 483,
+          "line": 503,
+          "column": 41
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 597,
           "column": 14
         },
         {
@@ -15168,18 +15697,6 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 464,
           "column": 29
-        }
-      ]
-    },
-    "d857b32c15d9f2b8": {
-      "source": "模型库还是空的：先在模型库添加模型，再回来添加映射。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 375,
-          "column": 60
         }
       ]
     },
@@ -15279,6 +15796,30 @@
         }
       ]
     },
+    "d900354eb350d845": {
+      "source": "默认模型映射已不存在，请重新选择。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 62,
+          "column": 61
+        }
+      ]
+    },
+    "d90d139ba711beb6": {
+      "source": "当前 Devin 版本暂不支持自动接入。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 445,
+          "column": 19
+        }
+      ]
+    },
     "d928760ecdd15ede": {
       "source": "在模型库添加至少一个 API 模型",
       "kind": "text",
@@ -15298,7 +15839,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 150,
+          "line": 176,
           "column": 13
         }
       ]
@@ -15313,8 +15854,20 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 49,
+          "line": 57,
           "column": 7
+        }
+      ]
+    },
+    "d9c977101ad928a3": {
+      "source": "选择模型并接入 Devin，之后直接在 Devin 里对话",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 635,
+          "column": 13
         }
       ]
     },
@@ -15351,6 +15904,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 391,
           "column": 47
+        }
+      ]
+    },
+    "da56d673d84b912f": {
+      "source": "读不到 Devin 的设置文件，请检查路径与文件权限，并确认 Devin 已退出。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 51,
+          "column": 62
         }
       ]
     },
@@ -15852,7 +16417,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 500,
+          "line": 615,
           "column": 35
         }
       ]
@@ -15876,8 +16441,8 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 169,
-          "column": 92
+          "line": 200,
+          "column": 15
         }
       ]
     },
@@ -16015,6 +16580,18 @@
         }
       ]
     },
+    "e209ec8a70056e01": {
+      "source": "最近一次调用未成功，请检查模型或重新测试",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 175,
+          "column": 15
+        }
+      ]
+    },
     "e231f1f3428d1c93": {
       "source": "正在申请授权码…",
       "kind": "text",
@@ -16036,6 +16613,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 101,
           "column": 29
+        }
+      ]
+    },
+    "e247deaaa444769f": {
+      "source": "留空即自动探测；也可以填安装目录，或其中 extension.js 的完整路径。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 620,
+          "column": 50
         }
       ]
     },
@@ -16077,7 +16666,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 80,
+          "line": 91,
           "column": 63
         }
       ]
@@ -16108,20 +16697,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 402,
+          "line": 502,
           "column": 100
-        }
-      ]
-    },
-    "e32e40b1644c293e": {
-      "source": "检查宿主",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 459,
-          "column": 109
         }
       ]
     },
@@ -16260,7 +16837,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 114,
+          "line": 122,
           "column": 80
         }
       ]
@@ -16306,18 +16883,6 @@
         }
       ]
     },
-    "e62f5aafda1998db": {
-      "source": "还没有映射",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 134,
-          "column": 84
-        }
-      ]
-    },
     "e63c55c277c1c629": {
       "source": "输出价格（{unit}/1M）",
       "kind": "template",
@@ -16339,7 +16904,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 143,
+          "line": 146,
           "column": 11
         }
       ]
@@ -16400,32 +16965,6 @@
         }
       ]
     },
-    "e790d21f3efa4e3c": {
-      "source": "端口、令牌与宿主文件路径；默认值适用于绝大多数情况",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 484,
-          "column": 20
-        }
-      ]
-    },
-    "e7ac5e21dc03c982": {
-      "source": "已有 {count} 条 Devin 调用记录",
-      "kind": "template",
-      "placeholders": [
-        "count"
-      ],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 149,
-          "column": 13
-        }
-      ]
-    },
     "e806fbbe8ec6e82d": {
       "source": "插件",
       "kind": "text",
@@ -16435,18 +16974,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 129,
           "column": 28
-        }
-      ]
-    },
-    "e816946cfa9324f5": {
-      "source": "宿主补丁",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
-          "column": 6
         }
       ]
     },
@@ -16476,28 +17003,6 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 127,
           "column": 57
-        }
-      ]
-    },
-    "e84c5c6a2418a300": {
-      "source": "启用 Devin 网关",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 123,
-          "column": 14
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 367,
-          "column": 23
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 368,
-          "column": 51
         }
       ]
     },
@@ -16624,6 +17129,18 @@
         }
       ]
     },
+    "ea84e6562d57695b": {
+      "source": "Devin 安装目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 620,
+          "column": 27
+        }
+      ]
+    },
     "ea878d5d090510da": {
       "source": "接管",
       "kind": "text",
@@ -16655,12 +17172,12 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 59,
+          "line": 67,
           "column": 8
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 105,
+          "line": 113,
           "column": 16
         }
       ]
@@ -16674,6 +17191,18 @@
           "file": "features/calls/CallFacts.tsx",
           "line": 54,
           "column": 6
+        }
+      ]
+    },
+    "eb399b119559dc04": {
+      "source": "对话模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 470,
+          "column": 23
         }
       ]
     },
@@ -16700,18 +17229,6 @@
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 134,
           "column": 21
-        }
-      ]
-    },
-    "eb846686f715e3de": {
-      "source": "先启用并保存 Devin 网关，再应用宿主补丁。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 34,
-          "column": 66
         }
       ]
     },
@@ -16765,6 +17282,18 @@
         }
       ]
     },
+    "ec63b5b449fd72e9": {
+      "source": "未写入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 587,
+          "column": 101
+        }
+      ]
+    },
     "ec917db99e814b58": {
       "source": "{label}必须是非负数",
       "kind": "template",
@@ -16790,6 +17319,18 @@
           "file": "features/calls/CallFacts.tsx",
           "line": 64,
           "column": 23
+        }
+      ]
+    },
+    "ecf0ea01192d5a01": {
+      "source": "保存更改",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 628,
+          "column": 134
         }
       ]
     },
@@ -16822,6 +17363,18 @@
         }
       ]
     },
+    "ed940f2719f16106": {
+      "source": "重启应用，让网关在保存的端口上监听",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 133,
+          "column": 13
+        }
+      ]
+    },
     "edb9778086b9c2c4": {
       "source": "已有 {count} 条调用记录",
       "kind": "template",
@@ -16831,7 +17384,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 161,
+          "line": 164,
           "column": 29
         }
       ]
@@ -16879,12 +17432,12 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 58,
+          "line": 66,
           "column": 8
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 101,
+          "line": 109,
           "column": 16
         }
       ]
@@ -16950,6 +17503,18 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 80,
           "column": 67
+        }
+      ]
+    },
+    "ef74f300648a75c4": {
+      "source": "已指向其他网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 96,
+          "column": 16
         }
       ]
     },
@@ -17041,6 +17606,18 @@
         }
       ]
     },
+    "f220068d0d0331f6": {
+      "source": "网关已就绪，还差写入 Devin 设置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 123,
+          "column": 15
+        }
+      ]
+    },
     "f28461bb49c85647": {
       "source": "已完成",
       "kind": "text",
@@ -17062,18 +17639,6 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 392,
           "column": 11
-        }
-      ]
-    },
-    "f2e7c5a783c98131": {
-      "source": "没有找到 Devin 安装。请在高级里填写宿主文件路径：安装目录下的 extension.js。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 31,
-          "column": 56
         }
       ]
     },
@@ -17101,6 +17666,18 @@
         }
       ]
     },
+    "f373e11e97898f24": {
+      "source": "Devin 网关正在监听的端口与当前设置不一致：重启软件让它按保存的端口重新监听，再来写入设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 79,
+          "column": 49
+        }
+      ]
+    },
     "f3b39245976133a7": {
       "source": "接入",
       "kind": "text",
@@ -17120,6 +17697,18 @@
           "file": "shell/commandPaletteCommands.ts",
           "line": 42,
           "column": 50
+        }
+      ]
+    },
+    "f423c7d9011c8bf4": {
+      "source": "先启用并保存 Devin 网关，再写入 Devin 设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 41,
+          "column": 77
         }
       ]
     },
@@ -17296,30 +17885,6 @@
         }
       ]
     },
-    "f6f0f6c7131c8b95": {
-      "source": "Devin 网关还没有开始监听：先启用并保存网关，再重启软件，然后回到这里应用补丁。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 67,
-          "column": 52
-        }
-      ]
-    },
-    "f71bf41ca7416e36": {
-      "source": "尚未配置候选路由，当前直接使用上面的主模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 424,
-          "column": 69
-        }
-      ]
-    },
     "f72b895ce62133fb": {
       "source": "选择 Sonnet 映射模型",
       "kind": "text",
@@ -17426,7 +17991,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 70,
+          "line": 81,
           "column": 82
         }
       ]
@@ -17501,8 +18066,8 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 111,
-          "column": 11
+          "line": 214,
+          "column": 13
         },
         {
           "file": "features/settings/ProxySettingsCard.tsx",
@@ -17525,7 +18090,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 168,
+          "line": 169,
           "column": 21
         }
       ]
@@ -17577,7 +18142,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 433,
+          "line": 533,
           "column": 210
         }
       ]
@@ -17615,6 +18180,23 @@
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 88,
           "column": 91
+        }
+      ]
+    },
+    "fa1876770899f29b": {
+      "source": "已接入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 428,
+          "column": 11
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 566,
+          "column": 34
         }
       ]
     },
@@ -17695,7 +18277,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 88,
+          "line": 99,
           "column": 70
         }
       ]
@@ -17707,17 +18289,22 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 101,
+          "line": 116,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 115,
+          "line": 216,
           "column": 13
         },
         {
+          "file": "features/devin/devinConnectionView.ts",
+          "line": 232,
+          "column": 36
+        },
+        {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 459,
+          "line": 573,
           "column": 97
         },
         {
@@ -17781,18 +18368,6 @@
         }
       ]
     },
-    "fc55212d96d4d041": {
-      "source": "打补丁时留下的备份文件找不到了，恢复已拒绝；文件保持原样。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/harnessErrorText.ts",
-          "line": 40,
-          "column": 45
-        }
-      ]
-    },
     "fc949676c0e20a10": {
       "source": "证书已就绪",
       "kind": "text",
@@ -17814,6 +18389,18 @@
           "file": "shared/ui/Select.tsx",
           "line": 156,
           "column": 90
+        }
+      ]
+    },
+    "fcd5ecd7f8d4707d": {
+      "source": "还没有选择模型。点“添加模型”开始。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 476,
+          "column": 72
         }
       ]
     },
@@ -17918,7 +18505,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 194,
+          "line": 195,
           "column": 49
         }
       ]
@@ -17932,6 +18519,18 @@
           "file": "features/claude/claudeTakeoverPlan.ts",
           "line": 175,
           "column": 32
+        }
+      ]
+    },
+    "fe406e82596b74ce": {
+      "source": "已写入",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 587,
+          "column": 90
         }
       ]
     },
@@ -18086,8 +18685,8 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 509,
-          "column": 102
+          "line": 628,
+          "column": 122
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
@@ -18111,15 +18710,15 @@
         }
       ]
     },
-    "ff55f6835aaf9861": {
-      "source": "端口已就绪",
+    "ffb131c6cb5f02a6": {
+      "source": "备用模型",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/devinConnectionView.ts",
-          "line": 126,
-          "column": 13
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 520,
+          "column": 26
         }
       ]
     },

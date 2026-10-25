@@ -115,7 +115,7 @@ pub fn to_invocation(
     binding: &DevinModelBinding,
     model: &ModelConfig,
 ) -> Result<crate::model::ModelInvocation> {
-    if request.requested_model != binding.model_uid {
+    if request.requested_model.trim() != binding.model_uid.trim() {
         return Err(Error::Protocol(format!(
             "Devin model '{}' is not assigned to this router binding",
             request.requested_model
@@ -149,13 +149,15 @@ pub fn to_invocation(
         format!("{DEVIN_EXECUTION_ID_PREFIX}{}", request.cascade_id)
     };
     let mut model_spec = ModelSpec::new(model.model_hash.clone());
-    model_spec.display_name = (!binding.display_name.is_empty())
-        .then(|| binding.display_name.clone())
-        .or_else(|| Some(model.display_name.clone()));
+    model_spec.display_name = Some(model.display_name.clone())
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| {
+            (!binding.display_name.trim().is_empty()).then(|| binding.display_name.clone())
+        });
     model_spec.max_output_tokens = model.max_output_tokens();
-    model_spec.context_window_tokens = binding
+    model_spec.context_window_tokens = model
         .context_window_tokens
-        .or(model.context_window_tokens);
+        .or(binding.context_window_tokens);
     model_spec.reasoning.effort = model.reasoning_effort.clone();
 
     Ok(crate::model::ModelInvocation {
@@ -484,7 +486,11 @@ mod tests {
         assert_eq!(invocation.request.model.model_id, "0123abcd");
         assert_eq!(
             invocation.request.model.context_window_tokens,
-            Some(200_000)
+            Some(128_000)
+        );
+        assert_eq!(
+            invocation.request.model.display_name.as_deref(),
+            Some("Cursor Sonnet")
         );
         assert_eq!(
             invocation.request.prompt.instructions,

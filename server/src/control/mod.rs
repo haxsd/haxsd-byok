@@ -3,7 +3,7 @@ mod app_info;
 mod calls;
 pub mod claude;
 pub mod codex;
-mod devin;
+mod devin_config;
 mod harness;
 mod models;
 mod overview;
@@ -256,7 +256,7 @@ pub fn api_router(service: ControlService) -> Router {
         )
         .route(
             "/__byok-api__/api/devin/settings",
-            get(devin::get).put(devin::update),
+            get(devin_config::get).put(devin_config::update),
         )
         .route(
             "/__byok-api__/api/harness/cursor/status",
@@ -272,19 +272,19 @@ pub fn api_router(service: ControlService) -> Router {
         )
         .route(
             "/__byok-api__/api/harness/devin/host/status",
-            get(devin::host_status),
+            get(devin_config::host_status),
         )
         .route(
             "/__byok-api__/api/harness/devin/model-uids",
-            get(devin::model_uids),
+            get(devin_config::model_uids),
         )
         .route(
             "/__byok-api__/api/harness/devin/host/apply",
-            post(devin::host_apply),
+            post(devin_config::host_apply),
         )
         .route(
             "/__byok-api__/api/harness/devin/host/restore",
-            post(devin::host_restore),
+            post(devin_config::host_restore),
         )
         .with_state(service)
         .layer(desktop_cors())
@@ -295,8 +295,11 @@ pub fn api_router(service: ControlService) -> Router {
 /// ports belong to another origin and cannot be probed from the page.
 pub fn devin_status_router(service: ControlService, listening: DevinListening) -> Router {
     Router::new()
-        .route("/__byok-api__/api/devin/status", get(devin::status))
-        .with_state(Arc::new(devin::DevinStatusState { service, listening }))
+        .route("/__byok-api__/api/devin/status", get(devin_config::status))
+        .with_state(Arc::new(devin_config::DevinStatusState {
+            service,
+            listening,
+        }))
         .layer(desktop_cors())
         .layer(middleware::from_fn(reject_cross_site))
 }

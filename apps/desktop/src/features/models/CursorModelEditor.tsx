@@ -169,7 +169,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
       <FormField label={t("显示名称")} hint={t("仅用于界面展示，不会改变发送给模型服务的模型名称。")}> <TextInput placeholder={t("例如：主力模型")} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
       {/* 备注是保存时的必填项（服务端同样要求），所以它必须留在第一屏：
           折进「高级」会让用户在不展开时永远保存不了，也看不到报错说的是哪一栏。 */}
-      <FormField className={styles.fullWidth} label={t("备注")} hint={t("显示在 Cursor 模型说明中。")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
+      <FormField className={styles.fullWidth} label={t("备注")} hint={t("显示在 Cursor 模型说明中，也会用于 Devin 的模型选择器。建议每个模型写不同的备注。")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
 
       <div className={`${styles.fullWidth} ${styles.advanced}`}>
         <button type="button" className={styles.advancedToggle} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>

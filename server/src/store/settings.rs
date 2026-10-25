@@ -280,6 +280,7 @@ pub struct DesktopSettings {
     pub tutorial_read: Option<bool>,
     pub pending_update: Option<PendingUpdate>,
     pub devin_host_path: Option<String>,
+    pub devin_install_root: Option<String>,
     /// 折叠状态：卡片键 → 是否展开。见 [`DesktopSettingsPatch::disclosure`] 的合并语义。
     pub disclosure: BTreeMap<String, bool>,
 }
@@ -302,6 +303,7 @@ impl Default for DesktopSettings {
             tutorial_read: None,
             pending_update: None,
             devin_host_path: None,
+            devin_install_root: None,
             disclosure: BTreeMap::new(),
         }
     }
@@ -334,6 +336,8 @@ pub struct DesktopSettingsPatch {
     pub pending_update: Option<Option<PendingUpdate>>,
     #[serde(default, deserialize_with = "double_option")]
     pub devin_host_path: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub devin_install_root: Option<Option<String>>,
     /// 折叠状态：**按卡片键合并**，不是整份替换——两个卡片先后折叠不会互相撤销。`null` 清空整份。
     #[serde(default, deserialize_with = "double_option")]
     pub disclosure: Option<Option<BTreeMap<String, bool>>>,
@@ -373,6 +377,9 @@ impl DesktopSettingsPatch {
         }
         if let Some(devin_host_path) = self.devin_host_path {
             settings.devin_host_path = devin_host_path;
+        }
+        if let Some(devin_install_root) = self.devin_install_root {
+            settings.devin_install_root = devin_install_root;
         }
         if let Some(disclosure) = self.disclosure {
             match disclosure {
@@ -1546,6 +1553,7 @@ mod tests {
                 r#"{"theme":"midnight","locale":"zh-CN","tutorial_read":true,
                     "pending_update":{"from":"1.0.0","to":"1.1.0"},
                     "devin_host_path":"/usr/local/bin/devin",
+                    "devin_install_root":"/opt/Devin",
                     "disclosure":{"models":true,"storage":false}}"#,
             ))
             .await
@@ -1564,6 +1572,7 @@ mod tests {
             saved.devin_host_path.as_deref(),
             Some("/usr/local/bin/devin")
         );
+        assert_eq!(saved.devin_install_root.as_deref(), Some("/opt/Devin"));
         assert_eq!(saved.disclosure.get("models"), Some(&true));
         assert_eq!(
             store.desktop_settings().await.unwrap(),
@@ -1580,6 +1589,7 @@ mod tests {
         assert_eq!(later.locale.as_deref(), Some("en-US"));
         assert_eq!(later.theme.as_deref(), Some("midnight"), "别的字段保持原值");
         assert_eq!(later.tutorial_read, Some(true));
+        assert_eq!(later.devin_install_root.as_deref(), Some("/opt/Devin"));
         assert_eq!(later.disclosure.get("storage"), Some(&false));
         assert_eq!(store.desktop_settings().await.unwrap(), later);
     }
@@ -1607,6 +1617,32 @@ mod tests {
         assert_eq!(cleared.theme, None, "null 清空");
         assert_eq!(cleared.locale.as_deref(), Some("zh-CN"), "缺席不改");
         assert_eq!(cleared.tutorial_read, Some(true), "缺席不改");
+    }
+
+    /// 两个 Devin 路径都能被显式清空：页面清掉失效的自定义位置后，下次启动不该再拿旧值
+    /// 去探测。这里同时钉住 `devin_install_root` 的落库与清除形状。
+    #[tokio::test]
+    async fn devin_host_paths_can_be_cleared_with_null() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let store = Store::connect(&url).await.unwrap();
+        store
+            .update_desktop_settings(patch(
+                r#"{"devin_host_path":"D:\\Devin\\User\\settings.json",
+                    "devin_install_root":"D:\\Devin"}"#,
+            ))
+            .await
+            .unwrap();
+
+        let cleared = store
+            .update_desktop_settings(patch(
+                r#"{"devin_host_path":null,"devin_install_root":null}"#,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(cleared.devin_host_path, None);
+        assert_eq!(cleared.devin_install_root, None);
     }
 
     /// `disclosure` 按卡片键合并：两个卡片先后折叠不会互相撤销；`null` 才是清空整份。
@@ -1676,6 +1712,7 @@ mod tests {
         assert_eq!(settings.tutorial_read, None);
         assert_eq!(settings.pending_update, None);
         assert_eq!(settings.devin_host_path, None);
+        assert_eq!(settings.devin_install_root, None);
         assert!(settings.disclosure.is_empty());
 
         // 旧行被改一个开关后写回去，界面偏好仍然是"没有值"。
@@ -2091,6 +2128,7 @@ mod tests {
         assert_eq!(settings.inference_port, 43_111);
         assert_eq!(settings.local_api_port, 43_112);
         assert!(settings.bindings.is_empty());
+        assert_eq!(settings.default_model_uid, None);
     }
 
     #[test]

@@ -323,7 +323,8 @@ mod tests {
         let frames = stream_event(&mut state, ModelEvent::TextDelta("hello".into())).unwrap();
         assert_eq!(frames.len(), 1);
 
-        let fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        let fields =
+            parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&fields, 1).unwrap().value,
             FieldValue::Bytes(b"response-1".to_vec())
@@ -365,7 +366,8 @@ mod tests {
 
         let frames = finish(state, "MODEL_CLAUDE_4_SONNET_BYOK").unwrap();
         assert_eq!(frames.len(), 3);
-        let tool_fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        let tool_fields =
+            parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
         let tool = match &first_field(&tool_fields, 6).unwrap().value {
             FieldValue::Bytes(value) => parse_fields(value).unwrap(),
             _ => panic!("tool field must be nested"),
@@ -379,7 +381,8 @@ mod tests {
             FieldValue::Bytes(br#"{"path":"README.md"}"#.to_vec())
         );
 
-        let stop_fields = parse_fields(&unwrap_request(&frames[1], None).unwrap().payload).unwrap();
+        let stop_fields =
+            parse_fields(&unwrap_request(&frames[1], None, None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&stop_fields, 5).unwrap().value,
             FieldValue::Varint(10)
@@ -401,7 +404,7 @@ mod tests {
         )
         .unwrap();
         let frames = finish(state, "model-1").unwrap();
-        let stop = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        let stop = parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
         let usage = match &first_field(&stop, 7).unwrap().value {
             FieldValue::Bytes(value) => parse_fields(value).unwrap(),
             _ => panic!("usage field must be nested"),
@@ -424,7 +427,8 @@ mod tests {
         let mut state = ResponseState::new("response-4", ProviderType::Anthropic);
         let frames =
             stream_event(&mut state, ModelEvent::ThinkingDelta("a thought".into())).unwrap();
-        let fields = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        let fields =
+            parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&fields, 9).unwrap().value,
             FieldValue::Bytes(b"a thought".to_vec())
@@ -446,7 +450,8 @@ mod tests {
         .unwrap();
         stream_event(&mut state, ModelEvent::Done(FinishReason::Stop)).unwrap();
         let frames = finish(state, "MODEL_CLAUDE_4_SONNET_BYOK").unwrap();
-        let signature = parse_fields(&unwrap_request(&frames[0], None).unwrap().payload).unwrap();
+        let signature =
+            parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
         assert_eq!(
             first_field(&signature, 10).unwrap().value,
             FieldValue::Bytes(b"sig".to_vec())

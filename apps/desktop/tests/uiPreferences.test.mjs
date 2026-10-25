@@ -15,7 +15,7 @@ const loader = await startModuleLoader();
 test.after(() => loader.close());
 
 const DESKTOP = `${API_ROOT}/settings/desktop`;
-const PREFERENCE_FIELDS = ["theme", "locale", "tutorial_read", "pending_update", "devin_host_path", "disclosure"];
+const PREFERENCE_FIELDS = ["theme", "locale", "tutorial_read", "pending_update", "devin_host_path", "devin_install_root", "disclosure"];
 
 /**
  * 一个只认 /settings/desktop 的假服务端。
@@ -53,7 +53,14 @@ function legacyKeys() {
 }
 
 test("the server is authoritative: its values win and the old keys are dropped", async () => {
-  installDesktopSettings({ theme: "default-light", locale: "en-US", tutorial_read: true, disclosure: { advanced: true } });
+  installDesktopSettings({
+    theme: "default-light",
+    locale: "en-US",
+    tutorial_read: true,
+    devin_host_path: "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json",
+    devin_install_root: "D:\\Devin",
+    disclosure: { advanced: true },
+  });
   seedLegacy({ "haxsd-byok.theme": "default-dark", "haxsd-byok:tutorial-read": "false" });
   const { loadUiPreferences } = await loadPreferences();
 
@@ -62,6 +69,8 @@ test("the server is authoritative: its values win and the old keys are dropped",
   assert.equal(preferences.theme, "default-light", "服务端的主题优先于旧 localStorage");
   assert.equal(preferences.locale, "en-US");
   assert.equal(preferences.tutorialRead, true);
+  assert.equal(preferences.devinHostPath, "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json");
+  assert.equal(preferences.devinInstallRoot, "D:\\Devin");
   assert.deepEqual(preferences.disclosure, { advanced: true });
   assert.deepEqual(legacyKeys(), [], "服务端接管之后旧键没用了，要删掉");
 });
@@ -165,7 +174,7 @@ test("unknown or malformed server values are treated as unset, not guessed", asy
   assert.deepEqual(preferencesFromSettings({
     silent_start: false, show_dock_icon: true, developer_mode: false,
     theme: "solarized", locale: "fr-FR", tutorial_read: "yes", pending_update: { from: "1" },
-    devin_host_path: "", disclosure: { good: true, bad: "yes" },
+    devin_host_path: "", devin_install_root: 42, disclosure: { good: true, bad: "yes" },
   }), { disclosure: { good: true } });
 
   assert.equal(coversPreferences({ theme: "midnight" }, { theme: "midnight" }), true);
@@ -176,6 +185,7 @@ test("unknown or malformed server values are treated as unset, not guessed", asy
 
   assert.deepEqual(preferencePatch({ tutorialRead: false }), { tutorial_read: false }, "false 也是值，不能被吞掉");
   assert.deepEqual(preferencePatch({ pendingUpdate: null }), { pending_update: null }, "null = 清空");
+  assert.deepEqual(preferencePatch({ devinInstallRoot: "D:\\Devin" }), { devin_install_root: "D:\\Devin" });
   assert.deepEqual(preferencePatch({}), {});
 });
 
@@ -228,5 +238,5 @@ test("no production module outside the migration reads or writes the origin-boun
   }
   const migration = await readFile(new URL("../src/shared/store/uiPreferences.ts", import.meta.url), "utf8");
   assert.match(migration, /LEGACY_KEYS/, "迁移只允许发生在这一个模块里");
-  assert.deepEqual(PREFERENCE_FIELDS.length, 6);
+  assert.deepEqual(PREFERENCE_FIELDS.length, 7);
 });

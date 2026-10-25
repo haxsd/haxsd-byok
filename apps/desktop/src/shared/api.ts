@@ -172,6 +172,8 @@ export interface DevinSettings {
   /** Every request the gateway does not serve locally is forwarded here. */
   upstream_api_url: string;
   bindings: DevinModelBinding[];
+  /** Devin-side model UID selected when the client opens. */
+  default_model_uid: string | null;
 }
 
 /** Reported by the server: the gateway ports belong to another origin, so the page cannot probe them. */
@@ -211,10 +213,20 @@ export interface CodexStatus {
   last_error: string | null;
 }
 
+export interface DevinGatewayPorts {
+  api: number;
+  inference: number;
+  local_api: number;
+}
+
 export interface DevinStatus {
   enabled: boolean;
   listening: boolean;
+  ready: boolean;
+  bound_ports: DevinGatewayPorts | null;
   calls: number;
+  last_call_success: boolean | null;
+  last_call_at_ms: number | null;
 }
 
 /** Claude 网关设置：模型字段存模型库里的 `model_hash`，不是显示名。 */
@@ -334,30 +346,65 @@ export interface ClaudeDesktopTakeoverInput {
 export interface DevinHostPorts {
   api_port: number;
   inference_port: number;
-  local_api_port: number;
 }
 
-export interface DevinHostPatchStatus {
+export interface DevinHostStatus {
   path: string;
   compatible: boolean;
-  clean: boolean;
-  patched: boolean;
-  parts: { api: boolean; restart: boolean; inference: boolean; local_api: boolean };
+  unconfigured: boolean;
+  configured: boolean;
+  parts: { api: boolean; inference: boolean };
   ports: DevinHostPorts | null;
   backup_path: string;
   backup_available: boolean;
   current_sha256: string;
   backup_sha256: string | null;
-  restore_receipt: DevinHostPatchReceipt | null;
+  restore_receipt: DevinHostReceipt | null;
+  extension: DevinExtensionStatus;
   message: string;
 }
 
-export interface DevinHostPatchReceipt {
+export interface DevinHostReceipt {
   path: string;
   backup_path: string;
-  original_sha256: string;
+  /** 设置文件原本不存在时为 null，恢复会删除本应用创建的文件。 */
+  original_sha256: string | null;
   patched_sha256: string;
   ports: DevinHostPorts;
+}
+
+/**
+ * `extension.js` 的一次性接入补丁状态。
+ *
+ * 设置文件只给出端点；打包版 Devin 只有在补丁写入后才会读取它们，所以状态面板
+ * 必须同时看到 `settings.configured` 和 `extension.patched`。
+ */
+export interface DevinExtensionStatus {
+  path: string | null;
+  version: string;
+  supported_sha256: string;
+  compatible: boolean;
+  clean: boolean;
+  patched: boolean;
+  backup_path: string | null;
+  backup_available: boolean;
+  current_sha256: string;
+  backup_sha256: string | null;
+  restore_receipt: DevinExtensionReceipt | null;
+  message: string;
+}
+
+export interface DevinExtensionReceipt {
+  path: string;
+  backup_path: string;
+  version: string;
+  original_sha256: string;
+  patched_sha256: string;
+}
+
+export interface DevinHostApplyResult {
+  settings: DevinHostReceipt;
+  extension: DevinExtensionReceipt;
 }
 
 /** 选择器里的一个模型：显示用名字，映射用 uid（两者不是同一个字符串）。 */
@@ -473,6 +520,8 @@ export interface DesktopUiPreferences {
   tutorial_read?: boolean | null;
   pending_update?: PendingUpdateRecord | null;
   devin_host_path?: string | null;
+  /** Devin installation directory, or its `extension.js`; null means auto-detect. */
+  devin_install_root?: string | null;
   /** 折叠状态：卡片键 → 是否展开。 */
   disclosure?: Record<string, boolean> | null;
 }
@@ -950,6 +999,31 @@ function requireStatus<T>(payload: T, label: string): T {
 }
 
 /**
+ * Devin readiness is stricter than "some Devin process is listening": the bound
+ * ports must be the saved ports. Treat a missing field as a failed read rather
+ * than silently painting the page green.
+ */
+function requireDevinStatus(payload: unknown): DevinStatus {
+  const status = requireStatus(payload as DevinStatus, "Devin 状态");
+  const ports = status.bound_ports;
+  const validPorts = ports === null || (
+    typeof ports === "object"
+    && typeof ports.api === "number"
+    && typeof ports.inference === "number"
+    && typeof ports.local_api === "number"
+  );
+  if (
+    typeof status.ready !== "boolean"
+    || !validPorts
+    || (status.last_call_success !== null && typeof status.last_call_success !== "boolean")
+    || (status.last_call_at_ms !== null && typeof status.last_call_at_ms !== "number")
+  ) {
+    throw unusableRead("Devin 状态");
+  }
+  return status;
+}
+
+/**
  * Codex 状态里的可用部分。
  *
  * `restorable` 与 `conflicts` 是后加的字段：缺少 `conflicts` 时按空数组处理——冲突卡片要
@@ -1173,7 +1247,14 @@ function usableDevinSettings(payload: unknown, write: boolean): DevinSettings {
   if (bindings.length !== settings.bindings.length) {
     console.warn(`[api] Devin 设置：丢弃了 ${settings.bindings.length - bindings.length} 条结构不完整的映射`);
   }
-  return { ...settings, bindings };
+  if (settings.default_model_uid !== null && typeof settings.default_model_uid !== "string") {
+    console.warn("[api] Devin 设置：default_model_uid 缺失或不是字符串");
+    throw new Error(write ? t("保存失败") : t("读取失败"));
+  }
+  const defaultModelUid = typeof settings.default_model_uid === "string" && settings.default_model_uid.trim()
+    ? settings.default_model_uid.trim()
+    : null;
+  return { ...settings, bindings, default_model_uid: defaultModelUid };
 }
 
 /**
@@ -1197,7 +1278,7 @@ const DEFAULT_TIMEOUT_MS = 15000;
  * 写请求的超时（毫秒）。
  *
  * 读和写的超时不是一回事：读超时就是"没读到"，写超时是"服务端可能已经落库了"。15 秒对
- * 一次批量导入、一次宿主补丁（要读写文件、算 SHA-256）根本不够，而且超时会把这次写入
+ * 一次批量导入、一次宿主设置写入（要读写文件、算 SHA-256）根本不够，而且超时会把这次写入
  * 报成失败，诱导用户重复提交。写请求一律给 60 秒（服务端自己的关停预算才 30 秒）。
  * 显式传 `timeoutMs` 仍然优先。
  */
@@ -1296,6 +1377,25 @@ async function request<T>(path: string, init?: RequestOptions): Promise<T> {
   }
 }
 
+/**
+ * Devin 的校验接口同时接受设置文件与安装目录。两段都按“非空才带”处理：
+ * 空的输入代表自动探测，不是当前目录或空路径。
+ */
+function devinHostQuery(path?: string, installRoot?: string): string {
+  const params = new URLSearchParams();
+  if (path?.trim()) params.set("path", path.trim());
+  if (installRoot?.trim()) params.set("install_root", installRoot.trim());
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function devinHostBody(path?: string, installRoot?: string): string {
+  const body: { path?: string; install_root?: string } = {};
+  if (path?.trim()) body.path = path.trim();
+  if (installRoot?.trim()) body.install_root = installRoot.trim();
+  return JSON.stringify(body);
+}
+
 export const api = {
   appInfo: () => request<AppInfo>("/app-info"),
   models: (signal?: AbortSignal) => request<unknown>("/models", { signal }).then(rows => usableRows<Model>(rows, "model_hash", "模型列表")),
@@ -1357,14 +1457,14 @@ export const api = {
   applyClaudeDesktop: (models: ClaudeDesktopModel[]) => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "apply", models }) }).then(usableClaudeDesktopTakeover),
   undoClaudeDesktop: () => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "undo", models: [] }) }).then(usableClaudeDesktopTakeover),
   devinSettings: () => request<unknown>("/devin/settings").then(settings => usableDevinSettings(settings, false)),
-  devinStatus: (signal?: AbortSignal) => request<DevinStatus>("/devin/status", { signal }).then(status => requireStatus(status, "Devin 状态")),
+  devinStatus: (signal?: AbortSignal) => request<unknown>("/devin/status", { signal }).then(requireDevinStatus),
   setDevinSettings: (settings: DevinSettings) => request<unknown>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableDevinSettings(saved, true)),
-  /** Without a path the server finds the installation itself. */
-  devinHostStatus: (path?: string) => request<DevinHostPatchStatus>(path ? `/harness/devin/host/status?path=${encodeURIComponent(path)}` : "/harness/devin/host/status"),
+  /** Without a path the server finds the Devin data directory itself. */
+  devinHostStatus: (path?: string, installRoot?: string) => request<DevinHostStatus>(`/harness/devin/host/status${devinHostQuery(path, installRoot)}`),
   /** The identifiers Devin itself asks for, read from the installed client. */
-  devinModelUids: (path?: string) => request<DevinModelUids>(path ? `/harness/devin/model-uids?path=${encodeURIComponent(path)}` : "/harness/devin/model-uids"),
-  applyDevinHostPatch: (path?: string) => request<DevinHostPatchReceipt>("/harness/devin/host/apply", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
-  restoreDevinHostPatch: (path?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: JSON.stringify(path ? { path } : {}) }),
+  devinModelUids: (installRoot?: string) => request<DevinModelUids>(`/harness/devin/model-uids${devinHostQuery(undefined, installRoot)}`),
+  applyDevinHostConfiguration: (path?: string, installRoot?: string) => request<DevinHostApplyResult>("/harness/devin/host/apply", { method: "POST", body: devinHostBody(path, installRoot) }),
+  restoreDevinHostConfiguration: (path?: string, installRoot?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: devinHostBody(path, installRoot) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   plugins: (signal?: AbortSignal) => request<unknown>("/plugins", { signal }).then(rows => usableRows<PluginDescriptor>(
     rows,

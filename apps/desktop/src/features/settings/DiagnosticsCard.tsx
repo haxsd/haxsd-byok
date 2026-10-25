@@ -43,7 +43,15 @@ export function DiagnosticsCard({ visible }: { visible: boolean }) {
   const logDirectory = appInfo ? joinPath(appInfo.data_dir, "logs") : null;
   const gateway = offline
     ? t("服务未连接")
-    : devinStatus?.listening ? t("运行中") : devinStatus?.enabled ? t("待重启") : t("已关闭");
+      : devinStatus?.ready
+        ? t("运行中")
+        : devinStatus?.enabled
+          ? devinStatus.listening
+            ? t("端口已更改，重启后生效")
+            : t("待重启")
+          : devinStatus?.listening
+            ? t("已关闭（仍在监听，重启后停止）")
+            : t("已关闭");
   // 端口 0 表示启动时随机分配；这里读的是设置里保存的值，不是当前实际绑定的端口。
   const portsText = ports.proxy_port === 0 || ports.service_port === 0
     ? t("代理 {proxy} / 服务 {service}（0 表示启动时随机选择）", { proxy: ports.proxy_port, service: ports.service_port })

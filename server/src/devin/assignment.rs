@@ -261,11 +261,12 @@ fn scan_fields(
 }
 
 pub fn assignment_token_response(assignment: &Assignment, harness_uid: &str) -> Result<Vec<u8>> {
-    wire::serialize_fields(&[
+    let model_assignment = wire::serialize_fields(&[
         wire::Field::bytes(1, &assignment.token),
-        wire::Field::bytes(2, harness_uid),
-        wire::Field::bytes(3, &assignment.uid),
-    ])
+        wire::Field::bytes(2, &assignment.uid),
+        wire::Field::bytes(3, harness_uid),
+    ])?;
+    wire::serialize_fields(&[wire::Field::bytes(1, model_assignment)])
 }
 
 #[cfg(test)]
@@ -279,6 +280,18 @@ mod tests {
     use axum::http::HeaderMap;
 
     use super::*;
+
+    fn string_field(fields: &[wire::Field], number: u32) -> String {
+        fields
+            .iter()
+            .find_map(|field| match (&field.number, &field.value) {
+                (field_number, wire::FieldValue::Bytes(value)) if *field_number == number => {
+                    String::from_utf8(value.clone()).ok()
+                }
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
 
     #[test]
     fn assignment_tokens_expire_after_the_configured_ttl() {
@@ -294,6 +307,26 @@ mod tests {
 
         *now.lock().unwrap() += Duration::from_secs(61);
         assert_eq!(sessions.uid_for_token(&assignment.token), None);
+    }
+
+    /// 新版 `AssignModelResponse.assignment`（字段 1）是嵌套的
+    /// `ModelAssignment`；令牌、模型 UID 与 harness UID 写在它自己的字段里。
+    /// 平铺成响应顶层会让真实客户端解析失败，而旧测试只检查字节存在，发现不了。
+    #[test]
+    fn assignment_response_uses_the_nested_model_assignment_message() {
+        let sessions = AssignmentSessions::new();
+        let assignment = sessions.issue("model-a");
+        let response = assignment_token_response(&assignment, "cursor-byok:model-a").unwrap();
+        let outer = wire::parse_fields(&response).unwrap();
+        assert_eq!(outer.len(), 1);
+        assert_eq!(outer[0].number, 1);
+        let wire::FieldValue::Bytes(inner) = &outer[0].value else {
+            panic!("assignment must be a nested message");
+        };
+        let inner = wire::parse_fields(inner).unwrap();
+        assert_eq!(string_field(&inner, 1), assignment.token);
+        assert_eq!(string_field(&inner, 2), "model-a");
+        assert_eq!(string_field(&inner, 3), "cursor-byok:model-a");
     }
 
     /// 只有 UUID 形状的字段才值得当令牌查一次会话表：模型 UID 与二进制子消息都不该进锁。

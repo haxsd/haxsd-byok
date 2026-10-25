@@ -23,10 +23,12 @@ release channel or data directory.
 - The existing provider router and Devin tool definitions are reused. Devin
   remains responsible for executing its tools; this product supplies model
   inference and forwards model events.
-- An opt-in host patch boundary for a known Devin/Windsurf `extension.js`.
-  The user must provide an absolute file path. The patcher requires all four
-  endpoint anchors, creates a SHA-256-verified backup, replaces atomically, and
-  refuses unknown or partially patched files.
+- A version-locked compatibility patch for Devin `3.11.216` `extension.js`.
+  Packaged Devin only reads `codeium.apiServerUrl` and
+  `codeium.inferenceApiServerUrl` when its development extension is installed,
+  so the patch removes exactly that one gate. It embeds no URL, creates
+  SHA-256-verified backups of both the extension and settings file, replaces
+  atomically, and refuses every unknown or partially patched bundle.
 
 ## Ports and setup
 
@@ -46,10 +48,35 @@ The gateway binds only to `127.0.0.1`. An optional token can be supplied with
 `x-devin-router-token` or `Authorization: Bearer ...`. Requests larger than
 24 MiB are rejected.
 
-For native Devin integration, first inspect the exact host `extension.js` path
-in the settings page. Only after the status reports a compatible clean version
-and the Devin gateway is enabled should “应用补丁” be used. The receipt-backed
-“恢复原文件” action refuses to restore if the host file or backup changed.
+The settings page detects the installed Devin data directory and `extension.js`
+automatically. If Devin lives in a custom location, enter either its installation
+directory or the `extension.js` file itself under “Advanced”. The page remembers
+both the settings path (`devin_host_path`) and the installation root
+(`devin_install_root`) in the desktop settings, and uses them for host status,
+apply, restore, and model UID discovery. Supported layouts under an installation
+root are `resources/app/extensions/windsurf/dist/extension.js`,
+`Contents/Resources/app/...`, `Resources/app/...`, and `app/...`. A pasted path
+must exist; an invalid path fails with an explanation instead of silently using a
+different installation. Scripts and tests can still override detection with
+`HAXSD_BYOK_DEVIN_ROOT`, `HAXSD_BYOK_DEVIN_PATH`, and
+`HAXSD_BYOK_DEVIN_SETTINGS`.
+
+Quit Devin completely, then choose “写入接入配置”. The action preflights both
+files, patches the extension first, writes the two settings second, and rolls the
+extension back if either write fails. A successful action shows both the settings
+and extension patch as applied.
+
+The patch supports only the extension hash published in the source constant for
+Devin `3.11.216`. A client update, another router's modification, or a partial
+patch fails closed. The receipt-backed “恢复设置” action restores either side
+independently and refuses to overwrite a file changed after this application
+wrote it.
+
+This patch changes where an already signed-in Devin client sends its model
+requests. It does not create an account, bypass a login, or change the plan
+returned by Devin's official service. The ordinary Devin account still uses its
+official session; the local gateway only answers the model methods this product
+owns.
 
 ## Model routes and compression bindings
 
@@ -80,15 +107,22 @@ Resolution rules:
 
 Validation rejects empty route IDs, duplicate route IDs, empty route hashes, and
 an `active_route_id` that does not exist or is disabled. It also rejects
-candidate routes on a context-compression binding. Catalog generation and
-settings reload never rewrite bindings, so the active route, route order, route
-labels, and disabled candidates survive a save or a catalog refresh.
+candidate routes on a context-compression binding. `default_model_uid` must
+name an enabled standard binding; saving an enabled gateway also requires one.
+Catalog generation and settings reload never rewrite bindings, so the active
+route, route order, route labels, and disabled candidates survive a save or a
+catalog refresh.
 
 The Devin settings page shows the legacy primary hash as a synthetic `primary`
-route until the binding is edited. Adding the first candidate materializes that
-route and keeps it active, so adding a route never silently switches the model
-that Devin is already using. Route selection is manual: switching the active
-route is an explicit user action.
+route until the binding is edited. Adding the first candidate keeps the primary
+model in use and leaves the active route unset, so adding a route never silently
+switches the model Devin is already using. Route selection is manual: switching
+the active route is an explicit user action.
+
+The default model is also explicit. `default_model_uid` selects which Devin-side
+mapping is marked default in the catalog and which UID the Cascade/CLI
+default-override field names. Without it, no model is marked default and the
+page asks the user to choose one instead of promoting the first enabled binding.
 
 Deliberately out of scope in this phase:
 
@@ -102,13 +136,13 @@ any wire field is invented.
 
 ## Verified behavior
 
-The following was verified end to end against a built `cursor-server.exe` with an
-isolated data directory (`HAXSD_BYOK_DATA_DIR`), never against the running
-desktop product and never against real Devin traffic:
+The following was verified against a built `cursor-server.exe` with an isolated
+data directory (`HAXSD_BYOK_DATA_DIR`) and a real Devin `3.11.216` client. The
+running desktop product's data directory was not opened or changed.
 
 | Check | Result |
 | --- | --- |
-| Fresh settings default | `enabled=false`, ports `43110/43111/43112`, empty bindings |
+| Fresh settings default | `enabled=false`, ports `43110/43111/43112`, empty bindings, no default model |
 | Disabled gateway | no listener on any of the three ports |
 | Empty UID/hash binding | rejected with HTTP 400 |
 | Duplicate UID bindings | rejected with HTTP 400 |
@@ -121,6 +155,11 @@ desktop product and never against real Devin traffic:
 | `GetCliModelConfigs` | returns the enabled binding's UID, display name and the local API URL |
 | `AssignModel` with the mapped UID | returns a fresh UUID session token scoped to the UID |
 | `AssignModel` with an unmapped UID | Connect error `invalid_argument`, `Devin AssignModel has no mapped model UID` |
+| Current installed `extension.js` copy | real 7 MB file patched and restored; SHA-256 returned to `A063DAE8…FF0` |
+| Settings plus extension apply | extension gate written first, both settings written second, status requires both |
+| Real Devin language server | normal launch shows `--api_server_url http://127.0.0.1:44110 --inference_api_server_url http://127.0.0.1:44111` |
+| Real Devin model request | mapped `swe-1-6-slow` returned `gateway round trip ok`; call count changed from 2 to 3 |
+| Real request compression | `Content-Encoding` absent, `Connect-Content-Encoding: gzip`, envelope flag `1`, payload gzip; handled without double decompression |
 
 ### Streaming round trip
 
@@ -168,16 +207,27 @@ RPC answers a framed request with a framed body plus the end-stream frame,
 which is how streaming clients distinguish "no more messages" from transport
 failure.
 
-Still not covered: tool-call streaming, thinking/signature replay, and image
-parts were exercised only at the unit-test level, and no real Devin client has
-been pointed at the gateway yet.
+Tool-call streaming, thinking/signature replay, and image parts have only been
+exercised at the unit-test level. A real text request and the real model catalog
+have been verified through Devin `3.11.216`.
+
+### Account boundary
+
+Devin's official account controls still apply. During verification a fresh
+session displayed “You ran out of free credits. Please subscribe to continue
+using Devin”. The existing already-created session could still be used and its
+`SWE-1.6 Slow` request was answered locally, but this product does not patch,
+fake, or bypass the account quota, plan, login, or new-session entitlement.
+Accounts with available official access keep that access; BYOK only changes
+where the model request goes.
 
 ## Intentional limits
 
-The current integration does not automatically discover, edit, or SSH into a
-vendor installation. It also does not copy the reference application's
-commercial authorization, remote patching, SQLite mutation, or proprietary
-status-extension behavior. Unknown host versions fail closed.
+The current integration discovers the local client and patches one exact
+extension version; it does not support remote installs, SSH, or arbitrary host
+versions. It also does not copy the reference application's commercial
+authorization, SQLite mutation, or proprietary status-extension behavior.
+Unknown extension hashes fail closed.
 
 This is intentional: the Devin adapter is a separate opt-in path, and the
 Cursor listener/harness continues to run independently when Devin is disabled

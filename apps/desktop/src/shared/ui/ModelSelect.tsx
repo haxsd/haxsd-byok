@@ -118,7 +118,8 @@ export function ModelSelect(props: ModelSelectProps) {
 
   const summary = mode === "multiple"
     ? props.value.length === 0 ? t("全部") : t("已选 {count} 项", { count: props.value.length })
-    : options.find((option) => option.value === props.value)?.label ?? props.value;
+    : options.find((option) => option.value === props.value)?.label
+      ?? (props.value.trim() ? props.value : t("未选择"));
 
   const choose = (option: ModelSelectOption) => {
     if (mode === "single") {

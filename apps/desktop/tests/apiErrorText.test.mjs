@@ -78,36 +78,46 @@ test("a timed-out write says the result is unknown instead of failed", async () 
 
   // 其它失败照旧走服务端原因的翻译。
   assert.equal(writeFailureText(new Error("端口不能为 0")), clientErrorText(new Error("端口不能为 0")));
-  assert.match(writeFailureText(new Error("Devin host file is already patched")), /已经是打过补丁的版本/);
+  assert.match(writeFailureText(new Error("Devin is still running; quit Devin completely before changing its settings")), /还在运行/);
 });
 
 // 复核 12-devin/P3-2：服务端把"备份在哪"放在句末的 `backup: <路径>`，翻译成中文时不能
 // 把路径整句吃掉——用户读到"备份和收据不一致"却看不到路径，就没法照做下一步。
 test("restore failures keep the backup path the server pointed at", async () => {
   const { clientErrorText } = await loader.load("/src/features/harness/harnessErrorText.ts");
-  const backup = "C:\\Devin\\extension.js.orig";
+  const backup = "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json.devin-router.backup";
 
   const receiptRefusal = clientErrorText(new Error(
-    "configuration error: no usable Devin host restore receipt for C:\\Devin\\extension.js " +
-    "(copy the kept clean version C:\\Devin\\extension.js.orig over C:\\Devin\\extension.js and " +
-    `restart the Devin client); the file was left unchanged; backup: ${backup}`,
+    "configuration error: no usable Devin settings restore receipt for " +
+    "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json " +
+    `(copy the kept previous file ${backup} over settings.json after closing Devin); ` +
+    `the file was left unchanged; backup: ${backup}`,
   ));
   assert.match(receiptRefusal, /没有可用的恢复记录/, "仍然要有中文原因");
   assert.ok(receiptRefusal.includes(backup), "备份路径要留在界面文案里");
   assert.doesNotMatch(receiptRefusal, /configuration error/, "前缀仍是实现细节");
 
-  const changedAfterPatch = clientErrorText(new Error(
-    `configuration error: Devin host file changed after patch; restore refused; restore manually ` +
-    `by copying ${backup} over C:\\Devin\\extension.js and restarting the Devin client; backup: ${backup}`,
+  const changedAfterConfiguration = clientErrorText(new Error(
+    `configuration error: Devin settings changed after this application configured them; ` +
+    `restore refused; the previous file is kept at ${backup}; restore backup: ${backup}`,
   ));
-  assert.ok(changedAfterPatch.includes(backup), "换过文件时也要带出备份路径");
+  assert.ok(changedAfterConfiguration.includes(backup), "换过设置时也要带出备份路径");
 
   const unreadable = clientErrorText(new Error(
-    "configuration error: cannot read explicit Devin host file C:\\Devin\\extension.js: " +
-    "The system cannot find the file specified. (os error 2); check that the file still exists " +
-    "and is readable; if this file was patched by this app, restore it by copying " +
-    `C:\\Devin\\extension.js.orig over C:\\Devin\\extension.js and restarting the Devin client; ` +
-    `backup: ${backup}`,
+    "configuration error: cannot read Devin settings file " +
+    "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json: " +
+    "The system cannot find the file specified. (os error 2); close Devin and check that the " +
+    `file is readable; restore backup: ${backup}`,
   ));
-  assert.ok(unreadable.includes(backup), "宿主文件被删掉时也要带出备份路径");
+  assert.ok(unreadable.includes(backup), "设置文件读不到时也要带出备份路径");
+});
+
+test("custom Devin installation path errors say which path is wrong", async () => {
+  const { clientErrorText } = await loader.load("/src/features/harness/harnessErrorText.ts");
+
+  assert.match(clientErrorText(new Error("configuration error: Devin installation path must be absolute")), /安装路径.*绝对路径/);
+  assert.match(clientErrorText(new Error("configuration error: D:\\Devin.exe is not a Devin extension.js file")), /不是 Devin 的 extension\.js/);
+  assert.match(clientErrorText(new Error("configuration error: D:\\empty is not a Devin installation directory; expected resources\\app")), /不是 Devin 安装目录/);
+  assert.match(clientErrorText(new Error("configuration error: Devin installation path not found: D:\\gone")), /安装路径.*仍然存在/);
+  assert.match(clientErrorText(new Error("configuration error: Devin installation not found; 2 locations were searched")), /安装目录/);
 });

@@ -28,7 +28,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 |---|---|
 | Model library | Base URL, API key and model ID; OpenAI Chat / Responses and Anthropic protocols; built-in connection test |
 | Cursor integration | Official, local or mixed model sources, with a local proxy, local CA and takeover status |
-| Devin integration | Optional local gateway, model bindings and a host patch |
+| Devin integration | Optional local gateway, an explicit default model and model mappings, plus a version-locked compatibility patch for Devin 3.11.216; custom installation directories are supported |
 | Codex integration | The local Codex engine inside the ChatGPT client keeps its tools, terminal, approvals, sandbox and task loop; only model inference is replaced, over Responses / Chat Completions / Anthropic |
 | Claude integration | A local Anthropic Messages gateway (`/v1/messages`) for Claude Code CLI and Claude Desktop; when Desktop is managed by an organisation policy, the app only shows manual setup guidance |
 | Call insights | Success, latency and token usage, with an estimate based on reference prices |
@@ -39,7 +39,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 | Client | How it is taken over | Notes |
 |---|---|---|
 | Cursor | Official / local / mixed model sources + local CA | **Enabling local or mixed mode stops a running Cursor, so save your work first.** Use local to route everything to your models; use mixed to keep official models available too. |
-| Devin | Optional local gateway + model mappings | Off by default, listens on `127.0.0.1` only; after changing ports, restart the app and re-apply the host patch |
+| Devin | Optional local gateway + model mappings | Off by default, listens on `127.0.0.1` only; after changing ports, restart the app, quit Devin, and write the integration settings again |
 | Codex (ChatGPT client) | Local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced. Off by default, listens on `127.0.0.1` only |
 | Claude Code CLI | Local Anthropic gateway + writes the `env` block of `~/.claude/settings.json` | Off by default, listens on `127.0.0.1` only. Reopen Claude Code after applying. Refuses to overwrite an existing Anthropic API key, Bedrock/Vertex/Foundry setup or `apiKeyHelper`; with `managed-settings.json` or a registry policy it reports "managed" and stays read-only |
 | Claude Desktop | Local Anthropic gateway + writes a profile under `%LOCALAPPDATA%\Claude-3p\configLibrary` | **Quit Claude Desktop completely (including the tray) before applying, then start it again.** With an organisation policy (HKLM/HKCU) the app is read-only and only shows manual guidance |
@@ -51,7 +51,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 1. Download the installer whose name contains `x64-setup.exe` from [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) and install it.
 2. On the **Models** page, add the base URL, API key and model ID, pick the protocol, and use **Test** to confirm it works.
 3. **For Cursor**: initialize the local CA and trust it, then pick the model source on the **Cursor** page. Enabling local or mixed mode stops a running Cursor, so save your work first.
-4. **For Devin**: set up model mappings, enable the gateway and save, restart the app, then follow [Devin setup](./docs/devin-go-live.md).
+4. **For Devin**: choose a default model, set up model mappings, enable the gateway and save; if Devin is installed in a custom location, enter its installation directory under Advanced. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to write the integration settings and verify a request.
 5. **For Codex**: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
 6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply the takeover per client: reopen Claude Code after applying for the CLI; for Claude Desktop, quit it completely (including the tray), apply, then start it again. See the [user guide](./docs/user-guide.md).
 

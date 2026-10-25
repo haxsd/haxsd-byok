@@ -25,7 +25,7 @@ function input(overrides = {}) {
     cursor: null,
     devin: null,
     codex: null,
-    hostPatched: false,
+    hostConfigured: false,
     callCount: 0,
     ...overrides,
   };
@@ -41,7 +41,7 @@ function cursorHarness(overrides = {}) {
 }
 
 function devinStatus(overrides = {}) {
-  return { enabled: true, listening: true, ...overrides };
+  return { enabled: true, listening: true, ready: true, ...overrides };
 }
 
 function codexStatus(overrides = {}) {
@@ -65,8 +65,8 @@ test("picking Cursor adds the Cursor step and never counts Devin", async () => {
     client: "cursor",
     modelCount: 2,
     cursor: cursorHarness(),
-    devin: devinStatus({ enabled: false, listening: false }),
-    hostPatched: false,
+    devin: devinStatus({ enabled: false, listening: false, ready: false }),
+    hostConfigured: false,
     callCount: 4,
   }));
 
@@ -83,7 +83,7 @@ test("picking Devin adds the Devin step and tolerates a missing Cursor status", 
     modelCount: 1,
     cursor: null,
     devin: devinStatus(),
-    hostPatched: true,
+    hostConfigured: true,
     callCount: 1,
   }));
 
@@ -110,19 +110,20 @@ test("the Cursor step is done only when the mode, the settings and the CA are re
   }
 });
 
-test("the Devin step is done only when the gateway runs and the host is patched", async () => {
+test("the Devin step is done only when the gateway is ready and Devin is configured", async () => {
   const buildOnboarding = await loadOnboarding();
 
   const rows = [
-    { status: devinStatus({ enabled: false, listening: false }), hostPatched: true, done: false, why: "the gateway is off" },
-    { status: devinStatus({ listening: false }), hostPatched: true, done: false, why: "the saved gateway is waiting for a restart" },
-    { status: devinStatus(), hostPatched: false, done: false, why: "the host still points at the vendor" },
-    { status: devinStatus(), hostPatched: true, done: true, why: "gateway and host patch are both in place" },
-    { status: null, hostPatched: true, done: false, why: "no status has been read yet" },
+    { status: devinStatus({ enabled: false, listening: false, ready: false }), hostConfigured: true, done: false, why: "the gateway is off" },
+    { status: devinStatus({ listening: false, ready: false }), hostConfigured: true, done: false, why: "the saved gateway is waiting for a restart" },
+    { status: devinStatus({ listening: true, ready: false }), hostConfigured: true, done: false, why: "the process still holds the previous ports" },
+    { status: devinStatus(), hostConfigured: false, done: false, why: "Devin still points at the vendor" },
+    { status: devinStatus(), hostConfigured: true, done: true, why: "gateway and Devin settings are both in place" },
+    { status: null, hostConfigured: true, done: false, why: "no status has been read yet" },
   ];
 
   for (const row of rows) {
-    const view = buildOnboarding(input({ client: "devin", modelCount: 1, devin: row.status, hostPatched: row.hostPatched }));
+    const view = buildOnboarding(input({ client: "devin", modelCount: 1, devin: row.status, hostConfigured: row.hostConfigured }));
     const step = view.steps.find((item) => item.key === "devin");
     assert.equal(step.done, row.done, row.why);
   }
@@ -135,7 +136,7 @@ test("picking Codex adds the Codex step and never counts the other clients", asy
     client: "codex",
     modelCount: 1,
     cursor: cursorHarness({ mode: "official" }),
-    devin: devinStatus({ enabled: false, listening: false }),
+    devin: devinStatus({ enabled: false, listening: false, ready: false }),
     codex: codexStatus(),
     callCount: 2,
   }));

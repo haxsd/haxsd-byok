@@ -81,7 +81,9 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 Cursor 与 Devin 是并列模块，只用 Cursor 时无需开启 Devin。完整流程见 [Devin 手册](./devin-go-live.md)。
 
-顺序：模型库 → Devin 映射与网关 → 保存并重启应用 → 宿主检查与补丁 → 重启 Devin → 对话验证。
+顺序：模型库 → Devin 默认模型与映射 → 保存并重启应用 → 写入接入配置 → 重启 Devin → 对话验证。
+
+自动探测不到安装时，在「高级」里填写 Devin 安装目录或其中的 `extension.js`；设置文件路径也可手动指定。
 
 ## 接入 ChatGPT 客户端中的 Codex
 

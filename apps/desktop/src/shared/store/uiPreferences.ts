@@ -43,7 +43,8 @@ export type UiPreferences = {
   locale?: LocalePreference;
   tutorialRead?: boolean;
   pendingUpdate?: PendingUpdateRecord | null;
-  devinHostPath?: string;
+  devinHostPath?: string | null;
+  devinInstallRoot?: string | null;
   disclosure?: Record<string, boolean>;
 };
 
@@ -51,7 +52,7 @@ export type UiPreferences = {
 export type LegacyStorage = Pick<Storage, "getItem" | "removeItem"> & Partial<Pick<Storage, "key" | "length">>;
 
 /** 服务端回答里与界面偏好有关的字段。 */
-const PREFERENCE_FIELDS = ["theme", "locale", "tutorial_read", "pending_update", "devin_host_path", "disclosure"] as const;
+const PREFERENCE_FIELDS = ["theme", "locale", "tutorial_read", "pending_update", "devin_host_path", "devin_install_root", "disclosure"] as const;
 
 export function isLocalePreference(value: string | null | undefined): value is LocalePreference {
   return value === "system" || value === "zh-CN" || value === "en-US" || value === "ru-RU";
@@ -149,6 +150,7 @@ export function preferencesFromSettings(settings: DesktopSettings | null | undef
     preferences.pendingUpdate = { from: settings.pending_update.from, to: settings.pending_update.to };
   }
   if (typeof settings.devin_host_path === "string" && settings.devin_host_path) preferences.devinHostPath = settings.devin_host_path;
+  if (typeof settings.devin_install_root === "string" && settings.devin_install_root) preferences.devinInstallRoot = settings.devin_install_root;
   if (settings.disclosure && typeof settings.disclosure === "object") {
     const states: Record<string, boolean> = {};
     for (const [key, value] of Object.entries(settings.disclosure)) {
@@ -182,6 +184,7 @@ export function preferencePatch(preferences: UiPreferences): DesktopSettingsPatc
   if (preferences.tutorialRead !== undefined) patch.tutorial_read = preferences.tutorialRead;
   if (preferences.pendingUpdate !== undefined) patch.pending_update = preferences.pendingUpdate;
   if (preferences.devinHostPath !== undefined) patch.devin_host_path = preferences.devinHostPath;
+  if (preferences.devinInstallRoot !== undefined) patch.devin_install_root = preferences.devinInstallRoot;
   if (preferences.disclosure !== undefined) patch.disclosure = preferences.disclosure;
   return patch;
 }

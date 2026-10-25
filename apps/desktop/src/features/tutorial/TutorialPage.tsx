@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DevinHostPatchStatus } from "../../shared/api";
+import { api, type DevinHostStatus } from "../../shared/api";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
@@ -39,14 +39,14 @@ const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
 export function TutorialPage() {
   const { models, cursorHarness, devinStatus, codexStatus, overview, calls } = useAppStore();
   const navigate = useNavigate();
-  const [hostStatus, setHostStatus] = useState<DevinHostPatchStatus | null>(null);
-  // 读取过程单独记一份：读不到和「确实没打补丁」必须分开，否则清单会把读失败
-  // 说成「还差宿主补丁」，让人去重打一次会改写 Devin 文件的补丁。
+  const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
+  // 读取过程单独记一份：读不到和「确实没写入」必须分开，否则清单会把读失败
+  // 说成「还差写入设置」，让人重复写入一次 Devin 配置。
   const [hostStatusRead, setHostStatusRead] = useState<"reading" | "failed" | null>("reading");
   const [hostAttempt, setHostAttempt] = useState(0);
   const [client, setClient] = useState<OnboardingClient | null>(null);
 
-  // 计数由「刷新状态」按钮推进，让宿主补丁状态跟着重读；卸载守卫保持原样。
+  // 计数由「刷新状态」按钮推进，让 Devin 设置状态跟着重读；卸载守卫保持原样。
   useEffect(() => {
     let cancelled = false;
     setHostStatusRead("reading");
@@ -72,10 +72,10 @@ export function TutorialPage() {
       settingsApplied: cursorHarness.settings_applied,
       mode: cursorHarness.mode,
     } : null,
-    devin: devinStatus ? { enabled: devinStatus.enabled, listening: devinStatus.listening } : null,
+    devin: devinStatus ? { enabled: devinStatus.enabled, listening: devinStatus.listening, ready: devinStatus.ready } : null,
     codex: codexStatus ? { enabled: codexStatus.enabled, listening: codexStatus.listening, configured: codexStatus.configured } : null,
-    hostPatched: hostStatus?.patched ?? false,
-    hostPatchRead: hostStatusRead,
+    hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.patched),
+    hostConfigRead: hostStatusRead,
     callCount: Math.max(calls.length, overview.metrics.llm_calls),
   });
 
@@ -102,11 +102,11 @@ export function TutorialPage() {
     },
     {
       question: t("退出软件后 Cursor、Devin 和 Codex 还能用吗？"),
-      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的宿主补丁会保留，在恢复原文件之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
+      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
     },
     {
       question: t("会影响机器上另一个同类软件吗？"),
-      answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的宿主文件）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。"),
+      answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的设置文件与 extension.js）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。"),
     },
     {
       question: t("数据存在哪？怎么清理？"),
@@ -116,9 +116,9 @@ export function TutorialPage() {
 
   const glossary: Array<[string, string]> = [
     [t("自带密钥（BYOK）"), t("Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。")],
-    [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是改宿主文件的端口。")],
+    [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是写入设置文件里的服务地址与扩展读取开关。")],
     [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。")],
-    [t("宿主补丁"), t("改写 Devin 自己的 extension.js，把它的上游地址指向本机端口。应用前会校验版本锚点并备份原文件。")],
+    [t("Devin 接入配置"), t("写入 Devin 用户设置里的 API 与推理地址，并仅对 Devin 3.11.216 的扩展放开读取这两个设置；不改模型协议、不写入模型地址。写入前会备份设置文件和 extension.js，并保留其他设置；请先完全退出 Devin。")],
     [t("缓存命中率"), t("缓存读取 /（缓存读取 + 非缓存输入）。它衡量的是「有多少输入是从提供方的缓存里读回来的」。")],
     [t("详细模式"), t("额外保存完整的请求头、请求体与响应流，便于排查问题；它会让数据库明显变大。")],
   ];
@@ -230,7 +230,7 @@ export function TutorialPage() {
         </li>
         <li>
           <Icon icon={navDevinIcon} size="1.1em" />
-          <span>{t("Devin 的宿主补丁可以随时「恢复原文件」，恢复后 Devin 回到厂商直连。")}</span>
+          <span>{t("Devin 的接入设置可以随时「恢复设置」，恢复后 Devin 回到厂商直连。")}</span>
         </li>
         <li>
           <Icon icon={refreshIcon} size="1.1em" />

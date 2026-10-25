@@ -110,7 +110,15 @@ export function installAppBackend(overrides = {}) {
     ports: { proxy_port: 8090, service_port: 3100 },
     pricing: defaultPricing(),
     cursorHarness: cursorHarnessStatus(),
-    devinStatus: { enabled: false, listening: false, calls: 0 },
+    devinStatus: {
+      enabled: false,
+      listening: false,
+      ready: false,
+      bound_ports: null,
+      calls: 0,
+      last_call_success: null,
+      last_call_at_ms: null,
+    },
     codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], home: "test-home", calls: 0, last_error: null },
     claudeStatus: { enabled: false, listening: false, port: 43121, base_url: "http://127.0.0.1:43121", token: "test-token", models: 0, default_model_hash: null, calls: 0, last_error: null },
     claudeTakeover: {

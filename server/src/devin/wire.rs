@@ -140,16 +140,20 @@ pub struct UnwrappedRequest {
     pub enveloped: bool,
 }
 
-pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<UnwrappedRequest> {
+pub fn unwrap_request(
+    body: &[u8],
+    http_content_encoding: Option<&str>,
+    connect_content_encoding: Option<&str>,
+) -> Result<UnwrappedRequest> {
     if body.len() > MAX_BODY_SIZE + 5 {
         return Err(Error::Protocol("Devin request body exceeds 24 MiB".into()));
     }
     let mut buffer = body.to_vec();
-    if content_encoding
-        .unwrap_or_default()
-        .split(',')
-        .any(|value| value.trim().eq_ignore_ascii_case("gzip"))
-    {
+    // `Content-Encoding` describes the HTTP body. `Connect-Content-Encoding`
+    // describes the message encoding: for an enveloped request the frame's own
+    // flag already says whether its payload is gzip. Decompressing the whole
+    // body from the Connect header would therefore unwrap the gzip twice.
+    if encoding_has_gzip(http_content_encoding) {
         buffer = gunzip(&buffer)?;
     }
     if buffer.len() > MAX_BODY_SIZE + 5 {
@@ -180,6 +184,9 @@ pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<Unw
             ));
         }
     }
+    if encoding_has_gzip(connect_content_encoding) {
+        buffer = gunzip(&buffer)?;
+    }
     if buffer.len() > MAX_BODY_SIZE {
         return Err(Error::Protocol("Devin request body exceeds 24 MiB".into()));
     }
@@ -187,6 +194,13 @@ pub fn unwrap_request(body: &[u8], content_encoding: Option<&str>) -> Result<Unw
         payload: buffer,
         enveloped: false,
     })
+}
+
+fn encoding_has_gzip(value: Option<&str>) -> bool {
+    value
+        .unwrap_or_default()
+        .split(',')
+        .any(|encoding| encoding.trim().eq_ignore_ascii_case("gzip"))
 }
 
 pub fn is_connect_envelope(body: &[u8]) -> bool {
@@ -324,7 +338,7 @@ mod tests {
         let payload = b"hello Devin";
         for compress in [false, true] {
             let frame = super::frame(payload, compress).unwrap();
-            let unwrapped = super::unwrap_request(&frame, None).unwrap();
+            let unwrapped = super::unwrap_request(&frame, None, None).unwrap();
             assert_eq!(unwrapped.payload, payload);
             assert!(unwrapped.enveloped, "Connect 信封必须被认出来");
         }
@@ -336,12 +350,34 @@ mod tests {
         let frame = super::frame(payload, false).unwrap();
         let http_body = super::gzip(&frame).unwrap();
 
-        let unwrapped = super::unwrap_request(&http_body, Some("gzip")).unwrap();
+        let unwrapped = super::unwrap_request(&http_body, Some("gzip"), None).unwrap();
         assert_eq!(unwrapped.payload, payload);
         assert!(
             unwrapped.enveloped,
             "HTTP gzip 包着的 Connect 信封同样是信封"
         );
+    }
+
+    #[test]
+    fn connect_content_encoding_does_not_double_decompress_an_enveloped_payload() {
+        let payload = b"hello Devin";
+        let frame = super::frame(payload, true).unwrap();
+        assert_eq!(frame[0], 1);
+        assert_eq!(&frame[5..7], &[0x1f, 0x8b]);
+
+        let unwrapped = super::unwrap_request(&frame, None, Some("gzip")).unwrap();
+        assert_eq!(unwrapped.payload, payload);
+        assert!(unwrapped.enveloped);
+    }
+
+    #[test]
+    fn connect_content_encoding_can_decompress_a_raw_unary_body() {
+        let payload = b"hello Devin";
+        let body = super::gzip(payload).unwrap();
+
+        let unwrapped = super::unwrap_request(&body, None, Some("gzip")).unwrap();
+        assert_eq!(unwrapped.payload, payload);
+        assert!(!unwrapped.enveloped);
     }
 
     #[test]
@@ -371,13 +407,13 @@ mod tests {
 
     #[test]
     fn connect_end_frame_is_rejected_as_a_request() {
-        assert!(super::unwrap_request(&super::end_frame(None), None).is_err());
+        assert!(super::unwrap_request(&super::end_frame(None), None, None).is_err());
     }
 
     #[test]
     fn connect_unwrap_rejects_body_larger_than_the_protocol_limit() {
         let payload = vec![0u8; MAX_BODY_SIZE + 1];
-        let error = super::unwrap_request(&payload, None).unwrap_err();
+        let error = super::unwrap_request(&payload, None, None).unwrap_err();
         assert!(error.to_string().contains("24 MiB"));
     }
 }

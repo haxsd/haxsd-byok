@@ -83,22 +83,22 @@ async fn clean_leftovers() -> Result<bool> {
             "exit cleanup could not restore the Codex route"
         ),
     }
-    changed |= restore_devin_host_patch();
+    changed |= restore_devin_settings();
     Ok(changed)
 }
 
-/// 把 Devin 宿主插件（`extension.js`）从补丁版本还原回原文件。
+/// 把 Devin 用户设置里的两个端点与扩展读取开关还原回接管前的值。
 ///
-/// 优雅退出**不**还原：`docs/devin-go-live.md` 的「停用与恢复」把"退出 Devin → 用界面
-/// 按钮恢复原文件 → 再关网关"写成产品步骤，自动还原会让那一步失效。但被强杀时没人走
-/// 那条路，文件会一直停在补丁版本、而端口上已经没有网关——客户端重开就是"连不上"。
-/// 收据（补丁时落盘的那份）不成立就什么都不做，与其它几步同一个判断口径。
-fn restore_devin_host_patch() -> bool {
-    let detected = crate::devin::host_detect::detect();
-    let Some(path) = detected.path() else {
-        return false;
-    };
-    crate::devin::host_patch::restore_persisted(path)
+/// 优雅退出**不**还原：界面上的「恢复配置」是用户可见的停用步骤，自动还原会让那一步
+/// 失效。但被强杀时没人走那条路，设置会一直指向已经消失的端口，扩展也会停留在本应用
+/// 放开的读取开关上。两边都只按各自落盘的收据恢复，收据不成立就什么都不做。
+fn restore_devin_settings() -> bool {
+    let settings = crate::devin::host_detect::settings_path()
+        .is_ok_and(|path| crate::devin::host_config::restore_persisted(&path));
+    let extension = crate::devin::host_detect::detect()
+        .path()
+        .is_some_and(crate::devin::host_patch::restore_persisted);
+    settings || extension
 }
 
 /// 把用户 `~/.codex/config.toml` 里的路由还回去。

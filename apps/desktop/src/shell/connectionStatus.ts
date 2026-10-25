@@ -42,7 +42,7 @@ export type DevinEntryState = "running" | "pending-restart" | "disabled-listenin
 export function devinEntryStatus(status: DevinStatus | null): EntryStatus<DevinEntryState> | null {
   if (!status) return null;
   if (status.enabled) {
-    return status.listening
+    return status.ready
       ? { state: "running", tone: "ok", label: t("运行中") }
       : { state: "pending-restart", tone: "warn", label: t("待重启") };
   }

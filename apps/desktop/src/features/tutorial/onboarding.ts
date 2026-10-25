@@ -19,6 +19,7 @@ export interface CursorOnboardingInput {
 export interface DevinOnboardingInput {
   enabled: boolean;
   listening: boolean;
+  ready: boolean;
 }
 export interface CodexOnboardingInput {
   enabled: boolean;
@@ -32,15 +33,14 @@ export interface OnboardingInput {
   cursor: CursorOnboardingInput | null;
   devin: DevinOnboardingInput | null;
   codex: CodexOnboardingInput | null;
-  hostPatched: boolean;
+  hostConfigured: boolean;
   /**
-   * 宿主补丁状态的读取过程。
+   * Devin 设置状态的读取过程。
    *
-   * 读不到时 `hostPatched` 会是 false，而那和「补丁确实没打」是两件事：前者会让人
-   * 去重打一次补丁（一个会改写 Devin 文件的动作）。所以读取中/读取失败要各自说出来，
-   * 不能借用「还差宿主补丁」这句话。
+   * 读不到时 `hostConfigured` 会是 false，而那和「确实没写入」是两件事：前者会让
+   * 用户重复写一次 Devin 设置。读取中/读取失败要各自说出来。
    */
-  hostPatchRead?: "reading" | "failed" | null;
+  hostConfigRead?: "reading" | "failed" | null;
   callCount: number;
 }
 
@@ -102,27 +102,30 @@ function cursorStep(cursor: CursorOnboardingInput | null): OnboardingStep {
   };
 }
 
-/** 网关在跑、且宿主文件已指向本机端口，Devin 这条路才算接通。 */
-function devinStep(devin: DevinOnboardingInput | null, hostPatched: boolean, hostPatchRead: OnboardingInput["hostPatchRead"]): OnboardingStep {
+/** 网关已就绪、Devin 设置已指向本机端口，且扩展读取开关已放开，Devin 这条路才算接通。 */
+function devinStep(devin: DevinOnboardingInput | null, hostConfigured: boolean, hostConfigRead: OnboardingInput["hostConfigRead"]): OnboardingStep {
   const enabled = devin?.enabled ?? false;
   const listening = devin?.listening ?? false;
-  // 网关本身的状态优先：它没启用时，宿主补丁读没读到都不改变下一步。
+  const ready = devin?.ready ?? false;
+  // 网关本身的状态优先：它没启用时，设置状态读没读到都不改变下一步。
   const status = !enabled
     ? t("网关未启用")
-    : !listening
-      ? t("网关已启用，等待端口就绪")
-      : hostPatchRead === "failed"
+    : !ready
+      ? listening
+        ? t("端口已更改，重启后生效")
+        : t("网关已启用，等待端口就绪")
+      : hostConfigRead === "failed"
         ? t("读取失败")
-        : hostPatchRead === "reading"
+        : hostConfigRead === "reading"
           ? t("读取中…")
-          : hostPatched
+          : hostConfigured
             ? t("已接通")
-            : t("网关在运行，还差宿主补丁");
+            : t("网关已就绪，还差写入 Devin 设置");
   return {
     key: "devin",
     title: t("让 Devin 用上它"),
-    detail: t("三件事：启用本机网关、把 Devin 的模型标识绑定到模型库、给 Devin 的宿主文件打补丁。绑定之后 Devin 才认识这些模型。"),
-    done: enabled && listening && hostPatched,
+    detail: t("四件事：选择默认模型、启用本机网关、把 Devin 的模型标识绑定到模型库、写入本机服务地址与兼容补丁。绑定之后 Devin 才认识这些模型；Devin 不在默认位置时，在「高级」里填写安装目录。"),
+    done: enabled && ready && hostConfigured,
     status,
     path: "/harness/devin",
     action: t("去 Devin 页"),
@@ -167,7 +170,7 @@ function verifyStep(client: OnboardingClient, callCount: number): OnboardingStep
 export function buildOnboarding(input: OnboardingInput): OnboardingView {
   const steps: OnboardingStep[] = [modelStep(input.modelCount)];
   if (input.client === "cursor") steps.push(cursorStep(input.cursor), verifyStep("cursor", input.callCount));
-  else if (input.client === "devin") steps.push(devinStep(input.devin, input.hostPatched, input.hostPatchRead), verifyStep("devin", input.callCount));
+  else if (input.client === "devin") steps.push(devinStep(input.devin, input.hostConfigured, input.hostConfigRead), verifyStep("devin", input.callCount));
   else if (input.client === "codex") steps.push(codexStep(input.codex), verifyStep("codex", input.callCount));
   return {
     steps,

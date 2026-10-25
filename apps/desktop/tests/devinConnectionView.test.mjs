@@ -27,6 +27,7 @@ function devinSettings(overrides = {}) {
     local_api_port: 43_112,
     upstream_api_url: "https://server.self-serve.windsurf.com",
     bindings: [],
+    default_model_uid: null,
     ...overrides,
   };
 }
@@ -45,7 +46,15 @@ function binding(overrides = {}) {
   };
 }
 
-function model() {
+function enabledWithBinding(overrides = {}) {
+  return devinSettings({
+    enabled: true,
+    bindings: [binding(overrides)],
+    default_model_uid: "swe-1-6-slow",
+  });
+}
+
+function model(overrides = {}) {
   return {
     model_hash: "hash-1",
     sort_order: 1,
@@ -72,23 +81,51 @@ function model() {
     thinking_budget_tokens: null,
     created_at_ms: 1_700_000_000_000,
     updated_at_ms: 1_700_000_000_000,
+    ...overrides,
   };
 }
 
 function hostStatus(overrides = {}) {
   return {
-    path: "C:\\Devin\\extension.js",
+    path: "C:\\Users\\me\\AppData\\Roaming\\Devin\\User\\settings.json",
     compatible: true,
-    clean: true,
-    patched: false,
-    parts: { api: false, restart: false, inference: false, local_api: false },
+    unconfigured: true,
+    configured: false,
+    parts: { api: false, inference: false },
     ports: null,
     backup_path: "",
     backup_available: false,
     current_sha256: "current",
     backup_sha256: null,
     restore_receipt: null,
+    extension: extensionStatus(),
     message: "",
+    ...overrides,
+  };
+}
+
+function extensionStatus(overrides = {}) {
+  return {
+    path: "D:\\devin\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js",
+    version: "3.11.216",
+    supported_sha256: "A063DAE82C91328E17AE16121E90780087674B65839B5AD39915C9C59C652FF0",
+    compatible: true,
+    clean: true,
+    patched: false,
+    backup_path: "",
+    backup_available: false,
+    current_sha256: "extension-clean",
+    backup_sha256: null,
+    restore_receipt: null,
+    message: "",
+    ...overrides,
+  };
+}
+
+function gateway(overrides = {}) {
+  return {
+    listening: false,
+    ready: false,
     ...overrides,
   };
 }
@@ -99,8 +136,9 @@ function viewInput(overrides = {}) {
     saved: devinSettings(),
     models: [],
     hostStatus: hostStatus(),
-    gatewayListening: false,
+    gateway: gateway(),
     devinCalls: 0,
+    lastCallSuccess: null,
     ...overrides,
   };
 }
@@ -110,7 +148,7 @@ test("a saved-off gateway that is still listening is reported as such, not as di
   // 已保存关闭，但上一轮运行里起来的网关任务还没随进程退出：端口仍然在应答请求。
   const saved = devinSettings({ enabled: false });
 
-  const view = devinConnectionView(viewInput({ draft: saved, saved, gatewayListening: true }));
+  const view = devinConnectionView(viewInput({ draft: saved, saved, gateway: gateway({ listening: true }) }));
 
   assert.equal(view.gateway.ready, false, "a closed gateway is never ready");
   assert.equal(view.gateway.pendingRestart, false, "nothing waits for a restart; the ports are already open");
@@ -126,7 +164,7 @@ test("an unsaved switch does not claim the gateway is saved or running", async (
   const saved = devinSettings({ enabled: false });
   const draft = devinSettings({ enabled: true });
 
-  const view = devinConnectionView(viewInput({ draft, saved, gatewayListening: false }));
+  const view = devinConnectionView(viewInput({ draft, saved }));
 
   assert.equal(view.pendingChanges, true, "the draft differs from what is stored");
   assert.equal(view.gateway.tone, "idle", "a draft switch must not make the gateway look enabled");
@@ -135,8 +173,8 @@ test("an unsaved switch does not claim the gateway is saved or running", async (
   assert.equal(view.summary.tone, "idle");
   assert.deepEqual(
     view.hero.steps.map((step) => step.key),
-    ["enable", "bind", "connect", "verify"],
-    "the enable step is still outstanding",
+    ["model", "connect", "verify"],
+    "the model choice is still outstanding",
   );
   assert.equal(view.hero.connected, false);
 });
@@ -145,43 +183,45 @@ test("a saved gateway whose ports are not listening yet waits for a restart", as
   const devinConnectionView = await loadView();
   const saved = devinSettings({ enabled: true });
 
-  const view = devinConnectionView(viewInput({ draft: saved, saved, gatewayListening: false }));
+  const view = devinConnectionView(viewInput({ draft: saved, saved }));
 
   assert.equal(view.gateway.pendingRestart, true);
   assert.equal(view.gateway.ready, false);
   assert.equal(view.gateway.tone, "warn");
   assert.equal(view.summary.tone, "warn");
-  assert.ok(view.hero.steps.some((step) => step.key === "enable"), "the gateway is not running yet");
+  assert.ok(view.hero.steps.some((step) => step.key === "model"), "the gateway is not ready from the user's point of view");
 });
 
 test("an unknown listening state is reported as checking, not as a pending restart", async () => {
   const devinConnectionView = await loadView();
   const saved = devinSettings({ enabled: true });
 
-  const view = devinConnectionView(viewInput({ draft: saved, saved, gatewayListening: null }));
+  const view = devinConnectionView(viewInput({ draft: saved, saved, gateway: null }));
 
   assert.equal(view.gateway.pendingRestart, false, "nothing is known about the ports yet");
   assert.equal(view.gateway.ready, false);
   assert.equal(view.gateway.tone, "warn");
-  assert.ok(view.hero.steps.some((step) => step.key === "enable"));
+  assert.ok(view.hero.steps.some((step) => step.key === "model"));
 });
 
 test("a running gateway pointed at by the host reports the whole path as connected", async () => {
   const devinConnectionView = await loadView();
-  const saved = devinSettings({ enabled: true, bindings: [binding()] });
+  const saved = enabledWithBinding();
 
   const view = devinConnectionView(viewInput({
     draft: saved,
     saved,
     models: [model()],
     hostStatus: hostStatus({
-      clean: false,
-      patched: true,
-      parts: { api: true, restart: true, inference: true, local_api: true },
-      ports: { api_port: saved.api_port, inference_port: saved.inference_port, local_api_port: saved.local_api_port },
+      unconfigured: false,
+      configured: true,
+      parts: { api: true, inference: true },
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
     }),
-    gatewayListening: true,
+    gateway: gateway({ listening: true, ready: true }),
     devinCalls: 3,
+    lastCallSuccess: true,
   }));
 
   assert.equal(view.gateway.ready, true);
@@ -193,9 +233,36 @@ test("a running gateway pointed at by the host reports the whole path as connect
   assert.equal(view.pendingChanges, false);
 });
 
-test("the status panel describes the saved ports, not the edited ones", async () => {
+test("settings alone do not claim the host is connected before the gate patch", async () => {
   const devinConnectionView = await loadView();
-  const saved = devinSettings({ enabled: true, bindings: [binding()] });
+  const saved = enabledWithBinding();
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 1,
+    lastCallSuccess: true,
+  }));
+
+  assert.equal(view.hero.connected, false);
+  assert.match(
+    view.hero.stages.find((stage) => stage.key === "devin").detail,
+    /缺兼容补丁/,
+    "写入设置但没打补丁时，Devin 仍会忽略端点",
+  );
+  assert.ok(view.hero.steps.some((step) => step.key === "connect"));
+});
+
+test("the status panel hides saved ports from the primary flow", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding();
   const draft = devinSettings({ ...saved, api_port: 9991, inference_port: 9992, local_api_port: 9993 });
 
   const view = devinConnectionView(viewInput({
@@ -203,17 +270,18 @@ test("the status panel describes the saved ports, not the edited ones", async ()
     saved,
     models: [model()],
     hostStatus: hostStatus({
-      clean: false,
-      patched: true,
-      ports: { api_port: saved.api_port, inference_port: saved.inference_port, local_api_port: saved.local_api_port },
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
     }),
-    gatewayListening: true,
+    gateway: gateway({ listening: true, ready: true }),
     devinCalls: 1,
+    lastCallSuccess: true,
   }));
 
   const gatewayStage = view.hero.stages.find((stage) => stage.key === "gateway");
-  assert.ok(gatewayStage.detail.includes(String(saved.api_port)));
-  assert.ok(!gatewayStage.detail.includes(String(draft.api_port)), "the draft port is not what the gateway listens on");
+  assert.equal(gatewayStage.detail, "已运行");
+  assert.ok(!gatewayStage.detail.includes(String(draft.api_port)), "technical ports stay in advanced settings");
   assert.equal(view.pendingChanges, true);
 });
 
@@ -227,15 +295,189 @@ test("an unsaved binding does not count as a bound model", async () => {
     saved,
     models: [model()],
     hostStatus: hostStatus({
-      clean: false,
-      patched: true,
-      ports: { api_port: saved.api_port, inference_port: saved.inference_port, local_api_port: saved.local_api_port },
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
     }),
-    gatewayListening: true,
+    gateway: gateway({ listening: true, ready: true }),
     devinCalls: 1,
+    lastCallSuccess: true,
   }));
 
   assert.equal(view.pendingChanges, true);
-  assert.ok(view.hero.steps.some((step) => step.key === "bind"), "the added mapping is not stored yet");
+  assert.ok(view.hero.steps.some((step) => step.key === "model"), "the added model is not stored yet");
   assert.equal(view.hero.stages.find((stage) => stage.key === "model").state, "unknown");
+});
+
+test("listening on the old ports waits for a restart instead of claiming readiness", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding();
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: gateway({ listening: true }),
+    devinCalls: 2,
+    lastCallSuccess: true,
+  }));
+
+  assert.equal(view.gateway.ready, false);
+  assert.equal(view.gateway.pendingRestart, true);
+  assert.equal(view.gateway.label, "端口已更改，重启后生效");
+  assert.equal(view.hero.connected, false);
+  assert.deepEqual(
+    view.hero.steps.map((step) => step.key),
+    ["gateway"],
+    "the only thing left is rebinding the saved ports",
+  );
+  assert.equal(view.hero.steps[0].hint, "端口已更改，重启后生效");
+  assert.equal(view.summary.label, "待完成");
+});
+
+test("a failed latest call is not counted as a verified connection", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding();
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 4,
+    lastCallSuccess: false,
+  }));
+
+  assert.equal(view.gateway.ready, true);
+  assert.equal(view.hero.connected, false, "a historical success cannot cover a later failure");
+  assert.deepEqual(view.hero.steps.map((step) => step.key), ["verify"]);
+  assert.equal(view.hero.steps[0].hint, "最近一次调用未成功，请检查模型或重新测试");
+  assert.equal(view.summary.label, "待完成");
+});
+
+test("a deleted model keeps the model step outstanding", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding({ model_hash: "hash-deleted" });
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 1,
+    lastCallSuccess: true,
+  }));
+
+  assert.deepEqual(view.hero.steps.map((step) => step.key), ["model"]);
+  assert.equal(view.hero.steps[0].hint, "模型已删除或不可用");
+  assert.equal(view.hero.stages.find((stage) => stage.key === "model").state, "down");
+  assert.equal(view.hero.stages.find((stage) => stage.key === "model").detail, "模型已删除或哈希无效");
+});
+
+test("an unread gateway state says it is checking instead of claiming zero steps", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding();
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: null,
+    devinCalls: 1,
+    lastCallSuccess: true,
+  }));
+
+  assert.deepEqual(view.hero.steps, []);
+  assert.equal(view.hero.connected, false);
+  assert.equal(view.hero.title, "正在检查连接…");
+  assert.equal(view.hero.description, "检查中…");
+  assert.equal(view.summary.label, "检查中…");
+});
+
+test("multiple mappings without a default never fall back to the first one", async () => {
+  const devinConnectionView = await loadView();
+  const saved = devinSettings({
+    enabled: true,
+    bindings: [
+      binding(),
+      binding({ model_uid: "second-uid", model_hash: "hash-2", display_name: "Second" }),
+    ],
+    default_model_uid: null,
+  });
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model(), model({ model_hash: "hash-2", display_name: "Second" })],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 2,
+    lastCallSuccess: true,
+  }));
+
+  assert.deepEqual(view.hero.steps.map((step) => step.key), ["model"]);
+  assert.equal(view.hero.steps[0].hint, "选择默认模型后保存");
+  assert.equal(view.hero.stages.find((stage) => stage.key === "model").detail, "未选择默认模型");
+  assert.equal(view.hero.connected, false);
+});
+
+test("the explicit default selects the second mapping instead of the first", async () => {
+  const devinConnectionView = await loadView();
+  const saved = devinSettings({
+    enabled: true,
+    bindings: [
+      binding(),
+      binding({ model_uid: "second-uid", model_hash: "hash-2", display_name: "Second" }),
+    ],
+    default_model_uid: "second-uid",
+  });
+
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model(), model({ model_hash: "hash-2", display_name: "Second" })],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true }),
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 2,
+    lastCallSuccess: true,
+  }));
+
+  assert.deepEqual(view.hero.steps, []);
+  assert.equal(view.hero.connected, true);
+  assert.equal(view.hero.stages.find((stage) => stage.key === "model").detail, "Second");
+  assert.match(view.hero.description, /Second/);
 });

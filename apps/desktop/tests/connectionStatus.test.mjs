@@ -59,10 +59,11 @@ test("the Devin entry describes the gateway's own lifecycle", async () => {
   const { devinEntryStatus } = await loadStatus();
 
   const rows = [
-    { status: { enabled: false, listening: false }, state: "disabled", tone: "idle" },
-    { status: { enabled: false, listening: true }, state: "disabled-listening", tone: "warn", why: "saved off but the process still answers on its ports" },
-    { status: { enabled: true, listening: false }, state: "pending-restart", tone: "warn" },
-    { status: { enabled: true, listening: true }, state: "running", tone: "ok" },
+    { status: { enabled: false, listening: false, ready: false }, state: "disabled", tone: "idle" },
+    { status: { enabled: false, listening: true, ready: false }, state: "disabled-listening", tone: "warn", why: "saved off but the process still answers on its ports" },
+    { status: { enabled: true, listening: false, ready: false }, state: "pending-restart", tone: "warn" },
+    { status: { enabled: true, listening: true, ready: false }, state: "pending-restart", tone: "warn", why: "the process still holds the previous ports" },
+    { status: { enabled: true, listening: true, ready: true }, state: "running", tone: "ok" },
   ];
 
   for (const row of rows) {

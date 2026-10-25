@@ -17,8 +17,8 @@ interface KnownReason {
 }
 
 /**
- * 服务端把"备份在哪"统一放在句子末尾的 `backup: <路径>`（见 server/src/devin/host_patch.rs
- * 与 server/src/control/devin.rs）。翻译成中文时要把这段路径留下来：用户读到"备份和收据
+ * 服务端把"备份在哪"统一放在句子末尾的 `backup: <路径>`（见 server/src/devin/host_config.rs
+ * 与 server/src/control/devin_config.rs）。翻译成中文时要把这段路径留下来：用户读到"备份和收据
  * 不一致"却看不到路径，就没法照做下一步。
  */
 function backupHint(raw: string): string {
@@ -28,29 +28,40 @@ function backupHint(raw: string): string {
 
 const knownReasons: KnownReason[] = [
   // ---- Devin 宿主接入 ----
-  { match: "Devin installation not found", text: () => t("没有找到 Devin 安装。请在高级里填写宿主文件路径：安装目录下的 extension.js。") },
-  { match: "is not a Devin host file", text: () => t("这个路径不是 Devin 的宿主文件。请填写安装目录，或 extension.js 的完整路径。") },
-  { match: "Devin host file path must be absolute", text: () => t("宿主文件路径要填绝对路径，例如 D:\\Devin。") },
-  { match: "enabling the Devin gateway is required", text: () => t("先启用并保存 Devin 网关，再应用宿主补丁。") },
-  { match: "no usable Devin host restore receipt", text: (raw) => t("没有可用的恢复记录：这个文件不是通过本应用打的补丁，或补丁记录已被改动。文件保持原样。") + backupHint(raw) },
-  { match: "Devin host file is already patched", text: (raw) => t("宿主文件已经是打过补丁的版本。请先恢复原文件，再应用这次的补丁。") + backupHint(raw) },
-  { match: "changed after patch", text: (raw) => t("宿主文件在打补丁之后又被改过，为避免覆盖你的修改，恢复已拒绝。") + backupHint(raw) },
-  { match: "backup SHA-256 mismatch", text: (raw) => t("备份文件与打补丁时记下的内容不一致，恢复已拒绝。") + backupHint(raw) },
-  { match: "backup is not a recognized clean version", text: (raw) => t("备份不是可识别的原版文件，恢复已拒绝。") + backupHint(raw) },
-  { match: "is unavailable", text: (raw) => t("打补丁时留下的备份文件找不到了，恢复已拒绝；文件保持原样。") + backupHint(raw) },
-  { match: "is missing or ambiguous", text: () => t("宿主文件版本不匹配：要改写的锚点缺失或出现多次，补丁已拒绝。") },
-  { match: "is missing; patch refused", text: () => t("宿主文件版本不匹配：要改写的锚点没找到，补丁已拒绝。") },
-  { match: "has a partial or unknown patch", text: () => t("宿主文件里已有部分补丁痕迹，本应用不动它，避免叠加出无法恢复的状态。") },
-  { match: "does not match all supported endpoint anchors", text: () => t("宿主文件与受支持的版本不一致，无法自动改写。") },
-  { match: "cannot read explicit Devin host file", text: (raw) => t("读不到这个宿主文件，请检查路径与文件权限。") + backupHint(raw) },
-  { match: "cannot read the Devin client", text: () => t("读不到 Devin 客户端文件，请检查上面的路径。") },
-  { match: "not UTF-8", text: () => t("宿主文件不是 UTF-8 文本，无法安全改写。") },
+  { match: "Devin installation not found", text: () => t("没有找到 Devin 安装。请先安装或启动一次 Devin；如果装在自定义位置，请在高级里填写安装目录。") },
+  { match: "Devin user settings directory not found", text: () => t("没有找到 Devin 用户设置目录。先启动一次 Devin，或在高级里填写 settings.json 的绝对路径。") },
+  { match: "Devin settings path must be absolute", text: () => t("设置文件路径要填绝对路径，例如 C:\\Users\\你\\AppData\\Roaming\\Devin。") },
+  { match: "is not a Devin settings.json file", text: () => t("这个路径不是 Devin 的 settings.json。请填写 Devin 数据目录，或 User\\settings.json 的完整路径。") },
+  { match: "is not a Devin settings file or data directory", text: () => t("这个路径不是 Devin 的设置文件或数据目录。留空可自动探测，也可以填 User\\settings.json。") },
+  { match: "Devin installation path must be absolute", text: () => t("Devin 安装路径要填绝对路径，例如 D:\\devin\\Devin。") },
+  { match: "is not a Devin extension.js file", text: () => t("这个路径不是 Devin 的 extension.js。请填写安装目录，或其中的 extension.js。") },
+  { match: "is not a Devin installation directory", text: () => t("这个路径不是 Devin 安装目录。请检查安装位置，或直接填写其中的 extension.js。") },
+  { match: "Devin installation path not found", text: () => t("找不到这个 Devin 安装路径，请检查路径是否仍然存在。") },
+  { match: "Devin is still running", text: () => t("Devin 还在运行。请先完全退出 Devin，再写入或恢复设置；文件没有被改动。") },
+  { match: "enable the Devin gateway before configuring Devin", text: () => t("先启用并保存 Devin 网关，再写入 Devin 设置。") },
+  { match: "no usable Devin settings restore receipt", text: (raw) => t("没有可用的恢复记录：设置不是通过本应用写入的，或记录已被改动。文件保持原样。") + backupHint(raw) },
+  { match: "Devin settings changed after this application configured them", text: (raw) => t("设置在本应用写入之后又被改过，为避免覆盖你的修改，恢复已拒绝。") + backupHint(raw) },
+  { match: "Devin settings backup SHA-256 mismatch", text: (raw) => t("备份文件与写入设置时记下的内容不一致，恢复已拒绝。") + backupHint(raw) },
+  { match: "Devin settings backup", text: (raw) => t("写入设置时留下的备份文件找不到了，恢复已拒绝；文件保持原样。") + backupHint(raw) },
+  { match: "Devin settings already point at a local gateway", text: (raw) => t("Devin 设置已经指向一个本机网关。请先恢复之前的设置，再写入当前配置。") + backupHint(raw) },
+  { match: "Devin settings contain only part of the gateway endpoints", text: () => t("Devin 设置里只有一部分网关地址。请先补全或删除这两项，再写入当前配置。") },
+  { match: "Devin settings already define non-local or invalid API endpoints", text: () => t("Devin 设置已经指向其它地址。请先恢复原来的值，再写入本机网关。") },
+  { match: "Devin settings file is not valid JSONC", text: () => t("Devin 的设置文件不是有效的 JSONC；本应用不会覆盖它，请先修正文件。") },
+  { match: "Devin settings file is not a JSON object", text: () => t("Devin 的设置文件顶层不是对象；本应用不会覆盖它，请先修正文件。") },
+  { match: "cannot read Devin settings file", text: (raw) => t("读不到 Devin 的设置文件，请检查路径与文件权限，并确认 Devin 已退出。") + backupHint(raw) },
+  { match: "cannot read the Devin client", text: () => t("读不到 Devin 客户端文件，请检查安装是否完整。") },
+  { match: "Devin settings value offsets", text: () => t("设置文件的属性位置无法安全解析；本应用没有改动它。") },
+  { match: "not UTF-8", text: () => t("文件不是 UTF-8 文本，无法安全改写。") },
   // ---- Devin 设置 ----
   { match: "Devin model UID must not be empty", text: () => t("模型映射要填 Devin 的模型标识。") },
   { match: "duplicate Devin model UID", text: () => t("同一个 Devin 模型标识只能有一条映射。") },
   { match: "duplicate Devin route ID", text: () => t("同一条映射里的候选路由不能重名。") },
   { match: "Devin context compression binding", text: () => t("上下文压缩映射不能带候选路由。") },
   { match: "Devin active route", text: () => t("当前路由必须存在且处于启用状态。") },
+  { match: "Devin default model must be selected", text: () => t("先选择一个默认模型，再保存并启用 Devin 网关。") },
+  { match: "Devin default model UID not found", text: () => t("默认模型映射已不存在，请重新选择。") },
+  { match: "Devin default model must be enabled", text: () => t("默认模型映射已停用，请重新选择。") },
+  { match: "Devin default model must be a standard binding", text: () => t("默认模型只能选标准映射，不能选上下文压缩。") },
   { match: "must include a cursor-byok model hash", text: () => t("每条映射和每条路由都要选择一个模型库里的模型。") },
   { match: "Devin ports must be distinct", text: () => t("三个端口不能重复。") },
   { match: "port must be non-zero", text: () => t("端口不能为 0。") },
@@ -62,10 +73,10 @@ const knownReasons: KnownReason[] = [
   { match: "cannot be listened on by this app", text: () => t("这个端口本应用绑不上（通常是权限或系统保留端口）。给网关换一个端口。") },
   { match: "Devin upstream API URL must not be empty", text: () => t("上游 API 地址不能为空。") },
   { match: "Devin upstream API URL must be an absolute", text: () => t("上游 API 地址要填完整的 http(s) 地址。") },
-  // 应用宿主补丁前的监听检查（server/src/devin/gateway.rs）：补丁会把客户端指向三个端口，
+  // 写入 Devin 设置前的监听检查（server/src/devin/gateway.rs）：设置会把客户端指向两个端口，
   // 网关只在启动时绑一次，所以"还没监听"和"监听的不是设置里那几个"要分开说。
-  { match: "gateway is not listening", text: () => t("Devin 网关还没有开始监听：先启用并保存网关，再重启软件，然后回到这里应用补丁。") },
-  { match: "not on the configured", text: () => t("Devin 网关正在监听的端口与当前设置不一致：重启软件让它按保存的端口重新监听，再来应用补丁。") },
+  { match: "gateway is not listening", text: () => t("Devin 网关还没有开始监听：先启用并保存网关，再重启软件，然后回到这里写入设置。") },
+  { match: "not on the configured", text: () => t("Devin 网关正在监听的端口与当前设置不一致：重启软件让它按保存的端口重新监听，再来写入设置。") },
   // ---- Codex 网关 ----
   { match: "enable the Codex gateway before applying configuration", text: () => t("先启用 Codex 网关，再应用配置。") },
   { match: "restore the applied Codex configuration before changing", text: () => t("先撤销接管，再修改 Codex 网关设置。") },

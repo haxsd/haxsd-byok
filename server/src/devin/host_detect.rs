@@ -11,8 +11,67 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Relative location of the Devin/Windsurf host extension inside an install.
-pub(crate) const HOST_RELATIVE: &str = r"resources\app\extensions\windsurf\dist\extension.js";
+/// Component form keeps the same layout usable on Windows, macOS, and Linux.
+const HOST_RELATIVE_PARTS: [&str; 6] = [
+    "resources",
+    "app",
+    "extensions",
+    "windsurf",
+    "dist",
+    "extension.js",
+];
+const SETTINGS_RELATIVE_PARTS: [&str; 2] = ["User", "settings.json"];
+
+fn join_parts(root: &Path, parts: &[&str]) -> PathBuf {
+    let mut path = root.to_path_buf();
+    for part in parts {
+        path.push(part);
+    }
+    path
+}
+
+/// Every supported layout under an installation root. Windows/Linux use
+/// `resources/app/...`; macOS `.app` bundles additionally use
+/// `Contents/Resources/app/...`.
+pub(crate) fn extension_paths_in_root(root: &Path) -> Vec<PathBuf> {
+    let variants: [&[&str]; 4] = [
+        HOST_RELATIVE_PARTS.as_slice(),
+        &[
+            "Contents",
+            "Resources",
+            "app",
+            "extensions",
+            "windsurf",
+            "dist",
+            "extension.js",
+        ],
+        &[
+            "Resources",
+            "app",
+            "extensions",
+            "windsurf",
+            "dist",
+            "extension.js",
+        ],
+        &["app", "extensions", "windsurf", "dist", "extension.js"],
+    ];
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for parts in variants {
+        let path = join_parts(root, parts);
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    paths
+}
+
+fn settings_relative_path(root: &Path) -> PathBuf {
+    join_parts(root, &SETTINGS_RELATIVE_PARTS)
+}
+
+fn relative_display(parts: &[&str]) -> String {
+    parts.join(std::path::MAIN_SEPARATOR_STR)
+}
 
 /// An explicit file override wins over every guessed location.
 const PATH_ENV: &str = "HAXSD_BYOK_DEVIN_PATH";
@@ -20,6 +79,9 @@ const PATH_ENV: &str = "HAXSD_BYOK_DEVIN_PATH";
 /// The install root can also be given directly, in which case only the relative
 /// part is appended.
 const ROOT_ENV: &str = "HAXSD_BYOK_DEVIN_ROOT";
+
+/// An explicit settings override is useful for portable installs and tests.
+const SETTINGS_ENV: &str = "HAXSD_BYOK_DEVIN_SETTINGS";
 
 /// Bounded search for an installed client. The install directory itself cannot be
 /// enumerated — the same client was found under `F:\app\windsurf-app\Windsurf` —
@@ -101,7 +163,7 @@ impl Detected {
             // `harnessErrorText.ts` 按它把这句话换成中文），改文案要连着那张表一起改。
             Self::NotFound { searched } => format!(
                 "Devin installation not found; {} locations were searched. Enter the installation \
-                 directory in the path field below, or the extension.js file inside it",
+                 directory in the installation path field, or the extension.js file inside it",
                 searched.len()
             ),
         }
@@ -116,6 +178,105 @@ pub fn detect() -> Detected {
         Instant::now(),
         detect_uncached,
     )
+}
+
+/// The Devin user settings file that controls the API and inference endpoints.
+///
+/// Unlike the extension bundle, this file may not exist yet: Devin creates it
+/// only after the first setting is written. Choosing an existing product data
+/// directory is therefore the detection signal, not the file itself.
+pub fn settings_path() -> Result<PathBuf, String> {
+    let candidates = settings_candidates();
+    if let Some(found) = candidates.iter().find(|path| path.is_file()) {
+        return Ok(found.clone());
+    }
+    if let Some(found) = candidates
+        .iter()
+        .find(|path| path.parent().is_some_and(Path::is_dir))
+    {
+        return Ok(found.clone());
+    }
+    Err(
+        "Devin user settings directory not found; start Devin once, or enter the \
+         settings.json path manually"
+            .into(),
+    )
+}
+
+/// Resolve an explicit installation directory or `extension.js` path.
+///
+/// The file must exist: a pasted path that does not resolve is a configuration
+/// error, not a silent fallback to another installation.
+pub fn extension_path_from_input(value: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(value.trim());
+    if path.as_os_str().is_empty() || !path.is_absolute() {
+        return Err("Devin installation path must be absolute".into());
+    }
+    if path.is_file() {
+        if path
+            .file_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case("extension.js"))
+        {
+            return Ok(path);
+        }
+        return Err(format!(
+            "{} is not a Devin extension.js file; enter the installation directory or the \
+             extension.js file inside it",
+            path.display()
+        ));
+    }
+    if path.is_dir() {
+        let candidates = extension_paths_in_root(&path);
+        if let Some(found) = candidates.iter().find(|candidate| candidate.is_file()) {
+            return Ok(found.clone());
+        }
+        return Err(format!(
+            "{} is not a Devin installation directory; expected {}",
+            path.display(),
+            relative_display(&HOST_RELATIVE_PARTS)
+        ));
+    }
+    Err(format!(
+        "Devin installation path not found: {}",
+        path.display()
+    ))
+}
+
+fn settings_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(explicit) = non_empty_env(SETTINGS_ENV) {
+        candidates.push(PathBuf::from(explicit));
+    }
+
+    #[cfg(windows)]
+    if let Some(appdata) = non_empty_env("APPDATA") {
+        for product in ["Devin", "Windsurf"] {
+            candidates.push(settings_relative_path(
+                &PathBuf::from(&appdata).join(product),
+            ));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    if let Some(home) = dirs::home_dir() {
+        for product in ["Devin", "Windsurf"] {
+            candidates.push(settings_relative_path(
+                &home
+                    .join("Library")
+                    .join("Application Support")
+                    .join(product),
+            ));
+        }
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if let Some(config) = dirs::config_dir() {
+        for product in ["Devin", "Windsurf"] {
+            candidates.push(settings_relative_path(&config.join(product)));
+        }
+    }
+
+    candidates
 }
 
 /// 探测缓存的有效期。安装位置不会在几秒内变化，而固定候选全落空时一次探测要扫最多
@@ -170,7 +331,11 @@ fn detect_uncached() -> Detected {
             let scanned = detect_from_candidates(
                 scanned_installs()
                     .into_iter()
-                    .map(|install| (install.join(HOST_RELATIVE), DetectionSource::Guessed))
+                    .flat_map(|install| {
+                        extension_paths_in_root(&install)
+                            .into_iter()
+                            .map(|path| (path, DetectionSource::Guessed))
+                    })
                     .collect(),
             );
             match scanned {
@@ -189,11 +354,18 @@ fn detect_uncached() -> Detected {
 /// Installation directories found by scanning the fixed drives for the client
 /// executables.
 fn scanned_installs() -> Vec<PathBuf> {
-    let roots: Vec<PathBuf> = ['C', 'D', 'E', 'F', 'G']
-        .into_iter()
-        .map(|letter| PathBuf::from(format!("{letter}:\\")))
-        .collect();
-    scan_for_installs(&roots)
+    #[cfg(windows)]
+    {
+        let roots: Vec<PathBuf> = ['C', 'D', 'E', 'F', 'G']
+            .into_iter()
+            .map(|letter| PathBuf::from(format!("{letter}:\\")))
+            .collect();
+        scan_for_installs(&roots)
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
 }
 
 /// Split out so a test can scan a temporary tree instead of real drives.
@@ -270,7 +442,9 @@ fn candidates() -> Vec<(PathBuf, DetectionSource)> {
         candidates.push((PathBuf::from(explicit), DetectionSource::ExplicitPath));
     }
     for root in roots() {
-        candidates.push((root.join(HOST_RELATIVE), DetectionSource::Guessed));
+        for path in extension_paths_in_root(&root) {
+            candidates.push((path, DetectionSource::Guessed));
+        }
     }
     // The executable name is the reliable signal: installs nest the app at
     // unknown depth, so committing to a fixed layout guesses wrong. Locating
@@ -282,7 +456,9 @@ fn candidates() -> Vec<(PathBuf, DetectionSource)> {
                 continue;
             }
             if let Some(directory) = app.parent() {
-                candidates.push((directory.join(HOST_RELATIVE), DetectionSource::Guessed));
+                for path in extension_paths_in_root(directory) {
+                    candidates.push((path, DetectionSource::Guessed));
+                }
             }
         }
     }
@@ -297,6 +473,7 @@ const APP_EXECUTABLES: [&str; 2] = ["Devin.exe", "Windsurf.exe"];
 fn scan_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     let mut first_level: Vec<PathBuf> = Vec::new();
+    #[cfg(windows)]
     for letter in ['C', 'D', 'E', 'F', 'G'] {
         for name in ["devin", "Devin", "windsurf", "Windsurf"] {
             first_level.push(PathBuf::from(format!("{letter}:\\{name}")));
@@ -345,8 +522,21 @@ fn roots() -> Vec<PathBuf> {
             roots.push(PathBuf::from(&base).join(product));
         }
     }
+    #[cfg(target_os = "macos")]
+    for product in ["Devin", "Windsurf"] {
+        roots.push(PathBuf::from(format!("/Applications/{product}.app")));
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    for product in ["Devin", "Windsurf"] {
+        let lower = product.to_ascii_lowercase();
+        roots.push(PathBuf::from(format!("/opt/{product}")));
+        roots.push(PathBuf::from(format!("/opt/{lower}")));
+        roots.push(PathBuf::from(format!("/usr/lib/{product}")));
+        roots.push(PathBuf::from(format!("/usr/lib/{lower}")));
+    }
     // Tools are often installed off the system drive; walking the fixed drive
     // letters keeps that working without a registry dependency.
+    #[cfg(windows)]
     for letter in ['C', 'D', 'E', 'F', 'G'] {
         for name in ["devin", "Devin", "windsurf", "Windsurf"] {
             roots.push(PathBuf::from(format!("{letter}:\\{name}")));
@@ -493,6 +683,70 @@ mod tests {
     }
 
     #[test]
+    fn an_explicit_installation_path_covers_platform_layouts() {
+        let directory = tempfile::tempdir().unwrap();
+        let windows = directory.path().join("windows-install");
+        let windows_extension = windows
+            .join("resources")
+            .join("app")
+            .join("extensions")
+            .join("windsurf")
+            .join("dist")
+            .join("extension.js");
+        std::fs::create_dir_all(windows_extension.parent().unwrap()).unwrap();
+        std::fs::write(&windows_extension, b"clean").unwrap();
+        assert_eq!(
+            extension_path_from_input(windows.to_str().unwrap()).unwrap(),
+            windows_extension
+        );
+        assert_eq!(
+            extension_path_from_input(windows_extension.to_str().unwrap()).unwrap(),
+            windows_extension
+        );
+
+        let mac = directory.path().join("Devin.app");
+        let mac_extension = mac
+            .join("Contents")
+            .join("Resources")
+            .join("app")
+            .join("extensions")
+            .join("windsurf")
+            .join("dist")
+            .join("extension.js");
+        std::fs::create_dir_all(mac_extension.parent().unwrap()).unwrap();
+        std::fs::write(&mac_extension, b"clean").unwrap();
+        assert_eq!(
+            extension_path_from_input(mac.to_str().unwrap()).unwrap(),
+            mac_extension
+        );
+    }
+
+    #[test]
+    fn an_invalid_installation_path_explains_the_expected_shape() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(extension_path_from_input("Devin")
+            .unwrap_err()
+            .contains("must be absolute"));
+
+        let empty = directory.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+        assert!(extension_path_from_input(empty.to_str().unwrap())
+            .unwrap_err()
+            .contains("not a Devin installation directory"));
+
+        let not_extension = directory.path().join("Devin.exe");
+        std::fs::write(&not_extension, b"").unwrap();
+        assert!(extension_path_from_input(not_extension.to_str().unwrap())
+            .unwrap_err()
+            .contains("not a Devin extension.js file"));
+
+        let missing = directory.path().join("missing");
+        assert!(extension_path_from_input(missing.to_str().unwrap())
+            .unwrap_err()
+            .contains("not found"));
+    }
+
+    #[test]
     fn a_missing_installation_explains_what_to_do_instead_of_every_candidate() {
         let detected = detect_from_candidates(vec![
             (
@@ -512,7 +766,7 @@ mod tests {
         assert!(message.contains("installation directory"), "{message}");
         // 猜过的候选路径与安装目录内部的相对路径都不该进提示。
         assert!(!message.contains(r"C:\nowhere"), "{message}");
-        assert!(!message.contains(HOST_RELATIVE), "{message}");
+        assert!(!message.contains("resources"), "{message}");
         // 界面按这句片段把提示换成中文（`apps/desktop` 的 `harnessErrorText.ts`）：
         // 改了它，那边认不出来，中文提示就没了。
         assert!(

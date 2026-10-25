@@ -16,6 +16,7 @@ use axum::{
 };
 use bytes::Bytes;
 use futures_util::StreamExt;
+use serde::Serialize;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
@@ -29,6 +30,7 @@ use crate::{
 use super::{
     assignment::{assignment_token_response, find_model_reference, AssignmentSessions},
     catalog,
+    host_config::DevinHostPorts,
     request::{parse_chat_request, to_invocation},
     response::{finish, stream_event, ResponseState},
     wire::{self, ConnectError, MAX_BODY_SIZE},
@@ -38,7 +40,7 @@ use super::{
 const TOKEN_HEADER: &str = "x-devin-router-token";
 
 /// The three loopback ports a running gateway holds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct DevinBoundPorts {
     pub api: u16,
     pub inference: u16,
@@ -51,38 +53,53 @@ impl DevinBoundPorts {
     }
 }
 
-/// 应用宿主补丁前的准入检查：补丁把客户端指向 `127.0.0.1:<设置里那三个端口>`，而
-/// 网关只在启动时绑一次端口。写下去之前必须确认它真的在这三个端口上监听，否则客户端
+/// 写入 Devin 设置前的准入检查：设置会把客户端指向 API 与推理两个端口，而网关只在
+/// 启动时绑一次端口。写下去之前必须确认它真的在这两个端口上监听，否则客户端
 /// 从下一个请求起全部打到没人应答的端口，界面却只显示"已保存、等重启"。
 ///
 /// `bound` 来自 `DevinListening::bound_ports()`（control 侧持有同一个句柄）。
 pub fn ensure_host_ports_listening(
-    ports: crate::devin::host_patch::DevinPorts,
+    ports: DevinHostPorts,
     bound: Option<DevinBoundPorts>,
 ) -> Result<()> {
     let Some(bound) = bound else {
         return Err(Error::Config(
             "the Devin gateway is not listening yet; enable it and restart haxsd byok so it binds \
-             the configured ports before patching the host file"
+             the configured ports before writing Devin settings"
                 .into(),
         ));
     };
-    if bound.api != ports.api_port
-        || bound.inference != ports.inference_port
-        || bound.local_api != ports.local_api_port
-    {
+    if bound.api != ports.api_port || bound.inference != ports.inference_port {
         return Err(Error::Config(format!(
-            "the Devin gateway is listening on {} / {} / {}, not on the configured {} / {} / {}; \
-             restart haxsd byok so it binds the saved ports before patching the host file",
-            bound.api,
-            bound.inference,
-            bound.local_api,
-            ports.api_port,
-            ports.inference_port,
-            ports.local_api_port
+            "the Devin gateway is listening on {} / {}, not on the configured {} / {}; \
+             restart haxsd byok so it binds the saved ports before writing Devin settings",
+            bound.api, bound.inference, ports.api_port, ports.inference_port,
         )));
     }
     Ok(())
+}
+
+fn is_model_catalog_method(method: &str) -> bool {
+    matches!(
+        method,
+        "GetCascadeModelConfigs"
+            | "GetCascadeModelConfigsForSite"
+            | "GetCommandModelConfigs"
+            | "GetCommandModelConfigsForSite"
+            | "GetCliModelConfigs"
+            | "GetCliModelConfigsForSite"
+    )
+}
+
+fn catalog_has_default_override(method: &str) -> bool {
+    matches!(method, "GetCascadeModelConfigs" | "GetCliModelConfigs")
+}
+
+fn is_locally_answered_capacity_method(method: &str) -> bool {
+    matches!(
+        method,
+        "CheckChatCapacity" | "CheckUserMessageRateLimit" | "GetModelStatuses"
+    )
 }
 
 /// Tracks whether the gateway is currently accepting requests, and on which ports.
@@ -262,10 +279,10 @@ async fn handle_request(
     // answered here, which is what makes a real account usable behind this
     // gateway at all. `AssignModel` belongs to that model traffic: it hands the
     // client the session token this gateway issues for a mapped model UID.
-    if !matches!(
-        method,
-        "GetChatMessage" | "GetCliModelConfigs" | "AssignModel"
-    ) {
+    if !matches!(method, "GetChatMessage" | "AssignModel")
+        && !is_model_catalog_method(method)
+        && !is_locally_answered_capacity_method(method)
+    {
         return forward_upstream(&state, &settings, parts, body).await;
     }
     let candidates = settings
@@ -277,14 +294,19 @@ async fn handle_request(
     // 一条启用绑定都没有时目录不是我们的东西：本地目录会是空的，而客户端只认这
     // 一份 RPC 的结果，空目录会把它原本的官方模型列表整个顶掉。这时把请求交给
     // 上游，与其它非模型流量同一条路径——"只答我们拥有的那部分"才是这里的取舍。
-    if method == "GetCliModelConfigs" && candidates.is_empty() {
+    if (is_model_catalog_method(method) || is_locally_answered_capacity_method(method))
+        && candidates.is_empty()
+    {
         return forward_upstream(&state, &settings, parts, body).await;
     }
 
     let content_encoding = parts
         .headers
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok());
+    let connect_content_encoding = parts
+        .headers
         .get("connect-content-encoding")
-        .or_else(|| parts.headers.get(header::CONTENT_ENCODING))
         .and_then(|value| value.to_str().ok());
     let body = match to_bytes(body, MAX_BODY_SIZE + 5).await {
         Ok(body) => body,
@@ -292,24 +314,82 @@ async fn handle_request(
     };
     // 响应封装照请求本身体判定，而"请求是不是 Connect 信封"只有解码后才知道：请求体
     // 可能是 gzip 的，拿压缩字节去嗅探必然误判，客户端会拿到裸 proto 响应。
-    let unwrapped = match wire::unwrap_request(&body, content_encoding) {
+    let unwrapped = match wire::unwrap_request(&body, content_encoding, connect_content_encoding) {
         Ok(unwrapped) => unwrapped,
-        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        Err(error) => {
+            // 真实的 Devin 客户端和本地探针在压缩层上不完全一致。失败时记录足以区分
+            // "HTTP 整个 body 压缩" 与 "Connect 帧内 payload 压缩" 的摘要，但不记录
+            // Authorization，也不把可能含提示词的完整 body 写进日志。
+            let prefix_len = body.len().min(16);
+            tracing::warn!(
+                method,
+                body_len = body.len(),
+                body_prefix = %hex::encode(&body[..prefix_len]),
+                content_encoding = ?parts.headers.get(header::CONTENT_ENCODING),
+                connect_content_encoding = ?parts.headers.get("connect-content-encoding"),
+                content_type = ?parts.headers.get(header::CONTENT_TYPE),
+                "cannot unwrap Devin request"
+            );
+            return protocol_error(StatusCode::BAD_REQUEST, error.to_string());
+        }
     };
     let enveloped = unwrapped.enveloped;
     let payload = unwrapped.payload;
 
-    if method == "GetCliModelConfigs" {
+    if is_model_catalog_method(method) {
         let gateway_url = format!("http://127.0.0.1:{}", settings.local_api_port);
-        // 目录完全由本地绑定生成：参考实现那套"改写官方目录"的路径在本地目录上是
-        // no-op（`catalog` 只提供 `model_configs_payload`），要真正改写就得先取上游目录。
-        let catalog = match catalog::model_configs_payload(&settings, &gateway_url) {
+        let models = match state.store.models().await {
+            Ok(models) => models,
+            Err(error) => {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        };
+        let catalog = match catalog::catalog_response_payload(
+            &settings,
+            &models,
+            &gateway_url,
+            catalog_has_default_override(method),
+        ) {
             Ok(catalog) => catalog,
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
         };
         return protocol_success_response(enveloped, &catalog);
+    }
+
+    if method == "CheckChatCapacity" {
+        let response =
+            match wire::serialize_fields(&[wire::Field::varint(1, 1), wire::Field::varint(3, 0)]) {
+                Ok(response) => response,
+                Err(error) => {
+                    return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                }
+            };
+        return protocol_success_response(enveloped, &response);
+    }
+    if method == "CheckUserMessageRateLimit" {
+        let response = match wire::serialize_fields(&[
+            wire::Field::varint(1, 1),
+            wire::Field::varint(3, 1_000_000),
+            wire::Field::varint(4, 1_000_000),
+            wire::Field::varint(5, 0),
+        ]) {
+            Ok(response) => response,
+            Err(error) => {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        };
+        return protocol_success_response(enveloped, &response);
+    }
+    if method == "GetModelStatuses" {
+        let response = match wire::serialize_fields(&[]) {
+            Ok(response) => response,
+            Err(error) => {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        };
+        return protocol_success_response(enveloped, &response);
     }
 
     let reference =
@@ -912,10 +992,12 @@ mod tests {
         );
     }
 
-    /// 目录请求带 gzip 时，响应封装必须按**解码后**的请求体判定：以前拿压缩字节嗅探
-    /// Connect 信封，客户端会收到裸 proto（`application/proto`），整条目录链路就断了。
+    /// 目录请求的两种 gzip 形状都要按**解码后**的请求体判定封装。真实 Devin 不设
+    /// HTTP `Content-Encoding`，而是发一个 `flags=1` 的 Connect 信封，并把 payload
+    /// gzip；早期的实现把 `Connect-Content-Encoding` 当成 HTTP 编码又解一次，真实
+    /// 模型请求因此直接失败。
     #[tokio::test]
-    async fn a_gzipped_connect_request_still_gets_a_framed_response() {
+    async fn http_and_connect_gzip_requests_both_get_a_framed_response() {
         use axum::body::to_bytes as read_body;
         use std::io::Write;
         use tower::ServiceExt;
@@ -958,7 +1040,9 @@ mod tests {
             "压缩字节本来就嗅探不出来"
         );
 
-        let response = DevinGateway::router(&state)
+        let router = DevinGateway::router(&state);
+        let response = router
+            .clone()
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
@@ -991,6 +1075,38 @@ mod tests {
             u32::from_be_bytes([end[1], end[2], end[3], end[4]]) as usize,
             end.len() - 5
         );
+
+        // 真实 Devin 3.11.216 的形状：body 本身是信封，标志位=1，header 只说明
+        // Connect 消息编码。这里不能再把整段 body 先 gunzip。
+        let connect_gzip = wire::frame(b"catalog-request", true).unwrap();
+        assert_eq!(connect_gzip[0], 1);
+        assert_eq!(&connect_gzip[5..7], &[0x1f, 0x8b]);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCliModelConfigs")
+                    .header(header::CONTENT_TYPE, "application/connect+proto")
+                    .header("connect-content-encoding", "gzip")
+                    .body(Body::from(connect_gzip))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/connect+proto"),
+        );
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(body[0], 0, "Connect gzip 请求同样要收到数据帧");
+        let declared = u32::from_be_bytes([body[1], body[2], body[3], body[4]]) as usize;
+        assert_eq!(body[5 + declared], 2, "数据帧之后是结束帧");
     }
 
     /// 一个只会回固定字节的上游桩，外加它收到的请求数。
@@ -1014,14 +1130,13 @@ mod tests {
         (port, requests)
     }
 
-    /// 宿主补丁只能写在网关真正监听的端口上：网关没在监听，或监听的端口与设置不一致，
+    /// Devin 设置只能写在网关真正监听的端口上：网关没在监听，或监听的端口与设置不一致，
     /// 都必须拒绝——否则客户端从下一个请求开始全部打空，界面却只显示"已保存、等重启"。
     #[test]
-    fn host_patching_requires_the_gateway_to_listen_on_the_same_ports() {
-        let ports = crate::devin::host_patch::DevinPorts {
+    fn host_configuration_requires_the_gateway_to_listen_on_the_same_ports() {
+        let ports = DevinHostPorts {
             api_port: 43_110,
             inference_port: 43_111,
-            local_api_port: 43_112,
         };
         ensure_host_ports_listening(
             ports,
@@ -1047,11 +1162,6 @@ mod tests {
                 api: 43_110,
                 inference: 43_121,
                 local_api: 43_112,
-            },
-            DevinBoundPorts {
-                api: 43_110,
-                inference: 43_111,
-                local_api: 43_122,
             },
         ] {
             let error = ensure_host_ports_listening(ports, Some(bound))
@@ -1130,6 +1240,141 @@ mod tests {
             1,
             "上游必须真的收到这次目录请求"
         );
+    }
+
+    /// 新版客户端在主目录之外还调用 ForSite、Command 与 Cascade 变体。它们都用
+    /// `client_model_configs`（字段 1）；Cascade 与 CLI 还会读字段 3 的默认模型。
+    #[tokio::test]
+    async fn every_current_catalog_rpc_returns_the_local_model_list() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                bindings: vec![DevinModelBinding::new("devin-sonnet", "model-hash")],
+                default_model_uid: Some("devin-sonnet".into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+
+        for (method, has_default_override) in [
+            ("GetCascadeModelConfigs", true),
+            ("GetCascadeModelConfigsForSite", false),
+            ("GetCommandModelConfigs", false),
+            ("GetCommandModelConfigsForSite", false),
+            ("GetCliModelConfigs", true),
+            ("GetCliModelConfigsForSite", false),
+        ] {
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .body(Body::from("catalog-request"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{method}");
+            let body = read_body(response.into_body(), MAX_BODY_SIZE)
+                .await
+                .unwrap();
+            let fields = wire::parse_fields(&body).unwrap();
+            let models = wire::all_fields(&fields, 1).collect::<Vec<_>>();
+            assert_eq!(models.len(), 1, "{method} must return one local model");
+            let wire::FieldValue::Bytes(model) = &models[0].value else {
+                panic!("{method} model field is not a message");
+            };
+            let model = wire::parse_fields(model).unwrap();
+            assert!(
+                model.iter().any(|field| {
+                    field.number == 22
+                        && field.value == wire::FieldValue::Bytes(b"devin-sonnet".to_vec())
+                }),
+                "{method} must carry the mapped UID"
+            );
+            assert_eq!(
+                wire::first_field(&fields, 3).is_some(),
+                has_default_override,
+                "{method} default-override field mismatch"
+            );
+        }
+    }
+
+    /// 对话前的容量与限额检查带的是本地模型 UID，官方服务不认识它。绑定存在时本地
+    /// 直接放行，否则模型列表会显示，但第一句话就被上游拒绝。
+    #[tokio::test]
+    async fn capacity_checks_are_answered_for_local_model_routing() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                bindings: vec![DevinModelBinding::new("devin-sonnet", "model-hash")],
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+
+        for method in [
+            "CheckChatCapacity",
+            "CheckUserMessageRateLimit",
+            "GetModelStatuses",
+        ] {
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .body(Body::from("capacity-request"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{method}");
+            let body = read_body(response.into_body(), MAX_BODY_SIZE)
+                .await
+                .unwrap();
+            let fields = wire::parse_fields(&body).unwrap();
+            if method == "GetModelStatuses" {
+                assert!(fields.is_empty(), "local models need no warning statuses");
+                continue;
+            }
+            assert_eq!(
+                wire::first_field(&fields, 1),
+                Some(&wire::Field::varint(1, 1)),
+                "{method} must report capacity"
+            );
+        }
     }
 
     /// 出网路由变了（用户中途关掉代理，或系统代理那一跳没人监听）时，第一次连接

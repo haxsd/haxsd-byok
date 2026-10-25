@@ -8,8 +8,9 @@ import type {
   CursorHarnessStatus,
   CursorMode,
   DesktopSettings,
-  DevinHostPatchReceipt,
-  DevinHostPatchStatus,
+  DevinExtensionReceipt,
+  DevinHostReceipt,
+  DevinHostStatus,
   DevinSettings,
   LlmCall,
   Model,
@@ -158,7 +159,7 @@ let devinSettings: DevinSettings = {
   api_port: 43_110,
   inference_port: 43_111,
   local_api_port: 43_112,
-  upstream_api_url: "https://server.self-serve.windsurf.com",
+  upstream_api_url: "https://server.codeium.com",
   bindings: [{
     model_uid: "demo-model",
     model_hash: models[0].model_hash,
@@ -169,10 +170,12 @@ let devinSettings: DevinSettings = {
     routes: [],
     active_route_id: null,
   }],
+  default_model_uid: "demo-model",
 };
 
-let devinHostStatus: DevinHostPatchStatus | null = null;
-let devinHostReceipt: DevinHostPatchReceipt | null = null;
+let devinHostStatus: DevinHostStatus | null = null;
+let devinHostReceipt: DevinHostReceipt | null = null;
+let devinExtensionReceipt: DevinExtensionReceipt | null = null;
 
 const demoTokenPrice = {
   input_per_million: 3,
@@ -322,7 +325,19 @@ export function installDemoApi() {
     }
     // 演示里也要有这几条：缺了它们，演示页面会在顶栏弹一条红色「部分数据刷新失败」，
     // 并在 Devin / 插件页显示"未处理的端点"，看起来像产品坏了。
-    if (path === "/devin/status") return json({ enabled: devinSettings.enabled, listening: devinSettings.enabled, calls: 0 });
+    if (path === "/devin/status") return json({
+      enabled: devinSettings.enabled,
+      listening: devinSettings.enabled,
+      ready: devinSettings.enabled,
+      bound_ports: devinSettings.enabled ? {
+        api: devinSettings.api_port,
+        inference: devinSettings.inference_port,
+        local_api: devinSettings.local_api_port,
+      } : null,
+      calls: 0,
+      last_call_success: null,
+      last_call_at_ms: null,
+    });
     if (path === "/harness/devin/model-uids") {
       return json({
         path: "/demo/resources/app/extensions/windsurf/extension.js",
@@ -351,35 +366,76 @@ export function installDemoApi() {
       });
     }
     if (path === "/harness/devin/host/status" && method === "GET") {
-      const hostPath = url.searchParams.get("path") || "";
-      if (!hostPath) return json(errorBody(400, "Devin host file path must be absolute"), 400);
+      const hostPath = url.searchParams.get("path") || "C:\\Users\\demo\\AppData\\Roaming\\Devin\\User\\settings.json";
+      const configured = Boolean(devinHostReceipt);
+      const extensionPath = "D:\\devin\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js";
+      const extensionPatched = Boolean(devinExtensionReceipt);
       devinHostStatus ??= {
         path: hostPath,
         compatible: true,
-        clean: !devinHostReceipt,
-        patched: Boolean(devinHostReceipt),
-        parts: { api: Boolean(devinHostReceipt), restart: Boolean(devinHostReceipt), inference: Boolean(devinHostReceipt), local_api: Boolean(devinHostReceipt) },
+        unconfigured: !configured,
+        configured,
+        parts: { api: configured, inference: configured },
         ports: devinHostReceipt?.ports ?? null,
         backup_path: `${hostPath}.devin-router.backup`,
-        backup_available: Boolean(devinHostReceipt),
+        backup_available: configured,
         current_sha256: devinHostReceipt?.patched_sha256 ?? "demo-clean",
         backup_sha256: devinHostReceipt?.original_sha256 ?? null,
         restore_receipt: devinHostReceipt,
+        extension: {
+          path: extensionPath,
+          version: "3.11.216",
+          supported_sha256: "A063DAE82C91328E17AE16121E90780087674B65839B5AD39915C9C59C652FF0",
+          compatible: true,
+          clean: !extensionPatched,
+          patched: extensionPatched,
+          backup_path: `${extensionPath}.devin-router-gate.backup`,
+          backup_available: extensionPatched,
+          current_sha256: devinExtensionReceipt?.patched_sha256 ?? "demo-extension-clean",
+          backup_sha256: devinExtensionReceipt?.original_sha256 ?? null,
+          restore_receipt: devinExtensionReceipt,
+          message: "",
+        },
         message: "",
       };
-      return json({ ...devinHostStatus, path: hostPath, clean: !devinHostReceipt, patched: Boolean(devinHostReceipt), ports: devinHostReceipt?.ports ?? null, restore_receipt: devinHostReceipt });
+      return json({
+        ...devinHostStatus,
+        path: hostPath,
+        unconfigured: !configured,
+        configured,
+        ports: devinHostReceipt?.ports ?? null,
+        restore_receipt: devinHostReceipt,
+        extension: {
+          ...devinHostStatus.extension,
+          clean: !extensionPatched,
+          patched: extensionPatched,
+          backup_available: extensionPatched,
+          current_sha256: devinExtensionReceipt?.patched_sha256 ?? "demo-extension-clean",
+          backup_sha256: devinExtensionReceipt?.original_sha256 ?? null,
+          restore_receipt: devinExtensionReceipt,
+        },
+      });
     }
     if (path === "/harness/devin/host/apply" && method === "POST") {
-      const hostPath = (body as { path?: string } | null)?.path || "";
-      devinHostReceipt = { path: hostPath, backup_path: `${hostPath}.devin-router.backup`, original_sha256: "demo-original", patched_sha256: "demo-patched", ports: { api_port: devinSettings.api_port, inference_port: devinSettings.inference_port, local_api_port: devinSettings.local_api_port } };
+      const hostPath = (body as { path?: string } | null)?.path || "C:\\Users\\demo\\AppData\\Roaming\\Devin\\User\\settings.json";
+      devinHostReceipt = { path: hostPath, backup_path: `${hostPath}.devin-router.backup`, original_sha256: "demo-original", patched_sha256: "demo-patched", ports: { api_port: devinSettings.api_port, inference_port: devinSettings.inference_port } };
+      const extensionPath = "D:\\devin\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js";
+      devinExtensionReceipt = {
+        path: extensionPath,
+        backup_path: `${extensionPath}.devin-router-gate.backup`,
+        version: "3.11.216",
+        original_sha256: "demo-extension-original",
+        patched_sha256: "demo-extension-patched",
+      };
       devinHostStatus = null;
-      return json(devinHostReceipt);
+      return json({ settings: devinHostReceipt, extension: devinExtensionReceipt });
     }
     if (path === "/harness/devin/host/restore" && method === "POST") {
       if (!devinHostReceipt || (body as { path?: string } | null)?.path !== devinHostReceipt.path) {
         return json(errorBody(400, "no usable Devin host restore receipt"), 400);
       }
       devinHostReceipt = null;
+      devinExtensionReceipt = null;
       devinHostStatus = null;
       return json({ restored: true });
     }

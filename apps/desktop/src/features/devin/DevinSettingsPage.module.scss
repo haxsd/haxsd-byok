@@ -6,6 +6,7 @@
 .settingRow, .bindingFooter { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; }
 .settingRow > div { display: grid; gap: 5px; }
 .settingRow small, .note { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.defaultModelControl { width: min(440px, 46%); min-width: 260px; }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; }
 .bindings { display: grid; gap: 12px; }
 /* These borders used --vscode-panel-border, which the theme never defines, so every
@@ -18,10 +19,15 @@
 /* A mapping row: the two values that actually decide it, then the disclosure. */
 .bindingRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
   padding: 16px;
+}
+.mappingArrow {
+  padding-bottom: 10px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-base;
 }
 .bindingRowActions { display: flex; align-items: center; gap: 10px; padding-bottom: 5px; }
 .bindingPaused {
@@ -48,7 +54,7 @@
 }
 
 .bindingExtra { border-top: 1px dashed var(--oa-border); }
-.bindingFields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px 16px 0; }
+.bindingFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px 16px 0; }
 .bindingFooter { padding: 12px 16px 16px; }
 .routes { display: grid; gap: 10px; padding: 0 16px 4px; }.routesHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .routesHeader > span { font-size: type.$font-size-xs; font-weight: type.$font-weight-semibold; }
@@ -67,6 +73,20 @@
    说明紧一档。 */
 .hostNotes { display: grid; gap: 6px; padding: 16px; }
 .hostNotes p { margin: 0; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; overflow-wrap: anywhere; }
+.technical summary {
+  width: fit-content;
+  color: var(--vscode-textLink-foreground);
+  font-size: type.$font-size-xs;
+  cursor: pointer;
+}
+.technicalBody {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--vscode-descriptionForeground) 7%, transparent);
+  border-radius: var(--oa-radius-xs);
+}
 
 /* Sticky, so a pending change is reachable from anywhere on the page. The save
    button used to live inside the collapsed section, where a change made in the open
@@ -86,5 +106,9 @@
   box-shadow: var(--oa-shadow-raised);
 }
 .saveBar > span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-@media (max-width: 900px) { .bindingRow { grid-template-columns: 1fr; } .bindingFields { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .bindingRow { grid-template-columns: 1fr; } .mappingArrow { display: none; } .bindingFields { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .fields, .routeFields { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  .settingRow:has(.defaultModelControl) { flex-direction: column; align-items: stretch; }
+  .defaultModelControl { width: 100%; min-width: 0; }
+}

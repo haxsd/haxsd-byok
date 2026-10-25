@@ -424,6 +424,16 @@ export const appStore = {
     }
   },
 
+  /** Refresh Devin readiness without pulling every unrelated dashboard endpoint. */
+  async refreshDevinStatus() {
+    try {
+      update({ devinStatus: await api.devinStatus(), offline: false });
+    } catch (cause) {
+      if (cause instanceof ServiceUnreachableError) update({ offline: true });
+      else update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+
   /**
    * 只重读 Cursor 接管状态。
    *

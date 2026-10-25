@@ -365,6 +365,18 @@ impl Store {
         Ok(usize::try_from(count).unwrap_or(usize::MAX))
     }
 
+    /// The newest Devin call's status and time. Verification must not count a
+    /// historical success, and it must not count a failed request as proof that
+    /// the current configuration works.
+    pub async fn latest_devin_call(&self) -> Result<Option<(String, i64)>> {
+        Ok(sqlx::query_as::<_, (String, i64)>(
+            "SELECT status, created_at_ms FROM llm_calls WHERE client_source = 'devin' \
+             ORDER BY created_at_ms DESC, rowid DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     pub async fn llm_call(&self, call_id: &str) -> Result<Option<LlmCallSummary>> {
         sqlx::query(&format!(
             "SELECT {CALL_COLUMNS} FROM llm_calls WHERE call_id = ?"
