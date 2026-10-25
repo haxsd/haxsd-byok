@@ -4,8 +4,9 @@
 //! requires an explicit path. Detection lives here so the UI works out of the box,
 //! while an explicit path always wins.
 
+#[cfg(windows)]
+use std::collections::VecDeque;
 use std::{
-    collections::VecDeque,
     path::{Path, PathBuf},
     sync::OnceLock,
     time::{Duration, Instant},
@@ -88,12 +89,15 @@ const SETTINGS_ENV: &str = "HAXSD_BYOK_DEVIN_SETTINGS";
 /// while the executable name is fixed, so the scan looks for the executable
 /// instead of guessing directory names. Depth and a directory budget keep it
 /// cheap, and the shallowest directories are visited first.
+#[cfg(windows)]
 const SCAN_MAX_DEPTH: usize = 4;
+#[cfg(windows)]
 const SCAN_DIRECTORY_BUDGET: usize = 3_000;
 
 /// Never hold a client install, so descending only spends the budget. Per-user
 /// installs live under `users`/`programdata`, but the environment-derived
 /// candidates already cover those without a scan.
+#[cfg(windows)]
 const SCAN_SKIP: [&str; 10] = [
     "windows",
     "$recycle.bin",
@@ -369,6 +373,7 @@ fn scanned_installs() -> Vec<PathBuf> {
 }
 
 /// Split out so a test can scan a temporary tree instead of real drives.
+#[cfg(windows)]
 fn scan_for_installs(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut installs: Vec<PathBuf> = Vec::new();
     let mut pending: VecDeque<(PathBuf, usize)> =
@@ -645,6 +650,7 @@ mod tests {
     /// 真实布局里有这种安装：客户端被放进用户自建的容器目录，名字与产品无关
     /// （`F:\app\windsurf-app\Windsurf`），固定候选永远猜不到，只有按可执行文件
     /// 名扫描才发现得了。
+    #[cfg(windows)]
     #[test]
     fn the_scan_finds_an_install_inside_a_user_named_container() {
         let directory = tempfile::tempdir().unwrap();
@@ -668,6 +674,7 @@ mod tests {
 
     /// 预算只买来这么多目录：跳过系统目录、并且不越过深度上限，扫描才敢在真实
     /// 盘符上跑。
+    #[cfg(windows)]
     #[test]
     fn the_scan_stays_inside_its_depth_and_skip_rules() {
         let directory = tempfile::tempdir().unwrap();
