@@ -174,7 +174,18 @@ let devinSettings: DevinSettings = {
 let devinHostStatus: DevinHostPatchStatus | null = null;
 let devinHostReceipt: DevinHostPatchReceipt | null = null;
 
-let pricingSettings: TokenPricingSettings = { models: {} };
+const demoTokenPrice = {
+  input_per_million: 3,
+  output_per_million: 15,
+  cache_read_per_million: 0.3,
+  cache_write_per_million: 3.75,
+};
+const demoCurrency = { fixed: demoTokenPrice, peak: demoTokenPrice, off_peak: demoTokenPrice };
+let pricingSettings: TokenPricingSettings = {
+  models: Object.fromEntries(
+    models.map((model) => [model.model_hash, { mode: "fixed", cny: demoCurrency, usd: demoCurrency }]),
+  ),
+};
 let detailed = true;
 let portSettings = { proxy_port: 0, service_port: 0 };
 let desktopSettings: DesktopSettings = { silent_start: false, show_dock_icon: true, developer_mode: false };
