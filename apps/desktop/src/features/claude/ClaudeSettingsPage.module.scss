@@ -431,3 +431,11 @@
   .modelRow { flex-wrap: wrap; }
   .modelActions { margin-left: auto; }
 }
+
+.boundaries {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 16px 16px 34px;
+  color: var(--vscode-descriptionForeground);
+}

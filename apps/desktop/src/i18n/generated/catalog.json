@@ -586,7 +586,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 364,
+          "line": 376,
           "column": 81
         }
       ]
@@ -733,6 +733,18 @@
         {
           "file": "features/devin/devinConnectionView.ts",
           "line": 157,
+          "column": 14
+        }
+      ]
+    },
+    "08de37064de474c5": {
+      "source": "CLI 与 JetBrains/Zed/Neovim 集成是独立进程，不在桌面代理接管范围内。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 360,
           "column": 14
         }
       ]
@@ -1087,6 +1099,18 @@
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
           "line": 243,
           "column": 90
+        }
+      ]
+    },
+    "0c84588898fa5cc7": {
+      "source": "ChatGPT Work、Codex Cloud、Remote Control 和云端浏览器由 ChatGPT 后端处理，不经过本机模型网关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 120,
+          "column": 14
         }
       ]
     },
@@ -2764,6 +2788,18 @@
         }
       ]
     },
+    "24e588688dc5563c": {
+      "source": "WebSearch/WebFetch 的能力取决于模型供应商；切到本机模型后可能不可用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 242,
+          "column": 14
+        }
+      ]
+    },
     "24f44fdb33c2820f": {
       "source": "推理端口",
       "kind": "text",
@@ -3226,7 +3262,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 379,
+          "line": 391,
           "column": 20
         },
         {
@@ -3577,7 +3613,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 130,
           "column": 80
         }
       ]
@@ -3891,7 +3927,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 121,
+          "line": 122,
           "column": 14
         }
       ]
@@ -4657,7 +4693,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 129,
           "column": 70
         }
       ]
@@ -4858,7 +4894,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "line": 402,
           "column": 80
         },
         {
@@ -5529,7 +5565,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 139,
+          "line": 140,
           "column": 11
         }
       ]
@@ -6220,18 +6256,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 72,
           "column": 174
-        }
-      ]
-    },
-    "4ec4b2974dd12d98": {
-      "source": "4 条限制",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 112,
-          "column": 20
         }
       ]
     },
@@ -7218,6 +7242,18 @@
         }
       ]
     },
+    "5f3d0c62e6893630": {
+      "source": "5 条限制",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 112,
+          "column": 20
+        }
+      ]
+    },
     "5f6a03b217245ff8": {
       "source": "图例",
       "kind": "text",
@@ -8103,7 +8139,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 133,
+          "line": 134,
           "column": 14
         }
       ]
@@ -8608,6 +8644,18 @@
         }
       ]
     },
+    "717dfdea5838a12e": {
+      "source": "Tab 补全走 Cursor 的独立补全通道，不是模型库；是否使用官方额度取决于 Cursor 的功能设置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 359,
+          "column": 14
+        }
+      ]
+    },
     "71897af761ed38c0": {
       "source": "已启用，端口未监听",
       "kind": "text",
@@ -8677,6 +8725,18 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 194,
           "column": 31
+        }
+      ]
+    },
+    "72db88d45910ee3a": {
+      "source": "Claude Desktop handoff、登录和订阅仍由 Anthropic 与 Desktop 管理；Desktop 接管是独立状态。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 243,
+          "column": 14
         }
       ]
     },
@@ -9288,6 +9348,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 368,
           "column": 22
+        }
+      ]
+    },
+    "80019f82eddbff8f": {
+      "source": "Cloud session、Teleport、Ultrareview 和云端定时任务在 Anthropic 云端运行，不使用本机模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 240,
+          "column": 14
         }
       ]
     },
@@ -10007,6 +10079,18 @@
         }
       ]
     },
+    "8af43399e2aa15b3": {
+      "source": "Cloud 会话与官方账号能力不由本机网关接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 237,
+          "column": 20
+        }
+      ]
+    },
     "8b27c041b6486e27": {
       "source": "左侧是 Devin 里的模型，右侧是实际使用的模型。",
       "kind": "text",
@@ -10408,7 +10492,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 120,
+          "line": 121,
           "column": 14
         }
       ]
@@ -11251,6 +11335,18 @@
         }
       ]
     },
+    "9cd11c7f7ffd9791": {
+      "source": "Cloud Agents、Projects、Bugbot 和 Automations 在 Cursor 云端运行，模型请求看不到本机网关。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 358,
+          "column": 14
+        }
+      ]
+    },
     "9d47d5a6d66cbe2c": {
       "source": "模型库",
       "kind": "text",
@@ -11446,6 +11542,18 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 62,
           "column": 16
+        }
+      ]
+    },
+    "9eca990268462c43": {
+      "source": "这些能力由 Cursor 云端或独立通道处理，不经过本机模型库。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 355,
+          "column": 20
         }
       ]
     },
@@ -11691,12 +11799,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 242,
+          "line": 253,
           "column": 47
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 127,
+          "line": 128,
           "column": 90
         },
         {
@@ -12254,6 +12362,18 @@
         }
       ]
     },
+    "a9127b4523b6c892": {
+      "source": "Remote Control 的配对和中继依赖 Cursor 账号；实际模型路径需要按运行时确认。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 361,
+          "column": 14
+        }
+      ]
+    },
     "a9178020289837a1": {
       "source": "插件模型",
       "kind": "text",
@@ -12795,7 +12915,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 380,
+          "line": 392,
           "column": 41
         }
       ]
@@ -13094,8 +13214,20 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 248,
+          "line": 259,
           "column": 15
+        }
+      ]
+    },
+    "b39e9530b8079e00": {
+      "source": "Remote Control 的配对和中继依赖 Anthropic 账号；本机会话的模型请求仍可由本机网关回答。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 241,
+          "column": 14
         }
       ]
     },
@@ -13241,8 +13373,18 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 236,
+          "column": 14
+        },
+        {
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 111,
+          "column": 14
+        },
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 354,
           "column": 14
         }
       ]
@@ -13290,7 +13432,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 363,
+          "line": 375,
           "column": 20
         }
       ]
@@ -13464,7 +13606,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "line": 402,
           "column": 103
         }
       ]
@@ -14353,7 +14495,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 145,
+          "line": 146,
           "column": 15
         }
       ]
@@ -14984,7 +15126,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 372,
+          "line": 384,
           "column": 15
         }
       ]
@@ -15608,7 +15750,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 378,
+          "line": 390,
           "column": 14
         }
       ]
@@ -15962,7 +16104,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 391,
+          "line": 403,
           "column": 47
         }
       ]
@@ -17287,7 +17429,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 134,
+          "line": 135,
           "column": 21
         }
       ]
@@ -17456,7 +17598,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "line": 402,
           "column": 53
         }
       ]
@@ -17609,7 +17751,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 380,
+          "line": 392,
           "column": 54
         }
       ]
@@ -17697,7 +17839,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 392,
+          "line": 404,
           "column": 11
         }
       ]
@@ -17745,7 +17887,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 364,
+          "line": 376,
           "column": 45
         },
         {
@@ -18027,7 +18169,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 393,
+          "line": 405,
           "column": 11
         }
       ]
@@ -18725,7 +18867,7 @@
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 242,
+          "line": 253,
           "column": 35
         },
         {

@@ -349,6 +349,18 @@ export function CursorSettingsPage() {
           : <small>{t("模型库还是空的。Cursor 需要一个模型才能回答请求。")}</small>}
       </div>
     </TitledCard>
+
+    <TitledCard
+      title={t("使用边界")}
+      description={t("这些能力由 Cursor 云端或独立通道处理，不经过本机模型库。")}
+    >
+      <ul className={styles.modeList}>
+        <li>{t("Cloud Agents、Projects、Bugbot 和 Automations 在 Cursor 云端运行，模型请求看不到本机网关。")}</li>
+        <li>{t("Tab 补全走 Cursor 的独立补全通道，不是模型库；是否使用官方额度取决于 Cursor 的功能设置。")}</li>
+        <li>{t("CLI 与 JetBrains/Zed/Neovim 集成是独立进程，不在桌面代理接管范围内。")}</li>
+        <li>{t("Remote Control 的配对和中继依赖 Cursor 账号；实际模型路径需要按运行时确认。")}</li>
+      </ul>
+    </TitledCard>
   </>;
 
   const content = <div className={styles.page}>
@@ -371,7 +383,7 @@ export function CursorSettingsPage() {
         status={<StatusPill tone={!takesOver ? "idle" : connected ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>}
         meta={t("选择模型来源，让 Cursor 用你自己的模型")}
       />}
-      sections={[{ key: "cursor-settings", estimatedHeight: section === "tools" ? 420 : 720, content }]}
+      sections={[{ key: "cursor-settings", estimatedHeight: section === "tools" ? 420 : 920, content }]}
     />
     <ConfirmDialog
       open={pendingMode !== null}
