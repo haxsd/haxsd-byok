@@ -4,7 +4,14 @@
 //! disabled by default and only reads the persisted Devin binding table when
 //! it is explicitly enabled.
 
-use std::{collections::HashSet, future::IntoFuture, net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashSet,
+    future::IntoFuture,
+    net::SocketAddr,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use axum::{
     body::{to_bytes, Body},
@@ -15,10 +22,10 @@ use axum::{
     Router,
 };
 use bytes::Bytes;
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tokio_util::sync::CancellationToken;
+use tokio_util::sync::{CancellationToken, DropGuard};
 
 use crate::{
     network::{NetworkClients, OutboundClient},
@@ -470,7 +477,7 @@ async fn handle_request(
     };
     let model_uid = binding.model_uid.clone();
     let cancellation = CancellationToken::new();
-    let mut provider_stream = state.provider.stream(invocation, cancellation);
+    let mut provider_stream = state.provider.stream(invocation, cancellation.clone());
     let mut response_state = ResponseState::new("devin-response", provider_type);
     response_state.set_fallback_input_tokens(fallback_input_tokens);
     let stream = async_stream::stream! {
@@ -509,7 +516,7 @@ async fn handle_request(
         }
         yield Ok::<Bytes, std::io::Error>(stream_error("provider stream ended without Done"));
     };
-    streaming_response(stream)
+    streaming_response(stream, cancellation)
 }
 
 /// The Cursor BYOK model record that serves a Devin binding: the enabled active
@@ -702,16 +709,41 @@ fn connect_error_response(
         .expect("Devin protocol error response")
 }
 
-fn streaming_response<S>(stream: S) -> Response<Body>
+fn streaming_response<S>(stream: S, cancellation: CancellationToken) -> Response<Body>
 where
-    S: futures_util::Stream<Item = std::result::Result<Bytes, std::io::Error>> + Send + 'static,
+    S: Stream<Item = std::result::Result<Bytes, std::io::Error>> + Send + 'static,
 {
+    let stream = CancellationOnDrop {
+        stream: Box::pin(stream),
+        guard: Some(cancellation.drop_guard()),
+    };
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/connect+proto")
         .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from_stream(stream))
         .expect("Devin streaming response")
+}
+
+/// 响应体被客户端提前丢弃时取消已经启动的上游流；读到流结尾则解除守卫。
+struct CancellationOnDrop<S> {
+    stream: Pin<Box<S>>,
+    guard: Option<DropGuard>,
+}
+
+impl<S: Stream> Stream for CancellationOnDrop<S> {
+    type Item = S::Item;
+
+    fn poll_next(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.as_mut().get_mut();
+        let polled = this.stream.as_mut().poll_next(context);
+        if matches!(polled, Poll::Ready(None)) {
+            if let Some(guard) = this.guard.take() {
+                guard.disarm();
+            }
+        }
+        polled
+    }
 }
 
 fn stream_error(error: impl std::fmt::Display) -> Bytes {
@@ -780,6 +812,144 @@ mod tests {
         ) -> crate::provider::ProviderStream {
             Box::pin(futures_util::stream::empty())
         }
+    }
+
+    struct StreamingProvider {
+        cancellation: Arc<parking_lot::Mutex<Option<CancellationToken>>>,
+        completes: bool,
+    }
+
+    impl Provider for StreamingProvider {
+        fn stream(
+            &self,
+            _invocation: crate::model::ModelInvocation,
+            cancellation: CancellationToken,
+        ) -> crate::provider::ProviderStream {
+            *self.cancellation.lock() = Some(cancellation);
+            if self.completes {
+                Box::pin(futures_util::stream::iter([Ok(ModelEvent::Done(
+                    crate::provider::FinishReason::Stop,
+                ))]))
+            } else {
+                Box::pin(futures_util::stream::pending())
+            }
+        }
+    }
+
+    async fn streaming_chat_gateway(
+        completes: bool,
+    ) -> (
+        tempfile::TempDir,
+        Router,
+        Arc<parking_lot::Mutex<Option<CancellationToken>>>,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let model = store
+            .create_model(&crate::model::ModelConfigInput {
+                sort_order: 0,
+                display_name: "Devin stream test model".into(),
+                group_name: None,
+                model_type: crate::model::ModelType::OpenAi,
+                base_url: "http://127.0.0.1:1".into(),
+                use_full_url: true,
+                api_key: "test-key".into(),
+                tooltip_data: "Devin stream test".into(),
+                model_id: "test-model".into(),
+                reasoning_effort: None,
+                openai_endpoint: crate::model::OPENAI_CHAT_ENDPOINT.into(),
+                openai_extra_params_enabled: false,
+                openai_extra_params: serde_json::json!({}),
+                custom_headers_enabled: false,
+                custom_headers: serde_json::json!({}),
+                anthropic_extra_params_enabled: false,
+                anthropic_extra_params: serde_json::json!({}),
+                context_window_tokens: Some(32_768),
+                max_completion_tokens: Some(4_096),
+                anthropic_max_tokens: None,
+                anthropic_thinking_effort: None,
+                thinking_budget_tokens: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: "http://127.0.0.1:1".into(),
+                bindings: vec![DevinModelBinding::new("devin-sonnet", model.model_hash)],
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let cancellation = Arc::new(parking_lot::Mutex::new(None));
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(StreamingProvider {
+                cancellation: cancellation.clone(),
+                completes,
+            }),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+        (directory, DevinGateway::router(&state), cancellation)
+    }
+
+    fn streaming_chat_request() -> Request<Body> {
+        let payload = wire::serialize_fields(&[wire::Field::bytes(21, b"devin-sonnet")]).unwrap();
+        Request::builder()
+            .method(Method::POST)
+            .uri("/exa.api_server_pb.ApiServerService/GetChatMessage")
+            .body(Body::from(payload))
+            .unwrap()
+    }
+
+    /// 客户端关闭 Devin 页面或取消生成时，HTTP 响应体会被丢弃；此时已经启动的上游
+    /// 请求必须同步收到取消信号，不能继续消耗供应商额度。
+    #[tokio::test]
+    async fn dropping_a_devin_response_cancels_the_upstream_request() {
+        use tower::ServiceExt;
+
+        let (_directory, router, cancellation) = streaming_chat_gateway(false).await;
+        let response = router.oneshot(streaming_chat_request()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cancellation = cancellation
+            .lock()
+            .clone()
+            .expect("provider must receive a cancellation token");
+        assert!(!cancellation.is_cancelled());
+
+        drop(response);
+
+        assert!(
+            cancellation.is_cancelled(),
+            "客户端丢弃响应体后必须取消上游请求"
+        );
+    }
+
+    /// 正常读完响应体时要解除 DropGuard，不能把已经成功结束的上游调用标记成取消。
+    #[tokio::test]
+    async fn a_completed_devin_stream_disarms_the_cancellation_guard() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let (_directory, router, cancellation) = streaming_chat_gateway(true).await;
+        let response = router.oneshot(streaming_chat_request()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let cancellation = cancellation
+            .lock()
+            .clone()
+            .expect("provider must receive a cancellation token");
+
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        assert!(!body.is_empty());
+        assert!(!cancellation.is_cancelled(), "正常结束时不能误发取消信号");
     }
 
     /// Sign-in and account calls must reach the client's own service, otherwise a

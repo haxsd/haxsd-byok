@@ -569,7 +569,11 @@ fn required_string<'a>(value: &'a Value, name: &str) -> Result<&'a str> {
 fn required_u64(value: &Value, name: &str) -> Result<u64> {
     value
         .get(name)
-        .and_then(Value::as_u64)
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
+        })
         .ok_or_else(|| Error::Provider(format!("Anthropic event is missing {name}")))
 }
 
@@ -810,6 +814,60 @@ mod tests {
 
         assert_eq!(testing::text_of(&events), "半句");
         assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+    }
+
+    /// 有些 Anthropic 兼容网关把块索引编码成十进制字符串。工具块的开始、参数增量
+    /// 与结束都必须接受这种形状，否则工具调用参数会静默缺失。
+    #[tokio::test]
+    async fn string_block_indices_keep_anthropic_tool_arguments_intact() {
+        let url = testing::sse_upstream(
+            "/v1/messages",
+            vec![
+                json!({"type":"message_start","message":{"usage":{"input_tokens":3}}}),
+                json!({"type":"content_block_start","index":"0","content_block":{"type":"tool_use","id":"call-1","name":"read_file","input":{}}}),
+                json!({"type":"content_block_delta","index":"0","delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}),
+                json!({"type":"content_block_delta","index":"0","delta":{"type":"input_json_delta","partial_json":"\"README.md\"}"}}),
+                json!({"type":"content_block_stop","index":"0"}),
+                json!({"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":2}}),
+                json!({"type":"message_stop"}),
+            ],
+        )
+        .await;
+        let provider = AnthropicProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::Anthropic, url),
+        );
+
+        let events = testing::drain(provider.stream(
+            testing::invocation("claude-sonnet-4"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .unwrap_or_else(|error| panic!("字符串块索引必须按工具调用解析: {error}"));
+
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                ModelEvent::ToolCallStart { index: 0, call_id, name }
+                    if call_id.as_str() == "call-1" && name.as_str() == "read_file"
+            )),
+            "工具调用开始事件缺失: {events:?}"
+        );
+        let arguments = events
+            .iter()
+            .filter_map(|event| match event {
+                ModelEvent::ToolCallArgumentsDelta { index: 0, delta } => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+        assert_eq!(arguments, r#"{"path":"README.md"}"#);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, ModelEvent::ToolCallEnd { index: 0 })),
+            "工具调用结束事件缺失: {events:?}"
+        );
+        assert_eq!(testing::finish_of(&events), Some(FinishReason::ToolUse));
     }
 
     /// 上游按停止序列收尾时，命中的那段文本要单独交付：入站网关只有拿到它才能回

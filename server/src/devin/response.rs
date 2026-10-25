@@ -132,7 +132,7 @@ pub fn stream_event(state: &mut ResponseState, event: ModelEvent) -> Result<Vec<
 pub fn finish(state: ResponseState, model_uid: &str) -> Result<Vec<Vec<u8>>> {
     let mut frames = Vec::new();
     let tools = state.tool_calls.values().collect::<Vec<_>>();
-    if !tools.is_empty() {
+    if state.finish_reason == FinishReason::ToolUse && !tools.is_empty() {
         frames.push(wire::frame(&tool_delta(&state.message_id, &tools)?, false)?);
     }
     if let Some(signature) = replay_signature(state.replay_state.as_ref()) {
@@ -389,6 +389,42 @@ mod tests {
         );
         assert!(first_field(&stop_fields, 7).is_some());
         assert_eq!(frames[2][0], 2);
+    }
+
+    /// 上游因长度上限截断时，已经到达的参数只是半截 JSON。它不能作为完整工具调用
+    /// 发给客户端，只能用截断停止帧收尾。
+    #[test]
+    fn truncated_tool_calls_are_not_emitted_as_complete_tools() {
+        let mut state = ResponseState::new("response-truncated", ProviderType::Anthropic);
+        for event in [
+            ModelEvent::ToolCallStart {
+                index: 0,
+                call_id: "call-incomplete".into(),
+                name: "write_file".into(),
+            },
+            ModelEvent::ToolCallArgumentsDelta {
+                index: 0,
+                delta: "{\"path\":\"README.md\",\"content\":\"half".into(),
+            },
+            ModelEvent::ToolCallEnd { index: 0 },
+            ModelEvent::Done(FinishReason::Length),
+        ] {
+            stream_event(&mut state, event).unwrap();
+        }
+
+        let frames = finish(state, "MODEL_CLAUDE_4_SONNET_BYOK").unwrap();
+        assert_eq!(frames.len(), 2, "只应发送停止帧与传输结束帧");
+        let stop_fields =
+            parse_fields(&unwrap_request(&frames[0], None, None).unwrap().payload).unwrap();
+        assert!(
+            first_field(&stop_fields, 6).is_none(),
+            "截断的工具调用不能出现在停止帧中"
+        );
+        assert_eq!(
+            first_field(&stop_fields, 5).unwrap().value,
+            FieldValue::Varint(3)
+        );
+        assert_eq!(frames[1][0], 2);
     }
 
     #[test]
