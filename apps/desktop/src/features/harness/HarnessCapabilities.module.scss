@@ -1,25 +1,32 @@
+@use "../../styles/typography" as type;
+
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
-  padding: 4px 16px 16px;
+  padding: 4px var(--oa-card-padding) var(--oa-card-padding);
 }
 
-section {
+.group {
   min-width: 0;
 }
 
-section > strong {
+.groupTitle {
   display: block;
   margin-bottom: 6px;
+  font-size: type.$font-size-base;
+  font-weight: type.$font-weight-semibold;
+  line-height: type.$line-height-snug;
 }
 
-section > ul {
+.items {
   display: grid;
   gap: 4px;
   margin: 0;
   padding-left: 18px;
   color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  line-height: type.$line-height-normal;
 }
 
 @media (max-width: 700px) {

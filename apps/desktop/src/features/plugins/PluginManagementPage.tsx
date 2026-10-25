@@ -196,7 +196,7 @@ function RuntimeGate({ status, starting, onInitialize }: { status: PluginRuntime
       ? status.error ?? t("请重试初始化；下载失败通常是网络问题。")
       : unsupported
         ? status.error ?? t("当前操作系统或 CPU 架构暂不受支持")
-        : t("初始化会下载并安装插件运行时；完成之后，装在这里的插件才能被 Cursor 与 Devin 使用。")}
+        : t("初始化会下载并安装插件运行时；完成之后，才能添加插件账号并把它们的模型接入共享模型库。")}
     steps={!failed && !unsupported && !initializing ? [
       { title: t("下载运行时"), detail: t("来自插件的发布源，只下一次。") },
       { title: t("安装并校验"), detail: t("应用会校验下载文件的完整性。") },

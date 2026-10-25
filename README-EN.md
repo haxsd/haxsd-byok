@@ -34,6 +34,17 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 | Call insights | Success, latency and token usage, with an estimate based on reference prices |
 | Desktop app | Chinese, English and Russian, multiple themes, tray, in-app tutorial and signed updates |
 
+### Capability boundaries
+
+| Client | Available through local takeover | Still requires the official account or cloud |
+| --- | --- | --- |
+| Cursor | Agent / Chat / Plan, local subagents and tools, Rules / Skills / MCP, Checkpoint | Cloud Agents, Projects, Bugbot, Automations, Tab completion, CLI / IDE integrations, Remote Control |
+| Codex | Local Agent / TUI / exec, Plan, tools, approvals, sandbox, multiple sessions, MCP / Skills / Plugins / Hooks, image input | ChatGPT Work, Codex Cloud, Remote Control, hosted web search / image generation / voice |
+| Devin | Cascade, Devin Local, local tools, Rules / Memories / MCP, model mappings, Checkpoint | Account plans and quota, Tab / Command / embedding, Devin Cloud, remote indexing, Slack / Linear / Jira / Teams / GitHub integrations |
+| Claude | Claude Code CLI, local subagents and background sessions, MCP / Skills / Hooks, Checkpoint / Rewind / auto-compaction, local IDE integration | Cloud session, Teleport, Ultrareview, cloud schedules, Remote Control, provider-side WebSearch / WebFetch, CLI-to-Desktop handoff |
+
+Takeover changes only model requests that can be controlled locally. Sign-in, plans, quota and vendor cloud features still belong to each client and are not bypassed.
+
 ## Support matrix
 
 | Client | How it is taken over | Notes |

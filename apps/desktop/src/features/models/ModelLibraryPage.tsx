@@ -361,7 +361,7 @@ export function ModelLibraryPage() {
         ? <EmptyState
           icon={providerIcon}
           title={t("模型库还是空的")}
-          description={t("添加一个模型后，Cursor、Devin 和 Codex 都能用它；也可以从本机旧版配置里导入。")}
+          description={t("添加一个模型后，Cursor、Devin、Codex 和 Claude 都能用它；也可以从本机旧版配置里导入。")}
           steps={[
             { title: t("填服务器地址与 API Key"), detail: t("任何 OpenAI 兼容或 Anthropic 兼容的接口都可以。") },
             { title: t("点「发现模型」拉取模型 ID"), detail: t("也可以手动填写模型 ID。") },

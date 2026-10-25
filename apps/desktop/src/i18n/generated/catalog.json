@@ -74,20 +74,8 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
+          "line": 128,
           "column": 6
-        }
-      ]
-    },
-    "0117f84b92c36a54": {
-      "source": "图片输入与本地模型路由",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 33,
-          "column": 7
         }
       ]
     },
@@ -267,7 +255,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 191,
+          "line": 198,
           "column": 36
         }
       ]
@@ -320,6 +308,18 @@
         }
       ]
     },
+    "04e9f610e42c0096": {
+      "source": "把客户端的模型请求指向本机网关。Cursor 改写代理配置，Codex 改写 config.toml 里的模型路由，Devin 写入服务地址与扩展读取开关，Claude 写入 CLI 的环境变量或 Desktop 的 profile。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 126,
+          "column": 15
+        }
+      ]
+    },
     "04eb6b2c801ca569": {
       "source": "本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。",
       "kind": "text",
@@ -327,7 +327,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 120,
+          "line": 127,
           "column": 18
         }
       ]
@@ -524,7 +524,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 166,
+          "line": 220,
           "column": 13
         }
       ]
@@ -550,7 +550,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 162,
+          "line": 216,
           "column": 13
         }
       ]
@@ -840,6 +840,18 @@
         }
       ]
     },
+    "0a1a815fd66ba627": {
+      "source": "Claude Desktop 的 CLI 交接与云账号能力",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 65,
+          "column": 7
+        }
+      ]
+    },
     "0a379c1e7398fba1": {
       "source": "全部状态",
       "kind": "text",
@@ -1000,7 +1012,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 215,
           "column": 24
         }
       ]
@@ -1334,6 +1346,18 @@
         }
       ]
     },
+    "1035a973f460033e": {
+      "source": "去 Claude 页",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 208,
+          "column": 13
+        }
+      ]
+    },
     "105a9082c346f958": {
       "source": "测试中…",
       "kind": "text",
@@ -1551,7 +1575,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 122,
+          "line": 129,
           "column": 6
         }
       ]
@@ -1672,18 +1696,6 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 128,
           "column": 48
-        }
-      ]
-    },
-    "16306d07f5a041f0": {
-      "source": "Rules、Memories、MCP、终端与文件编辑",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 44,
-          "column": 7
         }
       ]
     },
@@ -1833,18 +1845,6 @@
         }
       ]
     },
-    "186759b73810959f": {
-      "source": "退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 105,
-          "column": 15
-        }
-      ]
-    },
     "188e67ac3fed1a7c": {
       "source": "让 Codex 用上它",
       "kind": "text",
@@ -1852,7 +1852,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 149,
+          "line": 162,
           "column": 12
         }
       ]
@@ -1892,18 +1892,6 @@
           "file": "features/settings/UpdateCard.tsx",
           "line": 144,
           "column": 31
-        }
-      ]
-    },
-    "196599bfe88e95c4": {
-      "source": "初始化会下载并安装插件运行时；完成之后，装在这里的插件才能被 Cursor 与 Devin 使用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 199,
-          "column": 11
         }
       ]
     },
@@ -2103,18 +2091,6 @@
         }
       ]
     },
-    "1bc96a1f6f7428b2": {
-      "source": "Devin Cloud 会话与远程 indexing",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 51,
-          "column": 7
-        }
-      ]
-    },
     "1bddd15d3e1f50b7": {
       "source": "Cursor 的代理配置现在由另一个同类软件管着；切换模式会强制结束 Cursor 并覆盖对方那份配置。",
       "kind": "text",
@@ -2172,13 +2148,18 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 112,
+          "line": 125,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 141,
+          "line": 154,
           "column": 7
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 191,
+          "column": 13
         }
       ]
     },
@@ -2253,6 +2234,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 486,
           "column": 14
+        }
+      ]
+    },
+    "1d21f71badfd854b": {
+      "source": "本地 MCP、Skills、Plugins、Hooks 与代码审查",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 32,
+          "column": 7
         }
       ]
     },
@@ -2408,8 +2401,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 192,
+          "line": 199,
           "column": 34
+        }
+      ]
+    },
+    "1f4c3600598aa114": {
+      "source": "图片输入与模型库路由",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 33,
+          "column": 7
         }
       ]
     },
@@ -2631,6 +2636,18 @@
         {
           "file": "features/harness/HarnessCapabilities.tsx",
           "line": 36,
+          "column": 7
+        }
+      ]
+    },
+    "22994a48d998831e": {
+      "source": "本机 IDE 集成与模型库路由",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 59,
           "column": 7
         }
       ]
@@ -2883,18 +2900,6 @@
           "file": "features/home/HomePage.tsx",
           "line": 301,
           "column": 20
-        }
-      ]
-    },
-    "2646a7b47bbe7dd7": {
-      "source": "把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是写入设置文件里的服务地址与扩展读取开关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 119,
-          "column": 15
         }
       ]
     },
@@ -3197,7 +3202,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 127,
+          "line": 140,
           "column": 13
         }
       ]
@@ -3470,7 +3475,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 195,
+          "line": 202,
           "column": 20
         }
       ]
@@ -3673,7 +3678,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 221,
+          "line": 228,
           "column": 18
         }
       ]
@@ -3709,7 +3714,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 154,
+          "line": 167,
           "column": 13
         }
       ]
@@ -3753,7 +3758,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 164,
+          "line": 218,
           "column": 75
         }
       ]
@@ -3816,12 +3821,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 134,
+          "line": 141,
           "column": 65
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 152,
+          "line": 159,
           "column": 80
         }
       ]
@@ -3854,6 +3859,18 @@
           "file": "features/claude/ClaudeSettingsPage.tsx",
           "line": 156,
           "column": 11
+        }
+      ]
+    },
+    "32a849f806080c32": {
+      "source": "WebSearch / WebFetch（取决于供应商）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 64,
+          "column": 7
         }
       ]
     },
@@ -4108,8 +4125,13 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 120,
+          "line": 133,
           "column": 13
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 185,
+          "column": 7
         }
       ]
     },
@@ -4178,6 +4200,18 @@
         }
       ]
     },
+    "35fc5e9a217cc51e": {
+      "source": "网关在运行，还差应用接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 200,
+          "column": 21
+        }
+      ]
+    },
     "360869b612e2670b": {
       "source": "将写入的 settings.json",
       "kind": "text",
@@ -4214,7 +4248,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 108,
+          "line": 115,
           "column": 17
         }
       ]
@@ -4226,7 +4260,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 215,
           "column": 47
         }
       ]
@@ -4408,7 +4442,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 187,
+          "line": 194,
           "column": 16
         }
       ]
@@ -4492,7 +4526,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 225,
+          "line": 232,
           "column": 18
         }
       ]
@@ -4506,6 +4540,18 @@
           "file": "features/calls/CallsPage.tsx",
           "line": 91,
           "column": 22
+        }
+      ]
+    },
+    "39bbaaccf2299907": {
+      "source": "Cloud Agents、Projects、Bugbot 与 Automations",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 23,
+          "column": 7
         }
       ]
     },
@@ -4610,18 +4656,6 @@
           "file": "shared/ui/ModelSelect.tsx",
           "line": 233,
           "column": 102
-        }
-      ]
-    },
-    "3a76df1c56c2afca": {
-      "source": "MCP、Skills、Plugins、Hooks 和本地审查",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 32,
-          "column": 7
         }
       ]
     },
@@ -4791,7 +4825,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 161,
+          "line": 215,
           "column": 12
         }
       ]
@@ -4812,6 +4846,18 @@
           "file": "features/home/charts/ContributionCalendarChart.tsx",
           "line": 119,
           "column": 14
+        }
+      ]
+    },
+    "3d0ff47b08afe225": {
+      "source": "清掉筛选条件再试，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallTable.tsx",
+          "line": 36,
+          "column": 20
         }
       ]
     },
@@ -4944,18 +4990,6 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 78,
           "column": 21
-        }
-      ]
-    },
-    "3f94251645b2a1a6": {
-      "source": "模型库里的模型与连接测试",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 20,
-          "column": 7
         }
       ]
     },
@@ -5328,7 +5362,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 97,
+          "line": 104,
           "column": 15
         }
       ]
@@ -5366,18 +5400,6 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 120,
           "column": 101
-        }
-      ]
-    },
-    "44036e70dab92193": {
-      "source": "Claude Desktop handoff 和账号订阅",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 65,
-          "column": 7
         }
       ]
     },
@@ -5475,6 +5497,11 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 239,
           "column": 61
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 187,
+          "column": 9
         }
       ]
     },
@@ -5527,7 +5554,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 206,
           "column": 24
         }
       ]
@@ -5632,7 +5659,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 190,
+          "line": 197,
           "column": 35
         }
       ]
@@ -5697,7 +5724,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 192,
+          "line": 199,
           "column": 53
         }
       ]
@@ -6025,7 +6052,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 92,
+          "line": 99,
           "column": 17
         }
       ]
@@ -6367,18 +6394,6 @@
         }
       ]
     },
-    "4fb04e8fa760a3cc": {
-      "source": "Rules、Skills、MCP、本地工具与 Checkpoint",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 18,
-          "column": 7
-        }
-      ]
-    },
     "5067e57c62fec53f": {
       "source": "还没有模型",
       "kind": "text",
@@ -6552,7 +6567,7 @@
         {
           "file": "features/harness/HarnessCapabilities.tsx",
           "line": 76,
-          "column": 20
+          "column": 50
         }
       ]
     },
@@ -6582,6 +6597,18 @@
         }
       ]
     },
+    "52b6e39a90138c62": {
+      "source": "让 Claude 用上它",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 203,
+          "column": 12
+        }
+      ]
+    },
     "52b8d00ea2e830c4": {
       "source": "已计入金额：{cost}",
       "kind": "template",
@@ -6593,6 +6620,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 158,
           "column": 5
+        }
+      ]
+    },
+    "52ba7c303a144882": {
+      "source": "账号套餐限制的模型、登录与额度",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 49,
+          "column": 7
         }
       ]
     },
@@ -6635,13 +6674,18 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 93,
+          "line": 106,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 145,
+          "line": 158,
           "column": 11
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 195,
+          "column": 17
         },
         {
           "file": "shell/connectionStatus.ts",
@@ -6691,7 +6735,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 217,
+          "line": 224,
           "column": 52
         }
       ]
@@ -6857,7 +6901,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 163,
+          "line": 170,
           "column": 46
         }
       ]
@@ -6905,18 +6949,6 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 131,
           "column": 11
-        }
-      ]
-    },
-    "568d7a4780350a31": {
-      "source": "退出软件后 Cursor、Devin 和 Codex 还能用吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 104,
-          "column": 17
         }
       ]
     },
@@ -7002,7 +7034,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 109,
+          "line": 116,
           "column": 15
         }
       ]
@@ -7048,7 +7080,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 113,
+          "line": 120,
           "column": 15
         }
       ]
@@ -7093,18 +7125,6 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 68,
           "column": 41
-        }
-      ]
-    },
-    "5a9be55ca37013df": {
-      "source": "添加一个模型后，Cursor、Devin 和 Codex 都能用它；也可以从本机旧版配置里导入。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/ModelLibraryPage.tsx",
-          "line": 364,
-          "column": 24
         }
       ]
     },
@@ -7230,7 +7250,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 90,
+          "line": 103,
           "column": 9
         }
       ]
@@ -7434,7 +7454,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 123,
+          "line": 130,
           "column": 17
         }
       ]
@@ -7718,7 +7738,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 115,
+          "line": 128,
           "column": 11
         }
       ]
@@ -7837,7 +7857,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 101,
+          "line": 114,
           "column": 13
         }
       ]
@@ -7926,7 +7946,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 97,
+          "line": 110,
           "column": 13
         }
       ]
@@ -8221,7 +8241,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 233,
+          "line": 240,
           "column": 18
         }
       ]
@@ -8311,7 +8331,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 118,
+          "line": 131,
           "column": 11
         },
         {
@@ -8413,6 +8433,18 @@
         }
       ]
     },
+    "6b320003b7e45683": {
+      "source": "初始化会下载并安装插件运行时；完成之后，才能添加插件账号并把它们的模型接入共享模型库。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 199,
+          "column": 11
+        }
+      ]
+    },
     "6b3bad9dde2afbc0": {
       "source": "筛出 {count} / {total} 条",
       "kind": "template",
@@ -8480,13 +8512,18 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 116,
+          "line": 129,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 143,
+          "line": 156,
           "column": 9
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 193,
+          "column": 15
         }
       ]
     },
@@ -8567,7 +8604,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 126,
+          "line": 139,
           "column": 12
         }
       ]
@@ -8747,20 +8784,8 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 247,
+          "line": 254,
           "column": 13
-        }
-      ]
-    },
-    "717996b19aa7234a": {
-      "source": "本地 IDE 集成与模型库路由",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 59,
-          "column": 7
         }
       ]
     },
@@ -8946,7 +8971,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 237,
+          "line": 244,
           "column": 18
         }
       ]
@@ -9165,7 +9190,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 148,
+          "line": 155,
           "column": 20
         }
       ]
@@ -9230,7 +9255,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 78,
+          "line": 91,
           "column": 13
         }
       ]
@@ -9442,8 +9467,20 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 140,
+          "line": 147,
           "column": 193
+        }
+      ]
+    },
+    "7f88a4e3d80c22e4": {
+      "source": "退出软件后 Cursor、Devin、Codex 和 Claude 还能用吗？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 111,
+          "column": 17
         }
       ]
     },
@@ -9466,7 +9503,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 149,
+          "line": 156,
           "column": 118
         }
       ]
@@ -9483,6 +9520,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 429,
           "column": 13
+        }
+      ]
+    },
+    "8041efca62904b8f": {
+      "source": "换一个时间范围，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/home/HomePage.tsx",
+          "line": 302,
+          "column": 26
         }
       ]
     },
@@ -9611,7 +9660,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 143,
           "column": 52
         }
       ]
@@ -9623,7 +9672,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 184,
+          "line": 191,
           "column": 49
         }
       ]
@@ -9664,7 +9713,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 131,
+          "line": 144,
           "column": 13
         }
       ]
@@ -9688,7 +9737,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 73,
+          "line": 86,
           "column": 12
         }
       ]
@@ -9978,7 +10027,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 101,
+          "line": 108,
           "column": 15
         }
       ]
@@ -10057,18 +10106,6 @@
         }
       ]
     },
-    "883f921d8b3a5ecd": {
-      "source": "三个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。三个客户端各自独立接入，共用同一份模型库与统计数据。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 131,
-          "column": 13
-        }
-      ]
-    },
     "889db3fadee68ab3": {
       "source": "尚未获取",
       "kind": "text",
@@ -10124,7 +10161,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 74,
+          "line": 87,
           "column": 13
         }
       ]
@@ -10259,18 +10296,6 @@
         }
       ]
     },
-    "8c7fe78e8a817d4e": {
-      "source": "Checkpoint、Rewind 和自动压缩",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 58,
-          "column": 7
-        }
-      ]
-    },
     "8cdf1da0d4c7e55e": {
       "source": "启动与窗口",
       "kind": "text",
@@ -10326,6 +10351,18 @@
           "file": "features/home/HomePage.tsx",
           "line": 263,
           "column": 22
+        }
+      ]
+    },
+    "8df7949cd0b74534": {
+      "source": "添加一个模型后，Cursor、Devin、Codex 和 Claude 都能用它；也可以从本机旧版配置里导入。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 364,
+          "column": 24
         }
       ]
     },
@@ -10742,6 +10779,11 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 64,
           "column": 16
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 189,
+          "column": 11
         }
       ]
     },
@@ -10754,6 +10796,11 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 122,
           "column": 16
+        },
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 197,
+          "column": 19
         }
       ]
     },
@@ -10850,6 +10897,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 130,
           "column": 11
+        }
+      ]
+    },
+    "94c5b4a291699ace": {
+      "source": "本地 Rules、Skills、MCP、工具与 Checkpoint",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 18,
+          "column": 7
         }
       ]
     },
@@ -11081,15 +11140,15 @@
         }
       ]
     },
-    "992be0ed1abad5e7": {
-      "source": "清掉筛选条件再试，或先在 Cursor / Devin / Codex 里发起一次对话。",
+    "98f602e7442de7de": {
+      "source": "把 Cursor、Devin、Codex 与 Claude 接到你自己的模型上",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/calls/CallTable.tsx",
-          "line": 36,
-          "column": 20
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 137,
+          "column": 14
         }
       ]
     },
@@ -11269,6 +11328,18 @@
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 100,
           "column": 68
+        }
+      ]
+    },
+    "9b82c7d4a820441b": {
+      "source": "选择默认模型并保存、启用 Claude 网关，再接管 Claude Code CLI 或 Claude Desktop；Desktop 接管前需要完全退出。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 204,
+          "column": 13
         }
       ]
     },
@@ -11691,7 +11762,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 76,
+          "line": 89,
           "column": 75
         }
       ]
@@ -11943,7 +12014,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 184,
+          "line": 191,
           "column": 24
         }
       ]
@@ -12029,7 +12100,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 96,
+          "line": 109,
           "column": 12
         }
       ]
@@ -12321,6 +12392,18 @@
         }
       ]
     },
+    "a7b9e0febf4efe13": {
+      "source": "退出时会撤掉 Cursor 与 Codex 的接管配置；Claude 会尝试还原 CLI，并在 Desktop 未运行时还原 Desktop。Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 112,
+          "column": 15
+        }
+      ]
+    },
     "a8036485f9227f2c": {
       "source": "拖动排序",
       "kind": "text",
@@ -12393,7 +12476,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 100,
+          "line": 107,
           "column": 17
         }
       ]
@@ -12537,7 +12620,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 112,
+          "line": 119,
           "column": 17
         }
       ]
@@ -12633,7 +12716,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 84,
+          "line": 91,
           "column": 17
         }
       ]
@@ -12722,7 +12805,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 85,
+          "line": 92,
           "column": 15
         }
       ]
@@ -12902,6 +12985,18 @@
           "file": "features/devin/devinConnectionView.ts",
           "line": 199,
           "column": 15
+        }
+      ]
+    },
+    "afad8108d2a16a23": {
+      "source": "Checkpoint、Rewind 与自动压缩",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 58,
+          "column": 7
         }
       ]
     },
@@ -13155,6 +13250,18 @@
         }
       ]
     },
+    "b1a2d8b637379f02": {
+      "source": "模型库路由与连接测试",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 20,
+          "column": 7
+        }
+      ]
+    },
     "b1b4227b3fa268f4": {
       "source": "上手进度 {done}/{total}",
       "kind": "template",
@@ -13165,12 +13272,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 139,
+          "line": 146,
           "column": 24
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 246,
+          "line": 253,
           "column": 101
         }
       ]
@@ -13274,7 +13381,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 88,
+          "line": 101,
           "column": 7
         }
       ]
@@ -13377,7 +13484,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 92,
+          "line": 105,
           "column": 11
         }
       ]
@@ -13390,7 +13497,7 @@
         {
           "file": "features/harness/HarnessCapabilities.tsx",
           "line": 80,
-          "column": 20
+          "column": 50
         }
       ]
     },
@@ -13530,7 +13637,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 206,
           "column": 48
         }
       ]
@@ -13573,7 +13680,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 217,
+          "line": 224,
           "column": 24
         }
       ]
@@ -13730,7 +13837,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 120,
+          "line": 127,
           "column": 6
         }
       ]
@@ -14210,7 +14317,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
+          "line": 128,
           "column": 23
         }
       ]
@@ -14337,7 +14444,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 188,
+          "line": 195,
           "column": 22
         }
       ]
@@ -14519,7 +14626,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 96,
+          "line": 103,
           "column": 17
         }
       ]
@@ -14610,7 +14717,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 118,
+          "line": 125,
           "column": 6
         }
       ]
@@ -14903,7 +15010,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 147,
+          "line": 154,
           "column": 14
         }
       ]
@@ -14961,6 +15068,18 @@
         }
       ]
     },
+    "c92175a0fd326403": {
+      "source": "本机子代理、后台会话、MCP、Skills 与 Hooks",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 57,
+          "column": 7
+        }
+      ]
+    },
     "c935ce454c15744b": {
       "source": "换模型不用改客户端：在模型库里改完，接入模块下次请求就会用新的。",
       "kind": "text",
@@ -14968,7 +15087,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 229,
+          "line": 236,
           "column": 18
         }
       ]
@@ -15369,7 +15488,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 118,
+          "line": 125,
           "column": 23
         }
       ]
@@ -15393,7 +15512,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 123,
+          "line": 130,
           "column": 6
         }
       ]
@@ -15441,7 +15560,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 150,
+          "line": 163,
           "column": 13
         }
       ]
@@ -15513,6 +15632,18 @@
         }
       ]
     },
+    "d241596f05443597": {
+      "source": "Rules、Memories、MCP 与本地文件编辑",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 44,
+          "column": 7
+        }
+      ]
+    },
     "d251914276abcdf3": {
       "source": "先保存设置：端口在保存后的下次启动才打开。如果已经重启过仍显示未监听，多半是端口被别的进程占用（本机其他同类软件也会抢 43110-43112）。",
       "kind": "text",
@@ -15520,7 +15651,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 93,
+          "line": 100,
           "column": 15
         }
       ]
@@ -15703,7 +15834,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 122,
+          "line": 135,
           "column": 15
         }
       ]
@@ -16000,7 +16131,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 76,
+          "line": 89,
           "column": 30
         }
       ]
@@ -16337,7 +16468,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 122,
+          "line": 129,
           "column": 18
         }
       ]
@@ -16498,7 +16629,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 89,
+          "line": 96,
           "column": 15
         }
       ]
@@ -16510,7 +16641,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 88,
+          "line": 95,
           "column": 17
         }
       ]
@@ -16618,18 +16749,6 @@
           "file": "shell/AppLayout.tsx",
           "line": 112,
           "column": 29
-        }
-      ]
-    },
-    "df633bd5b6eba60c": {
-      "source": "Cloud Agents、Projects、Bugbot 和 Automations",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 23,
-          "column": 7
         }
       ]
     },
@@ -16755,18 +16874,6 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 135,
           "column": 56
-        }
-      ]
-    },
-    "e0a1f3c50dcdb70e": {
-      "source": "账号套餐限制的模型与额度",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 49,
-          "column": 7
         }
       ]
     },
@@ -17014,6 +17121,18 @@
         }
       ]
     },
+    "e32de771cebd5652": {
+      "source": "官方托管 Web 搜索、图像生成与语音",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 38,
+          "column": 7
+        }
+      ]
+    },
     "e35a6de7a206f72c": {
       "source": "预留比例",
       "kind": "text",
@@ -17115,6 +17234,18 @@
         }
       ]
     },
+    "e48649bd52f35080": {
+      "source": "Devin Cloud 会话与远程索引",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 51,
+          "column": 7
+        }
+      ]
+    },
     "e4cb90e1a992e725": {
       "source": "{name} 不能超过 {max}",
       "kind": "template",
@@ -17154,6 +17285,18 @@
         }
       ]
     },
+    "e586ff081ea39596": {
+      "source": "这些客户端默认只使用厂商模型。本应用在本机接住模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。四个接入模块各自独立，共用同一份模型库与统计数据。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 138,
+          "column": 13
+        }
+      ]
+    },
     "e59ae97924d62f01": {
       "source": "第一页",
       "kind": "text",
@@ -17178,7 +17321,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 191,
+          "line": 198,
           "column": 55
         }
       ]
@@ -17216,7 +17359,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 146,
+          "line": 159,
           "column": 11
         }
       ]
@@ -17388,7 +17531,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 129,
+          "line": 136,
           "column": 47
         }
       ]
@@ -17417,6 +17560,30 @@
         }
       ]
     },
+    "e9fb38fd87890c68": {
+      "source": "受管配置，按页面指引处理",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/onboarding.ts",
+          "line": 199,
+          "column": 21
+        }
+      ]
+    },
+    "ea05cdfc768a0edb": {
+      "source": "Cloud session、Teleport 与 Ultrareview",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 62,
+          "column": 7
+        }
+      ]
+    },
     "ea26b760e930a7ca": {
       "source": "调用观测",
       "kind": "text",
@@ -17441,18 +17608,6 @@
         }
       ]
     },
-    "ea5e34b6039df2a3": {
-      "source": "Cloud session、Teleport 和 Ultrareview",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 62,
-          "column": 7
-        }
-      ]
-    },
     "ea84e6562d57695b": {
       "source": "Devin 安装目录",
       "kind": "text",
@@ -17472,7 +17627,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 119,
+          "line": 126,
           "column": 6
         }
       ]
@@ -17646,18 +17801,6 @@
         }
       ]
     },
-    "ececd030f7f836e7": {
-      "source": "官方托管 Web 搜索、图像生成和语音",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 38,
-          "column": 7
-        }
-      ]
-    },
     "ecf0ea01192d5a01": {
       "source": "保存更改",
       "kind": "text",
@@ -17720,7 +17863,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 164,
+          "line": 218,
           "column": 29
         }
       ]
@@ -17937,7 +18080,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 123,
+          "line": 136,
           "column": 15
         }
       ]
@@ -17949,7 +18092,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 140,
+          "line": 147,
           "column": 74
         }
       ]
@@ -18495,18 +18638,6 @@
         }
       ]
     },
-    "f9cc6649e8468d3e": {
-      "source": "依赖供应商的 WebSearch/WebFetch",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 64,
-          "column": 7
-        }
-      ]
-    },
     "f9cca12c124e9249": {
       "source": "未写入配置",
       "kind": "text",
@@ -18740,18 +18871,6 @@
         }
       ]
     },
-    "fd022376ddf6ee81": {
-      "source": "换一个时间范围，或先在 Cursor / Devin / Codex 里发起一次对话。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/home/HomePage.tsx",
-          "line": 302,
-          "column": 26
-        }
-      ]
-    },
     "fd076a57261d5aa7": {
       "source": "决定 Cursor 的模型列表里有什么，以及请求由谁回答。",
       "kind": "text",
@@ -18802,18 +18921,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 319,
           "column": 45
-        }
-      ]
-    },
-    "fd87420d4adf9eb0": {
-      "source": "把 Cursor、Devin 和 Codex 接到你自己的模型上",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 130,
-          "column": 14
         }
       ]
     },
@@ -18957,7 +19064,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 245,
+          "line": 252,
           "column": 14
         },
         {
@@ -19055,18 +19162,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 56,
           "column": 91
-        }
-      ]
-    },
-    "ff5cce0b3542978d": {
-      "source": "子代理、后台会话、MCP、Skills 和 Hooks",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 57,
-          "column": 7
         }
       ]
     },

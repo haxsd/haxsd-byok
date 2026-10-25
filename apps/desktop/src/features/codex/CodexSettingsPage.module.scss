@@ -1,4 +1,4 @@
-﻿@use "../../styles/typography" as type;
+@use "../../styles/typography" as type;
 
 /* 与 Cursor / Devin 接入页同一套排版：卡片之间用全局节奏，卡片内部按内容分组。 */
 .page { display: grid; gap: var(--oa-section-gap); }

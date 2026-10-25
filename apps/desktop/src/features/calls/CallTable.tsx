@@ -33,7 +33,7 @@ export function callListEmptyCopy(noCallsYet: boolean) {
     }
     : {
       title: t("没有符合条件的调用"),
-      description: t("清掉筛选条件再试，或先在 Cursor / Devin / Codex 里发起一次对话。"),
+      description: t("清掉筛选条件再试，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。"),
     };
 }
 

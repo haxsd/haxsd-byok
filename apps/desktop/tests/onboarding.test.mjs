@@ -1,8 +1,8 @@
 // Behavior tests for the tutorial onboarding checklist.
 //
-// The checklist follows the client the user picked: only Cursor, Devin, or Codex
-// is counted, and the progress denominator contains the displayed steps only. A
-// client the user did not select must never appear as an unfinished step.
+// The checklist follows the client the user picked: only Cursor, Devin, Codex or
+// Claude is counted, and the progress denominator contains the displayed steps
+// only. A client the user did not select must never appear as an unfinished step.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -25,6 +25,7 @@ function input(overrides = {}) {
     cursor: null,
     devin: null,
     codex: null,
+    claude: null,
     hostConfigured: false,
     callCount: 0,
     ...overrides,
@@ -46,6 +47,10 @@ function devinStatus(overrides = {}) {
 
 function codexStatus(overrides = {}) {
   return { enabled: true, listening: true, configured: true, ...overrides };
+}
+
+function claudeStatus(overrides = {}) {
+  return { enabled: true, listening: true, cli: "ready", desktop: "ready", ...overrides };
 }
 
 test("before a client is picked the checklist holds only the shared first step", async () => {
@@ -164,10 +169,51 @@ test("the Codex step is done only when the gateway runs and the config is applie
   }
 });
 
+test("picking Claude adds the Claude step and never counts the other clients", async () => {
+  const buildOnboarding = await loadOnboarding();
+
+  const view = buildOnboarding(input({
+    client: "claude",
+    modelCount: 1,
+    cursor: cursorHarness({ mode: "official" }),
+    devin: devinStatus({ enabled: false, listening: false, ready: false }),
+    codex: codexStatus({ enabled: false, listening: false, configured: false }),
+    claude: claudeStatus({ cli: "applied" }),
+    callCount: 1,
+  }));
+
+  assert.deepEqual(view.steps.map((step) => step.key), ["model", "claude", "verify"]);
+  assert.equal(view.total, 3, "the untouched Cursor, Devin and Codex modules are not in the denominator");
+  assert.equal(view.completed, 3);
+});
+
+test("the Claude step accepts either client but surfaces conflicts and stale takeovers", async () => {
+  const buildOnboarding = await loadOnboarding();
+
+  const rows = [
+    { value: null, done: false, status: "读取中…", why: "no status has been read yet" },
+    { value: claudeStatus({ enabled: false, listening: false }), done: false, status: "网关未启用" },
+    { value: claudeStatus({ listening: false }), done: false, status: "网关已启用，等待端口就绪" },
+    { value: claudeStatus({ cli: "applied", desktop: "missing" }), done: true, status: "已接管" },
+    { value: claudeStatus({ cli: "conflict", desktop: "applied" }), done: false, status: "配置冲突" },
+    { value: claudeStatus({ cli: "stale", desktop: "applied" }), done: false, status: "配置已过期" },
+    { value: claudeStatus({ cli: "ready", desktop: "running" }), done: false, status: "先完全退出 Claude Desktop" },
+    { value: claudeStatus({ cli: "managed", desktop: "missing" }), done: false, status: "受管配置，按页面指引处理" },
+    { value: claudeStatus(), done: false, status: "网关在运行，还差应用接管" },
+  ];
+
+  for (const row of rows) {
+    const view = buildOnboarding(input({ client: "claude", modelCount: 1, claude: row.value }));
+    const step = view.steps.find((item) => item.key === "claude");
+    assert.equal(step.done, row.done, row.why);
+    assert.equal(step.status, row.status, row.why);
+  }
+});
+
 test("every displayed step carries the fields the checklist renders", async () => {
   const buildOnboarding = await loadOnboarding();
 
-  for (const client of ["cursor", "devin", "codex"]) {
+  for (const client of ["cursor", "devin", "codex", "claude"]) {
     const view = buildOnboarding(input({ client }));
     const keys = view.steps.map((step) => step.key);
     assert.equal(new Set(keys).size, keys.length, "step keys are unique");

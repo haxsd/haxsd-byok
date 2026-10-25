@@ -24,6 +24,7 @@ const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
   { id: "cursor", label: "Cursor" },
   { id: "devin", label: "Devin" },
   { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude" },
 ];
 
 /**
@@ -33,11 +34,11 @@ const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
  * 用户照着做会对不上界面。这一页写的是这个产品的真实流程，而且会**读当前状态**——
  * 已经做完的步骤直接打勾，并指出下一步该去哪一页。
  *
- * Cursor、Devin 和 Codex 是三条独立的接入路径，所以先选接入模块：只有选定的那一条
- * 进入清单与进度，其余两条不会被当成欠下的待办。选择只存在于页面状态里。
+ * Cursor、Devin、Codex 与 Claude 是四条独立的接入路径，所以先选接入模块：只有选定的
+ * 那一条进入清单与进度，其余三条不会被当成欠下的待办。选择只存在于页面状态里。
  */
 export function TutorialPage() {
-  const { models, cursorHarness, devinStatus, codexStatus, overview, calls } = useAppStore();
+  const { models, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, overview, calls } = useAppStore();
   const navigate = useNavigate();
   const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
   // 读取过程单独记一份：读不到和「确实没写入」必须分开，否则清单会把读失败
@@ -74,6 +75,12 @@ export function TutorialPage() {
     } : null,
     devin: devinStatus ? { enabled: devinStatus.enabled, listening: devinStatus.listening, ready: devinStatus.ready } : null,
     codex: codexStatus ? { enabled: codexStatus.enabled, listening: codexStatus.listening, configured: codexStatus.configured } : null,
+    claude: claudeStatus && claudeTakeover ? {
+      enabled: claudeStatus.enabled,
+      listening: claudeStatus.listening,
+      cli: claudeTakeover.cli.state,
+      desktop: claudeTakeover.desktop.state,
+    } : null,
     hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.patched),
     hostConfigRead: hostStatusRead,
     callCount: Math.max(calls.length, overview.metrics.llm_calls),
@@ -101,8 +108,8 @@ export function TutorialPage() {
       answer: t("用你在设置里为每个模型填的单价乘实际用量；没填单价的模型不计入金额。计价方式（全时段固定，或高峰与低谷分别计价）由你为每个模型选择，币种跟随界面语言。它是估算，不是账单。"),
     },
     {
-      question: t("退出软件后 Cursor、Devin 和 Codex 还能用吗？"),
-      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置，它们回到厂商直连；Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
+      question: t("退出软件后 Cursor、Devin、Codex 和 Claude 还能用吗？"),
+      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置；Claude 会尝试还原 CLI，并在 Desktop 未运行时还原 Desktop。Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
     },
     {
       question: t("会影响机器上另一个同类软件吗？"),
@@ -116,7 +123,7 @@ export function TutorialPage() {
 
   const glossary: Array<[string, string]> = [
     [t("自带密钥（BYOK）"), t("Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。")],
-    [t("接管"), t("把客户端的请求指向本机网关。对 Cursor 来说是改它的代理配置，对 Codex 来说是改写 config.toml 里的模型路由，对 Devin 来说是写入设置文件里的服务地址与扩展读取开关。")],
+    [t("接管"), t("把客户端的模型请求指向本机网关。Cursor 改写代理配置，Codex 改写 config.toml 里的模型路由，Devin 写入服务地址与扩展读取开关，Claude 写入 CLI 的环境变量或 Desktop 的 profile。")],
     [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。")],
     [t("Devin 接入配置"), t("写入 Devin 用户设置里的 API 与推理地址，并仅对 Devin 3.11.216 的扩展放开读取这两个设置；不改模型协议、不写入模型地址。写入前会备份设置文件和 extension.js，并保留其他设置；请先完全退出 Devin。")],
     [t("缓存命中率"), t("缓存读取 /（缓存读取 + 非缓存输入）。它衡量的是「有多少输入是从提供方的缓存里读回来的」。")],
@@ -127,8 +134,8 @@ export function TutorialPage() {
     <Card className={styles.hero}>
       <div className={styles.heroText}>
         <span className={styles.heroEyebrow}>{t("这是什么")}</span>
-        <h2>{t("把 Cursor、Devin 和 Codex 接到你自己的模型上")}</h2>
-        <p>{t("三个客户端都只认厂商的服务器与模型。本应用在本机拦下模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。三个客户端各自独立接入，共用同一份模型库与统计数据。")}</p>
+        <h2>{t("把 Cursor、Devin、Codex 与 Claude 接到你自己的模型上")}</h2>
+        <p>{t("这些客户端默认只使用厂商模型。本应用在本机接住模型请求，用你配置的模型回答；登录、账号、遥测这些请求原样转发，厂商登录照常可用。四个接入模块各自独立，共用同一份模型库与统计数据。")}</p>
       </div>
       <div className={styles.heroProgress}>
         {client === null ? <span className={styles.heroPrompt}>{t("先选择接入模块")}</span> : <>
@@ -187,7 +194,7 @@ export function TutorialPage() {
         title={t("一次请求的三段路")}
         description={t("客户端把请求发给本机网关，网关按你的配置调用模型服务，再把结果原样流回客户端。")}
         stages={[
-          { key: "client", label: t("客户端"), detail: "Cursor / Devin / Codex", state: "up" },
+          { key: "client", label: t("客户端"), detail: "Cursor / Devin / Codex / Claude", state: "up" },
           { key: "gateway", label: t("本机网关"), detail: t("改写模型与鉴权，其余透传"), state: "up" },
           { key: "model", label: t("你的模型"), detail: t("模型库里配置的服务"), state: "up" },
         ]}

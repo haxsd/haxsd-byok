@@ -299,7 +299,7 @@ export function HomePage() {
           ? <div className={styles.emptyBlock}><EmptyState
             icon={flatColorAreaChartIcon}
             title={t("这个范围内还没有用量")}
-            description={t("换一个时间范围，或先在 Cursor / Devin / Codex 里发起一次对话。")}
+            description={t("换一个时间范围，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。")}
           /></div>
           : <div className={styles.chartBlock}>
             <DailyTokenUsageChart

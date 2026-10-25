@@ -30,6 +30,7 @@ function input(overrides = {}) {
     cursor: null,
     devin: { enabled: true, listening: true, ready: true },
     codex: null,
+    claude: null,
     hostConfigured: false,
     callCount: 0,
     ...overrides,

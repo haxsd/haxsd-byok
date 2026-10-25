@@ -34,6 +34,17 @@
 | 调用观测 | 调用成败、耗时、Token 用量，按参考单价估算金额 |
 | 桌面管理 | 中英俄三语、多主题、托盘、应用内教程与签名更新 |
 
+### 能力边界
+
+| 客户端 | 本机接管可用 | 仍需官方账号或云端 |
+| --- | --- | --- |
+| Cursor | Agent / Chat / Plan、本机子代理与工具、Rules / Skills / MCP、Checkpoint | Cloud Agents、Projects、Bugbot、Automations、Tab 补全、CLI / IDE 插件、Remote Control |
+| Codex | 本地 Agent / TUI / exec、Plan、工具、审批、沙箱、多会话、MCP / Skills / Plugins / Hooks、图片输入 | ChatGPT Work、Codex Cloud、Remote Control、官方托管搜索 / 图像 / 语音 |
+| Devin | Cascade、Devin Local、本机工具、Rules / Memories / MCP、模型映射、Checkpoint | 账号套餐与额度、Tab / Command / embedding、Devin Cloud、远程索引、Slack / Linear / Jira / Teams / GitHub 集成 |
+| Claude | Claude Code CLI、本机子代理与后台会话、MCP / Skills / Hooks、Checkpoint / Rewind / 自动压缩、本机 IDE 集成 | Cloud session、Teleport、Ultrareview、云端定时任务、Remote Control、供应商侧 WebSearch / WebFetch、CLI 到 Desktop 的 handoff |
+
+接管只改变本机可控制的模型请求；登录、套餐、额度和厂商云端功能仍由对应客户端管理，不会绕过。
+
 ## 支持矩阵
 
 | 客户端 | 接管方式 | 注意 |

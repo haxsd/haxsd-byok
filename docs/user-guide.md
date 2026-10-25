@@ -79,7 +79,7 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 ## 接入 Devin
 
-Cursor 与 Devin 是并列模块，只用 Cursor 时无需开启 Devin。完整流程见 [Devin 手册](./devin-go-live.md)。
+各接入模块彼此独立，只用 Cursor 时无需开启 Devin。完整流程见 [Devin 手册](./devin-go-live.md)。
 
 顺序：模型库 → Devin 默认模型与映射 → 保存并重启应用 → 写入接入配置 → 重启 Devin → 对话验证。
 

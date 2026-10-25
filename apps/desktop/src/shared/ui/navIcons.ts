@@ -22,7 +22,7 @@ export const navOverviewIcon = stroke('<path d="M2.6 13.4h3.1l2.4-6.4 3.4 11.6 2
 /** Calls: a log, three rows with a bullet each. */
 export const navCallsIcon = stroke('<path d="M9 7h11M9 12h11M9 17h7"/><circle cx="4.7" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4.7" cy="17" r="1.5" fill="currentColor" stroke="none"/>');
 
-/** 接入：三个客户端共用的入口图标——一个插头，表示「把客户端接到本机网关」。 */
+/** 接入：四个客户端共用的入口图标——一个插头，表示「把客户端接到本机网关」。 */
 export const navHarnessIcon = stroke('<path d="M9 3.2v4.4M15 3.2v4.4"/><path d="M6.2 7.6h11.6v2.6a5.8 5.8 0 0 1-5.8 5.8 5.8 5.8 0 0 1-5.8-5.8z"/><path d="M12 16v4.8"/>');
 
 /** Devin: a hexagonal node, the module's mark. */

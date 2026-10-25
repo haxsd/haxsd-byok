@@ -1,4 +1,8 @@
-import type { CursorMode } from "../../shared/api";
+import type {
+  ClaudeCliTakeoverState,
+  ClaudeDesktopTakeoverState,
+  CursorMode,
+} from "../../shared/api";
 
 /**
  * 教程的上手清单。
@@ -8,7 +12,7 @@ import type { CursorMode } from "../../shared/api";
  * 路径，不是一个欠下的待办。选择只存放在页面状态里，不落盘。
  */
 
-export type OnboardingClient = "cursor" | "devin" | "codex";
+export type OnboardingClient = "cursor" | "devin" | "codex" | "claude";
 
 export interface CursorOnboardingInput {
   caReady: boolean;
@@ -27,12 +31,20 @@ export interface CodexOnboardingInput {
   configured: boolean;
 }
 
+export interface ClaudeOnboardingInput {
+  enabled: boolean;
+  listening: boolean;
+  cli: ClaudeCliTakeoverState;
+  desktop: ClaudeDesktopTakeoverState;
+}
+
 export interface OnboardingInput {
   client: OnboardingClient | null;
   modelCount: number;
   cursor: CursorOnboardingInput | null;
   devin: DevinOnboardingInput | null;
   codex: CodexOnboardingInput | null;
+  claude: ClaudeOnboardingInput | null;
   hostConfigured: boolean;
   /**
    * Devin 设置状态的读取过程。
@@ -45,7 +57,7 @@ export interface OnboardingInput {
 }
 
 export interface OnboardingStep {
-  key: "model" | "cursor" | "devin" | "codex" | "verify";
+  key: "model" | "cursor" | "devin" | "codex" | "claude" | "verify";
   title: string;
   detail: string;
   status: string;
@@ -65,6 +77,7 @@ const clientNames: Record<OnboardingClient, string> = {
   cursor: "Cursor",
   devin: "Devin",
   codex: "Codex",
+  claude: "Claude",
 };
 
 function modelStep(modelCount: number): OnboardingStep {
@@ -155,6 +168,47 @@ function codexStep(codex: CodexOnboardingInput | null): OnboardingStep {
   };
 }
 
+/**
+ * Claude 有 CLI 与 Desktop 两个客户端，任一接管成功都算这条路能用。
+ *
+ * 冲突和过期优先于「已接管」：一个客户端已经接通、另一个仍处于冲突时，不能把整条
+ * 路径显示成已完成，否则用户会以为不需要处理另一个客户端。
+ */
+function claudeStep(claude: ClaudeOnboardingInput | null): OnboardingStep {
+  const states = claude ? [claude.cli, claude.desktop] : [];
+  const conflict = states.includes("conflict");
+  const stale = states.includes("stale");
+  const applied = states.includes("applied");
+  const managed = states.includes("managed");
+  const running = states.includes("running");
+  const status = !claude
+    ? t("读取中…")
+    : conflict
+      ? t("配置冲突")
+      : stale
+        ? t("配置已过期")
+        : !claude.enabled
+          ? t("网关未启用")
+          : !claude.listening
+            ? t("网关已启用，等待端口就绪")
+            : applied
+              ? t("已接管")
+              : running
+                ? t("先完全退出 Claude Desktop")
+                : managed
+                  ? t("受管配置，按页面指引处理")
+                  : t("网关在运行，还差应用接管");
+  return {
+    key: "claude",
+    title: t("让 Claude 用上它"),
+    detail: t("选择默认模型并保存、启用 Claude 网关，再接管 Claude Code CLI 或 Claude Desktop；Desktop 接管前需要完全退出。"),
+    done: Boolean(claude?.enabled && claude.listening && applied && !conflict && !stale),
+    status,
+    path: "/harness/claude",
+    action: t("去 Claude 页"),
+  };
+}
+
 function verifyStep(client: OnboardingClient, callCount: number): OnboardingStep {
   return {
     key: "verify",
@@ -172,6 +226,7 @@ export function buildOnboarding(input: OnboardingInput): OnboardingView {
   if (input.client === "cursor") steps.push(cursorStep(input.cursor), verifyStep("cursor", input.callCount));
   else if (input.client === "devin") steps.push(devinStep(input.devin, input.hostConfigured, input.hostConfigRead), verifyStep("devin", input.callCount));
   else if (input.client === "codex") steps.push(codexStep(input.codex), verifyStep("codex", input.callCount));
+  else if (input.client === "claude") steps.push(claudeStep(input.claude), verifyStep("claude", input.callCount));
   return {
     steps,
     completed: steps.filter((step) => step.done).length,
