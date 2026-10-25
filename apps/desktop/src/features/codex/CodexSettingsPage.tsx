@@ -23,7 +23,8 @@ import {
   codexOutstandingSteps,
   codexVerdictDescription,
 } from "./codexConnectionView";
-import { informationOutlineIcon, providerIcon, settingsIcon } from "../../shared/ui/icons";
+import { HarnessCapabilities } from "../harness/HarnessCapabilities";
+import { providerIcon, settingsIcon } from "../../shared/ui/icons";
 import styles from "./CodexSettingsPage.module.scss";
 
 export function CodexSettingsPage() {
@@ -107,21 +108,7 @@ export function CodexSettingsPage() {
         ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} onChange={setDraft} />
         : <p className={styles.note}>{error ? t("读取失败") : t("加载中…")}</p>}
     </TitledCard>
-    <TitledCard
-      title={t("使用边界")}
-      description={t("5 条限制")}
-      icon={informationOutlineIcon}
-      collapsible
-      storageKey="codex.boundaries"
-    >
-      <ul className={styles.boundaries}>
-        <li>{t("只替换模型推理；登录、MCP、技能、审批和沙箱保持原样。")}</li>
-        <li>{t("官方托管搜索、远程压缩和实时语音不包含在此接入中。")}</li>
-        <li>{t("ChatGPT Work、Codex Cloud、Remote Control 和云端浏览器由 ChatGPT 后端处理，不经过本机模型网关。")}</li>
-        <li>{t("接管不会退出或替换 ChatGPT 登录；未登录时自动使用 Codex 本地模式。")}</li>
-        <li>{t("切换模型或端口前，先撤销接管。")}</li>
-      </ul>
-    </TitledCard>
+    <HarnessCapabilities client="codex" />
   </div>;
   return <>
     <PageActions>

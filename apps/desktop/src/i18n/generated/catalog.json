@@ -79,6 +79,18 @@
         }
       ]
     },
+    "0117f84b92c36a54": {
+      "source": "图片输入与本地模型路由",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 33,
+          "column": 7
+        }
+      ]
+    },
     "0164f80178a2f12a": {
       "source": "全部模型",
       "kind": "text",
@@ -98,7 +110,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 324,
+          "line": 325,
           "column": 15
         }
       ]
@@ -160,17 +172,17 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 90,
+          "line": 91,
           "column": 66
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 191,
+          "line": 192,
           "column": 35
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 343,
+          "line": 344,
           "column": 46
         }
       ]
@@ -228,7 +240,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 609,
+          "line": 601,
           "column": 124
         }
       ]
@@ -245,7 +257,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 89,
+          "line": 90,
           "column": 36
         },
         {
@@ -327,7 +339,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 105,
+          "line": 106,
           "column": 24
         }
       ]
@@ -427,7 +439,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 524,
+          "line": 525,
           "column": 86
         }
       ]
@@ -495,12 +507,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 324,
+          "line": 325,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 327,
+          "line": 328,
           "column": 29
         }
       ]
@@ -550,7 +562,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 521,
+          "line": 522,
           "column": 119
         }
       ]
@@ -586,7 +598,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 376,
+          "line": 367,
           "column": 81
         }
       ]
@@ -598,7 +610,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 145,
+          "line": 146,
           "column": 15
         }
       ]
@@ -646,7 +658,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 140,
+          "line": 141,
           "column": 13
         },
         {
@@ -663,7 +675,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 528,
+          "line": 529,
           "column": 39
         }
       ]
@@ -703,7 +715,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 523,
+          "line": 524,
           "column": 69
         }
       ]
@@ -733,18 +745,6 @@
         {
           "file": "features/devin/devinConnectionView.ts",
           "line": 157,
-          "column": 14
-        }
-      ]
-    },
-    "08de37064de474c5": {
-      "source": "CLI 与 JetBrains/Zed/Neovim 集成是独立进程，不在桌面代理接管范围内。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 360,
           "column": 14
         }
       ]
@@ -871,7 +871,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 203,
+          "line": 204,
           "column": 16
         }
       ]
@@ -944,18 +944,6 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 132,
           "column": 12
-        }
-      ]
-    },
-    "0b9a5fe5bacc1a4b": {
-      "source": "这些边界由 Devin 自己的运行时和账号决定，不是本机网关的故障。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 564,
-          "column": 20
         }
       ]
     },
@@ -1052,8 +1040,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 71,
           "column": 14
         }
       ]
@@ -1099,18 +1087,6 @@
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
           "line": 243,
           "column": 90
-        }
-      ]
-    },
-    "0c84588898fa5cc7": {
-      "source": "ChatGPT Work、Codex Cloud、Remote Control 和云端浏览器由 ChatGPT 后端处理，不经过本机模型网关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 120,
-          "column": 14
         }
       ]
     },
@@ -1300,7 +1276,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 224,
+          "line": 225,
           "column": 64
         }
       ]
@@ -1396,6 +1372,18 @@
           "file": "features/settings/settingsNavigation.ts",
           "line": 25,
           "column": 30
+        }
+      ]
+    },
+    "10d9969a29a2a3b1": {
+      "source": "模型选择、默认模型和本地 Checkpoint",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 45,
+          "column": 7
         }
       ]
     },
@@ -1568,6 +1556,18 @@
         }
       ]
     },
+    "140c63ba5fc7162c": {
+      "source": "Remote Control 的账号配对与云端中继",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 26,
+          "column": 7
+        }
+      ]
+    },
     "146da2e2a991493e": {
       "source": "获取中…",
       "kind": "text",
@@ -1643,17 +1643,17 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 79,
+          "line": 80,
           "column": 14
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 450,
+          "line": 451,
           "column": 24
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 219,
+          "line": 220,
           "column": 14
         }
       ]
@@ -1672,6 +1672,18 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 128,
           "column": 48
+        }
+      ]
+    },
+    "16306d07f5a041f0": {
+      "source": "Rules、Memories、MCP、终端与文件编辑",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 44,
+          "column": 7
         }
       ]
     },
@@ -1708,7 +1720,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 471,
+          "line": 472,
           "column": 78
         },
         {
@@ -1795,18 +1807,6 @@
         }
       ]
     },
-    "17eeefddf837f910": {
-      "source": "Tab 补全、内联 Command 和代码库 embedding 不走模型库；它们会使用 Devin 自己的服务，可能消耗官方额度或在当前上游配置下不可用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 568,
-          "column": 13
-        }
-      ]
-    },
     "1813d362a82fd437": {
       "source": "最大化窗口",
       "kind": "text",
@@ -1828,7 +1828,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 595,
+          "line": 587,
           "column": 48
         }
       ]
@@ -2023,7 +2023,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 614,
+          "line": 606,
           "column": 27
         }
       ]
@@ -2047,12 +2047,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 145,
+          "line": 146,
           "column": 12
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 258,
+          "line": 259,
           "column": 40
         }
       ]
@@ -2086,7 +2086,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 197,
+          "line": 198,
           "column": 52
         }
       ]
@@ -2103,6 +2103,18 @@
         }
       ]
     },
+    "1bc96a1f6f7428b2": {
+      "source": "Devin Cloud 会话与远程 indexing",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 51,
+          "column": 7
+        }
+      ]
+    },
     "1bddd15d3e1f50b7": {
       "source": "Cursor 的代理配置现在由另一个同类软件管着；切换模式会强制结束 Cursor 并覆盖对方那份配置。",
       "kind": "text",
@@ -2110,7 +2122,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 205,
+          "line": 206,
           "column": 13
         }
       ]
@@ -2122,7 +2134,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 200,
+          "line": 201,
           "column": 39
         }
       ]
@@ -2203,7 +2215,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 262,
+          "line": 263,
           "column": 72
         }
       ]
@@ -2263,7 +2275,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 272,
+          "line": 273,
           "column": 19
         }
       ]
@@ -2323,7 +2335,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 548,
+          "line": 549,
           "column": 23
         }
       ]
@@ -2369,7 +2381,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 89,
+          "line": 90,
           "column": 80
         },
         {
@@ -2459,7 +2471,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 443,
+          "line": 444,
           "column": 17
         }
       ]
@@ -2594,7 +2606,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 448,
+          "line": 449,
           "column": 21
         }
       ]
@@ -2608,6 +2620,18 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 92,
           "column": 32
+        }
+      ]
+    },
+    "21e347e92af02e46": {
+      "source": "ChatGPT Work、Codex Cloud 等云端任务",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 36,
+          "column": 7
         }
       ]
     },
@@ -2666,7 +2690,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 615,
+          "line": 607,
           "column": 132
         }
       ]
@@ -2788,18 +2812,6 @@
         }
       ]
     },
-    "24e588688dc5563c": {
-      "source": "WebSearch/WebFetch 的能力取决于模型供应商；切到本机模型后可能不可用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 242,
-          "column": 14
-        }
-      ]
-    },
     "24f44fdb33c2820f": {
       "source": "推理端口",
       "kind": "text",
@@ -2807,7 +2819,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 619,
+          "line": 611,
           "column": 27
         }
       ]
@@ -2857,7 +2869,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 511,
+          "line": 512,
           "column": 52
         }
       ]
@@ -2919,7 +2931,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 357,
+          "line": 358,
           "column": 27
         }
       ]
@@ -2933,7 +2945,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 279,
+          "line": 280,
           "column": 22
         }
       ]
@@ -2990,7 +3002,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 156,
+          "line": 157,
           "column": 11
         }
       ]
@@ -3079,7 +3091,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 166,
+          "line": 167,
           "column": 11
         }
       ]
@@ -3154,6 +3166,18 @@
         }
       ]
     },
+    "2b742eb9bfb96b9c": {
+      "source": "Tab 补全、内联 Command 和 embedding",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 50,
+          "column": 7
+        }
+      ]
+    },
     "2bd854b0bb2a0eb7": {
       "source": "Cursor 直连官方：本应用不写代理配置、不注入账号，也不记录它的请求。",
       "kind": "text",
@@ -3161,7 +3185,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 226,
+          "line": 227,
           "column": 13
         }
       ]
@@ -3262,7 +3286,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 391,
+          "line": 382,
           "column": 20
         },
         {
@@ -3348,6 +3372,18 @@
         }
       ]
     },
+    "2da8eb8bff2f2eb5": {
+      "source": "Cascade、Devin Local 和本机工具",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 43,
+          "column": 7
+        }
+      ]
+    },
     "2daa999a66b03739": {
       "source": "还有 {count} 个",
       "kind": "template",
@@ -3357,7 +3393,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 347,
+          "line": 348,
           "column": 40
         }
       ]
@@ -3523,7 +3559,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 437,
+          "line": 438,
           "column": 11
         }
       ]
@@ -3613,7 +3649,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 130,
+          "line": 117,
           "column": 80
         }
       ]
@@ -3661,7 +3697,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 137,
+          "line": 138,
           "column": 11
         }
       ]
@@ -3811,12 +3847,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 136,
+          "line": 137,
           "column": 11
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 155,
+          "line": 156,
           "column": 11
         }
       ]
@@ -3920,18 +3956,6 @@
         }
       ]
     },
-    "338e4f25e85dfc4d": {
-      "source": "切换模型或端口前，先撤销接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 122,
-          "column": 14
-        }
-      ]
-    },
     "33b45d44e97453c0": {
       "source": "{route} 是当前路由",
       "kind": "template",
@@ -3941,7 +3965,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 534,
           "column": 160
         }
       ]
@@ -3965,7 +3989,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 66,
+          "line": 67,
           "column": 53
         }
       ]
@@ -3977,7 +4001,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 149,
+          "line": 150,
           "column": 12
         }
       ]
@@ -4044,22 +4068,22 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
+          "line": 100,
           "column": 101
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 133,
+          "line": 134,
           "column": 7
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 153,
+          "line": 154,
           "column": 7
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 231,
+          "line": 232,
           "column": 42
         },
         {
@@ -4125,7 +4149,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 320,
+          "line": 321,
           "column": 39
         }
       ]
@@ -4242,6 +4266,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 517,
           "column": 143
+        }
+      ]
+    },
+    "371dbf0977f3d98c": {
+      "source": "本地 Agent、TUI、桌面线程和 exec",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 30,
+          "column": 7
         }
       ]
     },
@@ -4577,6 +4613,18 @@
         }
       ]
     },
+    "3a76df1c56c2afca": {
+      "source": "MCP、Skills、Plugins、Hooks 和本地审查",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 32,
+          "column": 7
+        }
+      ]
+    },
     "3a9b25652235f435": {
       "source": "本地管理服务暂时不可用。它通常在应用重启后的几秒内恢复，恢复后这一页会自动刷新。",
       "kind": "text",
@@ -4681,6 +4729,18 @@
         }
       ]
     },
+    "3c20690231074c01": {
+      "source": "CLI、JetBrains/Zed/Neovim 集成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 25,
+          "column": 7
+        }
+      ]
+    },
     "3c5b08eca1ded407": {
       "source": "应用到 Codex",
       "kind": "text",
@@ -4693,7 +4753,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 116,
           "column": 70
         }
       ]
@@ -4820,6 +4880,18 @@
         }
       ]
     },
+    "3e3b782847d22484": {
+      "source": "Claude Code CLI 会话、Agent 和工具",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 56,
+          "column": 7
+        }
+      ]
+    },
     "3eb036ee9ddd484c": {
       "source": "搜模型名称、ID 或地址…",
       "kind": "text",
@@ -4839,12 +4911,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 628,
+          "line": 620,
           "column": 111
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 631,
+          "line": 623,
           "column": 125
         }
       ]
@@ -4875,6 +4947,18 @@
         }
       ]
     },
+    "3f94251645b2a1a6": {
+      "source": "模型库里的模型与连接测试",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 20,
+          "column": 7
+        }
+      ]
+    },
     "3fd118e2ffe0b2b6": {
       "source": "取消全部测试",
       "kind": "text",
@@ -4894,7 +4978,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 402,
+          "line": 393,
           "column": 80
         },
         {
@@ -5232,7 +5316,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 239,
+          "line": 240,
           "column": 38
         }
       ]
@@ -5282,6 +5366,18 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 120,
           "column": 101
+        }
+      ]
+    },
+    "44036e70dab92193": {
+      "source": "Claude Desktop handoff 和账号订阅",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 65,
+          "column": 7
         }
       ]
     },
@@ -5372,12 +5468,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 580,
+          "line": 572,
           "column": 40
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 238,
+          "line": 239,
           "column": 61
         }
       ]
@@ -5486,7 +5582,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 552,
+          "line": 553,
           "column": 20
         }
       ]
@@ -5565,7 +5661,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 140,
+          "line": 127,
           "column": 11
         }
       ]
@@ -5625,7 +5721,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 288,
+          "line": 289,
           "column": 45
         }
       ]
@@ -5680,7 +5776,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 108,
+          "line": 109,
           "column": 59
         },
         {
@@ -5695,7 +5791,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 449,
+          "line": 450,
           "column": 62
         },
         {
@@ -5864,7 +5960,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 548,
+          "line": 549,
           "column": 50
         }
       ]
@@ -5888,7 +5984,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 510,
+          "line": 511,
           "column": 57
         }
       ]
@@ -6212,12 +6308,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 245,
+          "line": 246,
           "column": 14
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 253,
+          "line": 254,
           "column": 24
         }
       ]
@@ -6271,6 +6367,18 @@
         }
       ]
     },
+    "4fb04e8fa760a3cc": {
+      "source": "Rules、Skills、MCP、本地工具与 Checkpoint",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 18,
+          "column": 7
+        }
+      ]
+    },
     "5067e57c62fec53f": {
       "source": "还没有模型",
       "kind": "text",
@@ -6278,7 +6386,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 191,
+          "line": 192,
           "column": 80
         }
       ]
@@ -6302,7 +6410,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 534,
           "column": 432
         }
       ]
@@ -6366,7 +6474,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 283,
+          "line": 284,
           "column": 19
         }
       ]
@@ -6436,6 +6544,18 @@
         }
       ]
     },
+    "51d1c5ef351216de": {
+      "source": "本机接管可用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 76,
+          "column": 20
+        }
+      ]
+    },
     "51de3bcec137ab1b": {
       "source": "全部 {count} 个模型连通性测试成功",
       "kind": "template",
@@ -6483,7 +6603,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 104,
+          "line": 105,
           "column": 15
         }
       ]
@@ -6510,7 +6630,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 224,
+          "line": 225,
           "column": 53
         },
         {
@@ -6554,12 +6674,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 189,
+          "line": 190,
           "column": 44
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 637,
+          "line": 629,
           "column": 14
         }
       ]
@@ -6665,7 +6785,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 374,
+          "line": 375,
           "column": 13
         }
       ]
@@ -6725,7 +6845,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 113,
+          "line": 114,
           "column": 56
         }
       ]
@@ -6783,7 +6903,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 130,
+          "line": 131,
           "column": 11
         }
       ]
@@ -6834,7 +6954,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 299,
+          "line": 300,
           "column": 14
         }
       ]
@@ -6846,8 +6966,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 510,
+          "line": 511,
           "column": 35
+        }
+      ]
+    },
+    "57537332329ba1bd": {
+      "source": "本机可控制的模型请求走模型库；其余功能仍使用客户端官方服务。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 72,
+          "column": 20
         }
       ]
     },
@@ -6935,6 +7067,18 @@
         }
       ]
     },
+    "59cfe7ac0556e0b9": {
+      "source": "本地预览和终端执行",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 46,
+          "column": 7
+        }
+      ]
+    },
     "5a3bd99fa69a40c1": {
       "source": "使用公益服务",
       "kind": "text",
@@ -6949,18 +7093,6 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 68,
           "column": 41
-        }
-      ]
-    },
-    "5a593d0217e21edd": {
-      "source": "只替换模型推理；登录、MCP、技能、审批和沙箱保持原样。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 118,
-          "column": 14
         }
       ]
     },
@@ -6995,7 +7127,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 447,
+          "line": 448,
           "column": 21
         }
       ]
@@ -7144,7 +7276,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 178,
+          "line": 179,
           "column": 13
         }
       ]
@@ -7220,12 +7352,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 527,
+          "line": 528,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 527,
+          "line": 528,
           "column": 84
         }
       ]
@@ -7237,20 +7369,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 197,
+          "line": 198,
           "column": 30
-        }
-      ]
-    },
-    "5f3d0c62e6893630": {
-      "source": "5 条限制",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 112,
-          "column": 20
         }
       ]
     },
@@ -7352,7 +7472,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 534,
+          "line": 535,
           "column": 83
         }
       ]
@@ -7411,7 +7531,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 495,
           "column": 56
         }
       ]
@@ -7452,12 +7572,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 505,
+          "line": 506,
           "column": 151
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 534,
+          "line": 535,
           "column": 218
         }
       ]
@@ -7571,7 +7691,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 441,
+          "line": 442,
           "column": 15
         }
       ]
@@ -7973,18 +8093,6 @@
         }
       ]
     },
-    "66061a748bb7b6ad": {
-      "source": "Devin 会按账号和套餐过滤可用模型。启用后如果 Devin Local 报 No allowed model available，请绑定账号实际允许的模型（例如免费账号的 SWE-1.6 Slow）并设为默认模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 567,
-          "column": 13
-        }
-      ]
-    },
     "660e4bc7d5f5553e": {
       "source": "默认模型没有填上下文窗口。请在模型库里补齐后再应用。",
       "kind": "text",
@@ -8004,7 +8112,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 565,
           "column": 14
         }
       ]
@@ -8072,7 +8180,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 534,
           "column": 420
         }
       ]
@@ -8139,7 +8247,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 134,
+          "line": 121,
           "column": 14
         }
       ]
@@ -8163,7 +8271,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 108,
+          "line": 109,
           "column": 47
         },
         {
@@ -8360,7 +8468,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 405,
+          "line": 406,
           "column": 53
         }
       ]
@@ -8524,7 +8632,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 495,
           "column": 33
         }
       ]
@@ -8644,15 +8752,15 @@
         }
       ]
     },
-    "717dfdea5838a12e": {
-      "source": "Tab 补全走 Cursor 的独立补全通道，不是模型库；是否使用官方额度取决于 Cursor 的功能设置。",
+    "717996b19aa7234a": {
+      "source": "本地 IDE 集成与模型库路由",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 359,
-          "column": 14
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 59,
+          "column": 7
         }
       ]
     },
@@ -8728,18 +8836,6 @@
         }
       ]
     },
-    "72db88d45910ee3a": {
-      "source": "Claude Desktop handoff、登录和订阅仍由 Anthropic 与 Desktop 管理；Desktop 接管是独立状态。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 243,
-          "column": 14
-        }
-      ]
-    },
     "72f3de8d1f92c00e": {
       "source": "你的账号",
       "kind": "text",
@@ -8747,7 +8843,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 160,
+          "line": 161,
           "column": 13
         }
       ]
@@ -8802,7 +8898,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 288,
+          "line": 289,
           "column": 66
         }
       ]
@@ -8908,7 +9004,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 621,
+          "line": 613,
           "column": 27
         }
       ]
@@ -9018,7 +9114,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 137,
+          "line": 138,
           "column": 11
         }
       ]
@@ -9146,7 +9242,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 235,
+          "line": 236,
           "column": 13
         }
       ]
@@ -9189,6 +9285,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 513,
           "column": 67
+        }
+      ]
+    },
+    "7d318131589a9ba9": {
+      "source": "云端定时任务与 Remote Control 中继",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 63,
+          "column": 7
         }
       ]
     },
@@ -9281,7 +9389,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 627,
+          "line": 619,
           "column": 27
         }
       ]
@@ -9348,18 +9456,6 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 368,
           "column": 22
-        }
-      ]
-    },
-    "80019f82eddbff8f": {
-      "source": "Cloud session、Teleport、Ultrareview 和云端定时任务在 Anthropic 云端运行，不使用本机模型。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 240,
-          "column": 14
         }
       ]
     },
@@ -9544,7 +9640,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 89,
+          "line": 90,
           "column": 91
         }
       ]
@@ -9556,7 +9652,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 230,
+          "line": 231,
           "column": 17
         }
       ]
@@ -9694,7 +9790,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 176,
+          "line": 177,
           "column": 11
         }
       ]
@@ -9766,6 +9862,18 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 39,
           "column": 30
+        }
+      ]
+    },
+    "8507cf43112b89f5": {
+      "source": "Tab 补全的独立模型通道",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 24,
+          "column": 7
         }
       ]
     },
@@ -9968,7 +10076,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 167,
+          "line": 168,
           "column": 11
         }
       ]
@@ -10079,18 +10187,6 @@
         }
       ]
     },
-    "8af43399e2aa15b3": {
-      "source": "Cloud 会话与官方账号能力不由本机网关接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 237,
-          "column": 20
-        }
-      ]
-    },
     "8b27c041b6486e27": {
       "source": "左侧是 Devin 里的模型，右侧是实际使用的模型。",
       "kind": "text",
@@ -10098,7 +10194,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 470,
+          "line": 471,
           "column": 50
         }
       ]
@@ -10146,7 +10242,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 184,
+          "line": 185,
           "column": 14
         }
       ]
@@ -10160,6 +10256,18 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 182,
           "column": 41
+        }
+      ]
+    },
+    "8c7fe78e8a817d4e": {
+      "source": "Checkpoint、Rewind 和自动压缩",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 58,
+          "column": 7
         }
       ]
     },
@@ -10252,7 +10360,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 426,
+          "line": 427,
           "column": 9
         }
       ]
@@ -10300,7 +10408,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 310,
+          "line": 311,
           "column": 23
         }
       ]
@@ -10376,7 +10484,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 397,
+          "line": 398,
           "column": 9
         }
       ]
@@ -10400,7 +10508,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 284,
+          "line": 285,
           "column": 19
         }
       ]
@@ -10412,7 +10520,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 462,
+          "line": 463,
           "column": 20
         }
       ]
@@ -10482,18 +10590,6 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 110,
           "column": 15
-        }
-      ]
-    },
-    "923375ef6f453de9": {
-      "source": "接管不会退出或替换 ChatGPT 登录；未登录时自动使用 Codex 本地模式。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 121,
-          "column": 14
         }
       ]
     },
@@ -10593,7 +10689,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 68,
+          "line": 69,
           "column": 76
         }
       ]
@@ -10668,7 +10764,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 634,
+          "line": 626,
           "column": 55
         }
       ]
@@ -10692,7 +10788,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 312,
+          "line": 313,
           "column": 22
         }
       ]
@@ -10752,7 +10848,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 129,
+          "line": 130,
           "column": 11
         }
       ]
@@ -10906,7 +11002,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 627,
+          "line": 619,
           "column": 52
         }
       ]
@@ -11006,7 +11102,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 505,
+          "line": 506,
           "column": 77
         }
       ]
@@ -11018,7 +11114,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 466,
+          "line": 467,
           "column": 52
         }
       ]
@@ -11054,12 +11150,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 466,
+          "line": 467,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 467,
+          "line": 468,
           "column": 51
         }
       ]
@@ -11147,7 +11243,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 620,
+          "line": 612,
           "column": 27
         }
       ]
@@ -11171,7 +11267,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
+          "line": 100,
           "column": 68
         }
       ]
@@ -11195,7 +11291,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 90,
+          "line": 91,
           "column": 108
         }
       ]
@@ -11224,7 +11320,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 621,
+          "line": 613,
           "column": 49
         }
       ]
@@ -11335,18 +11431,6 @@
         }
       ]
     },
-    "9cd11c7f7ffd9791": {
-      "source": "Cloud Agents、Projects、Bugbot 和 Automations 在 Cursor 云端运行，模型请求看不到本机网关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 358,
-          "column": 14
-        }
-      ]
-    },
     "9d47d5a6d66cbe2c": {
       "source": "模型库",
       "kind": "text",
@@ -11359,7 +11443,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 90,
+          "line": 91,
           "column": 35
         },
         {
@@ -11374,12 +11458,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 190,
+          "line": 191,
           "column": 14
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 338,
+          "line": 339,
           "column": 14
         },
         {
@@ -11440,7 +11524,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 342,
+          "line": 343,
           "column": 15
         }
       ]
@@ -11490,7 +11574,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 497,
           "column": 49
         }
       ]
@@ -11542,18 +11626,6 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 62,
           "column": 16
-        }
-      ]
-    },
-    "9eca990268462c43": {
-      "source": "这些能力由 Cursor 云端或独立通道处理，不经过本机模型库。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 355,
-          "column": 20
         }
       ]
     },
@@ -11669,7 +11741,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 461,
+          "line": 462,
           "column": 14
         }
       ]
@@ -11693,7 +11765,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 518,
+          "line": 519,
           "column": 69
         }
       ]
@@ -11717,12 +11789,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 511,
+          "line": 512,
           "column": 35
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 512,
+          "line": 513,
           "column": 81
         }
       ]
@@ -11746,7 +11818,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 164,
+          "line": 165,
           "column": 62
         }
       ]
@@ -11799,12 +11871,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 253,
+          "line": 244,
           "column": 47
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 115,
           "column": 90
         },
         {
@@ -11824,7 +11896,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 431,
+          "line": 432,
           "column": 11
         },
         {
@@ -11911,6 +11983,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 57,
           "column": 44
+        }
+      ]
+    },
+    "a3e56bfcb2c7d2d8": {
+      "source": "Slack、Linear、Jira、Teams、GitHub 集成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 52,
+          "column": 7
         }
       ]
     },
@@ -12089,7 +12173,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 596,
+          "line": 588,
           "column": 64
         }
       ]
@@ -12285,7 +12369,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 300,
+          "line": 301,
           "column": 20
         }
       ]
@@ -12333,7 +12417,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 501,
+          "line": 502,
           "column": 78
         }
       ]
@@ -12345,7 +12429,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 604,
+          "line": 596,
           "column": 35
         }
       ]
@@ -12359,18 +12443,6 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 38,
           "column": 63
-        }
-      ]
-    },
-    "a9127b4523b6c892": {
-      "source": "Remote Control 的配对和中继依赖 Cursor 账号；实际模型路径需要按运行时确认。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 361,
-          "column": 14
         }
       ]
     },
@@ -12446,6 +12518,18 @@
         }
       ]
     },
+    "aa353477ec034575": {
+      "source": "本地文件、终端、浏览器和提交信息",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 19,
+          "column": 7
+        }
+      ]
+    },
     "aab0fe17fae0dfbb": {
       "source": "数据存在哪？怎么清理？",
       "kind": "text",
@@ -12465,7 +12549,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 199,
+          "line": 200,
           "column": 72
         }
       ]
@@ -12491,7 +12575,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 540,
+          "line": 541,
           "column": 58
         }
       ]
@@ -12503,7 +12587,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 135,
+          "line": 136,
           "column": 9
         },
         {
@@ -12573,7 +12657,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 206,
+          "line": 207,
           "column": 13
         }
       ]
@@ -12597,7 +12681,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 574,
+          "line": 566,
           "column": 20
         }
       ]
@@ -12698,7 +12782,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 76,
+          "line": 77,
           "column": 80
         }
       ]
@@ -12780,7 +12864,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 594,
+          "line": 586,
           "column": 38
         }
       ]
@@ -12828,7 +12912,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 504,
           "column": 31
         }
       ]
@@ -12915,7 +12999,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 392,
+          "line": 383,
           "column": 41
         }
       ]
@@ -12927,7 +13011,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 578,
+          "line": 570,
           "column": 38
         }
       ]
@@ -12963,7 +13047,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 292,
+          "line": 293,
           "column": 16
         }
       ]
@@ -12975,7 +13059,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 148,
+          "line": 149,
           "column": 15
         }
       ]
@@ -13025,7 +13109,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 598,
+          "line": 590,
           "column": 51
         }
       ]
@@ -13066,7 +13150,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 114,
+          "line": 115,
           "column": 15
         }
       ]
@@ -13110,17 +13194,17 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 81,
+          "line": 82,
           "column": 77
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 450,
+          "line": 451,
           "column": 100
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 220,
+          "line": 221,
           "column": 77
         }
       ]
@@ -13214,20 +13298,20 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 259,
+          "line": 250,
           "column": 15
         }
       ]
     },
-    "b39e9530b8079e00": {
-      "source": "Remote Control 的配对和中继依赖 Anthropic 账号；本机会话的模型请求仍可由本机网关回答。",
+    "b38f9b34c57ed1f7": {
+      "source": "Remote Control 的账号配对与中继",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 241,
-          "column": 14
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 37,
+          "column": 7
         }
       ]
     },
@@ -13281,7 +13365,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 98,
+          "line": 99,
           "column": 18
         }
       ]
@@ -13295,6 +13379,18 @@
           "file": "features/tutorial/onboarding.ts",
           "line": 92,
           "column": 11
+        }
+      ]
+    },
+    "b483e51ab0d4ec43": {
+      "source": "需官方账号或云端",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 80,
+          "column": 20
         }
       ]
     },
@@ -13367,28 +13463,6 @@
         }
       ]
     },
-    "b59c77baa8ebe251": {
-      "source": "使用边界",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 236,
-          "column": 14
-        },
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 111,
-          "column": 14
-        },
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 354,
-          "column": 14
-        }
-      ]
-    },
     "b630df9e860e2675": {
       "source": "所选范围超过 660 天，未生成费用估算",
       "kind": "text",
@@ -13432,7 +13506,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 375,
+          "line": 366,
           "column": 20
         }
       ]
@@ -13444,7 +13518,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 435,
+          "line": 436,
           "column": 9
         }
       ]
@@ -13606,7 +13680,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 402,
+          "line": 393,
           "column": 103
         }
       ]
@@ -13690,7 +13764,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 150,
+          "line": 151,
           "column": 12
         }
       ]
@@ -13818,7 +13892,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 273,
+          "line": 274,
           "column": 19
         }
       ]
@@ -13856,7 +13930,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 531,
+          "line": 532,
           "column": 60
         }
       ]
@@ -13911,7 +13985,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 293,
+          "line": 294,
           "column": 16
         }
       ]
@@ -13963,7 +14037,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 268,
+          "line": 269,
           "column": 22
         }
       ]
@@ -14006,7 +14080,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 164,
+          "line": 165,
           "column": 9
         }
       ]
@@ -14059,7 +14133,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 211,
+          "line": 212,
           "column": 15
         }
       ]
@@ -14114,7 +14188,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 406,
+          "line": 407,
           "column": 64
         },
         {
@@ -14215,7 +14289,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 289,
+          "line": 290,
           "column": 16
         }
       ]
@@ -14227,12 +14301,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 144,
+          "line": 145,
           "column": 12
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 257,
+          "line": 258,
           "column": 40
         }
       ]
@@ -14354,7 +14428,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 474,
+          "line": 475,
           "column": 117
         }
       ]
@@ -14392,7 +14466,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 155,
+          "line": 156,
           "column": 9
         }
       ]
@@ -14421,7 +14495,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 583,
+          "line": 575,
           "column": 109
         }
       ]
@@ -14433,7 +14507,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 592,
+          "line": 584,
           "column": 21
         }
       ]
@@ -14447,18 +14521,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 96,
           "column": 17
-        }
-      ]
-    },
-    "c2b72b418d2a0ece": {
-      "source": "Devin Cloud 会话、Slack/Linear/GitHub 集成和账号额度由 Devin 云端管理，本机接管不覆盖这些能力。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 569,
-          "column": 13
         }
       ]
     },
@@ -14495,7 +14557,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 146,
+          "line": 133,
           "column": 15
         }
       ]
@@ -14507,7 +14569,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 398,
+          "line": 399,
           "column": 9
         }
       ]
@@ -14589,7 +14651,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 618,
+          "line": 610,
           "column": 27
         }
       ]
@@ -14671,7 +14733,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 614,
+          "line": 606,
           "column": 44
         }
       ]
@@ -14707,7 +14769,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 349,
+          "line": 350,
           "column": 21
         }
       ]
@@ -14719,7 +14781,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 281,
+          "line": 282,
           "column": 17
         }
       ]
@@ -14731,7 +14793,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 270,
+          "line": 271,
           "column": 17
         }
       ]
@@ -14853,7 +14915,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 430,
+          "line": 431,
           "column": 13
         }
       ]
@@ -14918,7 +14980,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 139,
+          "line": 140,
           "column": 13
         }
       ]
@@ -15059,6 +15121,18 @@
         }
       ]
     },
+    "cc5cb36c0c99ead1": {
+      "source": "云端浏览器与厂商托管工具",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 39,
+          "column": 7
+        }
+      ]
+    },
     "cc8f49f08286a4e3": {
       "source": "同一个 Devin 模型标识只能有一条映射。",
       "kind": "text",
@@ -15126,7 +15200,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 384,
+          "line": 375,
           "column": 15
         }
       ]
@@ -15150,7 +15224,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 126,
+          "line": 127,
           "column": 15
         }
       ]
@@ -15206,7 +15280,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 439,
+          "line": 440,
           "column": 13
         }
       ]
@@ -15237,7 +15311,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 589,
           "column": 32
         }
       ]
@@ -15355,7 +15429,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 185,
+          "line": 186,
           "column": 20
         }
       ]
@@ -15496,7 +15570,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 184,
+          "line": 185,
           "column": 14
         }
       ]
@@ -15583,7 +15657,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 473,
+          "line": 474,
           "column": 60
         }
       ]
@@ -15595,7 +15669,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 424,
+          "line": 425,
           "column": 7
         },
         {
@@ -15617,7 +15691,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 608,
+          "line": 600,
           "column": 20
         }
       ]
@@ -15750,7 +15824,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "line": 381,
           "column": 14
         }
       ]
@@ -15762,7 +15836,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 200,
+          "line": 201,
           "column": 63
         }
       ]
@@ -15832,7 +15906,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 179,
+          "line": 180,
           "column": 13
         }
       ]
@@ -15844,12 +15918,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 504,
           "column": 41
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 607,
+          "line": 599,
           "column": 14
         },
         {
@@ -16017,7 +16091,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 445,
+          "line": 446,
           "column": 19
         }
       ]
@@ -16068,7 +16142,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 645,
+          "line": 637,
           "column": 13
         }
       ]
@@ -16080,7 +16154,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 224,
+          "line": 225,
           "column": 29
         }
       ]
@@ -16104,7 +16178,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 403,
+          "line": 394,
           "column": 47
         }
       ]
@@ -16376,7 +16450,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 162,
+          "line": 163,
           "column": 7
         }
       ]
@@ -16484,7 +16558,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 157,
+          "line": 158,
           "column": 11
         }
       ]
@@ -16520,7 +16594,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 340,
+          "line": 341,
           "column": 96
         }
       ]
@@ -16544,6 +16618,18 @@
           "file": "shell/AppLayout.tsx",
           "line": 112,
           "column": 29
+        }
+      ]
+    },
+    "df633bd5b6eba60c": {
+      "source": "Cloud Agents、Projects、Bugbot 和 Automations",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 23,
+          "column": 7
         }
       ]
     },
@@ -16619,7 +16705,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 625,
+          "line": 617,
           "column": 35
         }
       ]
@@ -16669,6 +16755,30 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 135,
           "column": 56
+        }
+      ]
+    },
+    "e0a1f3c50dcdb70e": {
+      "source": "账号套餐限制的模型与额度",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 49,
+          "column": 7
+        }
+      ]
+    },
+    "e0c3efdf55e912ae": {
+      "source": "Plan、工具、审批、沙箱和多会话",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 31,
+          "column": 7
         }
       ]
     },
@@ -16729,7 +16839,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 210,
+          "line": 211,
           "column": 16
         }
       ]
@@ -16765,7 +16875,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 199,
+          "line": 200,
           "column": 49
         }
       ]
@@ -16825,7 +16935,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 630,
+          "line": 622,
           "column": 50
         }
       ]
@@ -16899,7 +17009,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 502,
+          "line": 503,
           "column": 100
         }
       ]
@@ -17135,12 +17245,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 143,
+          "line": 144,
           "column": 15
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 256,
+          "line": 257,
           "column": 43
         },
         {
@@ -17254,7 +17364,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 339,
+          "line": 340,
           "column": 20
         }
       ]
@@ -17266,7 +17376,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 113,
+          "line": 114,
           "column": 27
         }
       ]
@@ -17331,6 +17441,18 @@
         }
       ]
     },
+    "ea5e34b6039df2a3": {
+      "source": "Cloud session、Teleport 和 Ultrareview",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 62,
+          "column": 7
+        }
+      ]
+    },
     "ea84e6562d57695b": {
       "source": "Devin 安装目录",
       "kind": "text",
@@ -17338,7 +17460,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 630,
+          "line": 622,
           "column": 27
         }
       ]
@@ -17403,7 +17525,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 470,
+          "line": 471,
           "column": 23
         }
       ]
@@ -17429,7 +17551,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 135,
+          "line": 122,
           "column": 21
         }
       ]
@@ -17491,7 +17613,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 589,
           "column": 101
         }
       ]
@@ -17524,6 +17646,18 @@
         }
       ]
     },
+    "ececd030f7f836e7": {
+      "source": "官方托管 Web 搜索、图像生成和语音",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 38,
+          "column": 7
+        }
+      ]
+    },
     "ecf0ea01192d5a01": {
       "source": "保存更改",
       "kind": "text",
@@ -17531,7 +17665,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 638,
+          "line": 630,
           "column": 134
         }
       ]
@@ -17598,7 +17732,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 402,
+          "line": 393,
           "column": 53
         }
       ]
@@ -17653,20 +17787,8 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 228,
+          "line": 229,
           "column": 15
-        }
-      ]
-    },
-    "ee5e9f5ba3877317": {
-      "source": "官方托管搜索、远程压缩和实时语音不包含在此接入中。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 119,
-          "column": 14
         }
       ]
     },
@@ -17739,7 +17861,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 125,
+          "line": 126,
           "column": 7
         }
       ]
@@ -17751,7 +17873,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 392,
+          "line": 383,
           "column": 54
         }
       ]
@@ -17839,7 +17961,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 404,
+          "line": 395,
           "column": 11
         }
       ]
@@ -17887,7 +18009,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 376,
+          "line": 367,
           "column": 45
         },
         {
@@ -17993,7 +18115,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 159,
+          "line": 160,
           "column": 13
         }
       ]
@@ -18169,7 +18291,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 405,
+          "line": 396,
           "column": 11
         }
       ]
@@ -18229,7 +18351,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 88,
+          "line": 89,
           "column": 77
         }
       ]
@@ -18344,7 +18466,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 534,
           "column": 210
         }
       ]
@@ -18373,6 +18495,18 @@
         }
       ]
     },
+    "f9cc6649e8468d3e": {
+      "source": "依赖供应商的 WebSearch/WebFetch",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 64,
+          "column": 7
+        }
+      ]
+    },
     "f9cca12c124e9249": {
       "source": "未写入配置",
       "kind": "text",
@@ -18380,7 +18514,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 88,
+          "line": 89,
           "column": 91
         }
       ]
@@ -18392,12 +18526,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 428,
+          "line": 429,
           "column": 11
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 576,
+          "line": 568,
           "column": 34
         }
       ]
@@ -18506,7 +18640,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 583,
+          "line": 575,
           "column": 97
         },
         {
@@ -18577,7 +18711,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 309,
+          "line": 310,
           "column": 24
         }
       ]
@@ -18601,7 +18735,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 476,
+          "line": 477,
           "column": 72
         }
       ]
@@ -18625,7 +18759,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 246,
+          "line": 247,
           "column": 20
         }
       ]
@@ -18731,7 +18865,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 589,
           "column": 90
         }
       ]
@@ -18767,12 +18901,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 315,
+          "line": 316,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 318,
+          "line": 319,
           "column": 29
         }
       ]
@@ -18850,6 +18984,18 @@
         }
       ]
     },
+    "fefad77ed2628dfb": {
+      "source": "Agent、Chat、Plan 和本地子代理",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 17,
+          "column": 7
+        }
+      ]
+    },
     "ff509c9ba052a21c": {
       "source": "保存中…",
       "kind": "text",
@@ -18862,12 +19008,12 @@
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 188,
+          "line": 189,
           "column": 36
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 253,
+          "line": 244,
           "column": 35
         },
         {
@@ -18887,7 +19033,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 638,
+          "line": 630,
           "column": 122
         },
         {
@@ -18912,6 +19058,18 @@
         }
       ]
     },
+    "ff5cce0b3542978d": {
+      "source": "子代理、后台会话、MCP、Skills 和 Hooks",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 57,
+          "column": 7
+        }
+      ]
+    },
     "ffb131c6cb5f02a6": {
       "source": "备用模型",
       "kind": "text",
@@ -18919,7 +19077,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 521,
           "column": 26
         }
       ]

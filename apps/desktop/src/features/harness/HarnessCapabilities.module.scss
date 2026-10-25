@@ -1,0 +1,29 @@
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 4px 16px 16px;
+}
+
+section {
+  min-width: 0;
+}
+
+section > strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+section > ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--vscode-descriptionForeground);
+}
+
+@media (max-width: 700px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

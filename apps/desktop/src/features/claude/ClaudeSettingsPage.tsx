@@ -14,6 +14,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { ClaudeCliTab } from "./ClaudeCliTab";
 import { ClaudeDesktopTab } from "./ClaudeDesktopTab";
 import { ClaudeGatewayCard } from "./ClaudeGatewayCard";
+import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import {
   claudeActionGate,
   claudeConnectionView,
@@ -232,17 +233,7 @@ export function ClaudeSettingsPage() {
         ]} />
       </div>
     </TitledCard>
-    <TitledCard
-      title={t("使用边界")}
-      description={t("Cloud 会话与官方账号能力不由本机网关接管。")}
-    >
-      <ul className={styles.boundaries}>
-        <li>{t("Cloud session、Teleport、Ultrareview 和云端定时任务在 Anthropic 云端运行，不使用本机模型。")}</li>
-        <li>{t("Remote Control 的配对和中继依赖 Anthropic 账号；本机会话的模型请求仍可由本机网关回答。")}</li>
-        <li>{t("WebSearch/WebFetch 的能力取决于模型供应商；切到本机模型后可能不可用。")}</li>
-        <li>{t("Claude Desktop handoff、登录和订阅仍由 Anthropic 与 Desktop 管理；Desktop 接管是独立状态。")}</li>
-      </ul>
-    </TitledCard>
+    <HarnessCapabilities client="claude" />
   </div>;
 
   return <>

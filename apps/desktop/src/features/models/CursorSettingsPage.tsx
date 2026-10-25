@@ -22,6 +22,7 @@ import { Icon } from "../../shared/ui/Icon";
 import { copyIcon, keyIcon, shieldIcon, terminalIcon } from "../../shared/ui/icons";
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 
 /** 触发终端后的等待节奏：最长 30 秒，够一次 UAC 授权或一次密码输入。 */
 const CA_READY_POLL_INTERVAL_MS = 2_000;
@@ -350,17 +351,7 @@ export function CursorSettingsPage() {
       </div>
     </TitledCard>
 
-    <TitledCard
-      title={t("使用边界")}
-      description={t("这些能力由 Cursor 云端或独立通道处理，不经过本机模型库。")}
-    >
-      <ul className={styles.modeList}>
-        <li>{t("Cloud Agents、Projects、Bugbot 和 Automations 在 Cursor 云端运行，模型请求看不到本机网关。")}</li>
-        <li>{t("Tab 补全走 Cursor 的独立补全通道，不是模型库；是否使用官方额度取决于 Cursor 的功能设置。")}</li>
-        <li>{t("CLI 与 JetBrains/Zed/Neovim 集成是独立进程，不在桌面代理接管范围内。")}</li>
-        <li>{t("Remote Control 的配对和中继依赖 Cursor 账号；实际模型路径需要按运行时确认。")}</li>
-      </ul>
-    </TitledCard>
+    <HarnessCapabilities client="cursor" />
   </>;
 
   const content = <div className={styles.page}>

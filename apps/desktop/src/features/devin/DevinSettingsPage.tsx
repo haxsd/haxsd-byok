@@ -20,6 +20,7 @@ import { devinDefaultModelOptions, devinModelOptions } from "./devinModelOptions
 import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { getUiPreferences, saveUiPreferences, useUiPreferences } from "../../shared/store/uiPreferences";
 import { probeHostPath } from "./hostPathProbe";
+import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
@@ -559,16 +560,7 @@ export function DevinSettingsPage() {
       </div>
       {defaultMissingReason && <small className={styles.reason}>{defaultMissingReason}</small>}
     </TitledCard>
-    <TitledCard
-      title={t("能力与限制")}
-      description={t("这些边界由 Devin 自己的运行时和账号决定，不是本机网关的故障。")}
-    >
-      <div className={styles.hostNotes}>
-        <p>{t("Devin 会按账号和套餐过滤可用模型。启用后如果 Devin Local 报 No allowed model available，请绑定账号实际允许的模型（例如免费账号的 SWE-1.6 Slow）并设为默认模型。")}</p>
-        <p>{t("Tab 补全、内联 Command 和代码库 embedding 不走模型库；它们会使用 Devin 自己的服务，可能消耗官方额度或在当前上游配置下不可用。")}</p>
-        <p>{t("Devin Cloud 会话、Slack/Linear/GitHub 集成和账号额度由 Devin 云端管理，本机接管不覆盖这些能力。")}</p>
-      </div>
-    </TitledCard>
+    <HarnessCapabilities client="devin" />
     <TitledCard
       title={t("连接到 Devin")}
       description={t("第一次使用时完成一次；之后打开 Devin 就能直接对话。")}
