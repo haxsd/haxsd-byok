@@ -250,6 +250,7 @@
 
 .modelCardName {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -399,24 +400,23 @@
 }
 
 .sortHandle {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 1;
-  width: 28px;
-  height: 28px;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
+  margin-top: 1px;
   padding: 0;
-  color: transparent;
+  color: var(--vscode-descriptionForeground);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--oa-radius-sm);
-  opacity: 0;
+  opacity: 0.38;
   cursor: grab;
   touch-action: none;
-  transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+  transition: opacity 160ms ease, border-color 160ms ease, background-color 160ms ease;
 
+  &:hover,
   &:focus-visible,
   .modelCard:hover & {
     color: var(--vscode-foreground);
@@ -431,7 +431,7 @@
 
   &:disabled {
     cursor: not-allowed;
-    opacity: 0.3;
+    opacity: 0.2;
   }
 }
 

@@ -18,6 +18,8 @@ type ModelSelectProps = {
   label: string;
   options: ModelSelectOption[];
   disabled?: boolean;
+  /** 多选且为空时的摘要。列表筛选传“全部”，设置表单传“未选择”。 */
+  emptySummary?: string;
 } & (
   | { mode: "single"; value: string; onChange: (value: string) => void }
   | { mode: "multiple"; value: string[]; onChange: (value: string[]) => void }
@@ -117,7 +119,9 @@ export function ModelSelect(props: ModelSelectProps) {
   }, [open]);
 
   const summary = mode === "multiple"
-    ? props.value.length === 0 ? t("全部") : t("已选 {count} 项", { count: props.value.length })
+    ? props.value.length === 0
+      ? props.emptySummary ?? t("全部")
+      : t("已选 {count} 项", { count: props.value.length })
     : options.find((option) => option.value === props.value)?.label
       ?? (props.value.trim() ? props.value : t("未选择"));
 

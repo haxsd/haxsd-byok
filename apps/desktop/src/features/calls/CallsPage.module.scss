@@ -41,6 +41,11 @@
   flex: 0 1 240px;
 }
 
+.clientFilter {
+  width: 170px;
+  flex: 0 0 170px;
+}
+
 /* The model filter is a dropdown rather than a fourth segmented control: the list is
    unbounded, and a status-style strip of every model would not fit a toolbar. */
 .modelFilter {

@@ -5,6 +5,7 @@ import type {
   ClaudeTakeover,
   CodexSettings,
   CodexStatus,
+  CompactionSettings,
   CursorHarnessStatus,
   CursorMode,
   DesktopSettings,
@@ -200,6 +201,14 @@ let proxySettings: ProxySettings = {
   has_password: false,
 };
 let tabSettings: TabSettings = { mode: "public", address: "" };
+let compactionSettings: CompactionSettings = {
+  auto: true,
+  summary_model_hash: "",
+  summary_output_tokens: null,
+  reserve_percent: null,
+  retention_percent: null,
+  max_retained_tokens: null,
+};
 // 演示数据：数据库文件比可清理的观测数据大得多，正好演示两种"大"的区别；抓取缓存再单列一个
 // 较小的数字，演示它与库内占用是分开统计、分开清理的。
 // `conversation_retention_days` 与真实服务端的回收常量一致（见 server/src/store/retention.rs）。
@@ -228,7 +237,7 @@ export function installDemoApi() {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const body = await readBody(input, init);
 
-    if (path === "/app-info") return json({ version: "1.0.19", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok-devin-v3" });
+    if (path === "/app-info") return json({ version: "1.6.12", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok" });
     if (path === "/models" && method === "GET") return json(models);
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
@@ -364,6 +373,11 @@ export function installDemoApi() {
         prompt_locale: next?.prompt_locale ?? "zh-CN",
         default_prompt: "Write a commit message for the staged changes.",
       });
+    }
+    if (path === "/settings/compaction" && method === "GET") return json(compactionSettings);
+    if (path === "/settings/compaction" && method === "PUT") {
+      compactionSettings = body as CompactionSettings;
+      return json(compactionSettings);
     }
     if (path === "/harness/devin/host/status" && method === "GET") {
       const hostPath = url.searchParams.get("path") || "C:\\Users\\demo\\AppData\\Roaming\\Devin\\User\\settings.json";

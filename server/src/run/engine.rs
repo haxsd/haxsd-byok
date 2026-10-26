@@ -10,15 +10,15 @@ use crate::{
         CanonicalMessage, MessageContent, Origin, PreparedRun, Role, RunAction, ToolRoundAssistant,
         ToolRoundId, Usage,
     },
-    provider::Provider,
+    provider::{FinishReason, Provider},
     store::{BlobId, ContextUsageAnchor, RunStatus, Store},
 };
 
 use super::{
     consume_model_cycle,
     model_retry::{should_retry, MODEL_RETRY_DELAY},
-    CommitBarrier, CommitCause, MessageBatch, MessagesCommitted, ModelCycleFailure, RunCommand,
-    RunEvent, RunFailure, RunOutcome, RunPort,
+    CommitBarrier, CommitCause, MessageBatch, MessagesCommitted, ModelCycleFailure,
+    ModelCycleResult, RunCommand, RunEvent, RunFailure, RunOutcome, RunPort,
 };
 
 pub struct RunEngine {
@@ -520,6 +520,8 @@ impl RunEngine {
         // run. A third refusal means the current input itself does not fit, and
         // compacting again would only destroy history.
         let mut overflow = OverflowEpisode::default();
+        let mut manual_summary_detail_retry = false;
+        let mut manual_short_summary: Option<String> = None;
         'model: loop {
             if cancellation.is_cancelled() {
                 return (RunOutcome::Cancelled, usage);
@@ -617,10 +619,6 @@ impl RunEngine {
             } else {
                 None
             };
-            let summary_prompt = summary_target.as_ref().map(|_| crate::model::PromptSpec {
-                instructions: super::compaction::instructions().into(),
-                tools: Vec::new(),
-            });
             let previous_summary = summary_target
                 .as_ref()
                 .and_then(|_| super::compaction::latest_summary_message(&messages))
@@ -634,6 +632,18 @@ impl RunEngine {
                     )
                 })
                 .unwrap_or(0);
+            let summary_prompt = summary_target.as_ref().map(|_| crate::model::PromptSpec {
+                instructions: if manual_summary_detail_retry {
+                    format!(
+                        "{}{}",
+                        super::compaction::instructions(),
+                        super::compaction::detail_retry_instructions(minimum_summary_chars)
+                    )
+                } else {
+                    super::compaction::instructions().into()
+                },
+                tools: Vec::new(),
+            });
             if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
                 return (RunOutcome::Failed(error.into()), usage);
             }
@@ -660,15 +670,15 @@ impl RunEngine {
             } else {
                 super::history::user_terminated(history, CONTINUE_MESSAGE_ID, CONTINUE_INSTRUCTION)
             };
-            let model = match summary_target {
-                Some(target) => target.model,
+            let model = match summary_target.as_ref() {
+                Some(target) => target.model.clone(),
                 None => cycle_model(
                     &prepared.action,
                     &prepared.model,
                     super::compaction::OUTPUT_TOKENS,
                 ),
             };
-            let request = crate::model::ModelRequest {
+            let mut request = crate::model::ModelRequest {
                 prompt: summary_prompt
                     .clone()
                     .unwrap_or_else(|| prepared.prompt.clone()),
@@ -679,12 +689,18 @@ impl RunEngine {
                 history,
             };
             let mut retries = 0_u32;
+            let mut attempt_sequence = 0_u32;
             let mut pending_insertions = Vec::new();
             let cycle = 'attempt: loop {
-                let call_id = if retries == 0 {
+                attempt_sequence = attempt_sequence.saturating_add(1);
+                let call_id = if attempt_sequence == 1 {
                     format!("{}:{provider_call_index}", prepared.run_id)
                 } else {
-                    format!("{}:{provider_call_index}:retry-{retries}", prepared.run_id)
+                    format!(
+                        "{}:{provider_call_index}:retry-{}",
+                        prepared.run_id,
+                        attempt_sequence - 1
+                    )
                 };
                 let invocation = crate::model::ModelInvocation {
                     // 手动 `/summarize` 与自动压缩是同一类调用：输入是被裁剪过的重放
@@ -705,7 +721,7 @@ impl RunEngine {
                 let cycle_events = client.events.clone();
                 let cycle = consume_model_cycle(
                     self.provider.stream(invocation, cycle_cancellation.clone()),
-                    &cycle_events,
+                    (prepared.action != RunAction::Compact).then_some(&cycle_events),
                     &cycle_cancellation,
                 );
                 tokio::pin!(cycle);
@@ -809,6 +825,51 @@ impl RunEngine {
                         // 这一轮模型调用成了：当前溢出 episode 到此结束，阶梯计数回到
                         // 起点（`OverflowEpisode::model_call_succeeded`）。
                         overflow.model_call_succeeded();
+                        if prepared.action == RunAction::Compact
+                            && cycle.calls.is_empty()
+                            && !manual_summary_detail_retry
+                            && super::compaction::summary_needs_expansion(
+                                &cycle.text,
+                                minimum_summary_chars,
+                            )
+                        {
+                            if let Some(cycle_usage) = cycle.usage {
+                                update_context_usage_anchor(
+                                    &mut context_usage_anchor,
+                                    cycle_usage,
+                                    anchored_messages,
+                                );
+                                accumulate_usage(&mut usage, cycle_usage);
+                            }
+                            manual_short_summary = Some(cycle.text.trim().to_string());
+                            manual_summary_detail_retry = true;
+                            request.prompt.instructions = format!(
+                                "{}{}",
+                                super::compaction::instructions(),
+                                super::compaction::detail_retry_instructions(minimum_summary_chars)
+                            );
+                            if let Some(target) = &summary_target {
+                                request.history = super::compaction::compaction_history(
+                                    std::mem::take(&mut request.history),
+                                    &super::compaction::SummaryInput {
+                                        context_window: target.context_window,
+                                        output_tokens: target.output_tokens,
+                                        prompt_tokens: crate::model::estimate_context_tokens(
+                                            &request.prompt,
+                                            &[],
+                                        ),
+                                        calibration: manual_calibration,
+                                    },
+                                    &compaction_settings,
+                                );
+                            }
+                            tracing::warn!(
+                                summary_chars = cycle.text.chars().count(),
+                                minimum_summary_chars,
+                                "explicit compaction summary was too short; regenerating once"
+                            );
+                            continue 'attempt;
+                        }
                         break 'attempt cycle;
                     }
                     Err(cycle_failure) => {
@@ -945,6 +1006,31 @@ impl RunEngine {
                             }
                         }
                         if !should_retry(&cycle_failure, retries) {
+                            if manual_short_summary.is_some()
+                                && prepared.action == RunAction::Compact
+                                && matches!(
+                                    &cycle_failure.failure,
+                                    RunFailure::Provider(_) | RunFailure::Truncated(_)
+                                )
+                            {
+                                tracing::warn!(
+                                    provider_call_index,
+                                    retries,
+                                    "detailed summary retry failed; keeping the first valid summary"
+                                );
+                                break 'attempt ModelCycleResult {
+                                    model_call_id: format!(
+                                        "{}:summary-detail-fallback",
+                                        prepared.run_id
+                                    ),
+                                    text: manual_short_summary.clone().unwrap_or_default(),
+                                    reasoning: String::new(),
+                                    replay_state: None,
+                                    calls: Vec::new(),
+                                    usage: None,
+                                    finish_reason: FinishReason::Stop,
+                                };
+                            }
                             let message = failure_message(&cycle_failure.failure);
                             tracing::error!(
                                 provider_call_index,
@@ -1104,14 +1190,20 @@ impl RunEngine {
                     );
                 }
                 let summary = cycle.text.trim().to_string();
-                if summary.is_empty() {
-                    return (
-                        RunOutcome::Failed(RunFailure::Protocol(
-                            "compaction model returned an empty summary".into(),
-                        )),
-                        usage,
-                    );
-                }
+                let summary = if summary.is_empty() {
+                    if let Some(short_summary) = manual_short_summary.as_deref() {
+                        short_summary.to_string()
+                    } else {
+                        return (
+                            RunOutcome::Failed(RunFailure::Protocol(
+                                "compaction model returned an empty summary".into(),
+                            )),
+                            usage,
+                        );
+                    }
+                } else {
+                    summary
+                };
                 let summary = if super::compaction::summary_needs_expansion(
                     &summary,
                     minimum_summary_chars,
@@ -1119,12 +1211,18 @@ impl RunEngine {
                     tracing::warn!(
                         summary_chars = summary.chars().count(),
                         minimum_summary_chars,
-                        "explicit compaction summary was too short; added exact recent entries"
+                        "explicit compaction summary is still short; added exact recent entries"
                     );
                     super::compaction::short_summary_addendum(&summary, &messages)
                 } else {
                     summary
                 };
+                if emit(client, RunEvent::TextDelta(summary.clone()))
+                    .await
+                    .is_err()
+                {
+                    return (client_failure(), usage);
+                }
                 let summary =
                     super::compaction::carry_forward_summary(previous_summary.as_deref(), &summary);
                 let summary = super::compaction::fit_summary_slot_to_tokens(
@@ -1845,7 +1943,7 @@ impl RunEngine {
                 let cycle = {
                     let cycle = consume_model_cycle(
                         self.provider.stream(invocation, cycle_cancellation.clone()),
-                        &silent_events,
+                        Some(&silent_events),
                         &cycle_cancellation,
                     );
                     tokio::pin!(cycle);

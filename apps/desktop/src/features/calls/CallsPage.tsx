@@ -104,10 +104,12 @@ export function CallsPage() {
         ariaLabel={t("搜索调用")}
         placeholder={t("搜模型、调用 ID、会话 ID…")}
       />
-      <Select ariaLabel={t("客户端来源")} value={client} onChange={setClient} options={[
-        { value: "all", label: t("全部客户端") },
-        ...callClientSources.map((source) => ({ value: source, label: callClientLabel(source) })),
-      ]} />
+      <div className={styles.clientFilter}>
+        <Select ariaLabel={t("客户端来源")} value={client} onChange={setClient} options={[
+          { value: "all", label: t("全部客户端") },
+          ...callClientSources.map((source) => ({ value: source, label: callClientLabel(source) })),
+        ]} />
+      </div>
       <Segmented
         ariaLabel={t("按状态筛选")}
         value={status}

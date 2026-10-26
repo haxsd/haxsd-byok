@@ -92,26 +92,43 @@ export function PluginManagementPage() {
   const modelTotal = plugins.reduce((total, plugin) => total + plugin.providers.reduce((count, provider) => count + (provider.configured ? provider.models.filter((model) => model.enabled).length : 0), 0), 0);
 
   const content = ready
-    ? <div className={styles.page}>      <Card className={styles.pluginToolbar}>
-        <SearchInput
-          className={styles.pluginSearch}
-          value={search}
-          onValueChange={setSearch}
-          ariaLabel={t("搜索插件")}
-          placeholder={t("搜插件名称或作者…")}
-        />
-        <span className={toolbar.spacer} />
-        <span className={toolbar.count}>{t("共 {count} 个插件", { count: plugins.length })}</span>
-      </Card>
-      <p className={styles.riskNote}>{t("订阅账号接入可能违反服务条款，风险由使用者承担。")}</p>
-      <PluginCards plugins={visiblePlugins} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
-    </div>
+    ? plugins.length === 0
+      ? <EmptyState
+        icon={puzzleIcon}
+        title={t("还没有插件")}
+        description={t("插件运行时已经就绪。已安装的插件及其账号、模型会显示在这里。")}
+      />
+      : <div className={styles.page}>
+        <Card className={styles.pluginToolbar}>
+          <div className={styles.pluginFacts}>
+            <div className={toolbar.facts}>
+              <Fact label={t("插件")} value={String(plugins.length)} />
+              <Fact label={t("账号")} value={String(accountTotal)} tone={accountTotal > 0 ? "ok" : "none"} />
+              <Fact label={t("可用模型")} value={String(modelTotal)} />
+              <Fact label={t("运行时")} value={pluginRuntime?.version || "-"} />
+            </div>
+          </div>
+          <div className={styles.pluginFilters}>
+            <SearchInput
+              className={styles.pluginSearch}
+              value={search}
+              onValueChange={setSearch}
+              ariaLabel={t("搜索插件")}
+              placeholder={t("搜插件名称或作者…")}
+            />
+            <span className={toolbar.spacer} />
+            <span className={toolbar.count}>{t("共 {count} 个插件", { count: plugins.length })}</span>
+          </div>
+        </Card>
+        {visiblePlugins.length > 0 && <p className={styles.riskNote}>{t("订阅账号接入可能违反服务条款，风险由使用者承担。")}</p>}
+        <PluginCards plugins={visiblePlugins} searching={Boolean(query)} onOpen={(pluginId, mode) => setSelected({ pluginId, mode })} />
+      </div>
     : offline
       ? <ServiceOfflineState />
       : <RuntimeGate status={pluginRuntime} starting={starting} onInitialize={() => void initialize()} />;
   const estimatedHeight = plugins.length > 0
     ? Math.max(320, Math.ceil(plugins.length / 3) * 210 + 120)
-    : 360;
+    : 220;
 
   return <>
     <PageContent
@@ -123,17 +140,7 @@ export function PluginManagementPage() {
       sections={[{
         key: "installed-plugins",
         estimatedHeight,
-        content: ready
-          ? <>
-            <div className={toolbar.facts}>
-              <Fact label={t("插件")} value={String(plugins.length)} />
-              <Fact label={t("账号")} value={String(accountTotal)} tone={accountTotal > 0 ? "ok" : "none"} />
-              <Fact label={t("可用模型")} value={String(modelTotal)} />
-              <Fact label={t("运行时")} value={pluginRuntime?.version || "-"} />
-            </div>
-            {content}
-          </>
-          : content,
+        content,
       }]}
     />
     <RuntimeProgressModal
@@ -216,15 +223,18 @@ function RuntimeGate({ status, starting, onInitialize }: { status: PluginRuntime
   />;
 }
 
-function PluginCards({ plugins, onOpen }: {
+function PluginCards({ plugins, searching, onOpen }: {
   plugins: PluginDescriptor[];
+  searching: boolean;
   onOpen: (pluginId: string, mode: "add" | "settings") => void;
 }) {
   if (plugins.length === 0) {
     return <EmptyState
       icon={puzzleIcon}
-      title={t("没有匹配的插件")}
-      description={t("换个关键词，或清空搜索框。清空后仍为空，说明还没有安装插件。")}
+      title={searching ? t("没有匹配的插件") : t("还没有插件")}
+      description={searching
+        ? t("换个关键词，或清空搜索框。")
+        : t("插件运行时已经就绪。已安装的插件及其账号、模型会显示在这里。")}
     />;
   }
   return <div className={styles.pluginGrid}>

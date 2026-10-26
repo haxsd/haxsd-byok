@@ -284,11 +284,11 @@ function ModelGrid({
       const result = testResults.get(model.model_hash);
       const testing = testingModelHashes.has(model.model_hash);
       return <Card className={styles.modelCard} data-model-hash={model.model_hash} key={model.model_hash}>
-        {sortableEnabled && <button type="button" className={styles.sortHandle} disabled={disabled} aria-label={t("拖动排序")} title={t("拖动排序")} onClick={(event) => event.stopPropagation()}>
-          <Icon icon={dragIcon} size="1.25em" />
-        </button>}
         <div className={styles.modelCardContent}>
           <div className={styles.modelCardTop}>
+            {sortableEnabled && <button type="button" className={styles.sortHandle} disabled={disabled} aria-label={t("拖动排序")} title={t("拖动排序")} onClick={(event) => event.stopPropagation()}>
+              <Icon icon={dragIcon} size="1.15em" />
+            </button>}
             <div className={styles.modelCardName}>
               <span className={styles.modelCardNameText} title={model.display_name}>{model.display_name}</span>
               <span className={styles.modelCardModelId} title={model.model_id}>{model.model_id}</span>

@@ -63,11 +63,13 @@ export interface CodexNextStep {
   hint: string;
 }
 
-export function codexOutstandingSteps(status: CodexStatus | null, modelCount: number): CodexNextStep[] {
+export function codexOutstandingSteps(status: CodexStatus | null, selectedModelCount: number, libraryModelCount: number): CodexNextStep[] {
   if (!status || status.configured) return [];
   const steps: CodexNextStep[] = [];
-  if (modelCount === 0) {
-    steps.push({ key: "models", label: t("添加模型"), hint: t("在模型库添加至少一个 API 模型") });
+  if (selectedModelCount === 0) {
+    steps.push(libraryModelCount === 0
+      ? { key: "models", label: t("添加模型"), hint: t("在模型库添加至少一个 API 模型") }
+      : { key: "models", label: t("选择模型"), hint: t("在下方选择至少一个可用模型并保存") });
   }
   if (!status.enabled) {
     steps.push({ key: "enable", label: t("启用网关"), hint: t("打开下方「启用 Codex 网关」并保存") });

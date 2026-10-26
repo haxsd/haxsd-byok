@@ -1,17 +1,15 @@
 # Draws the icons for haxsd byok.
 #
-# The product shares no visual identity with the sibling Cursor BYOK product, and
-# that is deliberate rather than cosmetic: the two shipped byte-identical icons, so
-# in the taskbar and in a window list there was no way to tell which application was
-# which. This one is a key on a deep indigo tile, drawn with the midnight theme's
-# accent colour.
+# The mark is a request path through a local gateway: three connected nodes on a
+# deep indigo tile. It deliberately avoids key/credential imagery, which reads as
+# security software rather than a model-routing tool.
 #
 # Run this from the icons directory. It writes the 1024px source plus the four
 # linux-*.png names that bundle.icon references, because `tauri icon` does not know
 # about those legacy names and would leave them on the previous artwork. The
 # remaining sizes come from:
 #
-#   npm --prefix ../../../ run tauri icon -- <absolute path to icon-source.png>
+#   npm --prefix ../.. run tauri -- icon <absolute path to icon-source.png>
 #
 # usage: powershell -File generate-source.ps1
 
@@ -45,25 +43,33 @@ $graphics.FillPath($tileBrush, $tilePath)
 $borderPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(40, 255, 255, 255), 6)
 $graphics.DrawPath($borderPen, $tilePath)
 
-# Key: a ring, a shaft and two teeth, stroked with round caps so the shape still
-# reads once it is scaled down to a taskbar entry.
-$glyph = [System.Drawing.Color]::FromArgb(255, 124, 156, 255)
-$ringPen = New-Object System.Drawing.Pen($glyph, 82)
-$ringPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$ringPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$ringRadius = 135
-$graphics.DrawEllipse($ringPen, (372 - $ringRadius), (512 - $ringRadius), (2 * $ringRadius), (2 * $ringRadius))
+# Route: a smooth path from the lower-left node through the local gateway node to
+# the upper-right node. Round nodes and caps keep the mark legible at 32px.
+$glyphStart = [System.Drawing.Color]::FromArgb(255, 143, 174, 255)
+$glyphEnd = [System.Drawing.Color]::FromArgb(255, 114, 217, 203)
+$routeBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
+    (New-Object System.Drawing.Point(300, 716)),
+    (New-Object System.Drawing.Point(724, 308)),
+    $glyphStart,
+    $glyphEnd)
+$routePen = New-Object System.Drawing.Pen($routeBrush, 76)
+$routePen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+$routePen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+$routePen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+$route = New-Object System.Drawing.Drawing2D.GraphicsPath
+$route.AddBezier(300, 716, 390, 716, 388, 512, 512, 512)
+$route.AddBezier(512, 512, 636, 512, 634, 308, 724, 308)
+$graphics.DrawPath($routePen, $route)
 
-$shaft = New-Object System.Drawing.Pen($glyph, 82)
-$shaft.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$shaft.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$graphics.DrawLine($shaft, 482, 512, 792, 512)
+$startNode = New-Object System.Drawing.SolidBrush($glyphStart)
+$endNode = New-Object System.Drawing.SolidBrush($glyphEnd)
+$graphics.FillEllipse($startNode, 236, 652, 128, 128)
+$graphics.FillEllipse($endNode, 660, 244, 128, 128)
 
-$tooth = New-Object System.Drawing.Pen($glyph, 58)
-$tooth.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-$tooth.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-$graphics.DrawLine($tooth, 726, 512, 726, 632)
-$graphics.DrawLine($tooth, 634, 512, 634, 588)
+# The middle node is open: it marks the local gateway the path passes through.
+$gatewayFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 17, 24, 45))
+$graphics.FillEllipse($routeBrush, 395, 395, 234, 234)
+$graphics.FillEllipse($gatewayFill, 457, 457, 110, 110)
 
 $graphics.Dispose()
 $bitmap.Save((Join-Path (Get-Location) "icon-source.png"), [System.Drawing.Imaging.ImageFormat]::Png)

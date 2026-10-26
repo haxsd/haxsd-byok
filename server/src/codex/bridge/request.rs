@@ -224,7 +224,13 @@ fn validate_tool_history(items: &[Value]) -> Result<()> {
                     return Err(Error::Protocol("tool result is missing output".into()));
                 }
             }
-            "message" if !pending.is_empty() => {
+            "message"
+                if !pending.is_empty()
+                    && !matches!(
+                        item.get("role").and_then(Value::as_str),
+                        Some("system" | "developer")
+                    ) =>
+            {
                 return Err(Error::Protocol(
                     "tool calls are missing results before the next message".into(),
                 ))

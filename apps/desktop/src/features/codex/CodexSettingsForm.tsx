@@ -25,7 +25,7 @@ export function CodexSettingsForm({ draft, models, pluginModels, locked, onChang
     </div>
     <div className={styles.fields}>
       <FormField label={t("可用模型")} hint={t("来自共享模型库")}>
-        <ModelSelect mode="multiple" label={t("选择 Codex 可用模型")} options={availability.options} value={draft.model_hashes} disabled={locked}
+        <ModelSelect mode="multiple" emptySummary={t("未选择")} label={t("选择 Codex 可用模型")} options={availability.options} value={draft.model_hashes} disabled={locked}
           onChange={model_hashes => onChange({ ...draft, model_hashes, default_model_hash: model_hashes.includes(draft.default_model_hash ?? "") ? draft.default_model_hash : model_hashes[0] ?? null })} />
         {availability.blockedPluginModels.length > 0 && <small className={styles.fieldNote}>
           {t("插件模型的 {count} 个模型不可用（Codex 只转发 API 模型）", { count: availability.blockedPluginModels.length })}

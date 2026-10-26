@@ -6,6 +6,17 @@
 }
 
 .pluginToolbar {
+  display: grid;
+  overflow: hidden;
+}
+
+.pluginFacts {
+  min-width: 0;
+  padding: var(--oa-space-3) var(--oa-card-padding);
+  border-bottom: 1px solid var(--oa-border);
+}
+
+.pluginFilters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;

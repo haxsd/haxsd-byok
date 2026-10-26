@@ -340,6 +340,66 @@ fn parallel_tool_results_stay_grouped_in_one_anthropic_user_turn() {
 }
 
 #[test]
+fn instruction_messages_between_parallel_tool_results_preserve_complete_history() {
+    for role in ["developer", "system"] {
+        let source = json!({
+            "input": [
+                {"role": "user", "content": "inspect images"},
+                {"type": "function_call", "call_id": "a", "name": "f", "arguments": "{}"},
+                {"type": "function_call", "call_id": "b", "name": "f", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "a", "output": "first image"},
+                {"role": role, "content": "Image in the preceding tool output was resized."},
+                {"type": "function_call_output", "call_id": "b", "output": "second image"},
+                {"role": "user", "content": "continue"}
+            ],
+            "tools": [{"type": "function", "name": "f", "parameters": {"type": "object"}}]
+        });
+        for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
+            let mapped = translate_request(&source, format, "vendor", 4096).unwrap();
+            let messages = mapped.body["messages"].as_array().unwrap();
+            match format {
+                UpstreamFormat::Chat => {
+                    assert!(messages[0]["content"]
+                        .as_str()
+                        .unwrap()
+                        .contains("was resized"));
+                    assert_eq!(messages[2]["tool_calls"].as_array().unwrap().len(), 2);
+                    assert_eq!(messages[3]["tool_call_id"], "a");
+                    assert_eq!(messages[3]["content"], "first image");
+                    assert_eq!(messages[4]["tool_call_id"], "b");
+                    assert_eq!(messages[4]["content"], "second image");
+                }
+                UpstreamFormat::Anthropic => {
+                    assert!(mapped.body["system"].to_string().contains("was resized"));
+                    assert_eq!(messages[1]["content"].as_array().unwrap().len(), 2);
+                    assert_eq!(messages[2]["content"][0]["tool_use_id"], "a");
+                    assert_eq!(messages[2]["content"][0]["content"], "first image");
+                    assert_eq!(messages[2]["content"][1]["tool_use_id"], "b");
+                    assert_eq!(messages[2]["content"][1]["content"], "second image");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn instruction_messages_do_not_hide_missing_tool_results() {
+    for role in ["developer", "system", "user", "assistant"] {
+        let source = json!({
+            "input": [
+                {"role": "user", "content": "go"},
+                {"type": "function_call", "call_id": "a", "name": "f", "arguments": "{}"},
+                {"role": role, "content": "continue"}
+            ],
+            "tools": [{"type": "function", "name": "f", "parameters": {"type": "object"}}]
+        });
+        for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
+            assert!(translate_request(&source, format, "vendor", 4096).is_err());
+        }
+    }
+}
+
+#[test]
 fn orphan_tool_results_are_explicitly_rejected() {
     let source = json!({
         "input": [

@@ -24,8 +24,20 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 131,
+          "line": 107,
           "column": 28
+        }
+      ]
+    },
+    "0091bd4e436e8b8a": {
+      "source": "在下方选择至少一个可用模型并保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 72,
+          "column": 50
         }
       ]
     },
@@ -74,7 +86,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 128,
+          "line": 132,
           "column": 6
         }
       ]
@@ -86,7 +98,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 135,
+          "line": 137,
           "column": 42
         }
       ]
@@ -255,7 +267,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 198,
+          "line": 202,
           "column": 36
         }
       ]
@@ -315,7 +327,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 126,
+          "line": 130,
           "column": 15
         }
       ]
@@ -327,7 +339,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 127,
+          "line": 131,
           "column": 18
         }
       ]
@@ -410,7 +422,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 116,
+          "line": 118,
           "column": 40
         },
         {
@@ -574,7 +586,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 423,
+          "line": 433,
           "column": 21
         }
       ]
@@ -634,7 +646,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 123,
+          "line": 125,
           "column": 20
         }
       ]
@@ -737,6 +749,23 @@
         }
       ]
     },
+    "085213b6948fb901": {
+      "source": "还没有插件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 98,
+          "column": 16
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 234,
+          "column": 41
+        }
+      ]
+    },
     "08c7d97f993eb9ec": {
       "source": "把 Devin 指到本机网关",
       "kind": "text",
@@ -768,7 +797,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 126,
+          "line": 128,
           "column": 34
         }
       ]
@@ -859,7 +888,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 115,
+          "line": 117,
           "column": 34
         }
       ]
@@ -1012,7 +1041,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 215,
+          "line": 219,
           "column": 24
         }
       ]
@@ -1199,18 +1228,6 @@
         }
       ]
     },
-    "0e5ae863d829f0c7": {
-      "source": "换个关键词，或清空搜索框。清空后仍为空，说明还没有安装插件。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 227,
-          "column": 20
-        }
-      ]
-    },
     "0e67021ebf0a3580": {
       "source": "导入完成：新增 {imported} 个模型，跳过 {skipped} 个已存在模型",
       "kind": "template",
@@ -1250,8 +1267,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 101,
-          "column": 24
+          "line": 117,
+          "column": 28
         }
       ]
     },
@@ -1449,8 +1466,13 @@
           "column": 25
         },
         {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 28,
+          "column": 52
+        },
+        {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 122,
+          "line": 126,
           "column": 46
         }
       ]
@@ -1575,7 +1597,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 129,
+          "line": 133,
           "column": 6
         }
       ]
@@ -1727,8 +1749,8 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 70,
-          "column": 40
+          "line": 71,
+          "column": 33
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
@@ -1944,7 +1966,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 298,
+          "line": 308,
           "column": 23
         }
       ]
@@ -1987,20 +2009,15 @@
         }
       ]
     },
-    "1ae6b0a0f8266382": {
-      "source": "关闭窗口",
+    "1afed6a81a2512d2": {
+      "source": "选择模型",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "shell/WindowControls.tsx",
-          "line": 62,
-          "column": 19
-        },
-        {
-          "file": "shell/WindowControls.tsx",
-          "line": 63,
-          "column": 14
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 72,
+          "column": 33
         }
       ]
     },
@@ -2184,7 +2201,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 75,
+          "line": 77,
           "column": 58
         }
       ]
@@ -2401,7 +2418,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 203,
           "column": 34
         }
       ]
@@ -2440,7 +2457,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 157,
+          "line": 161,
           "column": 21
         }
       ]
@@ -2623,7 +2640,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 92,
+          "line": 94,
           "column": 32
         }
       ]
@@ -2769,12 +2786,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 210,
+          "line": 217,
           "column": 127
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 407,
+          "line": 417,
           "column": 122
         }
       ]
@@ -2848,7 +2865,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 75,
+          "line": 77,
           "column": 41
         }
       ]
@@ -2924,7 +2941,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 201,
+          "line": 208,
           "column": 36
         }
       ]
@@ -2965,7 +2982,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 262,
+          "line": 272,
           "column": 11
         }
       ]
@@ -3055,7 +3072,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 117,
+          "line": 119,
           "column": 37
         },
         {
@@ -3113,6 +3130,18 @@
         }
       ]
     },
+    "297f7cf6fa4ac64d": {
+      "source": "官方模型和本机模型同时可用，按模型分流；上下文压缩只作用于由本机模型回答的请求。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 151,
+          "column": 12
+        }
+      ]
+    },
     "298c1f1ed6466dd3": {
       "source": "先登录 ChatGPT（推荐）",
       "kind": "text",
@@ -3120,7 +3149,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 80,
+          "line": 82,
           "column": 39
         }
       ]
@@ -3306,7 +3335,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 397,
+          "line": 407,
           "column": 70
         },
         {
@@ -3501,7 +3530,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 202,
+          "line": 206,
           "column": 20
         }
       ]
@@ -3704,7 +3733,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 228,
+          "line": 232,
           "column": 18
         }
       ]
@@ -3716,7 +3745,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 130,
+          "line": 106,
           "column": 28
         }
       ]
@@ -3847,12 +3876,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 141,
+          "line": 145,
           "column": 65
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 159,
+          "line": 163,
           "column": 80
         }
       ]
@@ -4106,7 +4135,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 104,
+          "line": 106,
           "column": 65
         },
         {
@@ -4185,7 +4214,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 121,
+          "line": 123,
           "column": 39
         }
       ]
@@ -4221,7 +4250,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 77,
+          "line": 79,
           "column": 61
         }
       ]
@@ -4274,7 +4303,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 115,
+          "line": 119,
           "column": 17
         }
       ]
@@ -4286,7 +4315,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 215,
+          "line": 219,
           "column": 47
         }
       ]
@@ -4417,8 +4446,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 104,
-          "column": 42
+          "line": 120,
+          "column": 46
         }
       ]
     },
@@ -4468,7 +4497,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 194,
+          "line": 198,
           "column": 16
         }
       ]
@@ -4490,7 +4519,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 366,
+          "line": 376,
           "column": 30
         }
       ]
@@ -4552,7 +4581,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 232,
+          "line": 236,
           "column": 18
         }
       ]
@@ -4680,7 +4709,7 @@
         },
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 233,
+          "line": 237,
           "column": 102
         }
       ]
@@ -4704,7 +4733,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 196,
+          "line": 203,
           "column": 25
         }
       ]
@@ -4808,7 +4837,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 77,
+          "line": 79,
           "column": 39
         },
         {
@@ -5043,7 +5072,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 397,
+          "line": 407,
           "column": 80
         },
         {
@@ -5089,7 +5118,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 213,
+          "line": 220,
           "column": 70
         }
       ]
@@ -5101,7 +5130,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 120,
+          "line": 122,
           "column": 35
         }
       ]
@@ -5117,6 +5146,23 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 86,
           "column": 13
+        }
+      ]
+    },
+    "40820ee229a449ad": {
+      "source": "隐藏到托盘（继续运行）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shell/WindowControls.tsx",
+          "line": 62,
+          "column": 19
+        },
+        {
+          "file": "shell/WindowControls.tsx",
+          "line": 63,
+          "column": 14
         }
       ]
     },
@@ -5173,12 +5219,12 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 106,
+          "line": 108,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 108,
+          "line": 110,
           "column": 77
         }
       ]
@@ -5484,8 +5530,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 100,
-          "column": 22
+          "line": 116,
+          "column": 26
         }
       ]
     },
@@ -5511,7 +5557,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 105,
+          "line": 107,
           "column": 79
         },
         {
@@ -5580,7 +5626,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 206,
+          "line": 210,
           "column": 24
         }
       ]
@@ -5661,7 +5707,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 88,
+          "line": 90,
           "column": 29
         }
       ]
@@ -5685,7 +5731,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 197,
+          "line": 201,
           "column": 35
         }
       ]
@@ -5750,7 +5796,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 199,
+          "line": 203,
           "column": 53
         }
       ]
@@ -5800,7 +5846,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 144,
+          "line": 146,
           "column": 15
         },
         {
@@ -6001,7 +6047,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 396,
+          "line": 406,
           "column": 12
         }
       ]
@@ -6049,7 +6095,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 213,
+          "line": 220,
           "column": 48
         }
       ]
@@ -6273,8 +6319,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 226,
-          "column": 14
+          "line": 234,
+          "column": 26
         }
       ]
     },
@@ -6475,7 +6521,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 352,
+          "line": 362,
           "column": 47
         }
       ]
@@ -6568,7 +6614,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 121,
+          "line": 138,
           "column": 15
         }
       ]
@@ -6690,7 +6736,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 110,
+          "line": 112,
           "column": 52
         },
         {
@@ -6761,7 +6807,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 224,
+          "line": 228,
           "column": 52
         }
       ]
@@ -6927,7 +6973,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 170,
+          "line": 174,
           "column": 46
         }
       ]
@@ -7060,7 +7106,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 116,
+          "line": 120,
           "column": 15
         }
       ]
@@ -7106,7 +7152,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 120,
+          "line": 124,
           "column": 15
         }
       ]
@@ -7264,8 +7310,8 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 120,
-          "column": 34
+          "line": 123,
+          "column": 31
         }
       ]
     },
@@ -7288,7 +7334,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 389,
+          "line": 399,
           "column": 7
         }
       ]
@@ -7336,7 +7382,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 143,
+          "line": 145,
           "column": 15
         }
       ]
@@ -7386,7 +7432,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 125,
+          "line": 127,
           "column": 47
         }
       ]
@@ -7461,6 +7507,18 @@
         }
       ]
     },
+    "5fe326dfa354220a": {
+      "source": "不会。主窗口会隐藏到系统托盘，本地网关继续运行。要彻底退出，请在托盘菜单中选择「退出」。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 116,
+          "column": 15
+        }
+      ]
+    },
     "6003d3246f0fca2b": {
       "source": "模型管理",
       "kind": "text",
@@ -7480,7 +7538,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 130,
+          "line": 134,
           "column": 17
         }
       ]
@@ -7739,6 +7797,23 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 442,
           "column": 15
+        }
+      ]
+    },
+    "62945125d8b0efec": {
+      "source": "插件运行时已经就绪。已安装的插件及其账号、模型会显示在这里。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 99,
+          "column": 22
+        },
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 237,
+          "column": 11
         }
       ]
     },
@@ -8073,7 +8148,7 @@
         },
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 156,
+          "line": 158,
           "column": 30
         },
         {
@@ -8267,7 +8342,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 240,
+          "line": 244,
           "column": 18
         }
       ]
@@ -8466,7 +8541,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 199,
+          "line": 206,
           "column": 11
         }
       ]
@@ -8481,7 +8556,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 141,
+          "line": 143,
           "column": 13
         }
       ]
@@ -8810,7 +8885,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 254,
+          "line": 258,
           "column": 13
         }
       ]
@@ -8983,7 +9058,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 244,
+          "line": 248,
           "column": 18
         }
       ]
@@ -9202,7 +9277,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 155,
+          "line": 159,
           "column": 20
         }
       ]
@@ -9226,7 +9301,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 353,
+          "line": 363,
           "column": 45
         },
         {
@@ -9255,7 +9330,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 422,
+          "line": 432,
           "column": 31
         }
       ]
@@ -9479,7 +9554,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 147,
+          "line": 151,
           "column": 193
         }
       ]
@@ -9515,7 +9590,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 156,
+          "line": 160,
           "column": 118
         }
       ]
@@ -9566,7 +9641,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 349,
+          "line": 359,
           "column": 80
         }
       ]
@@ -9631,7 +9706,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 198,
+          "line": 205,
           "column": 27
         }
       ]
@@ -9672,7 +9747,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 143,
+          "line": 147,
           "column": 52
         }
       ]
@@ -9684,7 +9759,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 191,
+          "line": 195,
           "column": 49
         }
       ]
@@ -9810,12 +9885,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 210,
+          "line": 217,
           "column": 25
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 407,
+          "line": 417,
           "column": 20
         }
       ]
@@ -10099,7 +10174,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 123,
+          "line": 125,
           "column": 51
         }
       ]
@@ -10113,7 +10188,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 263,
+          "line": 273,
           "column": 11
         }
       ]
@@ -10149,7 +10224,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 419,
+          "line": 429,
           "column": 32
         }
       ]
@@ -10433,7 +10508,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 73,
+          "line": 75,
           "column": 40
         }
       ]
@@ -10521,7 +10596,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 89,
+          "line": 91,
           "column": 29
         }
       ]
@@ -10610,7 +10685,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 360,
+          "line": 370,
           "column": 51
         }
       ]
@@ -10871,7 +10946,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 421,
+          "line": 431,
           "column": 31
         }
       ]
@@ -11099,8 +11174,8 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 120,
-          "column": 44
+          "line": 124,
+          "column": 9
         }
       ]
     },
@@ -11159,7 +11234,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 137,
+          "line": 141,
           "column": 14
         }
       ]
@@ -11578,12 +11653,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 189,
+          "line": 196,
           "column": 11
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 391,
+          "line": 401,
           "column": 9
         }
       ]
@@ -11619,7 +11694,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 73,
+          "line": 75,
           "column": 57
         }
       ]
@@ -11695,7 +11770,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 149,
+          "line": 156,
           "column": 11
         }
       ]
@@ -11719,7 +11794,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 420,
+          "line": 430,
           "column": 30
         }
       ]
@@ -11733,7 +11808,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 300,
+          "line": 310,
           "column": 17
         },
         {
@@ -11798,7 +11873,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 90,
+          "line": 92,
           "column": 34
         }
       ]
@@ -12026,7 +12101,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 191,
+          "line": 195,
           "column": 24
         }
       ]
@@ -12191,7 +12266,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 202,
+          "line": 209,
           "column": 36
         }
       ]
@@ -12228,7 +12303,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 157,
+          "line": 159,
           "column": 9
         }
       ]
@@ -12242,7 +12317,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 150,
+          "line": 157,
           "column": 11
         }
       ]
@@ -12423,13 +12498,13 @@
       "refs": [
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 287,
-          "column": 113
+          "line": 289,
+          "column": 117
         },
         {
           "file": "features/models/CursorModelCards.tsx",
-          "line": 287,
-          "column": 131
+          "line": 289,
+          "column": 135
         }
       ]
     },
@@ -12632,7 +12707,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 119,
+          "line": 123,
           "column": 17
         }
       ]
@@ -12716,7 +12791,7 @@
         },
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 234,
+          "line": 238,
           "column": 67
         }
       ]
@@ -13171,18 +13246,6 @@
         }
       ]
     },
-    "b09e7173495445e7": {
-      "source": "完全交给 Cursor：不写代理配置、不注入账号，本应用看不到它的请求，也没有调用记录与压窗。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 149,
-          "column": 15
-        }
-      ]
-    },
     "b09f0d534e647458": {
       "source": "配置里已有本应用之外的内容，先处理冲突。",
       "kind": "text",
@@ -13245,7 +13308,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 91,
+          "line": 93,
           "column": 31
         }
       ]
@@ -13296,12 +13359,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 146,
+          "line": 150,
           "column": 24
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 253,
+          "line": 257,
           "column": 101
         }
       ]
@@ -13347,7 +13410,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 410,
+          "line": 420,
           "column": 70
         }
       ]
@@ -13418,7 +13481,7 @@
         {
           "file": "features/codex/CodexSettingsForm.tsx",
           "line": 28,
-          "column": 45
+          "column": 69
         }
       ]
     },
@@ -13532,7 +13595,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 194,
+          "line": 201,
           "column": 15
         }
       ]
@@ -13661,7 +13724,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 206,
+          "line": 210,
           "column": 48
         }
       ]
@@ -13704,7 +13767,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 224,
+          "line": 228,
           "column": 24
         }
       ]
@@ -13861,7 +13924,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 127,
+          "line": 131,
           "column": 6
         }
       ]
@@ -13885,18 +13948,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 103,
           "column": 48
-        }
-      ]
-    },
-    "b9be00111e43366c": {
-      "source": "官方模型和本机模型同时可用，按模型分流；压窗只作用于由本机模型回答的请求。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/CursorSettingsPage.tsx",
-          "line": 151,
-          "column": 12
         }
       ]
     },
@@ -13994,7 +14045,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 122,
+          "line": 124,
           "column": 41
         }
       ]
@@ -14252,7 +14303,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 93,
+          "line": 95,
           "column": 29
         }
       ]
@@ -14276,7 +14327,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 213,
+          "line": 220,
           "column": 85
         }
       ]
@@ -14341,7 +14392,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 128,
+          "line": 132,
           "column": 23
         }
       ]
@@ -14375,7 +14426,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 203,
+          "line": 210,
           "column": 38
         }
       ]
@@ -14468,7 +14519,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 195,
+          "line": 199,
           "column": 22
         }
       ]
@@ -14535,7 +14586,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 397,
+          "line": 407,
           "column": 45
         }
       ]
@@ -14549,6 +14600,18 @@
           "file": "shell/CommandPalette.tsx",
           "line": 161,
           "column": 88
+        }
+      ]
+    },
+    "c176935291c4b14d": {
+      "source": "换个关键词，或清空搜索框。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/plugins/PluginManagementPage.tsx",
+          "line": 236,
+          "column": 11
         }
       ]
     },
@@ -14729,7 +14792,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 132,
+          "line": 108,
           "column": 28
         }
       ]
@@ -14741,7 +14804,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 125,
+          "line": 129,
           "column": 6
         }
       ]
@@ -14876,7 +14939,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 191,
+          "line": 198,
           "column": 13
         }
       ]
@@ -14888,7 +14951,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 203,
+          "line": 210,
           "column": 16
         }
       ]
@@ -15022,7 +15085,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 154,
+          "line": 158,
           "column": 14
         }
       ]
@@ -15099,7 +15162,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 236,
+          "line": 240,
           "column": 18
         }
       ]
@@ -15140,7 +15203,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 119,
+          "line": 121,
           "column": 26
         },
         {
@@ -15191,6 +15254,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 172,
           "column": 13
+        }
+      ]
+    },
+    "ca99b8969c3f26e5": {
+      "source": "完全交给 Cursor：不写代理配置、不注入账号，本应用看不到它的请求，也没有调用记录，不会压缩上下文。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/CursorSettingsPage.tsx",
+          "line": 149,
+          "column": 15
         }
       ]
     },
@@ -15295,7 +15370,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 136,
+          "line": 138,
           "column": 24
         }
       ]
@@ -15387,7 +15462,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 201,
+          "line": 208,
           "column": 16
         }
       ]
@@ -15500,7 +15575,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 125,
+          "line": 129,
           "column": 23
         }
       ]
@@ -15524,7 +15599,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 130,
+          "line": 134,
           "column": 6
         }
       ]
@@ -15538,6 +15613,18 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 105,
           "column": 175
+        }
+      ]
+    },
+    "cfde08a2ad3ecd0d": {
+      "source": "点关闭按钮会退出应用吗？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 115,
+          "column": 17
         }
       ]
     },
@@ -15601,7 +15688,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 109,
+          "line": 111,
           "column": 81
         }
       ]
@@ -15677,7 +15764,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 158,
+          "line": 160,
           "column": 9
         }
       ]
@@ -15701,7 +15788,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 118,
+          "line": 120,
           "column": 36
         }
       ]
@@ -15742,7 +15829,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 329,
+          "line": 339,
           "column": 20
         }
       ]
@@ -16097,7 +16184,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 411,
+          "line": 421,
           "column": 44
         }
       ]
@@ -16129,7 +16216,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 287,
+          "line": 297,
           "column": 15
         }
       ]
@@ -16246,8 +16333,8 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 70,
-          "column": 57
+          "line": 71,
+          "column": 50
         }
       ]
     },
@@ -16309,7 +16396,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 202,
+          "line": 209,
           "column": 16
         }
       ]
@@ -16480,7 +16567,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 129,
+          "line": 133,
           "column": 18
         }
       ]
@@ -16538,8 +16625,8 @@
         },
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 107,
-          "column": 26
+          "line": 108,
+          "column": 28
         }
       ]
     },
@@ -16665,7 +16752,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 349,
+          "line": 359,
           "column": 69
         }
       ]
@@ -16788,7 +16875,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 112,
+          "line": 114,
           "column": 20
         }
       ]
@@ -16922,8 +17009,8 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 108,
-          "column": 32
+          "line": 109,
+          "column": 34
         }
       ]
     },
@@ -17304,7 +17391,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 138,
+          "line": 142,
           "column": 13
         }
       ]
@@ -17333,7 +17420,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 198,
+          "line": 202,
           "column": 55
         }
       ]
@@ -17395,7 +17482,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 128,
+          "line": 130,
           "column": 39
         },
         {
@@ -17439,7 +17526,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 129,
+          "line": 105,
           "column": 28
         }
       ]
@@ -17543,7 +17630,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 140,
           "column": 47
         }
       ]
@@ -17639,7 +17726,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 126,
+          "line": 130,
           "column": 6
         }
       ]
@@ -17651,8 +17738,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 106,
-          "column": 39
+          "line": 123,
+          "column": 71
         }
       ]
     },
@@ -17742,7 +17829,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 363,
+          "line": 373,
           "column": 49
         }
       ]
@@ -17980,7 +18067,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 80,
+          "line": 82,
           "column": 67
         }
       ]
@@ -18104,7 +18191,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 147,
+          "line": 151,
           "column": 74
         }
       ]
@@ -18128,7 +18215,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 124,
+          "line": 126,
           "column": 31
         }
       ]
@@ -18212,7 +18299,7 @@
       "refs": [
         {
           "file": "features/calls/CallsPage.tsx",
-          "line": 133,
+          "line": 135,
           "column": 20
         }
       ]
@@ -18359,7 +18446,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 319,
+          "line": 329,
           "column": 32
         }
       ]
@@ -18395,7 +18482,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 119,
+          "line": 136,
           "column": 16
         },
         {
@@ -18540,7 +18627,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 107,
+          "line": 109,
           "column": 73
         },
         {
@@ -18569,7 +18656,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 169,
+          "line": 173,
           "column": 21
         }
       ]
@@ -18674,7 +18761,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 354,
+          "line": 364,
           "column": 52
         }
       ]
@@ -18698,7 +18785,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 153,
+          "line": 160,
           "column": 20
         },
         {
@@ -18715,12 +18802,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 207,
+          "line": 214,
           "column": 77
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 403,
+          "line": 413,
           "column": 76
         }
       ]
@@ -18781,7 +18868,7 @@
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 213,
+          "line": 220,
           "column": 21
         },
         {
@@ -18810,12 +18897,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 187,
+          "line": 194,
           "column": 9
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 418,
+          "line": 428,
           "column": 29
         }
       ]
@@ -18919,7 +19006,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginManagementPage.tsx",
-          "line": 319,
+          "line": 329,
           "column": 45
         }
       ]
@@ -18948,7 +19035,7 @@
       "refs": [
         {
           "file": "shared/ui/ModelSelect.tsx",
-          "line": 195,
+          "line": 199,
           "column": 49
         }
       ]
@@ -19064,7 +19151,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 252,
+          "line": 256,
           "column": 14
         },
         {

@@ -91,7 +91,7 @@ async fn malformed_provider_tool_json_is_kept_as_a_tool_validation_error() {
         Ok(ModelEvent::Done(FinishReason::ToolUse)),
     ]));
     let (events, _receiver) = tokio::sync::mpsc::channel(16);
-    let result = consume_model_cycle(stream, &events, &CancellationToken::new())
+    let result = consume_model_cycle(stream, Some(&events), &CancellationToken::new())
         .await
         .expect("malformed tool JSON must not fail the model cycle");
 
@@ -812,6 +812,15 @@ async fn unknown_exec_id_is_ignored() {
     assert!(matches!(result, codec::ClientExecEvent::Pending));
 }
 
+fn detailed_summary(marker: &str, minimum_chars: usize) -> String {
+    const LINE: &str =
+        "Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+    format!(
+        "{marker}\n{}",
+        LINE.repeat(minimum_chars.div_ceil(LINE.len()))
+    )
+}
+
 #[tokio::test]
 async fn one_run_can_auto_compact_again_after_more_tool_output() {
     let (_directory, store) = fixtures::temp_store().await;
@@ -844,9 +853,12 @@ async fn one_run_can_auto_compact_again_after_more_tool_output() {
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
     provider.push(tool_call_response("repeat-call-1"));
-    provider.push(text_events("first summary"));
+    // 64 KiB of tool output crosses the detail gate. A two-line summary would
+    // spend the next fake response on a regeneration and hide the second
+    // tool call this test is meant to exercise.
+    provider.push(text_events(&detailed_summary("first summary", 2_400)));
     provider.push(tool_call_response("repeat-call-2"));
-    provider.push(text_events("second summary"));
+    provider.push(text_events(&detailed_summary("second summary", 2_400)));
     provider.push(text_events("done"));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

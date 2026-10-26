@@ -49,7 +49,7 @@ export function CodexSettingsPage() {
   const login = codexLoginView(codexStatus);
   const clientMode = codexClientModeView(codexStatus);
   const modelCount = saved?.model_hashes.length ?? 0;
-  const steps = codexOutstandingSteps(codexStatus, modelCount);
+  const steps = codexOutstandingSteps(codexStatus, modelCount, models.length);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   const locked = Boolean(codexStatus?.configured || codexStatus?.config_conflict);
   // 两个按钮的可用条件集中在 codexConnectionView 里：撤销看接管凭证（restorable），

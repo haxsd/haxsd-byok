@@ -16,7 +16,7 @@ use axum::{
 };
 use tauri::{
     async_runtime::JoinHandle, webview::Color, AppHandle, Manager, RunEvent, WebviewUrl,
-    WebviewWindow, WebviewWindowBuilder,
+    WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
@@ -223,7 +223,7 @@ fn create_main_window(
     builder.build()
 }
 
-/// 按需打开主窗口:webview 仅在需要界面时创建,关闭窗口即销毁释放内存。
+/// 按需打开主窗口：首次需要界面时创建；之后关闭按钮只隐藏窗口，页面状态保留。
 pub(crate) fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.unminimize();
@@ -236,6 +236,11 @@ pub(crate) fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
     window.show()?;
     window.set_focus()?;
     Ok(())
+}
+
+/// 主窗口的关闭按钮只收起到托盘；托盘里的显式退出与进程内退出不受影响。
+fn close_hides_to_tray(label: &str, explicit_exit: bool) -> bool {
+    label == MAIN_WINDOW_LABEL && !explicit_exit
 }
 
 /// setup 的**唯一**出口：装配失败时先让人看见，再把日志落盘，最后用非零码结束进程。
@@ -425,6 +430,22 @@ pub fn run() -> ExitCode {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|window, event| {
+            let WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            let explicit_exit = window
+                .app_handle()
+                .try_state::<DesktopRuntime>()
+                .is_some_and(|runtime| runtime.exiting.load(Ordering::Acquire));
+            if !close_hides_to_tray(window.label(), explicit_exit) {
+                return;
+            }
+            api.prevent_close();
+            if let Err(error) = window.hide() {
+                tracing::warn!(%error, "failed to hide the main window to the tray");
+            }
+        })
         .setup(move |app| {
             finish_setup(
                 || setup_desktop(app, started_by_autostart, &log_flush),
@@ -443,8 +464,8 @@ pub fn run() -> ExitCode {
     };
 
     app.run(|app, event| match event {
-        // code 为 None 表示所有窗口已被关闭(轻量模式),阻止退出,
-        // 转发服务继续在托盘后台运行;code 为 Some 时是显式退出请求。
+        // code 为 None 是窗口被非关闭按钮路径销毁时的兜底：托盘与转发服务继续运行。
+        // code 为 Some 时是显式退出请求。
         RunEvent::ExitRequested { code, api, .. } => match code {
             None => {
                 // 关窗不是退出：进程与本地网关留在托盘里（Cursor 的接管依赖网关在线）。
@@ -662,6 +683,19 @@ mod tests {
             log_flush: Arc::new(LogFlush::inert()),
             server_addr: "127.0.0.1:0".parse().expect("static address"),
         }
+    }
+
+    #[test]
+    fn closing_the_main_window_hides_it_instead_of_quitting() {
+        assert!(close_hides_to_tray(MAIN_WINDOW_LABEL, false));
+        assert!(
+            !close_hides_to_tray(MAIN_WINDOW_LABEL, true),
+            "显式退出不能被关窗逻辑拦住"
+        );
+        assert!(
+            !close_hides_to_tray("other", false),
+            "只接管主窗口的关闭按钮"
+        );
     }
 
     /// 退出码由第一次退出请求决定，收尾结束后的第二次事件不能把它改回 0。

@@ -59,8 +59,17 @@ const MAX_ANCHOR_FILES: usize = 12;
 /// Below this history size a short summary can still be complete.
 const SUMMARY_DETAIL_MIN_MESSAGES: usize = 40;
 
+/// Below this estimated history size a short summary can still be complete.
+/// Message count alone misses a few very large messages.
+const SUMMARY_DETAIL_MIN_TOKENS: u64 = 16_000;
+
 /// Rough character budget per compacted message for the detail gate.
 const SUMMARY_DETAIL_CHARS_PER_MESSAGE: usize = 6;
+
+/// One character of handover for this many estimated history tokens. This is a
+/// lower bound, not a target: it only prevents a few huge messages from being
+/// summarized in a couple of sentences.
+const SUMMARY_DETAIL_HISTORY_TOKENS_PER_CHAR: u64 = 10;
 
 const SUMMARY_DETAIL_FLOOR_CHARS: usize = 1_200;
 const SUMMARY_DETAIL_CEILING_CHARS: usize = 12_000;
@@ -79,7 +88,12 @@ const SUMMARY_SLOT_SHARE_PERCENT: u64 = 33;
 /// detailed summaries; beyond this point the archive is the right place to look.
 const SUMMARY_SLOT_MAX_TOKENS: u64 = 16_000;
 
-const COMPACTED_UPDATE_HEADING: &str = "## Later Compacted Context";
+const EARLIER_COMPACTED_HEADING: &str = "## Earlier Compacted Context (Historical)";
+const EARLIER_COMPACTED_NOTICE: &str =
+    "Status, Next Action, and In Flight entries in this section may be obsolete.";
+const CURRENT_COMPACTED_HEADING: &str = "## Current Compacted Context (Authoritative)";
+const CURRENT_COMPACTED_NOTICE: &str =
+    "This newest section supersedes earlier status and next-action entries.";
 
 /// Images kept verbatim in the retained tail after a compaction. Older images
 /// become text placeholders: they rarely matter for the next step, cost
@@ -923,14 +937,27 @@ pub(super) fn latest_summary_message(messages: &[CanonicalMessage]) -> Option<&C
 ///
 /// A tiny summary is usually a failed compression, not a compact one. Small
 /// conversations are exempt because a complete handover can genuinely fit in a
-/// few sentences there.
+/// few sentences there. "Small" uses both message count and estimated history
+/// size: three very large messages are not a short conversation.
 pub(super) fn minimum_summary_chars(compactable: &[CanonicalMessage]) -> usize {
-    if compactable.len() < SUMMARY_DETAIL_MIN_MESSAGES {
+    let estimated_tokens = project_messages(compactable)
+        .map(|messages| estimate_projected_messages_tokens(&messages))
+        .unwrap_or_default();
+    if compactable.len() < SUMMARY_DETAIL_MIN_MESSAGES
+        && estimated_tokens < SUMMARY_DETAIL_MIN_TOKENS
+    {
         return 0;
     }
-    compactable
+    let by_message_count = compactable
         .len()
         .saturating_mul(SUMMARY_DETAIL_CHARS_PER_MESSAGE)
+        .clamp(SUMMARY_DETAIL_FLOOR_CHARS, SUMMARY_DETAIL_CEILING_CHARS);
+    let by_history_size =
+        usize::try_from(estimated_tokens.saturating_div(SUMMARY_DETAIL_HISTORY_TOKENS_PER_CHAR))
+            .unwrap_or(usize::MAX)
+            .clamp(SUMMARY_DETAIL_FLOOR_CHARS, SUMMARY_DETAIL_CEILING_CHARS);
+    by_message_count
+        .max(by_history_size)
         .clamp(SUMMARY_DETAIL_FLOOR_CHARS, SUMMARY_DETAIL_CEILING_CHARS)
 }
 
@@ -952,7 +979,10 @@ pub(super) fn detail_retry_instructions(minimum_chars: usize) -> String {
 /// Re-summarizing an old summary compounds information loss: each model
 /// paraphrase can drop a distinct constraint or exact value. The active slot
 /// therefore appends a fresh summary of the newly compacted span below the
-/// previous handover instead of asking the model to rewrite it.
+/// previous handover instead of asking the model to rewrite it. The headings
+/// distinguish historical state from the newest authoritative delta; otherwise
+/// an old `Next Action` can be mistaken for the current one after several
+/// compactions.
 pub(super) fn carry_forward_summary(previous: Option<&str>, current: &str) -> String {
     let current = current.trim();
     let Some(previous) = previous
@@ -965,7 +995,8 @@ pub(super) fn carry_forward_summary(previous: Option<&str>, current: &str) -> St
         return current.to_string();
     }
     bound_carried_summary(format!(
-        "{previous}\n\n{COMPACTED_UPDATE_HEADING}\n{current}"
+        "{EARLIER_COMPACTED_HEADING}\n{EARLIER_COMPACTED_NOTICE}\n{previous}\n\n\
+         {CURRENT_COMPACTED_HEADING}\n{CURRENT_COMPACTED_NOTICE}\n{current}"
     ))
 }
 
@@ -2304,6 +2335,11 @@ mod tests {
             !instructions.contains("short handover state"),
             "the old brevity instruction caused 153-token summaries"
         );
+        assert!(
+            instructions.contains("historical context")
+                && instructions.contains("newest handover is authoritative"),
+            "an older summary must not be mistaken for the current state"
+        );
     }
 
     #[test]
@@ -2319,6 +2355,18 @@ mod tests {
         assert!(
             combined.find(previous).unwrap() < combined.find(current).unwrap(),
             "new facts append after the retained handover"
+        );
+        assert!(combined.contains(EARLIER_COMPACTED_HEADING));
+        assert!(combined.contains(EARLIER_COMPACTED_NOTICE));
+        assert!(combined.contains(CURRENT_COMPACTED_HEADING));
+        assert!(combined.contains(CURRENT_COMPACTED_NOTICE));
+        assert!(
+            combined.find(EARLIER_COMPACTED_HEADING).unwrap() < combined.find(previous).unwrap()
+                && combined.find(previous).unwrap()
+                    < combined.find(CURRENT_COMPACTED_HEADING).unwrap()
+                && combined.find(CURRENT_COMPACTED_HEADING).unwrap()
+                    < combined.find(current).unwrap(),
+            "historical and current sections must be unambiguous"
         );
     }
 
@@ -2340,6 +2388,20 @@ mod tests {
         assert_eq!(minimum_summary_chars(&messages(40)), 1_200);
         assert_eq!(minimum_summary_chars(&messages(819)), 4_914);
         assert_eq!(minimum_summary_chars(&messages(3_000)), 12_000);
+        let long_messages = (0..3)
+            .map(|index| {
+                CanonicalMessage::text(
+                    format!("long-{index}"),
+                    Role::User,
+                    Origin::Runtime,
+                    "x".repeat(25_000),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            minimum_summary_chars(&long_messages) >= SUMMARY_DETAIL_FLOOR_CHARS,
+            "a few very large messages must still require a substantive handover"
+        );
         assert!(summary_needs_expansion("too short", 1_200));
         assert!(!summary_needs_expansion("short sessions are allowed", 0));
     }

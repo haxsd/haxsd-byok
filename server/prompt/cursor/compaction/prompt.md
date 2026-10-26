@@ -23,7 +23,8 @@ Rules:
 - State what was verified separately from what was only attempted or assumed.
 - Keep exact paths, commands, identifiers, numbers, API names, flags, versions, and error strings verbatim.
 - Do not omit an older fact merely because it is old; omit it only when it is no longer true or no longer relevant.
-- If a prior `<conversation_summary>` appears in the history, it is already retained verbatim outside this output. Use it only as context and do not repeat or rewrite it.
+- If a prior `<conversation_summary>` appears in the history, it is already retained verbatim outside this output. Treat it as historical context: it may contain obsolete status, Next Action, or In Flight entries. Do not repeat or rewrite it.
+- The newest handover is authoritative for current state and next actions. If an older summary conflicts with the latest verified state, describe only the latest verified state.
 - Do not address the user, do not mention compaction, summarization, or token limits, and do not call tools.
 - Write in the language the user used in the conversation.
 - Return plain text only, using dense bullet-like lines.

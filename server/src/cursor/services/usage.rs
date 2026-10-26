@@ -17,8 +17,6 @@ const CATEGORIES: [(&str, &str); 8] = [
     ("summarized_conversation", "Summarized conversation"),
     ("conversation", "Conversation"),
 ];
-const EASTER_EGG_CATEGORY: (&str, &str) = ("leookun", "@leookun stole 1 token 😂");
-
 const SYSTEM: usize = 0;
 const TOOLS: usize = 1;
 const RULES: usize = 2;
@@ -146,13 +144,12 @@ pub(crate) fn breakdown(
         measures[SUMMARY].characters = summary.character_count.unwrap_or(0) as u64;
         estimates[SUMMARY] = summary.estimated_tokens as u64;
     }
-    let easter_egg_tokens = 1_u64;
     let categorized_tokens = used_tokens as u64;
     fit_special_estimates(&mut estimates, categorized_tokens);
     estimates[CONVERSATION] =
         categorized_tokens.saturating_sub(estimates[..CONVERSATION].iter().sum::<u64>());
 
-    let mut categories = CATEGORIES
+    let categories = CATEGORIES
         .iter()
         .enumerate()
         .map(|(index, (id, label))| pb::PromptTokenBreakdownCategory {
@@ -163,12 +160,6 @@ pub(crate) fn breakdown(
                 .then_some(measures[index].characters.min(u32::MAX as u64) as u32),
         })
         .collect::<Vec<_>>();
-    categories.push(pb::PromptTokenBreakdownCategory {
-        id: EASTER_EGG_CATEGORY.0.into(),
-        label: EASTER_EGG_CATEGORY.1.into(),
-        estimated_tokens: easter_egg_tokens as u32,
-        character_count: None,
-    });
     Ok(pb::PromptTokenBreakdownSnapshot {
         total_used_tokens: used_tokens,
         max_tokens,
@@ -381,5 +372,36 @@ mod tests {
             served.iter().map(|measure| measure.characters).sum::<u64>()
         );
         assert_eq!(cache.len(), 1, "同 id 只留一份量测");
+    }
+
+    #[test]
+    fn breakdown_contains_only_real_context_categories() {
+        let snapshot = breakdown(
+            12_000,
+            200_000,
+            None,
+            StaticMeasures::default(),
+            &[],
+            &mut MessageMeasureCache::default(),
+        )
+        .expect("breakdown");
+        assert_eq!(
+            snapshot
+                .categories
+                .iter()
+                .map(|category| category.id.as_str())
+                .collect::<Vec<_>>(),
+            CATEGORIES.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            "上下文构成只应显示真实类别，不应夹带来源项目标记"
+        );
+        assert_eq!(
+            snapshot
+                .categories
+                .iter()
+                .map(|category| u64::from(category.estimated_tokens))
+                .sum::<u64>(),
+            12_000,
+            "所有分类加起来必须等于实际上下文用量"
+        );
     }
 }

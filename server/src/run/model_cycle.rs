@@ -43,7 +43,7 @@ struct OpenTool {
 
 pub async fn consume_model_cycle(
     mut stream: ProviderStream,
-    client: &mpsc::Sender<RunEvent>,
+    client: Option<&mpsc::Sender<RunEvent>>,
     cancellation: &CancellationToken,
 ) -> std::result::Result<ModelCycleResult, Box<ModelCycleFailure>> {
     let mut model_call_id = None;
@@ -361,17 +361,20 @@ pub async fn consume_model_cycle(
 }
 
 async fn send(
-    client: &mpsc::Sender<RunEvent>,
+    client: Option<&mpsc::Sender<RunEvent>>,
     event: RunEvent,
 ) -> std::result::Result<(), &'static str> {
-    client
-        .send(event)
-        .await
-        .map_err(|_| "client event channel closed")
+    match client {
+        Some(client) => client
+            .send(event)
+            .await
+            .map_err(|_| "client event channel closed"),
+        None => Ok(()),
+    }
 }
 
 async fn interrupt_cycle(
-    client: &mpsc::Sender<RunEvent>,
+    client: Option<&mpsc::Sender<RunEvent>>,
     text_open: bool,
     thinking_started: Option<Instant>,
 ) {
@@ -471,7 +474,7 @@ mod tests {
         let stream = Box::pin(tokio_stream::iter(events));
         let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(4);
 
-        let result = consume_model_cycle(stream, &event_tx, &CancellationToken::new())
+        let result = consume_model_cycle(stream, Some(&event_tx), &CancellationToken::new())
             .await
             .unwrap();
 
@@ -490,7 +493,7 @@ mod tests {
         let cancellation = CancellationToken::new();
         let cycle_cancellation = cancellation.clone();
         let cycle = tokio::spawn(async move {
-            consume_model_cycle(stream, &event_tx, &cycle_cancellation).await
+            consume_model_cycle(stream, Some(&event_tx), &cycle_cancellation).await
         });
         let usage = Usage {
             input_tokens: Some(100),

@@ -112,6 +112,10 @@ export function TutorialPage() {
       answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置；Claude 会尝试还原 CLI，并在 Desktop 未运行时还原 Desktop。Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
     },
     {
+      question: t("点关闭按钮会退出应用吗？"),
+      answer: t("不会。主窗口会隐藏到系统托盘，本地网关继续运行。要彻底退出，请在托盘菜单中选择「退出」。"),
+    },
+    {
       question: t("会影响机器上另一个同类软件吗？"),
       answer: t("端口、数据目录与安装目录都是独立的，卸载也只清理自己写过的配置条目。改写的是客户端自己的配置文件（Cursor 的 settings.json、Codex 的 config.toml、Devin 的设置文件与 extension.js）：如果是别的软件写入的，本应用不会覆盖，只在对应接入页说明冲突；要由本应用接管，请先关闭对方的接管。"),
     },

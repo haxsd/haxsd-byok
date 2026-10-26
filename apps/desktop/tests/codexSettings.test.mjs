@@ -293,10 +293,15 @@ test("login and client mode are compact pills, not paragraphs", async () => {
 test("the status card lists at most two next actions and shorter descriptions", async () => {
   const { codexOutstandingSteps, codexVerdictDescription } = await loader.load("/src/features/codex/codexConnectionView.ts");
   const pending = { ...state, configured: false, listening: false, enabled: false, chatgpt_signed_in: false };
-  const steps = codexOutstandingSteps(pending, 0);
+  const steps = codexOutstandingSteps(pending, 0, 0);
   assert.equal(steps.length, 2);
   assert.deepEqual(steps.map((step) => step.label), ["添加模型", "启用网关"]);
-  assert.equal(codexOutstandingSteps({ ...pending, configured: true }, 0).length, 0, "已接管后不再列步骤");
+  assert.deepEqual(
+    codexOutstandingSteps(pending, 0, 16).map((step) => step.label),
+    ["选择模型", "启用网关"],
+    "模型库已有模型时只缺选择，不说成添加",
+  );
+  assert.equal(codexOutstandingSteps({ ...pending, configured: true }, 0, 0).length, 0, "已接管后不再列步骤");
 
   for (const stateName of ["checking", "disabled", "pending-apply", "taken-over", "unavailable", "conflict"]) {
     assert.ok(codexVerdictDescription(stateName).length <= 30, `${stateName} 的状态说明要短`);

@@ -146,9 +146,9 @@ export function CursorSettingsPage() {
     mixed: t("混合"),
   };
   const modeDetail: Record<CursorMode, string> = {
-    official: t("完全交给 Cursor：不写代理配置、不注入账号，本应用看不到它的请求，也没有调用记录与压窗。"),
+    official: t("完全交给 Cursor：不写代理配置、不注入账号，本应用看不到它的请求，也没有调用记录，不会压缩上下文。"),
     local: t("只用模型库里的模型：官方模型不进列表，不在库里的模型会被明确拒绝；没有账号时本应用补一个本地账号。"),
-    mixed: t("官方模型和本机模型同时可用，按模型分流；压窗只作用于由本机模型回答的请求。"),
+    mixed: t("官方模型和本机模型同时可用，按模型分流；上下文压缩只作用于由本机模型回答的请求。"),
   };
   const accountLabel = !account
     ? t("读取中…")

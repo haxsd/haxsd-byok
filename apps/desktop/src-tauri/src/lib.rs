@@ -7,7 +7,7 @@ mod startup;
 mod tray;
 
 // mimalloc 在释放时主动向操作系统归还内存,避免 glibc 保留页导致
-// 关闭窗口后 RSS 无法回落到静默启动水平。
+// 长时间运行后的空闲内存无法回落到启动水平。
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

@@ -269,7 +269,11 @@ async fn automatic_compaction_preflights_provider_input_and_records_rebuilt_toke
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
     provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
-    provider.push(text_response("automatic durable summary", 120_000, 20));
+    provider.push(text_response(
+        &detailed_summary("automatic durable summary", 12_000),
+        120_000,
+        20,
+    ));
     provider.push(text_response("continued after compaction", 20_000, 20));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -541,7 +545,11 @@ async fn automatic_compaction_uses_the_configured_summary_model() {
 
     let provider = fake_provider::FakeProvider::default();
     provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
-    provider.push(text_response("short durable summary", 100_000, 20));
+    provider.push(text_response(
+        &detailed_summary("short durable summary", 4_200),
+        100_000,
+        20,
+    ));
     provider.push(text_response("continued after compact", 20_000, 20));
     let registry = registry(store, &provider);
 
@@ -885,7 +893,11 @@ async fn automatic_compaction_replays_the_newest_turn_verbatim() {
         30_000,
         1_000,
     ));
-    provider.push(text_response("hard state summary", 170_000, 20));
+    provider.push(text_response(
+        &detailed_summary("hard state summary", 13_000),
+        170_000,
+        20,
+    ));
     provider.push(text_response("third answer", 20_000, 12));
     provider.push(text_response("fourth answer", 20_000, 12));
     let registry = registry(store, &provider);
@@ -1041,7 +1053,8 @@ async fn explicit_summarize_keeps_recent_turns_and_points_the_archive_at_the_sum
     let provider = fake_provider::FakeProvider::default();
     provider.push(text_response("first answer", 60_000, 12));
     provider.push(text_response("second answer", 61_000, 12));
-    provider.push(text_response("Durable summary", 62_000, 20));
+    let durable_summary = detailed_summary("Durable summary", 8_000);
+    provider.push(text_response(&durable_summary, 62_000, 20));
     provider.push(text_response("after compaction", 40_000, 12));
     let registry = registry(store, &provider);
 
@@ -1081,7 +1094,7 @@ async fn explicit_summarize_keeps_recent_turns_and_points_the_archive_at_the_sum
         ),
     )
     .await;
-    assert_eq!(compacted.summary, "Durable summary");
+    assert!(compacted.summary.starts_with("Durable summary"));
     let state = compacted.checkpoints.last().unwrap();
     let archive = archive_of(&compacted, state);
     assert!(
@@ -1134,6 +1147,82 @@ async fn explicit_summarize_keeps_recent_turns_and_points_the_archive_at_the_sum
         "the compacted prefix stays byte-stable for the turns that follow"
     );
     assert!(text_message(history, "KEEPME-OLD").is_none());
+}
+
+#[tokio::test]
+async fn a_short_explicit_summary_is_regenerated_with_the_detail_contract() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("explicit-detail-model", Some(200_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(text_response("first answer", 60_000, 12));
+    provider.push(text_response("second answer", 61_000, 12));
+    provider.push(text_response("too short", 62_000, 20));
+    let detailed = detailed_summary("DETAILED-MANUAL-SUMMARY", 8_000);
+    provider.push(text_response(&detailed, 62_000, 400));
+    let registry = registry(store, &provider);
+
+    let first = run(
+        &registry,
+        "explicit-detail-first",
+        user_request(
+            "explicit-detail-conversation",
+            "explicit-detail-user-1",
+            &format!("{} KEEPME-DETAILED", "x".repeat(240_000)),
+            &model.model_hash,
+            None,
+        ),
+    )
+    .await;
+    let second = run(
+        &registry,
+        "explicit-detail-second",
+        user_request(
+            "explicit-detail-conversation",
+            "explicit-detail-user-2",
+            "continue",
+            &model.model_hash,
+            first.checkpoints.last().cloned(),
+        ),
+    )
+    .await;
+    let compacted = run(
+        &registry,
+        "explicit-detail-command",
+        summary_request(
+            "explicit-detail-conversation",
+            &model.model_hash,
+            second.checkpoints.last().cloned().unwrap(),
+        ),
+    )
+    .await;
+
+    assert!(compacted.summary.starts_with("DETAILED-MANUAL-SUMMARY"));
+    assert!(!compacted.summary.contains("too short"));
+    assert_eq!(compacted.summary_started, 1);
+    assert_eq!(compacted.summary_completed, 1);
+    assert_eq!(
+        provider.purposes(),
+        vec![
+            CallPurpose::Chat,
+            CallPurpose::Chat,
+            CallPurpose::CompactionSummary,
+            CallPurpose::CompactionSummary,
+        ],
+        "the short explicit summary must trigger exactly one detailed retry"
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 4);
+    assert!(!requests[2].prompt.instructions.contains("## Detail Retry"));
+    assert!(requests[3].prompt.instructions.contains("## Detail Retry"));
+
+    let state = compacted.checkpoints.last().unwrap();
+    let summary_id = state.summary.as_ref().expect("the compacted summary slot");
+    let stored = pb::ConversationSummary::decode(compacted.blobs[summary_id].as_slice()).unwrap();
+    assert!(stored.summary.contains("DETAILED-MANUAL-SUMMARY"));
+    assert!(!stored.summary.contains("too short"));
 }
 
 #[tokio::test]
@@ -1482,7 +1571,11 @@ async fn a_second_overflow_refusal_reuses_the_summary_and_drops_the_recent_turns
          200000 maximum\"}}"
             .into(),
     ));
-    provider.push(text_response("first summary", 100_000, 20));
+    provider.push(text_response(
+        &detailed_summary("first summary", 12_000),
+        100_000,
+        20,
+    ));
     provider.push_error(cursor_server::Error::Provider(
         "Anthropic 400 Bad Request: {\"type\":\"error\",\"error\":{\"type\":\
          \"invalid_request_error\",\"message\":\"prompt is too long: 205000 tokens > \
@@ -1583,7 +1676,11 @@ async fn a_preflight_compaction_advances_the_overflow_ladder() {
     // exceed the window, so it preflights a compaction before dispatching.
     provider.push(text_response(&"x".repeat(400_000), 150_000, 1_000));
     // Preflight summarize call.
-    provider.push(text_response("preflight summary", 20_000, 20));
+    provider.push(text_response(
+        &detailed_summary("preflight summary", 12_000),
+        20_000,
+        20,
+    ));
     // The compacted prompt is still refused. No number in the prose, so the
     // learned window stays the configured one.
     provider.push_error(cursor_server::Error::Provider(
@@ -1836,6 +1933,15 @@ fn text_response(text: &str, input: u64, output: u64) -> Vec<ModelEvent> {
         }),
         ModelEvent::Done(FinishReason::Stop),
     ]
+}
+
+fn detailed_summary(marker: &str, minimum_chars: usize) -> String {
+    const LINE: &str =
+        "Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+    format!(
+        "{marker}\n{}",
+        LINE.repeat(minimum_chars.div_ceil(LINE.len()))
+    )
 }
 
 fn user_request(
