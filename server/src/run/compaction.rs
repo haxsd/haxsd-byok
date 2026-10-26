@@ -56,6 +56,31 @@ const SUMMARY_TOOL_RESULT_LIMIT: usize = 8 * 1024;
 /// Upper bound on the deterministic file anchors attached to a summary slot.
 const MAX_ANCHOR_FILES: usize = 12;
 
+/// Below this history size a short summary can still be complete.
+const SUMMARY_DETAIL_MIN_MESSAGES: usize = 40;
+
+/// Rough character budget per compacted message for the detail gate.
+const SUMMARY_DETAIL_CHARS_PER_MESSAGE: usize = 6;
+
+const SUMMARY_DETAIL_FLOOR_CHARS: usize = 1_200;
+const SUMMARY_DETAIL_CEILING_CHARS: usize = 12_000;
+
+/// The carried-over handover grows append-only across compactions. This limit
+/// bounds the active slot while leaving ample room for repeated long sessions;
+/// older bytes remain searchable in the compaction archives.
+const CARRIED_SUMMARY_LIMIT_CHARS: usize = 64_000;
+
+/// The active handover may use at most this share of the space left after the
+/// static prompt and the current request. The rest is left for request context
+/// and retained turns.
+const SUMMARY_SLOT_SHARE_PERCENT: u64 = 33;
+
+/// Absolute ceiling for the carried handover. Long sessions accumulate several
+/// detailed summaries; beyond this point the archive is the right place to look.
+const SUMMARY_SLOT_MAX_TOKENS: u64 = 16_000;
+
+const COMPACTED_UPDATE_HEADING: &str = "## Later Compacted Context";
+
 /// Images kept verbatim in the retained tail after a compaction. Older images
 /// become text placeholders: they rarely matter for the next step, cost
 /// provider-specific visual tokens, and the summary/archive keeps their paths.
@@ -65,17 +90,23 @@ const MAX_RETAINED_IMAGES: usize = 2;
 ///
 /// The summary stays provider-visible until the next compaction, so it competes
 /// with the retained turns for the budget above. This bound only stops a
-/// rambling model from being cut mid-sentence; `INSTRUCTIONS` asks for a short
-/// handover state. Call sites clamp it to the configured model limit, because
+/// rambling model from being cut mid-sentence; the prompt asks for a detailed
+/// engineering handover. Call sites clamp it to the configured model limit, because
 /// providers reject a `max_tokens` above the model's own output limit.
 pub(super) const OUTPUT_TOKENS: u64 = 8_192;
 /// Summarize-call instructions.
 ///
-/// The template file is the single source of truth so the 8-section handover
+/// The template file is the single source of truth so the handover sections
 /// format cannot drift between the prompt asset and the code that sends it.
 pub(super) fn instructions() -> &'static str {
     include_str!("../../prompt/cursor/compaction/prompt.md").trim_end()
 }
+
+/// Provider-visible user tail for an assistant-terminated summarize history.
+/// The full compaction specification is already in `PromptSpec::instructions`;
+/// repeating it here wastes context and can worsen instruction dilution.
+const SUMMARY_TAIL_INSTRUCTION: &str =
+    "Produce the complete engineering handover now, following the system instructions exactly.";
 
 /// Summary slot content when the summarizer produced nothing usable.
 ///
@@ -309,7 +340,7 @@ fn compact_history_at(
     super::history::user_terminated(
         trim_to_context(history, summary_input_budget(input, settings, percent)),
         "compaction:instruction",
-        instructions(),
+        SUMMARY_TAIL_INSTRUCTION,
     )
 }
 
@@ -888,6 +919,146 @@ pub(super) fn latest_summary_message(messages: &[CanonicalMessage]) -> Option<&C
         .find(|message| is_superseded_summary(message))
 }
 
+/// Minimum model-written summary size worth committing for this span.
+///
+/// A tiny summary is usually a failed compression, not a compact one. Small
+/// conversations are exempt because a complete handover can genuinely fit in a
+/// few sentences there.
+pub(super) fn minimum_summary_chars(compactable: &[CanonicalMessage]) -> usize {
+    if compactable.len() < SUMMARY_DETAIL_MIN_MESSAGES {
+        return 0;
+    }
+    compactable
+        .len()
+        .saturating_mul(SUMMARY_DETAIL_CHARS_PER_MESSAGE)
+        .clamp(SUMMARY_DETAIL_FLOOR_CHARS, SUMMARY_DETAIL_CEILING_CHARS)
+}
+
+pub(super) fn summary_needs_expansion(summary: &str, minimum_chars: usize) -> bool {
+    minimum_chars > 0 && summary.trim().chars().count() < minimum_chars
+}
+
+/// Extra instruction for the single regeneration after an unusably short
+/// summary. It is appended only to the retry, so the normal summarizer prompt
+/// stays compact.
+pub(super) fn detail_retry_instructions(minimum_chars: usize) -> String {
+    format!(
+        "\n\n## Detail Retry\nThe previous handover was too short for this history. Regenerate it from scratch and return at least {minimum_chars} characters. Preserve every still-true requirement, correction, decision, path, command, identifier, number, error, and unfinished item. Do not describe the retry itself."
+    )
+}
+
+/// Carries the previous handover forward byte-for-byte.
+///
+/// Re-summarizing an old summary compounds information loss: each model
+/// paraphrase can drop a distinct constraint or exact value. The active slot
+/// therefore appends a fresh summary of the newly compacted span below the
+/// previous handover instead of asking the model to rewrite it.
+pub(super) fn carry_forward_summary(previous: Option<&str>, current: &str) -> String {
+    let current = current.trim();
+    let Some(previous) = previous
+        .map(str::trim)
+        .filter(|previous| !previous.is_empty())
+    else {
+        return current.to_string();
+    };
+    if previous == current {
+        return current.to_string();
+    }
+    bound_carried_summary(format!(
+        "{previous}\n\n{COMPACTED_UPDATE_HEADING}\n{current}"
+    ))
+}
+
+/// Token budget for the summary slot on the conversation model.
+///
+/// The append-only slot competes with the static prompt, the current request,
+/// request context, and retained turns. Giving it one third of what remains
+/// leaves the other consumers room on small-context models; the absolute cap
+/// prevents a long-running archive from crowding out the live conversation.
+pub(super) fn summary_slot_token_budget(
+    prepared: &PreparedRun,
+    calibration: f64,
+    settings: &crate::store::CompactionSettings,
+) -> u64 {
+    let Some(input_budget) = input_budget(prepared, settings) else {
+        return SUMMARY_SLOT_MAX_TOKENS;
+    };
+    let initial = project_messages(&prepared.initial_messages)
+        .map(|messages| estimate_projected_messages_tokens(&messages))
+        .unwrap_or_default();
+    let fixed = estimate_context_tokens(&prepared.prompt, &[]).saturating_add(initial);
+    let available = calibrate_budget(input_budget, calibration).saturating_sub(fixed);
+    (available * SUMMARY_SLOT_SHARE_PERCENT / 100).min(SUMMARY_SLOT_MAX_TOKENS)
+}
+
+/// Trims the oldest carried text until the summary slot itself fits.
+///
+/// This is the last line of defence for small-context models: the latest
+/// summary must never make the replacement fail validation after a successful
+/// summarize call. The newest delta is always kept.
+pub(super) fn fit_summary_slot_to_tokens(summary: &str, max_tokens: u64) -> String {
+    if summary.trim().is_empty() || summary_slot_tokens(summary) <= max_tokens {
+        return summary.to_string();
+    }
+    let total = summary.chars().count();
+    let mut low = 0;
+    let mut high = total;
+    while low < high {
+        let keep = (low + high).div_ceil(2);
+        let candidate = bounded_summary_tail(summary, keep);
+        if summary_slot_tokens(&candidate) <= max_tokens {
+            low = keep;
+        } else {
+            high = keep - 1;
+        }
+    }
+    bounded_summary_tail(summary, low)
+}
+
+fn summary_slot_tokens(summary: &str) -> u64 {
+    let message = summary_message("summary:budget", summary);
+    project_messages(std::slice::from_ref(&message))
+        .map(|messages| estimate_projected_messages_tokens(&messages))
+        .unwrap_or(u64::MAX)
+}
+
+fn bounded_summary_tail(summary: &str, keep: usize) -> String {
+    let total = summary.chars().count();
+    let omitted = total.saturating_sub(keep);
+    let notice = format!(
+        "[Earlier handover text omitted to fit the active context window; recover older detail from the Archived History paths below. Omitted characters: {omitted}.]\n\n"
+    );
+    let tail: String = summary.chars().skip(omitted).collect();
+    format!("{notice}{tail}")
+}
+
+fn bound_carried_summary(summary: String) -> String {
+    let total = summary.chars().count();
+    if total <= CARRIED_SUMMARY_LIMIT_CHARS {
+        return summary;
+    }
+    let omitted = total.saturating_sub(CARRIED_SUMMARY_LIMIT_CHARS);
+    let notice = format!(
+        "[Earlier handover text omitted from the active slot after the {CARRIED_SUMMARY_LIMIT_CHARS}-character limit; recover older detail from the Archived History paths below. Omitted characters: {omitted}.]\n\n"
+    );
+    let keep = CARRIED_SUMMARY_LIMIT_CHARS.saturating_sub(notice.chars().count());
+    let tail: String = summary.chars().skip(total.saturating_sub(keep)).collect();
+    format!("{notice}{tail}")
+}
+
+/// Deterministic compensation when even the regeneration stays below the
+/// detail floor. Exact recent user/assistant entries are preferable to silently
+/// committing a fragment.
+pub(super) fn short_summary_addendum(summary: &str, compactable: &[CanonicalMessage]) -> String {
+    match digest_of_with_limits(compactable, 12, 800) {
+        Some(digest) => format!(
+            "{}\n\n## Recent Exact Entries\n- These exact entries are retained in addition to the handover:\n{digest}",
+            summary.trim()
+        ),
+        None => summary.to_string(),
+    }
+}
+
 /// A deterministic digest of the history a failed summarize call would have
 /// covered, appended to the fallback slot.
 ///
@@ -907,8 +1078,14 @@ pub(super) fn fallback_summary(compactable: &[CanonicalMessage]) -> String {
 /// The bounded, deterministic last-entries digest shared by the fallback slot
 /// and the summary-reuse path of the overflow ladder.
 pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
-    const MAX_ENTRIES: usize = 3;
-    const MAX_CHARS: usize = 400;
+    digest_of_with_limits(compactable, 3, 400)
+}
+
+fn digest_of_with_limits(
+    compactable: &[CanonicalMessage],
+    max_entries: usize,
+    max_chars: usize,
+) -> Option<String> {
     let mut digest = Vec::new();
     for message in compactable.iter().rev() {
         if is_superseded_summary(message) {
@@ -921,7 +1098,7 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
             Role::Assistant => "Assistant",
             _ => continue,
         };
-        if digest.len() >= MAX_ENTRIES {
+        if digest.len() >= max_entries {
             break;
         }
         let text = message_text(message);
@@ -937,7 +1114,7 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
         if collapsed.is_empty() {
             continue;
         }
-        let text = truncate_chars_middle(&collapsed, MAX_CHARS);
+        let text = truncate_chars_middle(&collapsed, max_chars);
         digest.push(format!("- {label}: {text}"));
     }
     if digest.is_empty() {
@@ -955,12 +1132,23 @@ pub(super) fn digest_of(compactable: &[CanonicalMessage]) -> Option<String> {
 /// calls are exact, ordered, and cost only a line, so the model can re-read
 /// them instead of rediscovering the repository.
 pub(super) fn with_context_anchors(summary: &str, messages: &[CanonicalMessage]) -> String {
-    if summary.contains("## Context Anchors") {
+    let paths = context_anchor_paths(messages);
+    let additions = paths
+        .into_iter()
+        .filter(|path| !summary.contains(path))
+        .collect::<Vec<_>>();
+    if additions.is_empty() {
         return summary.to_string();
     }
-    match context_anchors(messages) {
-        Some(anchors) => format!("{summary}\n\n{anchors}"),
-        None => summary.to_string(),
+    let files = additions.join(", ");
+    if summary.contains("## Context Anchors") {
+        format!(
+            "{summary}\n- Additional recently referenced files (re-read them if the handover is not enough): {files}"
+        )
+    } else {
+        format!(
+            "{summary}\n\n## Context Anchors\n- Recently referenced files (re-read them if the handover is not enough): {files}"
+        )
     }
 }
 
@@ -989,7 +1177,7 @@ pub(super) fn with_archive_anchor(summary: &str, archive: Option<&std::path::Pat
     )
 }
 
-fn context_anchors(messages: &[CanonicalMessage]) -> Option<String> {
+fn context_anchor_paths(messages: &[CanonicalMessage]) -> Vec<String> {
     let mut files: Vec<String> = Vec::new();
     for message in messages.iter().rev() {
         let MessageContent::Assistant { tool_calls, .. } = &message.content else {
@@ -1011,14 +1199,8 @@ fn context_anchors(messages: &[CanonicalMessage]) -> Option<String> {
             break;
         }
     }
-    if files.is_empty() {
-        return None;
-    }
     files.reverse();
-    Some(format!(
-        "## Context Anchors\n- Recently referenced files (re-read them if the summary is not enough): {}",
-        files.join(", ")
-    ))
+    files
 }
 
 fn anchor_path(name: &str, arguments: &serde_json::Value) -> Option<String> {
@@ -1302,6 +1484,17 @@ mod tests {
         assert_eq!(
             prepared.last().unwrap().message_id,
             "compaction:instruction"
+        );
+        let ProjectedContent::Parts(parts) = &prepared.last().unwrap().content else {
+            panic!("summarize tail must be a text message");
+        };
+        let text = match parts.as_slice() {
+            [ContentPart::Text { text }] => text,
+            _ => panic!("summarize tail must contain one text part"),
+        };
+        assert!(
+            text.len() < 200 && text.contains("system instructions"),
+            "the full prompt belongs in the system instructions, not a duplicated user tail"
         );
 
         // An already user-terminated history is left alone.
@@ -2093,6 +2286,149 @@ mod tests {
             with_context_anchors(&summary, &messages),
             summary,
             "anchors are not appended twice"
+        );
+    }
+
+    #[test]
+    fn summary_instructions_require_a_detailed_handover() {
+        let instructions = instructions();
+        assert!(
+            instructions.contains("Prefer completeness over brevity"),
+            "the summary prompt must not optimize for a short handover"
+        );
+        assert!(
+            instructions.contains("2,000") && instructions.contains("6,000"),
+            "a long coding session needs an explicit detail target"
+        );
+        assert!(
+            !instructions.contains("short handover state"),
+            "the old brevity instruction caused 153-token summaries"
+        );
+    }
+
+    #[test]
+    fn a_later_compaction_keeps_the_previous_handover_verbatim() {
+        let previous = "# First handover\n\n- original constraint: never replace the database";
+        let current = "## Goal\n- continue the parser work";
+        let combined = super::carry_forward_summary(Some(previous), current);
+        assert!(
+            combined.contains(previous),
+            "the previous handover must survive without a model rewrite: {combined}"
+        );
+        assert!(combined.contains(current));
+        assert!(
+            combined.find(previous).unwrap() < combined.find(current).unwrap(),
+            "new facts append after the retained handover"
+        );
+    }
+
+    #[test]
+    fn long_compactions_require_a_substantive_summary() {
+        let messages = |count: usize| {
+            (0..count)
+                .map(|index| {
+                    CanonicalMessage::text(
+                        format!("u-{index}"),
+                        Role::User,
+                        Origin::Runtime,
+                        "message",
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(minimum_summary_chars(&messages(39)), 0);
+        assert_eq!(minimum_summary_chars(&messages(40)), 1_200);
+        assert_eq!(minimum_summary_chars(&messages(819)), 4_914);
+        assert_eq!(minimum_summary_chars(&messages(3_000)), 12_000);
+        assert!(summary_needs_expansion("too short", 1_200));
+        assert!(!summary_needs_expansion("short sessions are allowed", 0));
+    }
+
+    #[test]
+    fn a_persistently_short_summary_gets_exact_recent_entries() {
+        let mut messages = (0..45)
+            .map(|index| {
+                CanonicalMessage::text(format!("u-{index}"), Role::User, Origin::Runtime, "working")
+            })
+            .collect::<Vec<_>>();
+        messages.push(canonical_user(
+            "u-exact",
+            "EXACT-CONSTRAINT: keep the local database untouched",
+        ));
+        let expanded = short_summary_addendum("short model summary", &messages);
+        assert!(expanded.starts_with("short model summary"));
+        assert!(expanded.contains("## Recent Exact Entries"));
+        assert!(expanded.contains("EXACT-CONSTRAINT"));
+    }
+
+    #[test]
+    fn carried_summary_is_bounded_but_keeps_the_latest_delta() {
+        let previous = "p".repeat(CARRIED_SUMMARY_LIMIT_CHARS + 500);
+        let current = "## Latest\n- CURRENT-MARKER-LATEST";
+        let combined = super::carry_forward_summary(Some(&previous), current);
+        assert!(
+            combined.chars().count() <= CARRIED_SUMMARY_LIMIT_CHARS,
+            "the active summary slot must stay bounded"
+        );
+        assert!(combined.contains("Earlier handover text omitted"));
+        assert!(
+            combined.ends_with(current),
+            "the newest compacted span must never be the part that is dropped"
+        );
+    }
+
+    #[test]
+    fn fitted_summary_slot_stays_within_its_token_budget() {
+        let previous = "durable constraint and exact command\n".repeat(2_000);
+        let current = "## Latest\n- CURRENT-MARKER-LATEST";
+        let combined = super::carry_forward_summary(Some(&previous), current);
+        let fitted = super::fit_summary_slot_to_tokens(&combined, 1_000);
+        assert!(
+            super::summary_slot_tokens(&fitted) <= 1_000,
+            "the fitted summary must not overflow the slot budget"
+        );
+        assert!(fitted.contains("Earlier handover text omitted"));
+        assert!(
+            fitted.ends_with(current),
+            "the newest compacted span must always survive"
+        );
+    }
+
+    #[test]
+    fn summary_slot_budget_shrinks_with_a_small_prompt_budget() {
+        let wide = super::summary_slot_token_budget(&prepared(200_000), 1.0, &default_settings());
+        let narrow = super::summary_slot_token_budget(&prepared(8_000), 1.0, &default_settings());
+        assert!(wide > narrow);
+        assert!(wide <= super::SUMMARY_SLOT_MAX_TOKENS);
+    }
+
+    #[test]
+    fn new_context_anchors_survive_an_existing_anchor_section() {
+        let assistant = |id: &str, path: &str| CanonicalMessage {
+            message_id: id.into(),
+            role: Role::Assistant,
+            origin: Origin::Assistant,
+            content: MessageContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                tool_round_id: None,
+                replay_state: None,
+                tool_calls: vec![ToolCallContent {
+                    index: 0,
+                    call_id: id.into(),
+                    name: "Read".into(),
+                    arguments: serde_json::json!({"path": path}),
+                }],
+            },
+            runtime_event_id: None,
+        };
+        let previous =
+            "old handover\n\n## Context Anchors\n- Recently referenced files: src/old.rs";
+        let updated = with_context_anchors(previous, &[assistant("a2", "src/new.rs")]);
+        assert!(updated.contains("src/old.rs"));
+        assert!(
+            updated.contains("src/new.rs"),
+            "the latest span's anchor must not disappear behind the old section: {updated}"
         );
     }
 

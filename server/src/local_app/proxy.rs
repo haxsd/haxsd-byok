@@ -300,8 +300,8 @@ fn is_local_path(path: &str) -> bool {
             | "/aiserver.v1.AiService/KnowledgeBaseRemove"
             | "/aiserver.v1.AiService/WriteGitCommitMessage"
             | "/aiserver.v1.NetworkService/IsConnected"
-            // Cursor 的控制面请求：它们由后端按 Cursor 角色的出网设置转发（用户直连
-            // 模型时仍走系统代理），避免 hudsucker 直连失败把 502 抛给会话。
+            // Cursor 的控制面请求：它们由后端按当前出网设置转发，与模型请求使用同一份
+            // 直连/自定义/系统代理选择，避免 hudsucker 直连失败把 502 抛给会话。
             | "/aiserver.v1.AnalyticsService/SubmitLogs"
             | "/aiserver.v1.AnalyticsService/Batch"
             | "/aiserver.v1.DashboardService/GetCliDownloadUrl"

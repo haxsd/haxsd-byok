@@ -1,4 +1,4 @@
-﻿//! Verifies explicit and automatic context compaction behavior.
+//! Verifies explicit and automatic context compaction behavior.
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
 #[path = "support/fixtures.rs"]
@@ -70,6 +70,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         ModelEvent::Done(FinishReason::Stop),
     ]);
     provider.push(text_response("new answer", 900, 5));
+    provider.push(text_response("Detailed second summary", 1_100, 20));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("prompt/cursor")
@@ -207,6 +208,32 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     assert!(
         matches!(new_user_parts.as_slice(), [ContentPart::Text { text }]
         if text.contains("what remains?") && !text.contains("remember alpha"))
+    );
+
+    let second_compacted = run(
+        &registry,
+        "compact-again",
+        summary_request(
+            "conversation",
+            &model.model_hash,
+            after.checkpoints.last().cloned().unwrap(),
+        ),
+    )
+    .await;
+    let second_state = second_compacted.checkpoints.last().unwrap();
+    let second_summary_id = second_state.summary.as_ref().unwrap();
+    let second_summary =
+        pb::ConversationSummary::decode(second_compacted.blobs[second_summary_id].as_slice())
+            .unwrap();
+    assert!(
+        second_summary.summary.contains("Durable summary"),
+        "the first handover survives a later compaction verbatim: {}",
+        second_summary.summary
+    );
+    assert!(
+        second_summary.summary.contains("Detailed second summary"),
+        "the new compacted span is appended: {}",
+        second_summary.summary
     );
 }
 
@@ -1622,6 +1649,91 @@ async fn a_preflight_compaction_advances_the_overflow_ladder() {
         summary_slot.contains("- Additional archived span:"),
         "the reused summary also references the archive written for this step: {summary_slot}"
     );
+}
+
+#[tokio::test]
+async fn a_short_automatic_summary_is_regenerated_with_the_detail_contract() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let model = store
+        .create_model(&windowed_model("detail-retry-model", Some(150_000)))
+        .await
+        .unwrap();
+    let provider = fake_provider::FakeProvider::default();
+    for _ in 0..20 {
+        provider.push(text_response(&"x".repeat(15_000), 0, 0));
+    }
+    provider.push(text_response("too short", 0, 20));
+    let detailed_summary = format!(
+        "DETAILED-RETRY-SUMMARY\n{}",
+        "durable constraint and exact path ".repeat(60)
+    );
+    provider.push(text_response(&detailed_summary, 0, 400));
+    provider.push(text_response("continued after detailed summary", 0, 10));
+    let registry = registry(store.clone(), &provider);
+
+    let mut state = None;
+    for index in 0..20 {
+        let output = run(
+            &registry,
+            &format!("detail-retry-{index}"),
+            user_request(
+                "detail-retry-conversation",
+                &format!("detail-retry-user-{index}"),
+                "continue",
+                &model.model_hash,
+                state.take(),
+            ),
+        )
+        .await;
+        state = output.checkpoints.last().cloned();
+    }
+    store
+        .set_compaction_settings(cursor_server::store::CompactionSettings {
+            auto: true,
+            reserve_percent: Some(50),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let output = run(
+        &registry,
+        "detail-retry-final",
+        user_request(
+            "detail-retry-conversation",
+            "detail-retry-user-final",
+            "continue after the long history",
+            &model.model_hash,
+            state,
+        ),
+    )
+    .await;
+    assert_eq!(output.summary_started, 1);
+    assert_eq!(output.summary_completed, 1);
+    assert_eq!(output.turn_ended, 1);
+
+    let requests = provider.requests();
+    let summaries = requests
+        .iter()
+        .filter(|request| request.prompt.tools.is_empty())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        summaries.len(),
+        2,
+        "the short first summary must trigger exactly one detailed retry"
+    );
+    assert!(!summaries[0].prompt.instructions.contains("## Detail Retry"));
+    assert!(summaries[1].prompt.instructions.contains("## Detail Retry"));
+
+    let final_request = requests.last().expect("the final chat request");
+    let summary_slot = final_request
+        .history
+        .iter()
+        .filter_map(message_text)
+        .find(|text| text.contains("<conversation_summary>"))
+        .expect("the regenerated summary is in the final history");
+    assert!(summary_slot.contains("DETAILED-RETRY-SUMMARY"));
+    assert!(!summary_slot.contains("too short"));
 }
 
 #[derive(Default)]

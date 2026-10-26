@@ -154,7 +154,7 @@ export function CompactionSettingsFields({ draft, models, disabled, onChange }: 
       <FormField label={t("保留上限（tokens）")} hint={t("留空表示只按比例；填写后限制逐字保留的绝对上限。")}>
         <TextInput type="number" min={1} max={COMPACTION_MAX_RETAINED_TOKENS_MAX} value={draft.max_retained_tokens} disabled={disabled} onChange={event => update({ max_retained_tokens: event.target.value })} />
       </FormField>
-      <FormField label={t("摘要输出上限（tokens）")} hint={t("留空使用默认 {tokens}，并受摘要模型自身上限约束。", { tokens: COMPACTION_SUMMARY_OUTPUT_TOKENS_DEFAULT })}>
+      <FormField label={t("摘要输出上限（tokens）")} hint={t("留空使用默认 {tokens}，并受摘要模型自身上限约束；这是上限，不是目标长度。自动压缩会按历史规模要求完整交接，明显过短时重试一次。", { tokens: COMPACTION_SUMMARY_OUTPUT_TOKENS_DEFAULT })}>
         <TextInput type="number" min={1} max={COMPACTION_SUMMARY_OUTPUT_TOKENS_MAX} value={draft.summary_output_tokens} disabled={disabled} onChange={event => update({ summary_output_tokens: event.target.value })} />
       </FormField>
     </div>

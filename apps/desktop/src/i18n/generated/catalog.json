@@ -3403,6 +3403,20 @@
         }
       ]
     },
+    "2e027e21fca301cc": {
+      "source": "留空使用默认 {tokens}，并受摘要模型自身上限约束；这是上限，不是目标长度。自动压缩会按历史规模要求完整交接，明显过短时重试一次。",
+      "kind": "template",
+      "placeholders": [
+        "tokens"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 157,
+          "column": 52
+        }
+      ]
+    },
     "2e0eaea97df4338a": {
       "source": "数据库文件已超过 {threshold}，其中大部分是对话内容与内容块（为前缀缓存保留，这里的清理不删它们）；清理只让文件不再继续变大。",
       "kind": "template",
@@ -3441,6 +3455,18 @@
           "file": "features/harness/harnessClients.ts",
           "line": 110,
           "column": 38
+        }
+      ]
+    },
+    "2ee8ad7a0f94799c": {
+      "source": "直连时 Cursor 官方与控制面也会直连；如果当前网络访问不了官方服务，请改用默认或自定义。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 118,
+          "column": 19
         }
       ]
     },
@@ -8902,20 +8928,6 @@
         }
       ]
     },
-    "7496d1f31440e855": {
-      "source": "留空使用默认 {tokens}，并受摘要模型自身上限约束。",
-      "kind": "template",
-      "placeholders": [
-        "tokens"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 157,
-          "column": 52
-        }
-      ]
-    },
     "74a20012e632f45a": {
       "source": "尚未登录官方账号",
       "kind": "text",
@@ -12882,6 +12894,18 @@
         }
       ]
     },
+    "ae62a72fbc8dad0b": {
+      "source": "本应用的上游请求均直连，包括 Cursor 官方与控制面。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/ProxySettingsCard.tsx",
+          "line": 50,
+          "column": 35
+        }
+      ]
+    },
     "ae6dc7e1cccf7979": {
       "source": "选择 Haiku 映射模型",
       "kind": "text",
@@ -14952,18 +14976,6 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 126,
           "column": 13
-        }
-      ]
-    },
-    "c74073a3b482b669": {
-      "source": "直连时，请确认当前网络可以访问 Cursor 官方服务。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 118,
-          "column": 19
         }
       ]
     },
@@ -18559,18 +18571,6 @@
           "file": "shared/ui/ModelSelect.tsx",
           "line": 169,
           "column": 21
-        }
-      ]
-    },
-    "f96f92d5b273c690": {
-      "source": "不使用代理，直接连接网络。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/ProxySettingsCard.tsx",
-          "line": 50,
-          "column": 35
         }
       ]
     },

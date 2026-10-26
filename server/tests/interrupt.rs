@@ -1301,7 +1301,7 @@ async fn injected_user_context_interrupts_automatic_compaction() {
         requests[1]
             .prompt
             .instructions
-            .starts_with("Summarize this conversation as a short handover state"),
+            .starts_with("Summarize this conversation as a complete engineering handover"),
         "second request was not compaction: instructions={:?}, history={:?}",
         requests[1].prompt.instructions,
         requests[1].history

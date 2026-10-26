@@ -617,6 +617,23 @@ impl RunEngine {
             } else {
                 None
             };
+            let summary_prompt = summary_target.as_ref().map(|_| crate::model::PromptSpec {
+                instructions: super::compaction::instructions().into(),
+                tools: Vec::new(),
+            });
+            let previous_summary = summary_target
+                .as_ref()
+                .and_then(|_| super::compaction::latest_summary_message(&messages))
+                .and_then(super::compaction::summary_text);
+            let minimum_summary_chars = summary_target
+                .as_ref()
+                .map(|target| {
+                    super::compaction::minimum_summary_chars(&messages).min(
+                        usize::try_from(target.output_tokens.saturating_mul(4))
+                            .unwrap_or(usize::MAX),
+                    )
+                })
+                .unwrap_or(0);
             if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
                 return (RunOutcome::Failed(error.into()), usage);
             }
@@ -625,14 +642,17 @@ impl RunEngine {
             let anchored_messages = history.len();
             let history = if let Some(target) = &summary_target {
                 // 手动 `/summarize` 与自动压缩用同一套按窗口裁剪的逻辑，否则大历史
-                // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。摘要请求自己还带着
-                // prepared.prompt（运行时提示 + 工具定义），也要从预算里扣掉。
+                // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。摘要请求自己的
+                // 专用提示词也要从预算里扣掉。
                 super::compaction::compaction_history(
                     history,
                     &super::compaction::SummaryInput {
                         context_window: target.context_window,
                         output_tokens: target.output_tokens,
-                        prompt_tokens: crate::model::estimate_context_tokens(&prepared.prompt, &[]),
+                        prompt_tokens: summary_prompt
+                            .as_ref()
+                            .map(|prompt| crate::model::estimate_context_tokens(prompt, &[]))
+                            .unwrap_or(0),
                         calibration: manual_calibration,
                     },
                     &compaction_settings,
@@ -649,7 +669,9 @@ impl RunEngine {
                 ),
             };
             let request = crate::model::ModelRequest {
-                prompt: prepared.prompt.clone(),
+                prompt: summary_prompt
+                    .clone()
+                    .unwrap_or_else(|| prepared.prompt.clone()),
                 // 手动 `/summarize`（Compact）与自动压缩产出的是同一种东西——一段之后顶替
                 // 历史、对模型可见的摘要——所以两者用同一份摘要规格，不能走调用方原样的模型
                 // 规格（那会把思考打开并且不设输出上限）。
@@ -1090,6 +1112,29 @@ impl RunEngine {
                         usage,
                     );
                 }
+                let summary = if super::compaction::summary_needs_expansion(
+                    &summary,
+                    minimum_summary_chars,
+                ) {
+                    tracing::warn!(
+                        summary_chars = summary.chars().count(),
+                        minimum_summary_chars,
+                        "explicit compaction summary was too short; added exact recent entries"
+                    );
+                    super::compaction::short_summary_addendum(&summary, &messages)
+                } else {
+                    summary
+                };
+                let summary =
+                    super::compaction::carry_forward_summary(previous_summary.as_deref(), &summary);
+                let summary = super::compaction::fit_summary_slot_to_tokens(
+                    &summary,
+                    super::compaction::summary_slot_token_budget(
+                        &compaction_run,
+                        manual_calibration,
+                        &compaction_settings,
+                    ),
+                );
                 let event_id = format!("summary:{}", prepared.run_id);
                 let summary = super::compaction::with_context_anchors(&summary, &messages);
                 let archive = crate::model::archive_compaction_history(
@@ -1672,6 +1717,8 @@ impl RunEngine {
             .map(|message| message.message_id.as_str())
             .collect::<HashSet<_>>();
         let (compactable, _) = super::compaction::partition(messages, &current_ids);
+        let previous_summary = super::compaction::latest_summary_message(messages)
+            .and_then(super::compaction::summary_text);
         if compactable.is_empty() {
             let projected = crate::model::project_messages(messages)
                 .map_err(|error| RunOutcome::Failed(error.into()))?;
@@ -1731,11 +1778,14 @@ impl RunEngine {
             )
         } else {
             let target = self.summary_target(prepared, settings).await;
-            let summary_prompt = crate::model::PromptSpec {
-                instructions: super::compaction::instructions().into(),
+            let minimum_summary_chars = super::compaction::minimum_summary_chars(&compactable)
+                .min(usize::try_from(target.output_tokens.saturating_mul(4)).unwrap_or(usize::MAX));
+            let base_summary_instructions = super::compaction::instructions().to_string();
+            let mut summary_prompt = crate::model::PromptSpec {
+                instructions: base_summary_instructions.clone(),
                 tools: Vec::new(),
             };
-            let summary_input = super::compaction::SummaryInput {
+            let mut summary_input = super::compaction::SummaryInput {
                 context_window: target.context_window,
                 output_tokens: target.output_tokens,
                 prompt_tokens: crate::model::estimate_context_tokens(&summary_prompt, &[]),
@@ -1743,6 +1793,7 @@ impl RunEngine {
             };
             let mut summary_usage: Option<Usage> = None;
             let mut summary_call_index: Option<u64> = None;
+            let mut short_summary: Option<String> = None;
             let mut attempts = 0_u8;
             // 下一次重试是否收紧重放：只有"提示超长"需要，瞬时故障原样重试。
             let mut tighten = false;
@@ -1847,20 +1898,55 @@ impl RunEngine {
                     if let Some(usage) = outcome {
                         accumulate_usage(&mut summary_usage, usage);
                     }
-                    break 'summary (
-                        super::compaction::fallback_summary(&compactable),
-                        summary_usage,
-                    );
+                    let summary = short_summary
+                        .as_deref()
+                        .map(|summary| {
+                            super::compaction::short_summary_addendum(summary, &compactable)
+                        })
+                        .unwrap_or_else(|| super::compaction::fallback_summary(&compactable));
+                    break 'summary (summary, summary_usage);
                 }
                 let outcome: Result<(), (String, bool, bool)> = match cycle {
                     Ok(cycle) if cycle.calls.is_empty() && !cycle.text.trim().is_empty() => {
                         let usage = cycle.usage;
-                        break 'summary (cycle.text.trim().to_string(), {
-                            if let Some(usage) = usage {
-                                accumulate_usage(&mut summary_usage, usage);
+                        if let Some(usage) = usage {
+                            accumulate_usage(&mut summary_usage, usage);
+                        }
+                        let summary = cycle.text.trim().to_string();
+                        if super::compaction::summary_needs_expansion(
+                            &summary,
+                            minimum_summary_chars,
+                        ) {
+                            let summary_chars = summary.chars().count();
+                            short_summary = Some(summary);
+                            if attempts < 2 {
+                                summary_prompt.instructions = format!(
+                                    "{base_summary_instructions}{}",
+                                    super::compaction::detail_retry_instructions(
+                                        minimum_summary_chars
+                                    )
+                                );
+                                summary_input.prompt_tokens =
+                                    crate::model::estimate_context_tokens(&summary_prompt, &[]);
+                                tracing::warn!(
+                                    summary_chars,
+                                    minimum_summary_chars,
+                                    "automatic compaction summary was too short; regenerating once"
+                                );
+                                continue 'summary;
                             }
-                            summary_usage
-                        });
+                            let summary = super::compaction::short_summary_addendum(
+                                short_summary.as_deref().unwrap_or_default(),
+                                &compactable,
+                            );
+                            tracing::warn!(
+                                summary_chars = summary.chars().count(),
+                                minimum_summary_chars,
+                                "automatic compaction summary is still short; added exact recent entries"
+                            );
+                            break 'summary (summary, summary_usage);
+                        }
+                        break 'summary (summary, summary_usage);
                     }
                     Ok(cycle) => {
                         if let Some(usage) = cycle.usage {
@@ -1916,11 +2002,14 @@ impl RunEngine {
                     error = outcome.as_ref().err().map(|(message, _, _)| message),
                     "automatic compaction failed; using the fallback summary"
                 );
-                break 'summary (
-                    super::compaction::fallback_summary(&compactable),
-                    summary_usage,
-                );
+                let summary = short_summary
+                    .as_deref()
+                    .map(|summary| super::compaction::short_summary_addendum(summary, &compactable))
+                    .unwrap_or_else(|| super::compaction::fallback_summary(&compactable));
+                break 'summary (summary, summary_usage);
             };
+            let summary =
+                super::compaction::carry_forward_summary(previous_summary.as_deref(), &summary);
             let event_id = format!(
                 "summary:auto:{}:{}",
                 prepared.run_id,
@@ -1930,6 +2019,10 @@ impl RunEngine {
         };
         // Exact file anchors recovered from the shadowed tool calls survive
         // even when the summary model omitted them.
+        let summary = super::compaction::fit_summary_slot_to_tokens(
+            &summary,
+            super::compaction::summary_slot_token_budget(prepared, calibration, settings),
+        );
         let summary = super::compaction::with_context_anchors(&summary, messages);
         let summary = super::compaction::with_archive_anchor(&summary, archive.as_deref());
         let summary_message = super::compaction::summary_message(&event_id, &summary);

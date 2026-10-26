@@ -47,7 +47,7 @@ export function ProxySettingsCard({
   };
   const modeHint = (mode: ProxySettingsInput["mode"]) => {
     if (mode === "custom") return t("使用指定的代理地址。");
-    if (mode === "direct") return t("不使用代理，直接连接网络。");
+    if (mode === "direct") return t("本应用的上游请求均直连，包括 Cursor 官方与控制面。");
     return t("跟随系统代理，修改后自动生效。");
   };
   const action = editing ? (
@@ -115,7 +115,7 @@ export function ProxySettingsCard({
       </div>}
       {officialNeedsProxy && <div className={styles.row}>
         <div className={styles.description}>
-          <small>{t("直连时，请确认当前网络可以访问 Cursor 官方服务。")}</small>
+          <small>{t("直连时 Cursor 官方与控制面也会直连；如果当前网络访问不了官方服务，请改用默认或自定义。")}</small>
         </div>
       </div>}
     </div>
