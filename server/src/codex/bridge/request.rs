@@ -176,6 +176,32 @@ fn item_type(item: &Value) -> &str {
         .unwrap_or("message")
 }
 
+/// `create_thread` 是 Codex 的跨会话委派入口：新会话的第一项不是普通用户消息，
+/// 而是没有 `call_id` 的 `function_call_output`。它的 output 就是可见的用户任务，
+/// 可以作为普通用户消息重放；不能用工具结果分支要求一个并不存在的调用。
+fn create_thread_input(item: &Value) -> Option<&str> {
+    if !matches!(
+        item_type(item),
+        "function_call_output" | "custom_tool_call_output"
+    ) || item
+        .get("call_id")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+        || item.get("name").and_then(Value::as_str) != Some("create_thread")
+        || item.get("namespace").and_then(Value::as_str) != Some("codex_app")
+    {
+        return None;
+    }
+    item.get("output")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+}
+
+const AGENT_MESSAGE_REQUIRES_RESPONSES: &str =
+    "this conversation contains Codex subagent messages (agent_message) whose encrypted payload \
+     can only be replayed to an OpenAI Responses model; switch back to the original model or \
+     start a new conversation";
+
 fn history_call(item: &Value, tools: &ToolMap, kind: &str) -> Result<Call> {
     let name = required_str(item, "name")?;
     let upstream = tools.upstream_name(name, item.get("namespace").and_then(Value::as_str));
@@ -200,6 +226,14 @@ fn validate_tool_history(items: &[Value]) -> Result<()> {
     let mut pending = HashMap::new();
     let mut seen = HashSet::new();
     for item in items {
+        if create_thread_input(item).is_some() {
+            if !pending.is_empty() {
+                return Err(Error::Protocol(
+                    "tool calls are missing results before the next message".into(),
+                ));
+            }
+            continue;
+        }
         match item_type(item) {
             kind @ ("function_call" | "custom_tool_call") => {
                 let id = required_str(item, "call_id")?;
@@ -207,6 +241,9 @@ fn validate_tool_history(items: &[Value]) -> Result<()> {
                     return Err(Error::Protocol("duplicate call_id in Codex history".into()));
                 }
                 pending.insert(id, kind);
+            }
+            "agent_message" => {
+                return Err(Error::Protocol(AGENT_MESSAGE_REQUIRES_RESPONSES.into()))
             }
             kind @ ("function_call_output" | "custom_tool_call_output") => {
                 let id = required_str(item, "call_id")?;
@@ -272,6 +309,11 @@ fn chat_body(
     let mut turn = Turn::default();
     let mut pending_reasoning: Option<String> = None;
     for item in items {
+        if let Some(text) = create_thread_input(item) {
+            flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
+            messages.push(json!({"role": "user", "content": text}));
+            continue;
+        }
         match item_type(item) {
             "message" => match item.get("role").and_then(Value::as_str) {
                 Some("system" | "developer") => {}
@@ -463,6 +505,15 @@ fn anthropic_body(
     let mut turn = Turn::default();
     let mut pending_thinking: Vec<Value> = Vec::new();
     for item in items {
+        if let Some(text) = create_thread_input(item) {
+            flush_anthropic(&mut messages, &mut turn, &mut pending_thinking)?;
+            push_anthropic(
+                &mut messages,
+                "user",
+                vec![json!({"type": "text", "text": text})],
+            );
+            continue;
+        }
         match item_type(item) {
             "message" => match item.get("role").and_then(Value::as_str) {
                 Some("system" | "developer") => {}

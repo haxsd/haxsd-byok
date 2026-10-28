@@ -28,6 +28,7 @@
 |---|---|
 | 模型库 | 地址、API Key、模型 ID；支持 OpenAI Chat / Responses 与 Anthropic 协议；带连接测试 |
 | Cursor 接入 | 官方 / 本地 / 混合三种模型来源，含本机代理、本地 CA 与接管状态 |
+| Cursor 上下文压缩 | 本机模型长会话的自动与手动摘要；保留工程交接、历史/当前状态、压缩归档与摘要详细度重试 |
 | Devin 接入 | 可选本机网关、显式默认模型与模型映射、Devin 3.11.216 版本化兼容补丁；支持自定义安装目录 |
 | Codex 接入 | ChatGPT 客户端里的本地 Codex 保留工具、终端、审批、沙箱与任务循环，只替换模型推理；支持 Responses / Chat Completions / Anthropic |
 | Claude 接入 | 本机 Anthropic 网关（`/v1/messages`），适配 Claude Code CLI 与 Claude Desktop；Desktop 受组织策略托管时只给手工配置引导 |
@@ -42,6 +43,10 @@
 | Codex | 本地 Agent / TUI / exec、Plan、工具、审批、沙箱、多会话、MCP / Skills / Plugins / Hooks、图片输入 | ChatGPT Work、Codex Cloud、Remote Control、官方托管搜索 / 图像 / 语音 |
 | Devin | Cascade、Devin Local、本机工具、Rules / Memories / MCP、模型映射、Checkpoint | 账号套餐与额度、Tab / Command / embedding、Devin Cloud、远程索引、Slack / Linear / Jira / Teams / GitHub 集成 |
 | Claude | Claude Code CLI、本机子代理与后台会话、MCP / Skills / Hooks、Checkpoint / Rewind / 自动压缩、本机 IDE 集成 | Cloud session、Teleport、Ultrareview、云端定时任务、Remote Control、供应商侧 WebSearch / WebFetch、CLI 到 Desktop 的 handoff |
+
+### Cursor 接管后的上下文压缩
+
+Cursor 原本使用它自己的“上下文窗口 + 自动摘要”机制。开启本地或混合模式后，请求由本机网关接管，Cursor 官方的摘要流程不再位于请求路径；因此这部分改由本应用的网关执行。官方模式不经过本应用，仍由 Cursor 自己压缩。
 
 接管只改变本机可控制的模型请求；登录、套餐、额度和厂商云端功能仍由对应客户端管理，不会绕过。
 

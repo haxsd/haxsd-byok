@@ -28,6 +28,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 |---|---|
 | Model library | Base URL, API key and model ID; OpenAI Chat / Responses and Anthropic protocols; built-in connection test |
 | Cursor integration | Official, local or mixed model sources, with a local proxy, local CA and takeover status |
+| Cursor context compression | Automatic and manual summaries for long sessions on local models, with an engineering handover, explicit historical/current state, searchable archives and detail retries |
 | Devin integration | Optional local gateway, an explicit default model and model mappings, plus a version-locked compatibility patch for Devin 3.11.216; custom installation directories are supported |
 | Codex integration | The local Codex engine inside the ChatGPT client keeps its tools, terminal, approvals, sandbox and task loop; only model inference is replaced, over Responses / Chat Completions / Anthropic |
 | Claude integration | A local Anthropic Messages gateway (`/v1/messages`) for Claude Code CLI and Claude Desktop; when Desktop is managed by an organisation policy, the app only shows manual setup guidance |
@@ -42,6 +43,10 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 | Codex | Local Agent / TUI / exec, Plan, tools, approvals, sandbox, multiple sessions, MCP / Skills / Plugins / Hooks, image input | ChatGPT Work, Codex Cloud, Remote Control, hosted web search / image generation / voice |
 | Devin | Cascade, Devin Local, local tools, Rules / Memories / MCP, model mappings, Checkpoint | Account plans and quota, Tab / Command / embedding, Devin Cloud, remote indexing, Slack / Linear / Jira / Teams / GitHub integrations |
 | Claude | Claude Code CLI, local subagents and background sessions, MCP / Skills / Hooks, Checkpoint / Rewind / auto-compaction, local IDE integration | Cloud session, Teleport, Ultrareview, cloud schedules, Remote Control, provider-side WebSearch / WebFetch, CLI-to-Desktop handoff |
+
+### Context compression after Cursor takeover
+
+Cursor originally uses its own "context window + automatic summarization" mechanism. After local or mixed mode is enabled, requests go through the local gateway and Cursor's official summarization flow is no longer in the request path; this app's gateway therefore performs it. Official mode does not pass through this app and remains managed by Cursor.
 
 Takeover changes only model requests that can be controlled locally. Sign-in, plans, quota and vendor cloud features still belong to each client and are not bypassed.
 

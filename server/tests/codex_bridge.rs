@@ -400,6 +400,75 @@ fn instruction_messages_do_not_hide_missing_tool_results() {
 }
 
 #[test]
+fn create_thread_delegation_becomes_a_user_message_instead_of_an_orphan_tool_result() {
+    let output = "<codex_delegation>\n  <source_thread_id>thread-a</source_thread_id>\n  <input>inspect the workspace</input>\n</codex_delegation>";
+    let source = json!({
+        "input": [{
+            "type": "function_call_output",
+            "id": "fco_create",
+            "name": "create_thread",
+            "namespace": "codex_app",
+            "output": output
+        }]
+    });
+    let chat = translate_request(&source, UpstreamFormat::Chat, "vendor", 4096).unwrap();
+    assert_eq!(chat.body["messages"][0]["role"], "user");
+    assert_eq!(chat.body["messages"][0]["content"], output);
+    assert!(chat.body["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|message| message["role"] != "tool"));
+
+    let anthropic = translate_request(&source, UpstreamFormat::Anthropic, "vendor", 4096).unwrap();
+    assert_eq!(anthropic.body["messages"][0]["role"], "user");
+    assert_eq!(anthropic.body["messages"][0]["content"][0]["type"], "text");
+    assert_eq!(anthropic.body["messages"][0]["content"][0]["text"], output);
+}
+
+#[test]
+fn only_create_thread_may_omit_its_call_id() {
+    let source = json!({
+        "input": [
+            {"role": "user", "content": "go"},
+            {"type": "function_call_output", "id": "fco_orphan", "output": "stale output"}
+        ]
+    });
+    for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
+        let error = match translate_request(&source, format, "vendor", 4096) {
+            Ok(_) => panic!("orphan output without call_id must be rejected"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("missing call_id"), "{error}");
+    }
+}
+
+#[test]
+fn encrypted_subagent_messages_explain_the_model_switch_limit() {
+    let source = json!({
+        "input": [{
+            "type": "agent_message",
+            "id": "amsg_1",
+            "author": "/root",
+            "recipient": "/root/child",
+            "content": [
+                {"type": "input_text", "text": "Message Type: MESSAGE\nPayload:\n"},
+                {"type": "encrypted_content", "encrypted_content": "opaque"}
+            ]
+        }]
+    });
+    for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
+        let error = match translate_request(&source, format, "vendor", 4096) {
+            Ok(_) => panic!("encrypted subagent history must be rejected"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("Codex subagent messages"), "{error}");
+        assert!(error.contains("OpenAI Responses model"), "{error}");
+        assert!(error.contains("start a new conversation"), "{error}");
+    }
+}
+
+#[test]
 fn orphan_tool_results_are_explicitly_rejected() {
     let source = json!({
         "input": [
