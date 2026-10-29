@@ -154,6 +154,7 @@ jobs:
           releaseBody: 从下方资源中下载 haxsd byok Windows 安装包（`-setup.exe`）。应用内「检查更新」会自动找到这里的最新版本。
           releaseDraft: true
           prerelease: false
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}
 
       - name: Build without publishing (manual run)

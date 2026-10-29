@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "haxsd-byok-desktop"
-version = "1.6.14"
+version = "1.6.15"
 dependencies = [
  "axum",
  "cursor-server",
