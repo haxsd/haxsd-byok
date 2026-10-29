@@ -26,7 +26,7 @@ Model services are yours to provide. Keys and settings stay on this machine; req
 
 | Capability | Details |
 |---|---|
-| Model library | Base URL, API key and model ID; OpenAI Chat / Responses and Anthropic protocols; built-in connection test |
+| Model library | Base URL, API key and model ID; OpenAI Chat / Responses and Anthropic protocols; multi-select after discovery and a built-in connection test |
 | Cursor integration | Official, local or mixed model sources, with a local proxy, local CA and takeover status |
 | Cursor context compression | Automatic and manual summaries for long sessions on local models, with an engineering handover, explicit historical/current state, searchable archives and detail retries |
 | Devin integration | Optional local gateway, an explicit default model and model mappings, plus a version-locked compatibility patch for Devin 3.11.216; custom installation directories are supported |
