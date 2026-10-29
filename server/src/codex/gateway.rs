@@ -131,6 +131,15 @@ impl CodexGateway {
         // 旧版本把默认模型的窗口写成全局覆盖；启动时清一次，客户端界面不必等到
         // 下一次模型编辑或重新应用才显示逐模型窗口。
         if let Ok(home) = settings.resolved_home() {
+            // Codex 只在进程启动时读取界面模式。应用一启动就先修正，避免用户先打开
+            // Codex 时进入 Work 壳层，之后还必须彻底退出一次才能回到本地界面。
+            match config::ensure_local_mode(&home) {
+                Ok(true) => tracing::info!("Codex client mode prepared at startup"),
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(%error, "Codex client mode startup repair failed");
+                }
+            }
             if config::inspect(&home).is_ok_and(|status| status.applied) {
                 if let Err(error) = config::drop_global_limits(&home) {
                     tracing::warn!(%error, "Codex global context limit cleanup failed");
@@ -729,6 +738,43 @@ mod tests {
         assert_ne!(
             after["models"][0]["display_name"],
             before["models"][0]["display_name"]
+        );
+    }
+
+    /// Codex 只在进程启动时读取界面模式。应用启动后先修正配置，避免用户第一次打开
+    /// Codex 时先进入 Work 壳层，必须再彻底退出一次才能回到本地界面。
+    #[tokio::test]
+    async fn start_repairs_the_local_client_mode_immediately() {
+        let (directory, store, gateway, _token) = enabled_gateway().await;
+        let mut settings = store.codex_settings().await.unwrap();
+        settings.home = directory.path().join("home").display().to_string();
+        std::fs::create_dir_all(&settings.home).unwrap();
+        store.set_codex_settings(settings.clone()).await.unwrap();
+        gateway.apply().await.unwrap();
+
+        let config_path = std::path::Path::new(&settings.home).join("config.toml");
+        let applied = std::fs::read_to_string(&config_path).unwrap();
+        let reset = if applied.contains("conversationDetailMode =") {
+            applied.replace(
+                "conversationDetailMode = \"STEPS_COMMANDS\"",
+                "conversationDetailMode = \"STEPS_PROSE\"",
+            )
+        } else if applied.contains("[desktop]") {
+            applied.replace(
+                "[desktop]\n",
+                "[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\n",
+            )
+        } else {
+            format!("{applied}\n[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\n")
+        };
+        std::fs::write(&config_path, reset).unwrap();
+
+        gateway.start().await.unwrap();
+
+        let repaired = std::fs::read_to_string(config_path).unwrap();
+        assert!(
+            repaired.contains("conversationDetailMode = \"STEPS_COMMANDS\""),
+            "gateway start left Codex in Work mode: {repaired}"
         );
     }
 

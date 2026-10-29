@@ -19,6 +19,25 @@ async function loadAppStore() {
   return module.appStore;
 }
 
+test("refreshOverview updates the dashboard without pulling unrelated endpoints", async () => {
+  const { backend, state } = installAppBackend();
+  state.overview.metrics.llm_calls = 1;
+  const appStore = await loadAppStore();
+  await appStore.refresh();
+  assert.equal(appStore.getSnapshot().overview.metrics.llm_calls, 1);
+  const modelReads = backend.requestsFor("GET", `${API_ROOT}/models`).length;
+
+  state.overview.metrics.llm_calls = 2;
+  await appStore.refreshOverview();
+
+  assert.equal(appStore.getSnapshot().overview.metrics.llm_calls, 2);
+  assert.equal(
+    backend.requestsFor("GET", `${API_ROOT}/models`).length,
+    modelReads,
+    "automatic dashboard refresh must not pull the whole application snapshot",
+  );
+});
+
 test("old refresh (started before the saves) must not overwrite any freshly saved setting", async () => {
   const { backend, state } = installAppBackend();
   state.calls = [llmCallFixture()];

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { pluginText, type Overview, type OverviewTokenUsageBucket } from "../../shared/api";
 import { requestRangeOverview } from "./overview/rangeOverviewRequest";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
@@ -30,6 +30,7 @@ type TimeRange = { startMs: number; endMs: number };
 
 const CALENDAR_DAYS = 365;
 const DAY_MS = 24 * 60 * 60_000;
+const OVERVIEW_REFRESH_INTERVAL_MS = 2_000;
 
 function contributionCalendarData(overview: Overview, endMs: number) {
   const tokensByDate = new Map<string, number>();
@@ -69,6 +70,7 @@ export function HomePage() {
   const { overview, calls, busy, models, plugins, pricing } = useAppStore();
   const { locale } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [preset, setPreset] = useState<OverviewRangePreset>("month");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
@@ -81,6 +83,7 @@ export function HomePage() {
   const [loadedRange, setLoadedRange] = useState<TimeRange | null>(null);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const [rangeBusy, setRangeBusy] = useState(false);
+  const rangeBusyRef = useRef(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [pricingSeries, setPricingSeries] = useState<OverviewTokenUsageBucket[] | null>(null);
   const [pricingSource, setPricingSource] = useState<TimeRange | null>(null);
@@ -88,10 +91,15 @@ export function HomePage() {
   const selectedRange = preset === "custom" ? customRange : presetRange(preset);
 
   useEffect(() => {
-    if (!selectedRange) return;
-    setRangeBusy(true);
     setRangeOverview(null);
     setLoadedRange(null);
+    setRangeError(null);
+  }, [preset, customRange, appliedModels]);
+
+  useEffect(() => {
+    if (!selectedRange) return;
+    rangeBusyRef.current = true;
+    setRangeBusy(true);
     // 区间请求的代际管理在 rangeOverviewRequest.ts：快速切换尺度/刷新时 abort 上一发，
     // 并且让旧的那一发回来后不再落地（失败时清掉区间数据并留下错误：`overview` 是全量
     // 数据，拿它兜底会把"近30天"的徽标挂到全量数字上——宁可什么都不显示，也不能显示
@@ -106,11 +114,41 @@ export function HomePage() {
         setRangeOverview(null);
         setRangeError(message);
       },
-      onSettled: () => setRangeBusy(false),
+      onSettled: () => {
+        rangeBusyRef.current = false;
+        setRangeBusy(false);
+      },
     });
     // overview 只在渲染里当兜底数据用，不参与这次请求；把它列进依赖会让每次
     // store 刷新都重复抓同一段范围。
   }, [preset, customRange, refreshVersion, appliedModels]);
+
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    let disposed = false;
+    const refreshCurrentRange = () => {
+      if (!disposed && document.visibilityState === "visible") {
+        void appStore.refreshCalls();
+        if (!rangeBusyRef.current) setRefreshVersion((version) => version + 1);
+      }
+    };
+    const refreshOnReturn = () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      // The range cards and recent calls are the live preview. The year calendar is
+      // all-time data and does not need to be recomputed on every two-second tick.
+      void appStore.refreshOverview();
+      refreshCurrentRange();
+    };
+    const interval = window.setInterval(refreshCurrentRange, OVERVIEW_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
+  }, [location.pathname]);
 
   // Sub-day bins already retain model identity and correct pricing periods.
   // Day bins need hour-level reads, using the exact same accepted time range.

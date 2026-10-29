@@ -66,7 +66,7 @@ export function CodexSettingsPage() {
     const settings = await api.setCodexSettings(draft);
     setSaved(settings); setDraft(settings); message(t("Codex 设置已保存"));
   });
-  const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用，请重新打开 Codex 或新建会话")); });
+  const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用。请从“文件 → 退出”完全退出 Codex 后重开；只关闭窗口不会重新读取界面模式。")); });
   const requestApply = () => {
     if (codexApplyNeedsSignInConfirm(codexStatus)) {
       setConfirmApply(true);
@@ -101,6 +101,7 @@ export function CodexSettingsPage() {
         </div>}
       />
       {(error || codexStatus?.last_error) && <p className={styles.error} role="alert">{clientErrorText(error ?? codexStatus?.last_error)}</p>}
+      {clientMode && codexStatus?.local_mode_guard && <p className={styles.note}>{t("如果 Codex 当前显示 Work 或英文界面，请从“文件 → 退出”完全退出后重开；只关闭窗口不会重新读取本地模式。")}</p>}
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
     <TitledCard title={t("接入设置")} icon={settingsIcon}>

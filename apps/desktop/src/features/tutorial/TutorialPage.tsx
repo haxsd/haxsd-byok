@@ -245,7 +245,7 @@ export function TutorialPage() {
         </li>
         <li>
           <Icon icon={refreshIcon} size="1.1em" />
-          <span>{t("「调用」页每 2 秒自动刷新一次，其他页面的数字在打开页面或点右上角刷新时更新；看到「服务未连接」说明本地管理服务没起来，先重启应用。")}</span>
+          <span>{t("「概览」每 2 秒自动刷新，「调用」每 2 秒自动刷新；其他页面的数字在打开页面时更新。看到「服务未连接」说明本地管理服务没起来，先重启应用。")}</span>
         </li>
       </ul>
     </TitledCard>

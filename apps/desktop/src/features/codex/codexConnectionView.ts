@@ -48,7 +48,7 @@ export function codexClientModeView(status: CodexStatus | null): CodexClientMode
   if (!status || status.chatgpt_signed_in) return null;
   switch (status.conversation_detail_mode) {
     case "STEPS_COMMANDS":
-      return { label: t("本地模式"), tone: "info", title: t("未登录时自动保持；登录后还原原来的详细模式") };
+      return { label: t("本地模式"), tone: "info", title: t("未登录时自动保持。如果 Codex 已打开在 Work/英文界面，请完全退出后重开；只关闭窗口不会生效") };
     case "STEPS_PROSE":
       return { label: t("Work 模式"), tone: "warn", title: t("未登录时客户端会拒绝本地任务；接管会自动切回本地模式") };
     default:

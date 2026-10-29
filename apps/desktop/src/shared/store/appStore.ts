@@ -424,6 +424,16 @@ export const appStore = {
     }
   },
 
+  /** Refresh the overview without pulling every unrelated desktop endpoint. */
+  async refreshOverview() {
+    try {
+      update({ overview: await api.overview(), offline: false });
+    } catch (cause) {
+      if (cause instanceof ServiceUnreachableError) update({ offline: true });
+      else update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+
   /** Refresh Devin readiness without pulling every unrelated dashboard endpoint. */
   async refreshDevinStatus() {
     try {

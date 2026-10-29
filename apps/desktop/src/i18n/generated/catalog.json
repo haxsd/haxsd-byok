@@ -351,7 +351,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 106,
+          "line": 107,
           "column": 24
         }
       ]
@@ -439,7 +439,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 268,
+          "line": 306,
           "column": 22
         }
       ]
@@ -1353,7 +1353,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 404,
+          "line": 442,
           "column": 45
         },
         {
@@ -1496,7 +1496,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 245,
+          "line": 283,
           "column": 7
         }
       ]
@@ -2915,7 +2915,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 301,
+          "line": 339,
           "column": 20
         }
       ]
@@ -3709,7 +3709,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 117,
+          "line": 118,
           "column": 80
         }
       ]
@@ -3970,7 +3970,7 @@
       "refs": [
         {
           "file": "shared/store/appStore.ts",
-          "line": 521,
+          "line": 531,
           "column": 35
         }
       ]
@@ -4842,7 +4842,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 116,
+          "line": 117,
           "column": 70
         }
       ]
@@ -5401,6 +5401,18 @@
         }
       ]
     },
+    "42aaf568edb34c23": {
+      "source": "「概览」每 2 秒自动刷新，「调用」每 2 秒自动刷新；其他页面的数字在打开页面时更新。看到「服务未连接」说明本地管理服务没起来，先重启应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/tutorial/TutorialPage.tsx",
+          "line": 248,
+          "column": 18
+        }
+      ]
+    },
     "42b6a2f257b058e9": {
       "source": "第一项是默认模型；顺序与上面的列表一致。",
       "kind": "text",
@@ -5760,7 +5772,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 127,
+          "line": 128,
           "column": 11
         }
       ]
@@ -5875,7 +5887,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 109,
+          "line": 110,
           "column": 59
         },
         {
@@ -5907,7 +5919,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 321,
+          "line": 359,
           "column": 22
         }
       ]
@@ -6434,7 +6446,7 @@
         },
         {
           "file": "features/home/HomePage.tsx",
-          "line": 411,
+          "line": 449,
           "column": 21
         },
         {
@@ -6461,7 +6473,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 262,
+          "line": 300,
           "column": 16
         }
       ]
@@ -6626,7 +6638,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 408,
+          "line": 446,
           "column": 26
         }
       ]
@@ -7555,18 +7567,6 @@
         }
       ]
     },
-    "60698f2fd2663bf0": {
-      "source": "未登录时自动保持；登录后还原原来的详细模式",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 51,
-          "column": 55
-        }
-      ]
-    },
     "60710e4a7b3f99c7": {
       "source": "移除路由：{route}",
       "kind": "template",
@@ -8368,7 +8368,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 121,
+          "line": 122,
           "column": 14
         }
       ]
@@ -8392,7 +8392,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 109,
+          "line": 110,
           "column": 47
         },
         {
@@ -8758,7 +8758,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 347,
+          "line": 385,
           "column": 24
         }
       ]
@@ -9048,18 +9048,6 @@
           "file": "features/home/charts/DailyTokenUsageChart.tsx",
           "line": 244,
           "column": 55
-        }
-      ]
-    },
-    "7755932ab7df0b30": {
-      "source": "「调用」页每 2 秒自动刷新一次，其他页面的数字在打开页面或点右上角刷新时更新；看到「服务未连接」说明本地管理服务没起来，先重启应用。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/TutorialPage.tsx",
-          "line": 248,
-          "column": 18
         }
       ]
     },
@@ -9617,7 +9605,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 302,
+          "line": 340,
           "column": 26
         }
       ]
@@ -10436,7 +10424,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 263,
+          "line": 301,
           "column": 22
         }
       ]
@@ -10620,7 +10608,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 339,
+          "line": 377,
           "column": 18
         }
       ]
@@ -10760,7 +10748,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 247,
+          "line": 285,
           "column": 9
         }
       ]
@@ -10803,18 +10791,6 @@
           "file": "shell/CommandPalette.tsx",
           "line": 163,
           "column": 91
-        }
-      ]
-    },
-    "92fcae1cb14bc3d5": {
-      "source": "Codex 配置已应用，请重新打开 Codex 或新建会话",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 69,
-          "column": 76
         }
       ]
     },
@@ -11837,7 +11813,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 409,
+          "line": 447,
           "column": 25
         }
       ]
@@ -12034,7 +12010,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 115,
+          "line": 116,
           "column": 90
         },
         {
@@ -12117,6 +12093,18 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 43,
           "column": 11
+        }
+      ]
+    },
+    "a3670e348753aa6b": {
+      "source": "Codex 配置已应用。请从“文件 → 退出”完全退出 Codex 后重开；只关闭窗口不会重新读取界面模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 69,
+          "column": 76
         }
       ]
     },
@@ -12527,7 +12515,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 350,
+          "line": 388,
           "column": 58
         }
       ]
@@ -13099,6 +13087,18 @@
         }
       ]
     },
+    "afc127fd15fc1be3": {
+      "source": "如果 Codex 当前显示 Work 或英文界面，请从“文件 → 退出”完全退出后重开；只关闭窗口不会重新读取本地模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 104,
+          "column": 83
+        }
+      ]
+    },
     "afd4b783536b8297": {
       "source": "收起",
       "kind": "text",
@@ -13540,7 +13540,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 340,
+          "line": 378,
           "column": 24
         }
       ]
@@ -13835,7 +13835,7 @@
         },
         {
           "file": "features/home/HomePage.tsx",
-          "line": 272,
+          "line": 310,
           "column": 38
         },
         {
@@ -14739,7 +14739,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 294,
+          "line": 332,
           "column": 16
         }
       ]
@@ -14751,7 +14751,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 133,
+          "line": 134,
           "column": 15
         }
       ]
@@ -14765,6 +14765,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 399,
           "column": 9
+        }
+      ]
+    },
+    "c359a177fd11ecec": {
+      "source": "未登录时自动保持。如果 Codex 已打开在 Work/英文界面，请完全退出后重开；只关闭窗口不会生效",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 51,
+          "column": 55
         }
       ]
     },
@@ -15310,7 +15322,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 248,
+          "line": 286,
           "column": 9
         }
       ]
@@ -15635,7 +15647,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 320,
+          "line": 358,
           "column": 16
         }
       ]
@@ -15671,7 +15683,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 410,
+          "line": 448,
           "column": 26
         }
       ]
@@ -16444,7 +16456,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 407,
+          "line": 445,
           "column": 25
         }
       ]
@@ -17263,7 +17275,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 346,
+          "line": 384,
           "column": 18
         }
       ]
@@ -17287,7 +17299,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 341,
+          "line": 379,
           "column": 112
         }
       ]
@@ -17367,7 +17379,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 406,
+          "line": 444,
           "column": 32
         }
       ]
@@ -17793,7 +17805,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 377,
+          "line": 415,
           "column": 47
         }
       ]
@@ -17805,7 +17817,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 122,
+          "line": 123,
           "column": 21
         }
       ]
@@ -17919,7 +17931,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 272,
+          "line": 310,
           "column": 26
         },
         {
@@ -18504,7 +18516,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 403,
+          "line": 441,
           "column": 38
         },
         {
@@ -19112,7 +19124,7 @@
       "refs": [
         {
           "file": "features/home/HomePage.tsx",
-          "line": 377,
+          "line": 415,
           "column": 32
         },
         {
