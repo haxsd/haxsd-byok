@@ -122,7 +122,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 437,
+          "line": 491,
           "column": 43
         }
       ]
@@ -279,7 +279,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 433,
+          "line": 487,
           "column": 39
         }
       ]
@@ -466,7 +466,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 200,
+          "line": 254,
           "column": 27
         }
       ]
@@ -744,7 +744,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 515,
+          "line": 576,
           "column": 73
         }
       ]
@@ -821,7 +821,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 526,
+          "line": 601,
           "column": 89
         }
       ]
@@ -1542,7 +1542,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 525,
+          "line": 600,
           "column": 36
         }
       ]
@@ -1566,7 +1566,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 424,
+          "line": 478,
           "column": 15
         }
       ]
@@ -1759,17 +1759,17 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 371,
+          "line": 425,
           "column": 130
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 449,
+          "line": 503,
           "column": 49
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
+          "line": 513,
           "column": 76
         }
       ]
@@ -2018,6 +2018,16 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 72,
           "column": 33
+        },
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 31,
+          "column": 66
+        },
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 34,
+          "column": 18
         }
       ]
     },
@@ -2040,7 +2050,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 475,
+          "line": 536,
           "column": 54
         }
       ]
@@ -2565,7 +2575,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 519,
+          "line": 580,
           "column": 89
         }
       ]
@@ -2688,7 +2698,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 407,
+          "line": 461,
           "column": 90
         }
       ]
@@ -3048,7 +3058,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 366,
+          "line": 420,
           "column": 22
         }
       ]
@@ -3276,7 +3286,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 518,
+          "line": 579,
           "column": 186
         }
       ]
@@ -3330,7 +3340,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 475,
+          "line": 536,
           "column": 78
         },
         {
@@ -3544,7 +3554,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 532,
+          "line": 607,
           "column": 70
         }
       ]
@@ -3602,7 +3612,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 475,
+          "line": 536,
           "column": 101
         },
         {
@@ -3842,12 +3852,12 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 468,
+          "line": 529,
           "column": 37
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 471,
+          "line": 532,
           "column": 43
         }
       ]
@@ -4011,7 +4021,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 403,
+          "line": 457,
           "column": 22
         }
       ]
@@ -4160,7 +4170,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 446,
+          "line": 500,
           "column": 25
         },
         {
@@ -4343,18 +4353,6 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 154,
           "column": 7
-        }
-      ]
-    },
-    "37125ef2e1d707cb": {
-      "source": "服务器地址或完整请求 URL、API Key、模型名称、显示名称和备注不能为空",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/models/ModelLibraryPage.tsx",
-          "line": 517,
-          "column": 143
         }
       ]
     },
@@ -4772,7 +4770,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 422,
+          "line": 476,
           "column": 17
         }
       ]
@@ -5000,7 +4998,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 400,
+          "line": 454,
           "column": 24
         }
       ]
@@ -5055,7 +5053,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 423,
+          "line": 477,
           "column": 17
         }
       ]
@@ -5664,7 +5662,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 219,
+          "line": 273,
           "column": 27
         }
       ]
@@ -5967,7 +5965,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 518,
+          "line": 579,
           "column": 34
         }
       ]
@@ -5994,8 +5992,8 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
-          "column": 946
+          "line": 513,
+          "column": 1072
         }
       ]
     },
@@ -6171,8 +6169,13 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 64,
+          "column": 70
+        },
+        {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 356,
+          "line": 410,
           "column": 16
         }
       ]
@@ -6241,6 +6244,18 @@
           "file": "shell/AppLayout.tsx",
           "line": 166,
           "column": 27
+        }
+      ]
+    },
+    "4cdbe3ae22336c67": {
+      "source": "没有发现可添加的模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 168,
+          "column": 15
         }
       ]
     },
@@ -6664,7 +6679,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 272,
+          "line": 326,
           "column": 13
         }
       ]
@@ -6855,7 +6870,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 464,
+          "line": 525,
           "column": 46
         }
       ]
@@ -6937,7 +6952,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 342,
+          "line": 396,
           "column": 47
         }
       ]
@@ -7019,7 +7034,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 518,
+          "line": 579,
           "column": 83
         }
       ]
@@ -7269,7 +7284,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 408,
+          "line": 462,
           "column": 82
         }
       ]
@@ -8168,6 +8183,18 @@
         }
       ]
     },
+    "6579d11783281d84": {
+      "source": "选择这个模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 28,
+          "column": 7
+        }
+      ]
+    },
     "657d9cbf45ec9e6a": {
       "source": "清除筛选",
       "kind": "text",
@@ -8175,7 +8202,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 358,
+          "line": 412,
           "column": 102
         },
         {
@@ -8235,6 +8262,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 565,
           "column": 14
+        }
+      ]
+    },
+    "66bccfa61158bb83": {
+      "source": "可添加的模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 46,
+          "column": 68
         }
       ]
     },
@@ -8313,7 +8352,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 446,
+          "line": 500,
           "column": 37
         }
       ]
@@ -8584,7 +8623,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 326,
+          "line": 380,
           "column": 23
         },
         {
@@ -8931,7 +8970,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 406,
+          "line": 460,
           "column": 37
         }
       ]
@@ -9092,7 +9131,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 438,
+          "line": 492,
           "column": 43
         }
       ]
@@ -9383,7 +9422,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 513,
+          "line": 574,
           "column": 67
         }
       ]
@@ -9566,7 +9605,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 368,
+          "line": 422,
           "column": 22
         }
       ]
@@ -10436,7 +10475,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 364,
+          "line": 418,
           "column": 24
         }
       ]
@@ -10572,7 +10611,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 533,
+          "line": 608,
           "column": 87
         }
       ]
@@ -10885,8 +10924,18 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 43,
+          "column": 18
+        },
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 44,
+          "column": 20
+        },
+        {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 399,
+          "line": 453,
           "column": 22
         }
       ]
@@ -10934,7 +10983,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 475,
+          "line": 536,
           "column": 252
         }
       ]
@@ -11293,7 +11342,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 270,
+          "line": 324,
           "column": 11
         }
       ]
@@ -11459,6 +11508,20 @@
         }
       ]
     },
+    "9c30e7d75e3d2322": {
+      "source": "添加 {count} 个模型",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 29,
+          "column": 7
+        }
+      ]
+    },
     "9c41b3a9e12ac994": {
       "source": "思考强度",
       "kind": "text",
@@ -11602,7 +11665,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 454,
+          "line": 508,
           "column": 18
         },
         {
@@ -11863,7 +11926,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 283,
+          "line": 337,
           "column": 22
         }
       ]
@@ -12035,12 +12098,12 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
-          "column": 606
+          "line": 513,
+          "column": 644
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 462,
+          "line": 523,
           "column": 195
         },
         {
@@ -12218,7 +12281,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 180,
+          "line": 234,
           "column": 15
         }
       ]
@@ -12343,8 +12406,8 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
-          "column": 958
+          "line": 513,
+          "column": 1084
         }
       ]
     },
@@ -12611,7 +12674,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 435,
+          "line": 489,
           "column": 41
         }
       ]
@@ -13108,6 +13171,11 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 504,
           "column": 31
+        },
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 37,
+          "column": 98
         }
       ]
     },
@@ -13217,7 +13285,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 372,
+          "line": 426,
           "column": 110
         }
       ]
@@ -13376,7 +13444,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 367,
+          "line": 421,
           "column": 51
         }
       ]
@@ -13427,7 +13495,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 462,
+          "line": 523,
           "column": 51
         }
       ]
@@ -13652,7 +13720,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 357,
+          "line": 411,
           "column": 22
         }
       ]
@@ -13900,7 +13968,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 214,
+          "line": 268,
           "column": 29
         }
       ]
@@ -13982,7 +14050,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 366,
+          "line": 420,
           "column": 52
         }
       ]
@@ -14033,7 +14101,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 273,
+          "line": 327,
           "column": 13
         }
       ]
@@ -14086,7 +14154,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 367,
+          "line": 421,
           "column": 22
         }
       ]
@@ -14454,12 +14522,12 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 467,
+          "line": 528,
           "column": 47
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 470,
+          "line": 531,
           "column": 44
         }
       ]
@@ -14548,7 +14616,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 368,
+          "line": 422,
           "column": 45
         }
       ]
@@ -14915,6 +14983,18 @@
         }
       ]
     },
+    "c50a8c8a9fee5691": {
+      "source": "模型名称、显示名称和备注不能为空",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 588,
+          "column": 86
+        }
+      ]
+    },
     "c517f1863958512a": {
       "source": "关闭时不监听端口",
       "kind": "text",
@@ -15073,7 +15153,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
+          "line": 513,
           "column": 64
         }
       ]
@@ -15110,6 +15190,18 @@
         {
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 431,
+          "column": 13
+        }
+      ]
+    },
+    "c8811440b7d3e674": {
+      "source": "只添加你勾选的模型。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 35,
           "column": 13
         }
       ]
@@ -15225,7 +15317,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 431,
+          "line": 485,
           "column": 37
         },
         {
@@ -15887,7 +15979,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 467,
+          "line": 528,
           "column": 29
         }
       ]
@@ -15915,9 +16007,14 @@
           "column": 7
         },
         {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 73,
+          "column": 17
+        },
+        {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 459,
-          "column": 878
+          "line": 513,
+          "column": 1004
         },
         {
           "file": "shared/ui/Modal.tsx",
@@ -16213,7 +16310,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 464,
+          "line": 525,
           "column": 29
         }
       ]
@@ -16526,7 +16623,7 @@
         },
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 214,
+          "line": 268,
           "column": 76
         }
       ]
@@ -17069,7 +17166,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 290,
+          "line": 344,
           "column": 79
         }
       ]
@@ -17253,6 +17350,18 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 70,
           "column": 66
+        }
+      ]
+    },
+    "e3bdb1685ac9a12a": {
+      "source": "所选模型都已存在",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 191,
+          "column": 23
         }
       ]
     },
@@ -17608,6 +17717,11 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 71,
           "column": 66
+        },
+        {
+          "file": "features/models/ModelDiscoveryPicker.tsx",
+          "line": 61,
+          "column": 70
         }
       ]
     },
@@ -18058,6 +18172,18 @@
         }
       ]
     },
+    "ee89c6178ee83c2b": {
+      "source": "服务器地址或完整请求 URL 和 API Key 不能为空",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 578,
+          "column": 78
+        }
+      ]
+    },
     "eec6bf2dad677b9f": {
       "source": "发放时间：{time}",
       "kind": "template",
@@ -18229,6 +18355,20 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 126,
           "column": 31
+        }
+      ]
+    },
+    "f30d231b9d132aa8": {
+      "source": "已添加 {count} 个模型",
+      "kind": "template",
+      "placeholders": [
+        "count"
+      ],
+      "refs": [
+        {
+          "file": "features/models/ModelLibraryPage.tsx",
+          "line": 205,
+          "column": 15
         }
       ]
     },
@@ -18831,7 +18971,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 363,
+          "line": 417,
           "column": 18
         }
       ]
@@ -19083,7 +19223,7 @@
       "refs": [
         {
           "file": "features/models/ModelLibraryPage.tsx",
-          "line": 455,
+          "line": 509,
           "column": 17
         }
       ]

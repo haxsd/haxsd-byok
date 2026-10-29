@@ -8,6 +8,9 @@ import { CursorModelTestResult, type CursorModelTestState } from "./CursorModelT
 import { classifyModelTestFailure } from "./modelTestOutcome";
 import { LegacyModelImport } from "./LegacyModelImport";
 import { modelLibraryFacts } from "./modelLibraryFacts";
+import { ModelDiscoveryPicker } from "./ModelDiscoveryPicker";
+import { bulkModelInputs, discoveryCandidates, existingDiscoveryIds } from "./modelBulkAdd";
+import { modelPresets, presetEndpoint, trimTrailingSlash } from "../../shared/utils/modelPresets";
 import styles from "./CursorSettings.module.scss";
 import { PageContent } from "../../shell/layout/PageContent";
 import { PageActions } from "../../shell/PageActions";
@@ -44,7 +47,9 @@ export function ModelLibraryPage() {
   const [draft, setDraft] = useState<CursorModelDraft | null>(null);
   const [editing, setEditing] = useState<Model | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [discoveryModels, setDiscoveryModels] = useState<string[]>([]);
   const [discovering, setDiscovering] = useState(false);
+  const [bulkAdding, setBulkAdding] = useState(false);
   const [deleting, setDeleting] = useState<Model | null>(null);
   const [testingModelHashes, setTestingModelHashes] = useState<Set<string>>(() => new Set());
   const [modelTestResults, setModelTestResults] = useState<Map<string, CursorModelTestState>>(() => new Map());
@@ -116,11 +121,13 @@ export function ModelLibraryPage() {
     next.model.sort_order = models.length + 1;
     setEditing(null);
     setModelOptions([]);
+    setDiscoveryModels([]);
     setDraft(next);
   };
   const openEdit = (model: Model) => {
     setEditing(model);
     setModelOptions([model.model_id]);
+    setDiscoveryModels([]);
     setDraft({
       providerId: `builtin/${model.type}`,
       model: modelInput(model),
@@ -129,7 +136,7 @@ export function ModelLibraryPage() {
       anthropicExtraParamsText: JSON.stringify(model.anthropic_extra_params, null, 2),
     });
   };
-  const discover = async (): Promise<boolean> => {
+  const discover = async (): Promise<"single" | "multiple" | false> => {
     if (!draft) return false;
     setDiscovering(true);
     try {
@@ -144,8 +151,22 @@ export function ModelLibraryPage() {
         custom_headers_enabled: draft.model.custom_headers_enabled,
         custom_headers,
       });
-      setModelOptions([...new Set(result.models)]);
-      return true;
+      const candidates = discoveryCandidates(result.models);
+      setModelOptions(candidates);
+      if (editing) {
+        setDiscoveryModels([]);
+        return "single";
+      }
+      if (candidates.length === 1) {
+        setDiscoveryModels([]);
+        return "single";
+      }
+      if (candidates.length > 1) {
+        setDiscoveryModels(candidates);
+        return "multiple";
+      }
+      message(t("没有发现可添加的模型"));
+      return false;
     } catch (cause) {
       message.error(cause);
       return false;
@@ -159,11 +180,44 @@ export function ModelLibraryPage() {
     if (editing) return appStore.updateCursorModel(editing.model_hash, input);
     return (await appStore.createModels([input]))?.[0] ?? null;
   };
+  const addDiscoveredModels = async (modelIds: string[]) => {
+    if (!draft || modelIds.length === 0) return;
+    setBulkAdding(true);
+    try {
+      const base = draftProviderInput(draft, false);
+      const alreadyConfigured = existingDiscoveryIds(models, base);
+      const selected = modelIds.filter((modelId) => !alreadyConfigured.has(modelId));
+      if (selected.length === 0) {
+        message.error(t("所选模型都已存在"));
+        return;
+      }
+      const created = await appStore.createModels(bulkModelInputs(
+        base,
+        selected,
+        draft.model.sort_order || models.length + 1,
+        modelProviderLabel(draft),
+      ));
+      if (!created) {
+        const error = appStore.getSnapshot().error;
+        if (error) message.error(error);
+        return;
+      }
+      message(t("已添加 {count} 个模型", { count: created.length }));
+      setDraft(null);
+      setEditing(null);
+      setDiscoveryModels([]);
+    } catch (cause) {
+      message.error(cause);
+    } finally {
+      setBulkAdding(false);
+    }
+  };
   const save = async () => {
     try {
       if (await persist()) {
         setDraft(null);
         setEditing(null);
+        setDiscoveryModels([]);
       }
     } catch (cause) {
       message.error(cause);
@@ -456,8 +510,15 @@ export function ModelLibraryPage() {
         />}
         sections={[{ key: "model-library", estimatedHeight: Math.max(360, estimatedListViewport), content }]}
       />
-      <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting(editing, testingModelHashes) || (editing && modelTestResults.get(editing.model_hash))) ? <CursorModelTestResult state={editing ? modelTestResults.get(editing.model_hash) : undefined} testing={editorTesting(editing, testingModelHashes)} /> : undefined} busy={cursorBusy || savingAndTesting} onClose={() => { if (editing && editorTesting(editing, testingModelHashes)) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); }} onSubmit={() => void save()} submitLabel={t("保存")} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting} onClick={() => void (editing && editorTesting(editing, testingModelHashes) ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editing && editorTesting(editing, testingModelHashes) ? t("取消测试") : t("保存并测试")}</button>}>
-        {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} hasStoredKey={editing !== null} onChange={setDraft} onDiscover={discover} />}
+      <Modal fullHeight open={draft !== null} title={editing ? t("编辑模型") : t("添加模型")} banner={draft && (editorTesting(editing, testingModelHashes) || (editing && modelTestResults.get(editing.model_hash))) ? <CursorModelTestResult state={editing ? modelTestResults.get(editing.model_hash) : undefined} testing={editorTesting(editing, testingModelHashes)} /> : undefined} busy={cursorBusy || savingAndTesting || bulkAdding} onClose={() => { if (editing && editorTesting(editing, testingModelHashes)) void cancelModelTest(editing.model_hash); setDraft(null); setEditing(null); setDiscoveryModels([]); }} onSubmit={() => void save()} submitLabel={t("保存")} submitDisabled={discoveryModels.length > 1} secondaryAction={<button type="button" className={controls.secondary} disabled={cursorBusy || savingAndTesting || bulkAdding || discoveryModels.length > 1} onClick={() => void (editing && editorTesting(editing, testingModelHashes) ? cancelModelTest(editing.model_hash) : saveAndTest())}>{savingAndTesting ? t("处理中…") : editing && editorTesting(editing, testingModelHashes) ? t("取消测试") : t("保存并测试")}</button>}>
+        {draft && <CursorModelEditor draft={draft} modelOptions={modelOptions} discovering={discovering} hasStoredKey={editing !== null} onChange={(next) => { setDraft(next); setDiscoveryModels([]); }} onDiscover={discover} />}
+        {draft && !editing && discoveryModels.length > 1 && <ModelDiscoveryPicker
+          models={discoveryModels}
+          existing={existingDiscoveryIds(models, draft.model)}
+          busy={bulkAdding || cursorBusy}
+          onClose={() => setDiscoveryModels([])}
+          onConfirm={(modelIds) => void addDiscoveredModels(modelIds)}
+        />}
       </Modal>
       <Modal open={settingsGroup !== null} title={t("分组设置")} busy={groupSettingsBusy || cursorBusy} onClose={() => setSettingsGroup(null)} onSubmit={() => void saveGroupSettings()} submitLabel={t("保存")}>
         {settingsGroup && <div className={styles.editor}>
@@ -501,8 +562,8 @@ function sharedValue(values: string[]): string | null {
   return rest.every((value) => value === first) ? first : null;
 }
 
-/** `keepStoredKey` 为真表示在编辑已有模型：凭据栏留空即"不修改"，服务端沿用已保存的 key。 */
-function draftInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput {
+/** 只校验整批模型共用的 provider 配置；批量新增时每项身份由模型 ID 单独写入。 */
+function draftProviderInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput {
   const model = {
     ...draft.model,
     display_name: draft.model.display_name.trim(),
@@ -514,11 +575,25 @@ function draftInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput
     custom_headers: parseHeaders(draft.customHeadersText),
     anthropic_extra_params: parseObject(draft.anthropicExtraParamsText, t("Anthropic 额外参数")),
   };
-  if (!model.display_name || !model.base_url || (!keepStoredKey && !model.api_key) || !model.tooltip_data || !model.model_id) throw new Error(t("服务器地址或完整请求 URL、API Key、模型名称、显示名称和备注不能为空"));
+  if (!model.base_url || (!keepStoredKey && !model.api_key)) throw new Error(t("服务器地址或完整请求 URL 和 API Key 不能为空"));
   for (const [label, value] of [[t("上下文窗口 Token"), model.context_window_tokens], [t("最大输出 Token"), model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens], [t("思考预算 Token"), model.thinking_budget_tokens]] as const) {
     if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) throw new Error(t("{label} 必须是大于 0 的整数", { label }));
   }
   return model;
+}
+
+/** `keepStoredKey` 为真表示在编辑已有模型：凭据栏留空即"不修改"，服务端沿用已保存的 key。 */
+function draftInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput {
+  const model = draftProviderInput(draft, keepStoredKey);
+  if (!model.display_name || !model.tooltip_data || !model.model_id) throw new Error(t("模型名称、显示名称和备注不能为空"));
+  return model;
+}
+
+function modelProviderLabel(draft: CursorModelDraft) {
+  const baseUrl = trimTrailingSlash(draft.model.base_url.trim());
+  const preset = modelPresets.find((candidate) => trimTrailingSlash(presetEndpoint(candidate, draft.model.type).baseUrl) === baseUrl);
+  if (preset) return preset.name();
+  try { return new URL(draft.model.base_url).hostname; } catch { return ""; }
 }
 
 function parseHeaders(text: string): Record<string, string> {

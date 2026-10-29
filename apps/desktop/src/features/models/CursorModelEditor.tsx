@@ -60,7 +60,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
   /** 编辑已有模型：key 栏留空表示不修改，服务端沿用已保存的凭据。 */
   hasStoredKey: boolean;
   onChange: (draft: CursorModelDraft) => void;
-  onDiscover: () => Promise<boolean>;
+  onDiscover: () => Promise<"single" | "multiple" | false>;
 }) {
   const modelCombobox = useRef<ComboboxHandle>(null);
   // 高级分组默认折叠，只有一件事能改变初始状态：草稿里已经有非默认的高级值
@@ -101,7 +101,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
     .flatMap((preset) => preset.models.map((item) => item.model_id));
   const combinedOptions = [...new Set([...modelOptions, ...presetModelOptions])].map((value) => ({ value }));
   const discoverModels = async () => {
-    if (await onDiscover()) modelCombobox.current?.openAll();
+    if (await onDiscover() === "single") modelCombobox.current?.openAll();
   };
   const applyPreset = (preset: ModelPreset) => {
     const endpoint = presetEndpoint(preset, draft.model.type);
