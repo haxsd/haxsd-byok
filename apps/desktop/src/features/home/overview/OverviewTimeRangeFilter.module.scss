@@ -41,7 +41,9 @@
 
 .popover {
   position: fixed;
-  z-index: 20000;
+  /* Above the page and modal shells, but below nested dropdowns, tooltips,
+     notifications and the command palette. The model picker opens from here. */
+  z-index: 14100;
   display: grid;
   gap: var(--oa-space-3);
   width: 320px;

@@ -378,6 +378,7 @@ export function CursorSettingsPage() {
     />
     <ConfirmDialog
       open={pendingMode !== null}
+      destructive={pendingEndsCursor}
       title={t("切换模型来源？")}
       cancelLabel={t("取消")}
       confirmLabel={pendingEndsCursor ? t("结束并切换") : t("切换")}

@@ -8,6 +8,8 @@ import {
   writeDockIconVisibility,
   writeSilentStart,
 } from "../../shared/native/appLifecycle";
+import { clientErrorText } from "../harness/harnessErrorText";
+import { Button } from "../../shared/ui/Button";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
@@ -22,13 +24,22 @@ export function AppLifecycleSettingsCard() {
   const [silentStart, setSilentStart] = useState(false);
   const [dockIconVisible, setDockIconVisible] = useState(true);
   const [loadingDesktopSettings, setLoadingDesktopSettings] = useState(native);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let disposed = false;
+    setLoadError(null);
     if (native) {
+      setLoadingAutostart(true);
+      setLoadingDesktopSettings(true);
       void readAutostart()
         .then((enabled) => { if (!disposed) setAutostart(enabled); })
-        .catch((cause) => message.error(cause))
+        .catch((cause) => {
+          if (disposed) return;
+          setLoadError(clientErrorText(cause));
+          message.error(cause);
+        })
         .finally(() => { if (!disposed) setLoadingAutostart(false); });
       void readDesktopSettings()
         .then((settings) => {
@@ -36,14 +47,18 @@ export function AppLifecycleSettingsCard() {
           setSilentStart(settings.silent_start);
           setDockIconVisible(settings.show_dock_icon);
         })
-        .catch(() => {})
+        .catch((cause) => {
+          if (disposed) return;
+          setLoadError(clientErrorText(cause));
+          message.error(cause);
+        })
         .finally(() => {
           if (disposed) return;
           setLoadingDesktopSettings(false);
         });
     }
     return () => { disposed = true; };
-  }, [message, native]);
+  }, [attempt, message, native]);
 
   const toggleAutostart = async (enabled: boolean) => {
     try {
@@ -92,7 +107,7 @@ export function AppLifecycleSettingsCard() {
       </div>
       <Switch
         checked={autostart}
-        disabled={!native || loadingAutostart}
+        disabled={!native || loadingAutostart || Boolean(loadError)}
         label={t("开机启动")}
         onChange={(enabled) => void toggleAutostart(enabled)}
       />
@@ -104,7 +119,7 @@ export function AppLifecycleSettingsCard() {
       </div>
       <Switch
         checked={silentStart}
-        disabled={!native || loadingDesktopSettings}
+        disabled={!native || loadingDesktopSettings || Boolean(loadError)}
         label={t("静默启动")}
         onChange={(enabled) => void toggleSilentStart(enabled)}
       />
@@ -116,10 +131,14 @@ export function AppLifecycleSettingsCard() {
       </div>
       <Switch
         checked={dockIconVisible}
-        disabled={loadingDesktopSettings}
+        disabled={loadingDesktopSettings || Boolean(loadError)}
         label={t("在 Dock 栏显示")}
         onChange={(visible) => void toggleDockIcon(visible)}
       />
+    </div>}
+    {loadError && <div className={styles.errorRow} role="alert">
+      <span>{loadError}</span>
+      <Button size="small" onClick={() => setAttempt(value => value + 1)}>{t("重试")}</Button>
     </div>}
   </TitledCard>;
 }

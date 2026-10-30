@@ -261,7 +261,12 @@ impl CodexGateway {
             ));
         }
         let previous = self.inner.store.codex_settings().await?;
-        if settings != previous && config::inspect(&previous.resolved_home()?)?.applied {
+        // 接管期间只有可用模型目录可以增减：它不改变客户端已写入的网关路由；
+        // 端口、目录、开关和默认模型仍要撤销后重新应用。
+        if settings != previous
+            && config::inspect(&previous.resolved_home()?)?.applied
+            && !only_model_catalog_changed(&previous, &settings)
+        {
             return Err(Error::Config(
                 "restore the applied Codex configuration before changing gateway settings".into(),
             ));
@@ -271,6 +276,20 @@ impl CodexGateway {
         if let Err(error) = self.sync_listener(&saved).await {
             self.inner.store.set_codex_settings(previous).await?;
             return Err(error);
+        }
+        // 每次保存都核对一次已发布目录：第一次刷新失败后 retry 的 model_hashes 已经和
+        // 库里相同，只看"这次有没有换列表"会永远跳过重试。未接管时这里会快速 no-op。
+        if config::inspect(&saved.resolved_home()?)?.applied {
+            if let Err(error) = self
+                .publish_current_catalog(&saved.resolved_home()?, &saved)
+                .await
+            {
+                // 设置已经落库，但显式保存操作不能只报成功：客户端读到的仍是旧目录，
+                // 用户会以为新模型已经可用。把两个事实一起返回，并让保存保持可重试。
+                return Err(Error::Config(format!(
+                    "settings were saved, but the Codex model catalog could not be refreshed: {error}"
+                )));
+            }
         }
         Ok(saved)
     }
@@ -474,6 +493,14 @@ impl CodexGateway {
         self.sync_listener(&disabled).await?;
         restored
     }
+}
+
+fn only_model_catalog_changed(previous: &CodexSettings, next: &CodexSettings) -> bool {
+    // 把允许变化的字段还原成旧值后再整体比较：以后给设置加字段时，默认仍会
+    // 被挡在接管期间，而不是因为漏列比较条件悄悄放行。
+    let mut catalog_only = next.clone();
+    catalog_only.model_hashes = previous.model_hashes.clone();
+    catalog_only == *previous
 }
 
 async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) -> Response {

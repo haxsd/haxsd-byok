@@ -27,7 +27,7 @@ function input(overrides = {}) {
     codex: null,
     claude: null,
     hostConfigured: false,
-    callCount: 0,
+    callCounts: {},
     ...overrides,
   };
 }
@@ -72,7 +72,7 @@ test("picking Cursor adds the Cursor step and never counts Devin", async () => {
     cursor: cursorHarness(),
     devin: devinStatus({ enabled: false, listening: false, ready: false }),
     hostConfigured: false,
-    callCount: 4,
+    callCounts: { cursor: 4 },
   }));
 
   assert.deepEqual(view.steps.map((step) => step.key), ["model", "cursor", "verify"]);
@@ -89,7 +89,7 @@ test("picking Devin adds the Devin step and tolerates a missing Cursor status", 
     cursor: null,
     devin: devinStatus(),
     hostConfigured: true,
-    callCount: 1,
+    callCounts: { devin: 1 },
   }));
 
   assert.deepEqual(view.steps.map((step) => step.key), ["model", "devin", "verify"]);
@@ -143,7 +143,7 @@ test("picking Codex adds the Codex step and never counts the other clients", asy
     cursor: cursorHarness({ mode: "official" }),
     devin: devinStatus({ enabled: false, listening: false, ready: false }),
     codex: codexStatus(),
-    callCount: 2,
+    callCounts: { codex: 2 },
   }));
 
   assert.deepEqual(view.steps.map((step) => step.key), ["model", "codex", "verify"]);
@@ -179,7 +179,7 @@ test("picking Claude adds the Claude step and never counts the other clients", a
     devin: devinStatus({ enabled: false, listening: false, ready: false }),
     codex: codexStatus({ enabled: false, listening: false, configured: false }),
     claude: claudeStatus({ cli: "applied" }),
-    callCount: 1,
+    callCounts: { claude: 1 },
   }));
 
   assert.deepEqual(view.steps.map((step) => step.key), ["model", "claude", "verify"]);
@@ -224,4 +224,19 @@ test("every displayed step carries the fields the checklist renders", async () =
       assert.ok(step.action.length > 0, `${step.key} has an action label`);
     }
   }
+});
+
+test("a call from another client never completes the selected client's verification", async () => {
+  const buildOnboarding = await loadOnboarding();
+
+  const view = buildOnboarding(input({
+    client: "cursor",
+    modelCount: 1,
+    cursor: cursorHarness(),
+    callCounts: { devin: 3, codex: 2 },
+  }));
+
+  const verify = view.steps.find((step) => step.key === "verify");
+  assert.equal(verify.done, false);
+  assert.equal(verify.status, "还没有调用记录");
 });

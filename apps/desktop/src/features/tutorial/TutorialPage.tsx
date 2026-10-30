@@ -38,7 +38,7 @@ const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
  * 那一条进入清单与进度，其余三条不会被当成欠下的待办。选择只存在于页面状态里。
  */
 export function TutorialPage() {
-  const { models, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, overview, calls } = useAppStore();
+  const { models, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, calls } = useAppStore();
   const navigate = useNavigate();
   const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
   // 读取过程单独记一份：读不到和「确实没写入」必须分开，否则清单会把读失败
@@ -65,6 +65,12 @@ export function TutorialPage() {
     return () => { cancelled = true; };
   }, [hostAttempt]);
 
+  const callCounts: Record<OnboardingClient, number> = { cursor: 0, devin: 0, codex: 0, claude: 0 };
+  for (const call of calls) {
+    if (call.client_source === "cursor" || call.client_source === "devin" || call.client_source === "codex" || call.client_source === "claude") {
+      callCounts[call.client_source] += 1;
+    }
+  }
   const { steps, completed, total } = buildOnboarding({
     client,
     modelCount: models.length,
@@ -83,7 +89,7 @@ export function TutorialPage() {
     } : null,
     hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.patched),
     hostConfigRead: hostStatusRead,
-    callCount: Math.max(calls.length, overview.metrics.llm_calls),
+    callCounts,
   });
 
   const faq: Array<{ question: string; answer: string }> = [

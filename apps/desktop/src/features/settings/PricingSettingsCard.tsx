@@ -123,7 +123,7 @@ export function PricingSettingsCard() {
   return <TitledCard title={t("模型定价")} action={actions}>
     <div className={styles.content}>
       <small className={styles.rule}>{t("按模型单价估算；未定价用量不计入金额。")}</small>
-      <small className={styles.rule}>{t("价格币种跟随界面语言：简体中文用人民币，英文用美元，两套价格各自独立维护。")}</small>
+      <small className={styles.rule}>{t("价格币种跟随界面语言：中文用人民币，其它语言用美元，两套价格各自独立维护。")}</small>
       <ModelSelect mode="single" label={t("选择定价模型")} options={options} value={modelHash} disabled={editing || saving} onChange={setSelected} />
       {options.length === 0 ? <small>{t("请先添加模型，再设置单价。")}</small> : editing ? <div className={styles.fields}>
         <FormField label={t("计价方式")}><Select value={draft.mode} options={[{ value: "fixed", label: t("全时段固定单价") }, { value: "peak_off_peak", label: t("高峰 / 低谷分别计价") }]} ariaLabel={t("计价方式")} onChange={value => setDraft({ ...draft, mode: value as PricingMode })} /></FormField>

@@ -3,6 +3,17 @@ import type { ModelSelectOption } from "../../shared/ui/ModelSelect";
 import { claudeIcon, openAiIcon } from "../../shared/ui/icons";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 
+export const CODEX_MIN_CONTEXT_WINDOW = 4_096;
+export const CODEX_MAX_CONTEXT_WINDOW = 10_000_000;
+
+export function hasCodexContextWindow(model: Model): boolean {
+  const tokens = model.context_window_tokens;
+  return Number.isInteger(tokens)
+    && tokens !== null
+    && tokens >= CODEX_MIN_CONTEXT_WINDOW
+    && tokens <= CODEX_MAX_CONTEXT_WINDOW;
+}
+
 /**
  * Codex 页能提供哪些模型。
  *
@@ -23,6 +34,10 @@ export interface CodexModelAvailability {
   missingSelections: string[];
   /** 已选、但因为是插件模型而不能用的标识。 */
   blockedPluginSelections: string[];
+  /** 模型库里有、但没有 Codex 可发布的上下文窗口。 */
+  blockedContextModels: Model[];
+  /** 已选、但上下文窗口不是有效值的标识。 */
+  blockedContextSelections: string[];
 }
 
 function builtInOption(model: Model): ModelSelectOption {
@@ -40,13 +55,15 @@ export function codexModelAvailability(
   selected: string[],
 ): CodexModelAvailability {
   const pluginIds = new Set(pluginModels.map((model) => model.id));
-  const options = models
-    .filter((model) => !pluginIds.has(model.model_hash))
-    .map(builtInOption);
-  const known = new Set(options.map((option) => option.value));
+  const libraryModels = models.filter((model) => !pluginIds.has(model.model_hash));
+  const blockedContextModels = libraryModels.filter((model) => !hasCodexContextWindow(model));
+  const blockedContextByHash = new Map(blockedContextModels.map((model) => [model.model_hash, model]));
+  const options = libraryModels.filter(hasCodexContextWindow).map(builtInOption);
+  const known = new Set(libraryModels.map((model) => model.model_hash));
 
   const missingSelections = selected.filter((hash) => !known.has(hash) && !pluginIds.has(hash));
   const blockedPluginSelections = selected.filter((hash) => pluginIds.has(hash));
+  const blockedContextSelections = selected.filter((hash) => blockedContextByHash.has(hash));
   for (const hash of missingSelections) {
     options.push({ value: hash, label: hash, group: t("模型库里已不存在") });
   }
@@ -54,11 +71,24 @@ export function codexModelAvailability(
     const model = pluginModels.find((candidate) => candidate.id === hash);
     options.push({ value: hash, label: model?.displayName ?? hash, group: t("插件模型（Codex 不能用）") });
   }
+  for (const hash of blockedContextSelections) {
+    const model = blockedContextByHash.get(hash)!;
+    options.push({ value: hash, label: model.display_name || model.model_id, group: t("缺少上下文窗口（Codex 不能用）") });
+  }
 
   return {
     options,
     blockedPluginModels: pluginModels.filter((model) => !selected.includes(model.id)),
     missingSelections,
     blockedPluginSelections,
+    blockedContextModels,
+    blockedContextSelections,
   };
+}
+
+/** 服务端保存 Codex 设置前会逐个校验模型；这些选择在界面上就该先被挡住。 */
+export function codexModelSelectionBlocked(availability: CodexModelAvailability): boolean {
+  return availability.missingSelections.length > 0
+    || availability.blockedPluginSelections.length > 0
+    || availability.blockedContextSelections.length > 0;
 }

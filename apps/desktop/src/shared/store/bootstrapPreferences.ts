@@ -8,8 +8,8 @@ import { loadUiPreferences } from "./uiPreferences";
  * 主题与语言各有自己的 store（一个管 `documentElement.dataset.theme`，一个管全局 `t()`），
  * 其余几项（教程已读、待核对升级、Devin 宿主路径、卡片折叠）直接读 `useUiPreferences()`。
  *
- * 服务不可达时不阻塞启动：界面用默认值继续，离线横幅会说明原因；偏好留到下一次启动再读。
- * 抛错不在这里吞掉——`index.tsx` 的调用点自己决定要不要提示。
+ * 服务不可达时不阻塞启动：界面用默认值继续，离线横幅会说明原因；`index.tsx` 会定时重试，
+ * 服务恢复后主题与语言仍能接上。抛错不在这里吞掉——调用点自己决定要不要提示。
  */
 export async function bootstrapUiPreferences() {
   const preferences = await loadUiPreferences();

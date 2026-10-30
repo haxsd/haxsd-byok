@@ -13,10 +13,17 @@ applyTheme(appStore.getSnapshot().theme);
 void appStore.refresh();
 // 界面偏好（主题、语言、折叠、教程已读、待核对升级、宿主路径）现在存服务端：启动时读回来，
 // 首次会把旧 localStorage 里那份一次性搬上去（见 shared/store/uiPreferences.ts）。
-void bootstrapUiPreferences().catch(() => undefined);
-// 上一次应用内升级装没装上，只能在下一次启动时用实际版本回答（Windows 上
-// 安装器一启动本进程就结束了）。它要等偏好读完才能看到待核对的记录。
-void verifyPendingUpdate();
+// 管理服务可能比 webview 晚几百毫秒起来；失败后定时重试，语言/主题才不会一直停在默认值，
+// 也才能在下一次启动时核对上一次升级。
+async function bootPreferences() {
+  try {
+    await bootstrapUiPreferences();
+    void verifyPendingUpdate();
+  } catch {
+    window.setTimeout(() => void bootPreferences(), 3_000);
+  }
+}
+void bootPreferences();
 // 启动时静默查一次更新：有新版只在顶栏留一个小标记，不弹窗、不自动下载。
 void checkForUpdatesAtStartup();
 

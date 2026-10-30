@@ -274,7 +274,15 @@ async function runBoot(): Promise<UiPreferences> {
  * 抛错交给调用方：服务不可达时界面用默认值继续，离线横幅会说明原因。
  */
 export function loadUiPreferences(): Promise<UiPreferences> {
-  loading ??= runBoot();
+  if (!loading) {
+    const boot = runBoot();
+    loading = boot;
+    // 服务在启动瞬间不可达时，不能把 rejected promise 缓存一整个会话：
+    // 下一次调用（页面重试或服务恢复后的核对）仍应有机会重新读回偏好。
+    boot.catch(() => {
+      if (loading === boot) loading = null;
+    });
+  }
   return loading;
 }
 

@@ -14,6 +14,7 @@ import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
 import { CodexSettingsForm } from "./CodexSettingsForm";
+import { codexModelAvailability, codexModelSelectionBlocked } from "./codexModelOptions";
 import {
   codexActionGate,
   codexApplyNeedsSignInConfirm,
@@ -34,6 +35,7 @@ export function CodexSettingsPage() {
   const [draft, setDraft] = useState<CodexSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   // 未登录 ChatGPT 时点「应用到 Codex」先确认：接管后客户端可能不再提供登录入口。
   const [confirmApply, setConfirmApply] = useState(false);
   const message = useMessage();
@@ -41,17 +43,21 @@ export function CodexSettingsPage() {
   const pluginModels = configuredPluginModels(plugins);
   useEffect(() => {
     let disposed = false;
-    void api.codexSettings().then(settings => { if (!disposed) { setSaved(settings); setDraft(settings); } })
+    setError(null);
+    void api.codexSettings().then(settings => { if (!disposed) { setSaved(settings); setDraft(settings); setError(null); } })
       .catch(cause => { if (!disposed) setError(cause); });
     return () => { disposed = true; };
-  }, []);
+  }, [reloadKey]);
   const view = codexConnectionView(codexStatus);
   const login = codexLoginView(codexStatus);
   const clientMode = codexClientModeView(codexStatus);
   const modelCount = saved?.model_hashes.length ?? 0;
+  const modelAvailability = draft ? codexModelAvailability(models, pluginModels, draft.model_hashes) : null;
+  const modelSelectionBlocked = modelAvailability ? codexModelSelectionBlocked(modelAvailability) : false;
   const steps = codexOutstandingSteps(codexStatus, modelCount, models.length);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
-  const locked = Boolean(codexStatus?.configured || codexStatus?.config_conflict);
+  const applied = Boolean(codexStatus?.configured && !codexStatus?.config_conflict);
+  const locked = Boolean(codexStatus?.config_conflict);
   // 两个按钮的可用条件集中在 codexConnectionView 里：撤销看接管凭证（restorable），
   // 应用只被「路由被别人占着」挡住，受管字段被改过不挡。
   const gate = codexActionGate(codexStatus, { dirty, enabled: Boolean(saved?.enabled) });
@@ -61,11 +67,13 @@ export function CodexSettingsPage() {
     catch (cause) { setError(cause); }
     finally { setBusy(false); }
   };
-  const save = () => action(async () => {
-    if (!draft) return;
-    const settings = await api.setCodexSettings(draft);
-    setSaved(settings); setDraft(settings); message(t("Codex 设置已保存"));
-  });
+  const save = () => {
+    if (!draft || modelSelectionBlocked) return;
+    return action(async () => {
+      const settings = await api.setCodexSettings(draft);
+      setSaved(settings); setDraft(settings); message(t("Codex 设置已保存"));
+    });
+  };
   const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用。请从“文件 → 退出”完全退出 Codex 后重开；只关闭窗口不会重新读取界面模式。")); });
   const requestApply = () => {
     if (codexApplyNeedsSignInConfirm(codexStatus)) {
@@ -106,14 +114,16 @@ export function CodexSettingsPage() {
     <CodexConflictCard status={codexStatus} />
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
-        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} onChange={setDraft} />
-        : <p className={styles.note}>{error ? t("读取失败") : t("加载中…")}</p>}
+        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} applied={applied} onChange={setDraft} />
+        : error
+          ? <div className={styles.note}><span>{t("读取失败")}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
+          : <p className={styles.note}>{t("加载中…")}</p>}
     </TitledCard>
     <HarnessCapabilities client="codex" />
   </div>;
   return <>
     <PageActions>
-      <Button disabled={busy || !dirty || locked || !draft} onClick={() => void save()}>{t("保存")}</Button>
+      <Button disabled={busy || !dirty || locked || !draft || modelSelectionBlocked} onClick={() => void save()}>{t("保存")}</Button>
       <Button disabled={busy || !gate.apply} onClick={requestApply}>{t("应用到 Codex")}</Button>
       <Button disabled={busy || !gate.restore} onClick={() => void restore()}>{t("撤销接管")}</Button>
     </PageActions>

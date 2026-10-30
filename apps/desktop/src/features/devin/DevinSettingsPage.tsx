@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DevinBindingKind, type DevinHostStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
@@ -19,6 +19,7 @@ import { appendRouteForBinding, keepActiveRouteId, nextModelUid } from "./devinB
 import { devinDefaultModelOptions, devinModelOptions } from "./devinModelOptions";
 import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { getUiPreferences, saveUiPreferences, useUiPreferences } from "../../shared/store/uiPreferences";
+import { optionalPositiveInteger, portInputValue } from "../../shared/utils/portInput";
 import { probeHostPath } from "./hostPathProbe";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import styles from "./DevinSettingsPage.module.scss";
@@ -33,7 +34,6 @@ const emptySettings: DevinSettings = {
   bindings: [],
   default_model_uid: null,
 };
-
 /** 旧设置只有主模型哈希，界面把它显示成一条合成的主路由，直到用户真正编辑绑定。 */
 const legacyRouteId = "primary";
 
@@ -96,6 +96,8 @@ export function DevinSettingsPage() {
   // made in the open one looked applied while nothing had been written.
   const [saved, setSaved] = useState<DevinSettings>(emptySettings);
   const [models, setModels] = useState<Model[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   // Devin 选择器里的模型（名字 + 标识），映射的 UID 必须从这里来。
   const [modelChoices, setModelChoices] = useState<DevinModelChoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,10 +108,35 @@ export function DevinSettingsPage() {
   const [hostFailure, setHostFailure] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
   const [hostNeedsInspect, setHostNeedsInspect] = useState(false);
+  const hostPathSaveTimer = useRef<number | null>(null);
+  const hostInstallRootSaveTimer = useRef<number | null>(null);
   // Which mapping rows are showing their optional fields. Collapsed by default: the
   // page should read as two decisions per mapping, not as a form of five fields.
   const [expandedBindings, setExpandedBindings] = useState<Record<string, boolean>>({});
   const devinStatus = useAppStoreSelector((state) => state.devinStatus);
+
+  const persistHostPath = (value: string) => {
+    if (hostPathSaveTimer.current !== null) {
+      window.clearTimeout(hostPathSaveTimer.current);
+      hostPathSaveTimer.current = null;
+    }
+    writeHostPath(value);
+  };
+  const persistHostInstallRoot = (value: string) => {
+    if (hostInstallRootSaveTimer.current !== null) {
+      window.clearTimeout(hostInstallRootSaveTimer.current);
+      hostInstallRootSaveTimer.current = null;
+    }
+    writeHostInstallRoot(value);
+  };
+  const flushHostPath = (value: string) => {
+    if (hostPathSaveTimer.current === null) return;
+    persistHostPath(value);
+  };
+  const flushHostInstallRoot = (value: string) => {
+    if (hostInstallRootSaveTimer.current === null) return;
+    persistHostInstallRoot(value);
+  };
 
   // 偏好是启动时异步读回来的：值到了之后补上宿主路径（用户没在这期间自己填过才算）。
   const rememberedHostPath = useUiPreferences().devinHostPath ?? "";
@@ -122,17 +149,36 @@ export function DevinSettingsPage() {
   }, [rememberedInstallRoot]);
 
   useEffect(() => {
-    void Promise.all([api.devinSettings(), api.models()]).then(([nextSettings, nextModels]) => {
-      setSettings(nextSettings);
-      setSaved(nextSettings);
-      setModels(nextModels);
-    }).catch((cause) => message.error(clientErrorText(cause))).finally(() => setLoading(false));
-  }, [message]);
+    let disposed = false;
+    setLoading(true);
+    setLoadError(null);
+    void Promise.allSettled([api.devinSettings(), api.models()]).then(([settingsResult, modelsResult]) => {
+      if (disposed) return;
+      if (settingsResult.status === "fulfilled") {
+        setSettings(settingsResult.value);
+        setSaved(settingsResult.value);
+      } else {
+        const text = clientErrorText(settingsResult.reason);
+        setLoadError(text);
+        message.error(text);
+      }
+      if (modelsResult.status === "fulfilled") {
+        setModels(modelsResult.value);
+      } else {
+        const text = clientErrorText(modelsResult.reason);
+        setLoadError(text);
+        message.error(text);
+      }
+    }).finally(() => {
+      if (!disposed) setLoading(false);
+    });
+    return () => { disposed = true; };
+  }, [message, reloadKey]);
 
   // 模型 UID 只能从 Devin 自己认识的标识里选：手打的标识永远不会被请求。列表读不到
   // 只影响"能不能选"，映射本身仍然可以手填，所以这里失败不弹错。
   useEffect(() => {
-    if (loading) return;
+    if (loading || loadError) return;
     const extensionPath = hostStatus?.extension.path;
     // 状态读不到时仍按记住的安装目录（或自动探测）取一次：路径失效只影响接入，
     // 不该把已有映射的 UID 选择器也清空。
@@ -149,12 +195,12 @@ export function DevinSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [loading, hostStatus?.extension.path]);
+  }, [loading, loadError, hostStatus?.extension.path]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || loadError) return;
     void appStore.refreshDevinStatus();
-  }, [loading]);
+  }, [loading, loadError]);
 
   // 设置文件路径与安装目录不再要求用户填写：服务端自己找到它们，再回填到界面。
   //
@@ -164,7 +210,7 @@ export function DevinSettingsPage() {
   // 记住的路径失效（卸载、换盘、搬到别处）不是用户的操作错误，因此不弹红条：两个输入
   // 各自失效时互不牵连，都失败才退回自动探测；仍失败才把原因写在卡片里。
   useEffect(() => {
-    if (loading) return;
+    if (loading || loadError) return;
     let cancelled = false;
     void probeHostPath(hostPath, api.devinHostStatus, hostInstallRoot)
       .then((probe) => {
@@ -174,32 +220,40 @@ export function DevinSettingsPage() {
         setHostNeedsInspect(false);
         if (probe.status && probe.status.path !== hostPath.trim()) {
           setHostPath(probe.status.path);
-          writeHostPath(probe.status.path);
+          persistHostPath(probe.status.path);
         }
         if (probe.status && hostInstallRoot.trim() && !probe.matched.installRoot) {
           // 记住的安装目录已经失效，自动探测成功：清掉旧值，别让输入框和实际状态互相矛盾。
           setHostInstallRoot("");
-          writeHostInstallRoot("");
+          persistHostInstallRoot("");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [loading]);
+  }, [loading, loadError]);
 
   const rememberHostPath = (value: string) => {
     setHostPath(value);
     setHostStatus(null);
     setHostFailure(null);
     setHostNeedsInspect(true);
-    writeHostPath(value);
+    if (hostPathSaveTimer.current !== null) window.clearTimeout(hostPathSaveTimer.current);
+    hostPathSaveTimer.current = window.setTimeout(() => {
+      hostPathSaveTimer.current = null;
+      writeHostPath(value);
+    }, 400);
   };
   const rememberHostInstallRoot = (value: string) => {
     setHostInstallRoot(value);
     setHostStatus(null);
     setHostFailure(null);
     setHostNeedsInspect(true);
-    writeHostInstallRoot(value);
+    if (hostInstallRootSaveTimer.current !== null) window.clearTimeout(hostInstallRootSaveTimer.current);
+    hostInstallRootSaveTimer.current = window.setTimeout(() => {
+      hostInstallRootSaveTimer.current = null;
+      writeHostInstallRoot(value);
+    }, 400);
   };
 
   const update = <K extends keyof DevinSettings>(key: K, value: DevinSettings[K]) => {
@@ -283,7 +337,7 @@ export function DevinSettingsPage() {
       setHostFailure(null);
       if (status.path !== hostPath.trim()) {
         setHostPath(status.path);
-        writeHostPath(status.path);
+        persistHostPath(status.path);
       }
     } catch (cause) {
       // 用户主动点"检查设置"，路径无效就要立刻说清楚（说法由界面给，不显示服务端英文原句）。
@@ -319,7 +373,7 @@ export function DevinSettingsPage() {
       setHostFailure(null);
       if (outcome.status.path !== hostPath.trim()) {
         setHostPath(outcome.status.path);
-        writeHostPath(outcome.status.path);
+        persistHostPath(outcome.status.path);
       }
       // 成功消息只在状态读回来之后才发：设置落盘和"界面知道设置落盘了"是两件事。
       message(t("Devin 接入配置已写入；重新打开 Devin 后生效"), { duration: 5_000 });
@@ -338,7 +392,7 @@ export function DevinSettingsPage() {
       setHostFailure(null);
       if (status.path !== hostPath.trim()) {
         setHostPath(status.path);
-        writeHostPath(status.path);
+        persistHostPath(status.path);
       }
       message(t("Devin 接入配置已恢复"));
     } catch (cause) {
@@ -447,7 +501,11 @@ export function DevinSettingsPage() {
                 : hostStatus.configured
                   ? t("Devin 目前指向其他地址。请在“高级”里恢复原设置后再试。")
                   : t("暂时不能自动接入，请查看下面的技术详情。");
-  const content = loading ? <div className={styles.loading}>{t("加载中…")}</div> : <div className={styles.page}>
+  const content = loading
+    ? <div className={styles.loading}>{t("加载中…")}</div>
+    : loadError
+      ? <div className={styles.loadError} role="alert"><span>{loadError}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
+      : <div className={styles.page}>
     <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
       <StatusHero
         connected={view.hero.connected}
@@ -508,7 +566,7 @@ export function DevinSettingsPage() {
             </div>
             {expanded && <div className={styles.bindingExtra}>
               <div className={styles.bindingFields}>
-                <FormField label={t("上下文 token")} hint={t("一般不用改；留空表示使用模型库中的设置。")}><TextInput type="number" min={1} value={binding.context_window_tokens ?? ""} onChange={(event) => updateBinding(index, { context_window_tokens: event.target.value ? Number(event.target.value) : null })} /></FormField>
+                <FormField label={t("上下文 token")} hint={t("一般不用改；留空表示使用模型库中的设置。")}><TextInput type="number" min={1} value={binding.context_window_tokens ?? ""} onChange={(event) => updateBinding(index, { context_window_tokens: optionalPositiveInteger(event.target.value) })} /></FormField>
                 <FormField label={t("绑定类型")} hint={t("上下文压缩绑定必须是单线路；切换为该类型会清空候选路由。")}>
                   <Select value={binding.kind} options={kindOptions} ariaLabel={t("绑定类型")} onChange={(kind) => {
                     const nextKind = kind as DevinBindingKind;
@@ -607,9 +665,9 @@ export function DevinSettingsPage() {
           <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
         </FormField>
         {/* 端口是整数：空值或非数字交给服务端拒绝（它会说不清是哪种错），超范围的在这里夹住。 */}
-        <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portValue(event.target.value))} /></FormField>
-        <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portValue(event.target.value))} /></FormField>
-        <FormField label={t("本地 API 端口")}><TextInput type="number" min={1} max={65535} value={settings.local_api_port} onChange={(event) => update("local_api_port", portValue(event.target.value))} /></FormField>
+        <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portInputValue(event.target.value))} /></FormField>
+        <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portInputValue(event.target.value))} /></FormField>
+        <FormField label={t("本地 API 端口")}><TextInput type="number" min={1} max={65535} value={settings.local_api_port} onChange={(event) => update("local_api_port", portInputValue(event.target.value))} /></FormField>
         <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
           <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.codeium.com" />
         </FormField>
@@ -617,10 +675,10 @@ export function DevinSettingsPage() {
       <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，本机网关负责模型调用和事件转发。")}</p>
       <div className={styles.fields}>
         <FormField label={t("Devin 设置文件路径")} hint={t("留空即自动探测；也可以填 Devin 数据目录，或 User\\settings.json 的完整路径。")}>
-          <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} placeholder={t("留空自动探测")} />
+          <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} onBlur={(event) => flushHostPath(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
         <FormField label={t("Devin 安装目录")} hint={t("留空即自动探测；也可以填安装目录，或其中 extension.js 的完整路径。")}>
-          <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
+          <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
       {!hostRestorable && <p className={styles.note}>{t("只有本应用写入的配置才能一键恢复。")}</p>}
@@ -633,21 +691,11 @@ export function DevinSettingsPage() {
   return <PageContent
     title={<PageTitle
       title="Devin"
-      status={<StatusPill tone={view.summary.tone}>{view.summary.label}</StatusPill>}
+      status={loadError
+        ? <StatusPill tone="bad">{t("读取失败")}</StatusPill>
+        : <StatusPill tone={view.summary.tone}>{view.summary.label}</StatusPill>}
       meta={t("选择模型并接入 Devin，之后直接在 Devin 里对话")}
     />}
     sections={[{ key: "devin", estimatedHeight: 1120, content }]}
   />;
-}
-
-/**
- * 端口输入框的取值：空输入按 0 交给服务端拒绝（它会说"端口不能为 0"），超范围的夹到 1..65535。
- *
- * 原来直接用 `Number(...)`：输入框清空时 `Number("")` 是 0、乱输是 `NaN`（JSON 里会变成
- * `null`），服务端只能回一句英文的 422，界面看起来就是"保存没反应"。
- */
-function portValue(raw: string): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return 0;
-  return Math.min(65_535, Math.max(0, Math.trunc(value)));
 }

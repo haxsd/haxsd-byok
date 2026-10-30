@@ -150,6 +150,23 @@ test("a preference the server cannot store is reported as unconfirmed", async ()
   assert.equal(getUiPreferences().theme, "default-dark", "这一次会话里仍然生效");
 });
 
+test("a failed boot read can be retried after the service recovers", async () => {
+  const settings = installDesktopSettings({ theme: "midnight" });
+  let attempts = 0;
+  settings.backend.route("GET", DESKTOP, () => {
+    attempts += 1;
+    if (attempts === 1) return { status: 503, body: { message: "starting" } };
+    return { body: { ...settings.stored() } };
+  });
+  const { loadUiPreferences } = await loadPreferences();
+
+  await assert.rejects(loadUiPreferences());
+  const recovered = await loadUiPreferences();
+
+  assert.equal(attempts, 2, "a rejected boot promise must not be cached for the whole session");
+  assert.equal(recovered.theme, "midnight");
+});
+
 test("the plan picks server, legacy or defaults without guessing", async () => {
   const { planPreferenceBoot } = await loadPreferences();
   const legacy = { theme: "default-light" };

@@ -125,7 +125,7 @@ test("the conflict card stays out of the page when nothing was changed", async (
   assert.equal(renderToStaticMarkup(createElement(CodexConflictCard, { status: null })), "");
 });
 
-test("applied Codex configuration locks settings until an explicit restore", async () => {
+test("a Codex configuration conflict locks settings until the takeover is restored", async () => {
   const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
   const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
   const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
@@ -148,6 +148,29 @@ test("the reason Codex settings are locked belongs to the gateway switch row", a
   // switch's own row, next to the control it explains.
   assert.match(render(true), /启用 Codex 网关<\/strong><small>撤销接管后才能修改<\/small>/);
   assert.match(render(false), /启用 Codex 网关<\/strong><small>关闭时不监听端口<\/small>/);
+});
+
+test("an applied Codex gateway still allows changing the available model catalog", async () => {
+  const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
+  const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
+  const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
+    draft: { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash" },
+    models: [libraryModel("hash", "GPT")], pluginModels: [], locked: false, applied: true, onChange: () => {},
+  })));
+
+  assert.doesNotMatch(
+    markup,
+    /aria-label="筛选项：选择 Codex 可用模型[^"]*"[^>]*disabled/,
+    "可用模型在接管后仍然可以增减",
+  );
+  assert.match(
+    markup,
+    /data-disabled="true"><button[^>]*aria-label="筛选项：选择 Codex 默认模型/,
+    "默认模型不能在接管中改变",
+  );
+  assert.match(markup, /aria-label="Codex 配置目录"[^>]*disabled/);
+  assert.match(markup, /aria-label="Codex 网关端口"[^>]*disabled/);
+  assert.match(markup, /当前默认模型不能移除/);
 });
 
 const libraryModel = (hash, name) => ({
@@ -194,7 +217,7 @@ const pluginModel = (id, displayName) => ({
 });
 
 test("the Codex picker only offers models the gateway can publish", async () => {
-  const { codexModelAvailability } = await loader.load("/src/features/codex/codexModelOptions.ts");
+  const { codexModelAvailability, codexModelSelectionBlocked } = await loader.load("/src/features/codex/codexModelOptions.ts");
   const grok = pluginModel("plugin:dev.cursorbyok.examples.grok-auth/grok/grok-4.6", "Grok 4.6");
   const availability = codexModelAvailability(
     // 插件模型不会出现在模型库列表里；这里仍然放一个同 id 的条目，锁住"即使出现在
@@ -208,6 +231,7 @@ test("the Codex picker only offers models the gateway can publish", async () => 
   assert.deepEqual(availability.options.map((option) => option.value), ["aaaa1111", "gone2222", grok.id]);
   assert.deepEqual(availability.missingSelections, ["gone2222"]);
   assert.deepEqual(availability.blockedPluginSelections, [grok.id]);
+  assert.equal(codexModelSelectionBlocked(availability), true);
   assert.equal(availability.options.at(-2).group, "模型库里已不存在");
   assert.equal(availability.options.at(-1).group, "插件模型（Codex 不能用）");
   // 插件模型已被选进设置时，"为什么不能选它们"那句说明就多余了：真正要处理的是
@@ -219,6 +243,43 @@ test("the Codex picker only offers models the gateway can publish", async () => 
   assert.deepEqual(unselected.blockedPluginModels.map((model) => model.id), [grok.id]);
   assert.deepEqual(unselected.blockedPluginSelections, []);
   assert.deepEqual(unselected.missingSelections, []);
+  assert.equal(codexModelSelectionBlocked(unselected), false);
+});
+
+test("a model without a valid context window is not offered and blocks saving", async () => {
+  const { codexModelAvailability, codexModelSelectionBlocked } = await loader.load("/src/features/codex/codexModelOptions.ts");
+  const valid = libraryModel("valid111", "GPT");
+  const missing = { ...libraryModel("luna2222", "gpt-6-luna"), context_window_tokens: null };
+  const tooSmall = { ...libraryModel("small333", "Tiny"), context_window_tokens: 4_095 };
+
+  const available = codexModelAvailability([valid, missing, tooSmall], [], ["valid111"]);
+  assert.deepEqual(available.options.map((option) => option.value), ["valid111"]);
+  assert.deepEqual(available.blockedContextModels.map((model) => model.model_hash), ["luna2222", "small333"]);
+  assert.deepEqual(available.blockedContextSelections, []);
+  assert.equal(codexModelSelectionBlocked(available), false);
+
+  // 已选的历史坏项仍然出现在列表里，否则用户没法从选择器中取消它。
+  const blocked = codexModelAvailability([valid, missing, tooSmall], [], ["valid111", "luna2222"]);
+  assert.deepEqual(blocked.options.map((option) => option.value), ["valid111", "luna2222"]);
+  assert.equal(blocked.options.at(-1).group, "缺少上下文窗口（Codex 不能用）");
+  assert.deepEqual(blocked.blockedContextSelections, ["luna2222"]);
+  assert.equal(codexModelSelectionBlocked(blocked), true);
+});
+
+test("the Codex form names the selected model whose context window is missing", async () => {
+  const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
+  const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
+  const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
+    draft: { enabled: true, port: 43120, home: "", model_hashes: ["luna2222"], default_model_hash: "luna2222" },
+    models: [{ ...libraryModel("luna2222", "gpt-6-luna"), context_window_tokens: null }],
+    pluginModels: [],
+    locked: false,
+    onChange: () => {},
+  })));
+  assert.match(markup, /gpt-6-luna/);
+  assert.match(markup, /缺少上下文窗口/);
+  assert.match(markup, /模型库/);
+  assert.doesNotMatch(markup, /4096|10000000|10,000,000|10 000 000/);
 });
 
 test("the Codex form says why plugin models are not offered", async () => {

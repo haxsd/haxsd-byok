@@ -88,22 +88,19 @@ export function harnessClientAt(pathname: string): HarnessClient | null {
   ) ?? null;
 }
 
-/** 越靠后越需要注意，聚合入口取最需要关注的那一种颜色。 */
-const toneRank: Record<StatusTone, number> = { idle: 0, ok: 1, warn: 2, bad: 3 };
-
 /**
- * 顶部「接入」入口的状态：颜色取所有客户端里最需要注意的一个，文案只用计数——
- * 单个客户端的说法各不相同（已接管 / 运行中 / 配置冲突），细节放在页面内的切换项
- * 与悬停说明里。
+ * 顶部「接入」入口的状态：文案只用计数，单个客户端的细节放在页面内的切换项里。
+ *
+ * 部分接入是正常用法（很多人只用一两个客户端），不能因为没接满就整项变黄；
+ * 只有硬冲突仍用红色提示。
  */
 export function harnessEntryStatus(state: HarnessState): EntryStatus<string> {
   const entries = harnessClients.map((client) => client.entry(state));
-  const tone = entries.reduce<StatusTone>((worst, entry) => {
-    const next = entry.status?.tone ?? "idle";
-    return toneRank[next] > toneRank[worst] ? next : worst;
-  }, "idle");
   const active = entries.filter((entry) => entry.active).length;
   const total = entries.length;
+  const tone: StatusTone = entries.some((entry) => entry.status?.tone === "bad")
+    ? "bad"
+    : active === total ? "ok" : "idle";
   return {
     state: active === 0 ? "none-active" : `${active}-active`,
     tone,

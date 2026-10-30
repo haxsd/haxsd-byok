@@ -200,6 +200,51 @@ async fn a_configured_800k_window_reaches_the_catalog_without_a_global_override(
     assert_eq!(entry["auto_compact_token_limit"], 640_000);
 }
 
+#[tokio::test]
+async fn adding_a_model_to_an_applied_gateway_refreshes_the_catalog_without_restoring() {
+    let (directory, store, gateway, first_id) =
+        configured_gateway("responses", "http://127.0.0.1:1".into()).await;
+    let first = store.model(&first_id).await.unwrap().unwrap();
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+
+    let mut second_input = first.config_input("Second model".into(), 2);
+    second_input.model_id = "vendor-model-second".into();
+    let second = store.create_model(&second_input).await.unwrap();
+    let home = directory.path().join("codex-home");
+    let before = published_catalog_path(&home);
+
+    let mut changed = store.codex_settings().await.unwrap();
+    changed.model_hashes.push(second.model_hash.clone());
+    let saved = gateway.save_settings(changed).await.unwrap();
+    assert_eq!(
+        saved.model_hashes,
+        vec![first_id.clone(), second.model_hash.clone()]
+    );
+    assert_eq!(saved.default_model_hash.as_deref(), Some(first_id.as_str()));
+
+    let after = published_catalog_path(&home);
+    assert_ne!(before, after, "新增模型后目录没有刷新");
+    let catalog: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(after).unwrap()).unwrap();
+    assert_eq!(catalog["models"].as_array().unwrap().len(), 2, "{catalog}");
+    assert!(gateway.status().await.unwrap().configured);
+
+    let mut changed_default = saved;
+    changed_default.default_model_hash = Some(second.model_hash);
+    assert!(
+        gateway.save_settings(changed_default).await.is_err(),
+        "接管期间改默认模型必须撤销后重新应用"
+    );
+    gateway.shutdown().await.unwrap();
+}
+
 /// 已发布目录的路径：客户端读的就是 config.toml 里的这个指针。
 fn published_catalog_path(home: &std::path::Path) -> std::path::PathBuf {
     let doc = std::fs::read_to_string(home.join("config.toml"))

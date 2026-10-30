@@ -587,7 +587,7 @@ export type PricingMode = "fixed" | "peak_off_peak";
 /**
  * 首页「价值估算」的价格设置。
  *
- * 界面语言决定使用哪一套价格：简体中文用人民币，英文用美元。
+ * 界面语言决定使用哪一套价格：中文用人民币，其它语言用美元。
  * 两种币种各自维护完整的价格表，切换语言不会互相影响。
  */
 export interface ModelTokenPricing {

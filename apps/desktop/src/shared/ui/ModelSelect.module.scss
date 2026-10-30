@@ -44,6 +44,7 @@
   border: 0;
 
   &:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+  &:disabled { color: var(--vscode-descriptionForeground); background: transparent; cursor: default; }
 }
 
 .summary {
@@ -56,7 +57,9 @@
 
 .menu {
   position: fixed;
-  z-index: 14001;
+  /* A model picker can sit inside a popover (for example the custom time range).
+     It must paint above that popover, while tooltips and global feedback remain on top. */
+  z-index: 14200;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -93,6 +96,12 @@
   gap: 8px;
   padding: 7px 8px 3px;
   cursor: pointer;
+
+  &[data-active] {
+    color: var(--vscode-dropdown-foreground);
+    background: var(--vscode-list-hoverBackground);
+    border-radius: var(--oa-radius-xs);
+  }
 
   input {
     position: absolute;
@@ -135,6 +144,11 @@
   }
 
   &:hover {
+    color: var(--vscode-dropdown-foreground);
+    background: var(--vscode-list-hoverBackground);
+  }
+
+  &[data-active] {
     color: var(--vscode-dropdown-foreground);
     background: var(--vscode-list-hoverBackground);
   }

@@ -39,7 +39,7 @@ test("every client module is declared once, with its own path and status", async
   assert.equal(harnessClientAt("/models"), null, "a page outside the module resolves to nothing");
 });
 
-test("the top entry counts active clients and takes the tone of the one that needs attention", async () => {
+test("the top entry keeps a neutral tone while only some clients are in use", async () => {
   const { harnessEntryStatus } = await loader.load("/src/features/harness/harnessClients.ts");
 
   const none = harnessEntryStatus(idle);
@@ -50,17 +50,26 @@ test("the top entry counts active clients and takes the tone of the one that nee
     cursorHarness: { mode: "local", settings_applied: true },
   }));
   assert.equal(cursorOnly.state, "1-active");
-  assert.equal(cursorOnly.tone, "ok");
+  assert.equal(cursorOnly.tone, "idle");
   assert.match(cursorOnly.label, /1\/4/);
 
-  // Devin 保存了但端口还没起来：这一项是警告，聚合入口就该是警告色。
+  // Devin 保存了但端口还没起来：客户端自己可以提醒，但"没全接"不该把总入口染黄。
   const pending = harnessEntryStatus(state({
     cursorHarness: { mode: "local", settings_applied: true },
     devinStatus: { enabled: true, listening: false, ready: false },
   }));
-  assert.equal(pending.tone, "warn");
+  assert.equal(pending.tone, "idle");
 
-  // Codex 配置冲突比警告更需要处理。
+  // 截图里的真实状态：3/4 在用，第 4 个只是没启用/待重启，整体保持中性。
+  const partial = harnessEntryStatus(state({
+    cursorHarness: { mode: "local", settings_applied: true },
+    devinStatus: { enabled: true, listening: true, ready: true },
+    codexStatus: { enabled: true, listening: true, port: 43120, configured: true, config_conflict: false, home: "x", calls: 0, last_error: null },
+  }));
+  assert.equal(partial.label, "3/4 已接入");
+  assert.equal(partial.tone, "idle");
+
+  // 真正的配置冲突仍然要红：这不是"还没全接"，而是需要处理的问题。
   const conflict = harnessEntryStatus(state({
     devinStatus: { enabled: true, listening: false, ready: false },
     codexStatus: { enabled: true, listening: true, port: 43120, configured: false, config_conflict: true, home: "x", calls: 0, last_error: null },
@@ -107,6 +116,7 @@ test("server errors are shown as readable text, never as the raw service sentenc
   assert.match(clientErrorText(new Error("configuration error: Devin settings file is not valid JSONC: expected value")), /不是有效的 JSONC/);
   assert.match(clientErrorText(new Error("configuration error: restore the applied Codex configuration before changing gateway settings")), /先撤销接管/);
   assert.match(clientErrorText(new Error("configuration error: configure the actual context window for GPT")), /上下文窗口/);
+  assert.match(clientErrorText(new Error("configuration error: configure a context window between 4096 and 10000000 tokens for gpt-6-luna")), /上下文窗口/);
   assert.match(clientErrorText(new Error("configuration error: Devin default model must be selected before enabling the gateway")), /默认模型/);
   assert.match(clientErrorText(new Error("configuration error: Devin default model UID not found: gone")), /默认模型映射/);
   // 写入 Devin 设置前的监听检查（server/src/devin/gateway.rs 的原句）：网关没在听、

@@ -79,10 +79,12 @@ test("the demo's codex sentences hit the harness error mapping", async () => {
   const noModel = await api.applyCodex().then(() => null, (cause) => cause);
   assert.equal(clientErrorText(noModel), "先选择默认模型。");
 
-  // 应用成功后再改设置 → 先撤销接管。
+  // 应用成功后仍可增减可用模型；默认模型或网关设置变化才要求先撤销接管。
   await api.setCodexSettings({ enabled: true, port: 43120, home: "", model_hashes: ["m1"], default_model_hash: "m1" });
   await api.applyCodex();
-  const configured = await api.setCodexSettings({ enabled: true, port: 43120, home: "", model_hashes: ["m1"], default_model_hash: "m1" })
+  const modelAdded = await api.setCodexSettings({ enabled: true, port: 43120, home: "", model_hashes: ["m1", "m2"], default_model_hash: "m1" });
+  assert.deepEqual(modelAdded.model_hashes, ["m1", "m2"]);
+  const configured = await api.setCodexSettings({ enabled: true, port: 43120, home: "", model_hashes: ["m1", "m2"], default_model_hash: "m2" })
     .then(() => null, (cause) => cause);
   assert.equal(clientErrorText(configured), "先撤销接管，再修改 Codex 网关设置。");
 });

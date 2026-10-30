@@ -242,6 +242,7 @@ export function HomePage() {
     setCustomOpen(false);
   };
   const selectPreset = (value: Exclude<OverviewRangePreset, "custom">) => {
+    setAppliedModels(selectedModels);
     setPreset(value);
     setQuick(null);
     setCustomOpen(false);

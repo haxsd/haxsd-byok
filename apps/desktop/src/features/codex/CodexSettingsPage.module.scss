@@ -35,6 +35,13 @@
   font-size: type.$font-size-xs;
 }
 
+.fieldError {
+  display: block;
+  margin-top: 6px;
+  color: var(--vscode-errorForeground);
+  font-size: type.$font-size-xs;
+}
+
 .notes {
   display: grid;
   gap: 10px;

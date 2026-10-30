@@ -1,9 +1,10 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from "@floating-ui/dom";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconProps } from "./Icon";
 import { checkIcon, chevronDownIcon, windowCloseIcon } from "./icons";
 import { VirtualList } from "../virtual/VirtualList";
+import type { VirtualListApi } from "../virtual/virtualTypes";
 import styles from "./ModelSelect.module.scss";
 
 export type ModelSelectOption = {
@@ -42,7 +43,9 @@ function groupedItems(options: ModelSelectOption[]): MenuItem[] {
   ]);
 }
 
-function GroupCheckbox({ label, options, selected, onChange }: {
+function GroupCheckbox({ id, active, label, options, selected, onChange }: {
+  id: string;
+  active: boolean;
   label: string;
   options: ModelSelectOption[];
   selected: Set<string>;
@@ -57,10 +60,11 @@ function GroupCheckbox({ label, options, selected, onChange }: {
     if (input.current) input.current.indeterminate = indeterminate;
   }, [indeterminate]);
 
-  return <label className={styles.group}>
+  return <label id={id} className={styles.group} data-active={active || undefined} onMouseDown={(event) => event.preventDefault()}>
     <input
       ref={input}
       type="checkbox"
+      tabIndex={-1}
       checked={checked}
       aria-checked={indeterminate ? "mixed" : checked}
       onChange={(event) => onChange(event.target.checked)}
@@ -77,11 +81,17 @@ export function ModelSelect(props: ModelSelectProps) {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const firstOption = useRef<HTMLLabelElement>(null);
+  const listApi = useRef<VirtualListApi | null>(null);
   const menuId = useId();
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 220, maxHeight: 280 });
   const items = useMemo(() => groupedItems(options), [options]);
+  const firstOptionIndex = useMemo(() => items.findIndex((item) => item.kind === "option"), [items]);
+  const actionable = useMemo(
+    () => items.flatMap((item, index) => item.kind === "option" || mode === "multiple" ? [index] : []),
+    [items, mode],
+  );
   const selected = useMemo(
     () => new Set(mode === "multiple" ? props.value : [props.value]),
     [mode, props.value],
@@ -109,7 +119,6 @@ export function ModelSelect(props: ModelSelectProps) {
 
   useEffect(() => {
     if (!open) return;
-    firstOption.current?.focus();
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
       if (!root.current?.contains(target) && !menu.current?.contains(target)) close();
@@ -117,6 +126,11 @@ export function ModelSelect(props: ModelSelectProps) {
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || activeIndex < 0) return;
+    listApi.current?.scrollToIndex(activeIndex, "auto");
+  }, [activeIndex, open]);
 
   const summary = mode === "multiple"
     ? props.value.length === 0
@@ -148,8 +162,66 @@ export function ModelSelect(props: ModelSelectProps) {
     if (disabled) return;
     const width = root.current?.getBoundingClientRect().width;
     if (width) setPosition((current) => ({ ...current, width }));
+    setActiveIndex(firstOptionIndex);
     setOpen(true);
   };
+
+  const moveActive = (delta: number) => {
+    if (actionable.length === 0) return;
+    const current = actionable.indexOf(activeIndex);
+    const next = current < 0
+      ? (delta > 0 ? 0 : actionable.length - 1)
+      : (current + delta + actionable.length) % actionable.length;
+    setActiveIndex(actionable[next]);
+  };
+
+  const activate = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    if (item.kind === "group") {
+      const checked = item.options.every((option) => selected.has(option.value));
+      toggleGroup(item.options, !checked);
+      return;
+    }
+    choose(item.option);
+  };
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!open) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        openMenu();
+      }
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      moveActive(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (actionable.length) setActiveIndex(actionable[event.key === "Home" ? 0 : actionable.length - 1]);
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate(activeIndex);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key === "Tab") setOpen(false);
+  };
+
+  const rememberList = useCallback((api: VirtualListApi) => {
+    listApi.current = api;
+  }, []);
+
+  const activeId = open && activeIndex >= 0 ? `${menuId}-item-${activeIndex}` : undefined;
 
   return <>
     <div ref={root} className={styles.target} data-open={open || undefined} data-disabled={disabled || undefined}>
@@ -160,16 +232,19 @@ export function ModelSelect(props: ModelSelectProps) {
         disabled={disabled}
         aria-label={t("筛选项：{label}，{summary}", { label, summary })}
         aria-haspopup="listbox"
+        role="combobox"
         aria-controls={open ? menuId : undefined}
         aria-expanded={open}
+        aria-activedescendant={activeId}
         onClick={() => { if (open) close(); else openMenu(); }}
-        onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); openMenu(); } }}
+        onKeyDown={onTriggerKeyDown}
       >
         <span>{label}</span><span className={styles.summary} aria-hidden="true">{summary}</span><Icon icon={chevronDownIcon} size="1.1em" />
       </button>
       {mode === "multiple" && props.value.length > 0 && <button
         type="button"
         className={styles.clear}
+        disabled={disabled}
         aria-label={t("清除{label}筛选", { label })}
         onClick={() => props.onChange([])}
       ><Icon icon={windowCloseIcon} size="1.1em" /></button>}
@@ -196,10 +271,13 @@ export function ModelSelect(props: ModelSelectProps) {
           style={{ height: "100%" }}
           estimatedItemHeight={32}
           overscan={4}
+          onReady={rememberList}
           empty={<div className={styles.empty}>{t("暂无选项")}</div>}
         >{(item, index) => item.kind === "group"
           ? mode === "multiple"
             ? <GroupCheckbox
+                id={`${menuId}-item-${index}`}
+                active={activeIndex === index}
                 label={item.label}
                 options={item.options}
                 selected={selected}
@@ -207,17 +285,13 @@ export function ModelSelect(props: ModelSelectProps) {
               />
             : <div className={styles.groupLabel}>{item.label}</div>
           : <label
-              ref={index === 1 ? firstOption : undefined}
               className={styles.optionRow}
+              id={`${menuId}-item-${index}`}
+              data-active={activeIndex === index || undefined}
               role="option"
               aria-selected={selected.has(item.option.value)}
-              tabIndex={index === 1 ? 0 : -1}
-              onKeyDown={(event) => {
-                if (event.key === " " || event.key === "Enter") {
-                  event.preventDefault();
-                  choose(item.option);
-                }
-              }}
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
             >
               <input
                 type="checkbox"

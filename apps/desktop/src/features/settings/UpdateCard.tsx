@@ -95,12 +95,14 @@ export function UpdateCard() {
 
   /** 安装：Windows 上这一句之后本进程就结束了，所以期望值与提示都要先落下。 */
   const installStep = async (target: Update) => {
-    rememberPendingUpdate(target.currentVersion, target.version);
+    // 先等服务端确认记录再启动安装器。只写内存快照不够：下一次启动是新的进程，
+    // PUT 如果还没到达服务端，就永远无法核对这次升级。
+    await rememberPendingUpdate(target.currentVersion, target.version);
     setStatus({ kind: "notice", text: t("安装程序已启动，应用将退出；重启后会自动核对是否装上了") });
     try {
       await target.install();
     } catch (cause) {
-      forgetPendingUpdate();
+      await forgetPendingUpdate();
       setStatus({ kind: "failure", phase: "install", failure: classifyUpdateFailure(cause) });
       return;
     }
@@ -156,7 +158,9 @@ export function UpdateCard() {
     {lastApply && <div className={styles.statusRow} data-tone={lastApply.applied ? undefined : "bad"}>
       <small>{lastApply.applied
         ? t("上次更新已生效：{from} → {to}", { from: lastApply.from, to: lastApply.to })
-        : t("上次更新未生效：重启后仍是 {version}。{reason}", { version: lastApply.from, reason: describeUpdateFailure(NOT_APPLIED) })}</small>
+        : lastApply.actual === lastApply.from
+          ? t("上次更新未生效：重启后仍是 {version}。{reason}", { version: lastApply.actual, reason: describeUpdateFailure(NOT_APPLIED) })
+          : t("上次更新目标为 {to}，但重启后是 {version}。", { to: lastApply.to, version: lastApply.actual })}</small>
     </div>}
   </TitledCard>;
 }

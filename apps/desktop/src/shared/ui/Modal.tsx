@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ScrollableContent } from "../virtual/ScrollableContent";
 import controls from "./Controls.module.scss";
+import { isTopModalLayer, pushModalLayer, removeModalLayer } from "./modalLayer";
 import styles from "./Modal.module.scss";
 
 type ModalProps = {
@@ -42,6 +43,7 @@ function focusableElements(root: HTMLElement) {
 export function Modal({ id, open, title, children, banner, busy, wide, compact, fullHeight, role = "dialog", ariaDescribedBy, initialFocus = "first", onClose, onSubmit, secondaryAction, closeLabel = t("取消"), submitLabel = t("保存"), submitDisabled = false }: ModalProps) {
   const dialog = useRef<HTMLDivElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
+  const layer = useRef(Symbol("modal-layer"));
   const closeRef = useRef(onClose);
   const busyRef = useRef(Boolean(busy));
   const titleId = useId();
@@ -49,8 +51,10 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
   busyRef.current = Boolean(busy);
   useEffect(() => {
     if (!open) return;
+    pushModalLayer(layer.current);
     const previous = document.activeElement as HTMLElement | null;
     const onKey = (event: KeyboardEvent) => {
+      if (!isTopModalLayer(layer.current)) return;
       if (event.key === "Escape" && !busyRef.current) {
         event.preventDefault();
         closeRef.current();
@@ -84,6 +88,7 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
     return () => {
       cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", onKey);
+      removeModalLayer(layer.current);
       if (previous && document.contains(previous)) previous.focus();
     };
   }, [initialFocus, open]);

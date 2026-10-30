@@ -483,6 +483,7 @@ function ResourceActionModal({ action, cardAction, result, busy, error, onClose,
     </Modal>
     {pendingCard && cardAction && <ConfirmDialog
       open
+      destructive
       title={t("使用重置卡")}
       busy={busy}
       confirmLabel={t("确认使用")}

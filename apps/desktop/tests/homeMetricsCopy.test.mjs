@@ -62,6 +62,13 @@ test.after(() => server.close());
 const { setLocalePreference } = await load("/src/i18n/store.ts");
 setLocalePreference("zh-CN");
 
+test("Chinese pricing uses CNY while every other interface language uses USD", async () => {
+  const { currencyOf } = await load("/src/features/home/metrics/tokenCost.ts");
+  assert.equal(currencyOf("zh-CN"), "CNY");
+  assert.equal(currencyOf("en-US"), "USD");
+  assert.equal(currencyOf("ru-RU"), "USD");
+});
+
 const DATA = {
   llmCalls: 30,
   successfulCalls: 28,

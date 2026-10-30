@@ -5,6 +5,7 @@ import { useI18n } from "../i18n/store";
 import { useAppStoreSelector } from "../shared/store/appStore";
 import { selectCalls, selectModels, selectTheme } from "../shared/store/selectors";
 import { Icon } from "../shared/ui/Icon";
+import { isTopModalLayer, pushModalLayer, removeModalLayer } from "../shared/ui/modalLayer";
 import { arrowRightIcon, searchIcon } from "../shared/ui/icons";
 import { commandPaletteCommands, type PaletteCommand as Command } from "./commandPaletteCommands";
 import { paletteMatches } from "./commandPaletteMatches";
@@ -33,6 +34,8 @@ export const CommandPalette = memo(function CommandPalette() {
   const theme = useAppStoreSelector(selectTheme);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const layer = useRef(Symbol("command-palette"));
   const listId = useId();
 
   useEffect(() => {
@@ -42,7 +45,6 @@ export const CommandPalette = memo(function CommandPalette() {
         setOpen((current) => !current);
         return;
       }
-      if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
     // The button in the navigation bar opens it too: a shortcut nobody can discover
@@ -59,8 +61,36 @@ export const CommandPalette = memo(function CommandPalette() {
     if (!open) return;
     setQuery("");
     setActive(0);
+    previousFocus.current = document.activeElement as HTMLElement | null;
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      const previous = previousFocus.current;
+      window.requestAnimationFrame(() => {
+        if (previous && document.contains(previous)) previous.focus();
+      });
+    };
+  }, [open]);
+
+  // 命令面板也是模态层：Tab 不离开输入框，Escape 只关闭最上面这一层。
+  useEffect(() => {
+    if (!open) return;
+    pushModalLayer(layer.current);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopModalLayer(layer.current)) return;
+      if (event.key === "Tab") {
+        event.preventDefault();
+        inputRef.current?.focus();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      removeModalLayer(layer.current);
+    };
   }, [open]);
 
   // 命令面板是模态的：打开时把应用根节点设为 inert，Tab 与点击都留在面板里。

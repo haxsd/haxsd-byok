@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { installBrowserDoubles, startModuleLoader } from "./harness.mjs";
 
 installBrowserDoubles();
@@ -84,4 +85,11 @@ test("an unusable custom range says which input is wrong", async () => {
   assert.equal(timeRangeProblem("乱写的时间", "现在", now), "start-unparsed");
   assert.equal(timeRangeProblem("现在", "1小时前", now), "order");
   assert.equal(timeRangeProblem("2026-10-16 12:00", "2026-10-16 12:00", now), "order", "同一时刻也算非法区间");
+});
+
+test("switching from the custom popover to a preset keeps the chosen model filter", async () => {
+  const source = await readFile(new URL("../src/features/home/HomePage.tsx", import.meta.url), "utf8");
+  const start = source.indexOf("const selectPreset");
+  const body = source.slice(start, source.indexOf("};", start));
+  assert.match(body, /setAppliedModels\(selectedModels\)/, "预设切换必须把弹窗里的最新选择同步到请求口径");
 });

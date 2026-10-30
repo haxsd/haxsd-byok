@@ -53,7 +53,7 @@ export function NetworkSettingsCard({ visible }: { visible: boolean }) {
       setSettings(await api.setProxySettings({ ...draft, password: draft.password || undefined }));
       setEditing(false);
       message(t("代理设置已保存"));
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setSaving(false); }
   };
   return <div>

@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Locale } from "../../../i18n/runtime";
 import { useI18n } from "../../../i18n/store";
 import { useTooltip, type TooltipAnchor } from "../../../shared/ui/Tooltip";
+import { calendarTargetIndex } from "./calendarNavigation";
 import styles from "./ContributionCalendarChart.module.scss";
 
 export type ContributionDay = {
@@ -79,6 +80,7 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
   const { locale } = useI18n();
   const { show, hide } = useTooltip();
   const frameRef = useRef<HTMLDivElement>(null);
+  const cellRefs = useRef(new Map<string, SVGRectElement>());
   const [focused, setFocused] = useState<string | null>(null);
   const [cellSize, setCellSize] = useState(MIN_CELL_SIZE);
   const layout = useMemo(() => buildCalendar(data, locale), [data, locale]);
@@ -105,9 +107,18 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
   }, [columnCount]);
 
   if (!layout) return null;
+  const activeDate = focused && layout.cells.some((cell) => cell.date === focused)
+    ? focused
+    : layout.cells[0]?.date;
   const width = columnCount * (cellSize + CELL_GAP) - CELL_GAP;
   const height = 7 * (cellSize + CELL_GAP) - CELL_GAP;
   const label = (cell: Cell) => `${dateFormatter.format(parseDate(cell.date))} · ${t("Token 用量：{tokens}", { tokens: numberFormatter.format(cell.tokens) })}`;
+  const focusCell = (index: number) => {
+    const target = layout.cells[index];
+    if (!target) return;
+    setFocused(target.date);
+    cellRefs.current.get(target.date)?.focus();
+  };
 
   const revealTooltip = (element: SVGRectElement, cell: Cell) => {
     const anchor: TooltipAnchor = {
@@ -148,6 +159,10 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
         <g transform={`translate(0 ${MONTH_STRIP_HEIGHT})`}>
           {layout.cells.map((cell) => <rect
             key={cell.date}
+            ref={(node) => {
+              if (node) cellRefs.current.set(cell.date, node);
+              else cellRefs.current.delete(cell.date);
+            }}
             className={styles.cell}
             data-level={cell.level}
             data-dim={cell.tokens === 0 || undefined}
@@ -157,7 +172,7 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
             width={cellSize}
             height={cellSize}
             rx={ROUNDED}
-            tabIndex={onSelectDay ? 0 : undefined}
+            tabIndex={onSelectDay ? (cell.date === activeDate ? 0 : -1) : undefined}
             role={onSelectDay ? "button" : undefined}
             aria-label={label(cell)}
             onMouseEnter={(event) => revealTooltip(event.currentTarget, cell)}
@@ -166,6 +181,13 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
             onBlur={() => { setFocused(null); hide(); }}
             onClick={onSelectDay ? () => onSelectDay(cell.date) : undefined}
             onKeyDown={onSelectDay ? (event) => {
+              const index = layout.cells.findIndex((item) => item.date === cell.date);
+              const next = calendarTargetIndex(layout.cells, index, event.key);
+              if (next !== index) {
+                event.preventDefault();
+                focusCell(next);
+                return;
+              }
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 onSelectDay(cell.date);

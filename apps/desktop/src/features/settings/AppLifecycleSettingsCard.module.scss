@@ -29,3 +29,13 @@
   background: var(--oa-bad);
   border-radius: 50%;
 }
+
+.errorRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
+  color: var(--oa-bad);
+  border-top: 1px solid var(--oa-border);
+}

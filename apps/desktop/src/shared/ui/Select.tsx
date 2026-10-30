@@ -18,6 +18,7 @@ export function Select({ value, options, disabled, ariaLabel, onChange }: { valu
   const [active, setActive] = useState(0);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 0, maxHeight: 280 });
   const selected = options.find((option) => option.value === value);
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
 
   useLayoutEffect(() => {
     if (!open || !button.current || !menu.current) return;
@@ -38,20 +39,27 @@ export function Select({ value, options, disabled, ariaLabel, onChange }: { valu
 
   const move = (step: number) => {
     if (!options.length) return;
+    if (!open) {
+      setOpen(true);
+      setActive(selectedIndex);
+      return;
+    }
+    const base = active;
     setOpen(true);
-    setActive((index) => (index + step + options.length) % options.length);
+    setActive((base + step + options.length) % options.length);
   };
   const choose = (option: SelectOption) => { onChange(option.value); setOpen(false); button.current?.focus(); };
   return <>
-    <button ref={button} type="button" className={styles.trigger} aria-label={ariaLabel} aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} disabled={disabled} onClick={() => { const nextOpen = !open; setOpen(nextOpen); if (nextOpen) setActive(Math.max(0, options.findIndex((option) => option.value === value))); }} onKeyDown={(event) => {
+    <button ref={button} type="button" role="combobox" className={styles.trigger} aria-label={ariaLabel} aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-activedescendant={open && options[active] ? `${menuId}-option-${active}` : undefined} disabled={disabled} onClick={() => { const nextOpen = !open; setOpen(nextOpen); if (nextOpen) setActive(selectedIndex); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
-      if (event.key === "Enter" && open) { event.preventDefault(); choose(options[active]); }
+      if (event.key === "Enter" && open && options[active]) { event.preventDefault(); choose(options[active]); }
       if (event.key === "Escape") setOpen(false);
+      if (event.key === "Tab") setOpen(false);
     }}><span className={styles.optionContent}>{(selected?.icon || selected?.iconSrc) && <Icon icon={selected.icon} src={selected.iconSrc} />}<span>{selected?.label ?? value}</span></span><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
       <VirtualList items={options} itemKey="value" estimatedItemHeight={30} onReady={(api) => { listApi.current = api; api.scrollToIndex(active); }} style={{ height: Math.min(options.length * 30, Math.max(30, position.maxHeight - 8)) }}>
-        {(option, index) => <button type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onClick={() => choose(option)}><span className={styles.optionContent}>{(option.icon || option.iconSrc) && <Icon icon={option.icon} src={option.iconSrc} />}<span>{option.label}</span></span></button>}
+        {(option, index) => <button id={`${menuId}-option-${index}`} type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onClick={() => choose(option)}><span className={styles.optionContent}>{(option.icon || option.iconSrc) && <Icon icon={option.icon} src={option.iconSrc} />}<span>{option.label}</span></span></button>}
       </VirtualList>
     </div>, document.body)}
   </>;
@@ -147,7 +155,7 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     setActive((index) => (index < 0 ? 0 : (index + step + filtered.length) % filtered.length));
   };
   return <div className={styles.comboRow}><div ref={root} className={styles.combo}>
-    <input ref={input} value={display} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { setTyping(false); closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setTyping(true); setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
+    <input ref={input} value={display} placeholder={placeholder} disabled={disabled} role="combobox" aria-haspopup="listbox" aria-controls={open ? menuId : undefined} aria-expanded={open} aria-autocomplete="list" aria-activedescendant={open && filtered[active] ? `${menuId}-option-${active}` : undefined} onFocus={() => { if (options.length) openMenu(); }} onBlur={() => { setTyping(false); closeTimer.current = window.setTimeout(() => setOpen(false), 100); }} onChange={(event) => { setTyping(true); setFiltering(true); onChange(event.target.value); setActive(0); if (options.length) setOpen(true); }} onKeyDown={(event) => {
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       if (event.key === "Enter" && open && filtered[active]) { event.preventDefault(); choose(filtered[active]); }
@@ -156,7 +164,7 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
     <button type="button" className={styles.comboToggle} disabled={disabled} aria-label={t("打开模型列表")} aria-expanded={open} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { openMenu(); input.current?.focus(); } }}><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
       <VirtualList items={filtered} itemKey={(option) => option.value} estimatedItemHeight={30} onReady={(api) => { listApi.current = api; if (active >= 0) api.scrollToIndex(active); }} style={{ height: Math.min(filtered.length * 30, Math.max(30, position.maxHeight - 8)) }}>
-        {(option, index) => <button type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{labelOf(option)}</button>}
+        {(option, index) => <button id={`${menuId}-option-${index}`} type="button" role="option" aria-selected={option.value === value} data-active={index === active || undefined} onMouseEnter={() => setActive(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)}>{labelOf(option)}</button>}
       </VirtualList>
     </div>, document.body)}
   </div>{append}</div>;

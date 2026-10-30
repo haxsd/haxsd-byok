@@ -74,7 +74,7 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
   refreshVersion?: number;
 }) {
   const { developerMode } = useAppStore();
-  // 币种跟随界面语言：简体中文用人民币，英文用美元。
+  // 币种跟随界面语言：中文用人民币，其它语言用美元。
   const { locale } = useI18n();
   const currency = currencyOf(locale);
   const inputTokens = Math.max(0, data.promptTokens - data.cacheReadTokens - data.cacheWriteTokens);

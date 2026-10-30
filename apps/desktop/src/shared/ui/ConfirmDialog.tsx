@@ -1,13 +1,15 @@
 import { useId, type ReactNode } from "react";
 import { Modal } from "./Modal";
 
-export function ConfirmDialog({ id, open, title, children, busy, wide, cancelLabel = t("取消"), confirmLabel = t("确认"), onCancel, onConfirm }: {
+export function ConfirmDialog({ id, open, title, children, busy, wide, destructive = false, cancelLabel = t("取消"), confirmLabel = t("确认"), onCancel, onConfirm }: {
   id?: string;
   open: boolean;
   title: string;
   children: ReactNode;
   busy?: boolean;
   wide?: boolean;
+  /** 删除、清空、消耗类操作默认把焦点放在「取消」上，避免回车误执行。 */
+  destructive?: boolean;
   cancelLabel?: string;
   confirmLabel?: string;
   onCancel: () => void;
@@ -22,7 +24,7 @@ export function ConfirmDialog({ id, open, title, children, busy, wide, cancelLab
     wide={wide}
     role="alertdialog"
     ariaDescribedBy={contentId}
-    initialFocus="submit"
+    initialFocus={destructive ? "first" : "submit"}
     closeLabel={cancelLabel}
     submitLabel={confirmLabel}
     onClose={onCancel}

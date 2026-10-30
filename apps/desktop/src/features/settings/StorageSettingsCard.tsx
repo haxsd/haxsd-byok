@@ -30,7 +30,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     setError(null);
     void loadWhenVisible(visible, loadStatisticsStorage)
       .then(value => { if (active && value) setStorage(value); })
-      .catch(cause => { if (active) setError(String(cause)); });
+      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { active = false; };
   }, [attempt, visible]);
 
@@ -56,7 +56,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
       setStorage(await api.clearStatisticsStorage(scope));
       setOpen(false);
       await appStore.refresh();
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
   const hint = storage ? storageHint(storage) : null;
@@ -100,7 +100,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
       <p className={styles.storageHint}>{t("日志文件保留 {days} 天，过期自动删除。", { days: LOG_RETENTION_DAYS })}</p>
       {error && !open && <div className={styles.inlineError} role="alert"><span>{error}</span><Button size="small" onClick={() => setAttempt(value => value + 1)}>{t("重试")}</Button></div>}
     </TitledCard>
-    <ConfirmDialog open={open} title={scope === "all" ? t("确定要清理全部统计数据吗？") : scope === "web_cache" ? t("确定要清除抓取缓存吗？") : t("确定要清理详细记录吗？")} busy={busy} cancelLabel={t("取消")} confirmLabel={t("确认清理")} onCancel={() => setOpen(false)} onConfirm={() => void clear()}>
+    <ConfirmDialog open={open} destructive title={scope === "all" ? t("确定要清理全部统计数据吗？") : scope === "web_cache" ? t("确定要清除抓取缓存吗？") : t("确定要清理详细记录吗？")} busy={busy} cancelLabel={t("取消")} confirmLabel={t("确认清理")} onCancel={() => setOpen(false)} onConfirm={() => void clear()}>
       <div className={styles.confirmContent}>
         <Select value={scope} ariaLabel={t("清理范围")} options={[{ value: "details", label: t("仅清理详细记录") }, { value: "all", label: t("清理全部统计数据") }, { value: "web_cache", label: t("仅清除抓取缓存") }]} onChange={value => setScope(value as StatisticsStorageScope)} />
         <small>{scope === "all"

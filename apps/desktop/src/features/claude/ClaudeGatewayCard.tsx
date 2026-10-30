@@ -3,6 +3,7 @@ import { Button } from "../../shared/ui/Button";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Icon } from "../../shared/ui/Icon";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
+import { portInputValue } from "../../shared/utils/portInput";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
@@ -119,7 +120,7 @@ export function ClaudeGatewayCard({
             max={65535}
             value={draft?.port ?? 0}
             disabled={!draft || busy}
-            onChange={(event) => { if (draft) onChange({ ...draft, port: Number(event.target.value) }); }}
+            onChange={(event) => { if (draft) onChange({ ...draft, port: portInputValue(event.target.value) }); }}
           />
         </FormField>
       </div>

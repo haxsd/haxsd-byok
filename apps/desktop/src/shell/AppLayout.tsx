@@ -91,7 +91,7 @@ export function AppLayout() {
 
   // 客户端状态挂在各自的接入页上（见 HarnessTabs）：Cursor 的接管模式和 Devin、
   // Codex 的网关状态互不代表对方，也都不是「整个应用」的状态。顶栏那一个入口只
-  // 汇总成「几个客户端在用本机网关」，颜色取最需要注意的那个。
+  // 汇总成「几个客户端在用本机网关」；只有全接或硬冲突才着色，部分接入保持中性。
   const harnessState = { cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover };
   const harnessEntry = harnessEntryStatus(harnessState);
   // 接入页多一条切换带，窗口顶部的两条带依次往下排（见 .harnessModule / .harnessBar）。

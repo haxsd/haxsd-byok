@@ -2,6 +2,14 @@
 
 .page { display: grid; gap: var(--oa-section-gap); }
 .loading, .empty, .note { padding: 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.loadError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-3);
+  padding: var(--oa-card-padding);
+  color: var(--oa-bad);
+}
 
 .settingRow, .bindingFooter { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px; }
 .settingRow > div { display: grid; gap: 5px; }

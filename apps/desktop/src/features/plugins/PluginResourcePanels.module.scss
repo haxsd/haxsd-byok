@@ -94,7 +94,7 @@
 .modelNote {
   margin: 8px 0 0;
   color: var(--vscode-descriptionForeground);
-  font-size: 12px;
+  font-size: type.$font-size-xs;
 }
 
 .modelTableWrap {

@@ -104,7 +104,8 @@ let harnessStatus: CursorHarnessStatus = {
   catalog: { last_success_ms: 1_700_000_000_000, last_failure_ms: null, last_failure: null },
 };
 
-let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };let codexConfigured = false;
+let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };
+let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
@@ -275,12 +276,20 @@ export function installDemoApi() {
       return json(harnessStatus);
     }
     if (path === "/codex/status") return json(codexStatus());
-    if (path === "/codex/settings" && method === "GET") return json(codexSettings);    if (path === "/codex/settings" && method === "PUT") {
+    if (path === "/codex/settings" && method === "GET") return json(codexSettings);
+    if (path === "/codex/settings" && method === "PUT") {
       // 原句、前缀与状态码都照抄服务端（server/src/error.rs:12 的 `configuration error: {0}` +
       // gateway.rs:201；`Error::Config` → 400 `invalid_argument`），这样演示里的失败提示也能命中
       // harnessErrorText 的映射。
-      if (codexConfigured) return json(errorBody(400, "configuration error: restore the applied Codex configuration before changing gateway settings"), 400);
-      codexSettings = body as CodexSettings;
+      const next = body as CodexSettings;
+      const onlyModelsChanged = next.enabled === codexSettings.enabled
+        && next.port === codexSettings.port
+        && next.home === codexSettings.home
+        && next.default_model_hash === codexSettings.default_model_hash;
+      if (codexConfigured && !onlyModelsChanged) {
+        return json(errorBody(400, "configuration error: restore the applied Codex configuration before changing gateway settings"), 400);
+      }
+      codexSettings = next;
       return json(codexSettings);
     }
     if (path === "/codex/apply" && method === "POST") {

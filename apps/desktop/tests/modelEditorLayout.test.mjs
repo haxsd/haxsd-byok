@@ -17,6 +17,7 @@
 // SCSS compiles then work with the doubles in place.
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -87,6 +88,13 @@ test("a stored context window opens the advanced group without a click", async (
   assert.match(markup, /aria-expanded="true"/, "the advanced disclosure must start expanded");
   assert.match(markup, /上下文窗口 Token/, "the stored context window must be visible");
   assert.match(markup, /自定义 Headers/, "the rest of the advanced fields come with it");
+  assert.doesNotMatch(markup, /4096|10000000|10,000,000|10 000 000/, "the editor points at the model documentation instead of inventing a range");
+});
+
+test("the context window hint has no hard-coded range", () => {
+  const source = fs.readFileSync(new URL("../src/features/models/CursorModelEditor.tsx", import.meta.url), "utf8");
+  assert.match(source, /模型文档中的真实上限/);
+  assert.doesNotMatch(source, /4096|10000000|10,000,000|10 000 000/);
 });
 
 test("enabled custom headers open the advanced group and show their JSON editor", async () => {

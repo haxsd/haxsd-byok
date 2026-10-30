@@ -195,7 +195,7 @@ export function CompactionSettingsCard({ visible }: { visible: boolean }) {
       // seed the draft; otherwise the user's unsaved values would be replaced.
       if (!editingRef.current) setDraft(compactionDraft(loaded));
     }).catch(cause => {
-      if (active) setError(String(cause));
+      if (active) setError(cause instanceof Error ? cause.message : String(cause));
     });
     return () => { active = false; };
   }, [visible]);

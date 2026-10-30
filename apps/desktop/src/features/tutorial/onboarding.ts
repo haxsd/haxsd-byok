@@ -53,7 +53,7 @@ export interface OnboardingInput {
    * 用户重复写一次 Devin 设置。读取中/读取失败要各自说出来。
    */
   hostConfigRead?: "reading" | "failed" | null;
-  callCount: number;
+  callCounts: Partial<Record<OnboardingClient, number>>;
 }
 
 export interface OnboardingStep {
@@ -223,10 +223,10 @@ function verifyStep(client: OnboardingClient, callCount: number): OnboardingStep
 
 export function buildOnboarding(input: OnboardingInput): OnboardingView {
   const steps: OnboardingStep[] = [modelStep(input.modelCount)];
-  if (input.client === "cursor") steps.push(cursorStep(input.cursor), verifyStep("cursor", input.callCount));
-  else if (input.client === "devin") steps.push(devinStep(input.devin, input.hostConfigured, input.hostConfigRead), verifyStep("devin", input.callCount));
-  else if (input.client === "codex") steps.push(codexStep(input.codex), verifyStep("codex", input.callCount));
-  else if (input.client === "claude") steps.push(claudeStep(input.claude), verifyStep("claude", input.callCount));
+  if (input.client === "cursor") steps.push(cursorStep(input.cursor), verifyStep("cursor", input.callCounts.cursor ?? 0));
+  else if (input.client === "devin") steps.push(devinStep(input.devin, input.hostConfigured, input.hostConfigRead), verifyStep("devin", input.callCounts.devin ?? 0));
+  else if (input.client === "codex") steps.push(codexStep(input.codex), verifyStep("codex", input.callCounts.codex ?? 0));
+  else if (input.client === "claude") steps.push(claudeStep(input.claude), verifyStep("claude", input.callCounts.claude ?? 0));
   return {
     steps,
     completed: steps.filter((step) => step.done).length,

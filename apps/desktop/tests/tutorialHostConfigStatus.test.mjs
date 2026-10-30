@@ -32,7 +32,7 @@ function input(overrides = {}) {
     codex: null,
     claude: null,
     hostConfigured: false,
-    callCount: 0,
+    callCounts: {},
     ...overrides,
   };
 }
