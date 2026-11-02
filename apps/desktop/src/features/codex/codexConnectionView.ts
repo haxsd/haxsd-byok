@@ -8,8 +8,8 @@ export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "
  * 登录态只是账号侧的提示，不参与路由是否接管的判定。
  *
  * 服务端只认有效的 ChatGPT tokens / personal access token；keyring 存储无法从磁盘判断时
- * 按已登录处理。接管只替换模型请求的凭据，不写登录文件；未登录时客户端会停在需要账号的
- * Work 界面并拒绝本地任务，所以界面要提醒"先登录，再接管"。
+ * 按已登录处理。接管只替换模型请求的凭据，不写登录文件；未登录时客户端的 Work 界面可能
+ * 拒绝本地任务，所以界面要提醒"先登录，再接管"。
  */
 export type CodexLoginState = "checking" | "signed-in" | "signed-out";
 
@@ -33,26 +33,7 @@ export function codexLoginView(status: CodexStatus | null): CodexLoginView {
     case "signed-in":
       return { state: "signed-in", label: t("ChatGPT 已登录"), tone: "ok", title: t("接管不会退出或替换登录；模型请求仍走本机网关") };
     default:
-      return { state: "signed-out", label: t("ChatGPT 未登录"), tone: "info", title: t("建议先登录再接管；未登录时自动保持 Codex 本地模式，接管后可能找不到登录入口") };
-  }
-}
-
-/** 未登录时客户端实际停在哪个界面：本地模式可用，Work 模式会被客户端拒绝。 */
-export interface CodexClientModeView {
-  label: string;
-  tone: StatusTone;
-  title: string;
-}
-
-export function codexClientModeView(status: CodexStatus | null): CodexClientModeView | null {
-  if (!status || status.chatgpt_signed_in) return null;
-  switch (status.conversation_detail_mode) {
-    case "STEPS_COMMANDS":
-      return { label: t("本地模式"), tone: "info", title: t("未登录时自动保持。如果 Codex 已打开在 Work/英文界面，请完全退出后重开；只关闭窗口不会生效") };
-    case "STEPS_PROSE":
-      return { label: t("Work 模式"), tone: "warn", title: t("未登录时客户端会拒绝本地任务；接管会自动切回本地模式") };
-    default:
-      return null;
+      return { state: "signed-out", label: t("ChatGPT 未登录"), tone: "info", title: t("建议先登录再接管；未登录时 Codex 的 Work 界面可能拒绝本地任务，接管不会替你切换界面") };
   }
 }
 
@@ -79,7 +60,7 @@ export function codexOutstandingSteps(status: CodexStatus | null, selectedModelC
     steps.push({ key: "apply", label: t("应用到 Codex"), hint: t("点击右上角「应用到 Codex」") });
   }
   if (!status.chatgpt_signed_in) {
-    steps.push({ key: "login", label: t("先登录 ChatGPT（推荐）"), hint: t("未登录时自动使用 Codex 本地模式，接管后可能找不到登录入口") });
+    steps.push({ key: "login", label: t("先登录 ChatGPT（推荐）"), hint: t("未登录时 Work 界面可能无法新建任务；接管不会修改 Codex 的界面模式") });
   }
   return steps.slice(0, 2);
 }

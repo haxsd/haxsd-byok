@@ -18,7 +18,6 @@ import { codexModelAvailability, codexModelSelectionBlocked } from "./codexModel
 import {
   codexActionGate,
   codexApplyNeedsSignInConfirm,
-  codexClientModeView,
   codexConnectionView,
   codexLoginView,
   codexOutstandingSteps,
@@ -36,7 +35,7 @@ export function CodexSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  // 未登录 ChatGPT 时点「应用到 Codex」先确认：接管后客户端可能不再提供登录入口。
+  // 未登录 ChatGPT 时点「应用到 Codex」先确认：Work 界面可能无法新建任务。
   const [confirmApply, setConfirmApply] = useState(false);
   const message = useMessage();
   // 模型库里的插件模型只是为了让设置页说清「为什么它们不能选」，不进入 Codex 目录。
@@ -50,7 +49,6 @@ export function CodexSettingsPage() {
   }, [reloadKey]);
   const view = codexConnectionView(codexStatus);
   const login = codexLoginView(codexStatus);
-  const clientMode = codexClientModeView(codexStatus);
   const modelCount = saved?.model_hashes.length ?? 0;
   const modelAvailability = draft ? codexModelAvailability(models, pluginModels, draft.model_hashes) : null;
   const modelSelectionBlocked = modelAvailability ? codexModelSelectionBlocked(modelAvailability) : false;
@@ -74,7 +72,7 @@ export function CodexSettingsPage() {
       setSaved(settings); setDraft(settings); message(t("Codex 设置已保存"));
     });
   };
-  const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用。请从“文件 → 退出”完全退出 Codex 后重开；只关闭窗口不会重新读取界面模式。")); });
+  const apply = () => action(async () => { await api.applyCodex(); message(t("Codex 配置已应用。请完全退出 Codex 后重开，让客户端读取新的模型配置。")); });
   const requestApply = () => {
     if (codexApplyNeedsSignInConfirm(codexStatus)) {
       setConfirmApply(true);
@@ -101,7 +99,6 @@ export function CodexSettingsPage() {
         steps={steps}
         aside={<div className={styles.aside}>
           <StatusPill tone={login.tone} title={login.title}>{login.label}</StatusPill>
-          {clientMode && <StatusPill tone={clientMode.tone} title={clientMode.title}>{clientMode.label}</StatusPill>}
         </div>}
         footnotes={<div className={styles.facts}>
           <span>{t("已记录 {count} 次调用", { count: codexStatus?.calls ?? 0 })}</span>
@@ -109,7 +106,6 @@ export function CodexSettingsPage() {
         </div>}
       />
       {(error || codexStatus?.last_error) && <p className={styles.error} role="alert">{clientErrorText(error ?? codexStatus?.last_error)}</p>}
-      {clientMode && codexStatus?.local_mode_guard && <p className={styles.note}>{t("如果 Codex 当前显示 Work 或英文界面，请从“文件 → 退出”完全退出后重开；只关闭窗口不会重新读取本地模式。")}</p>}
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
@@ -135,7 +131,7 @@ export function CodexSettingsPage() {
       onCancel={() => setConfirmApply(false)}
       onConfirm={() => { setConfirmApply(false); void apply(); }}
     >
-      <p>{t("接管后客户端可能不再提供登录入口。建议先登录；未登录时自动使用 Codex 本地模式。")}</p>
+      <p>{t("接管只替换模型路由，不修改 Codex 的登录方式或界面模式。未登录时 Work 界面可能无法新建任务，建议先登录。")}</p>
     </ConfirmDialog>
     <PageContent
       title={<PageTitle

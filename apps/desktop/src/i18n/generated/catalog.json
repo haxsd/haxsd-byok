@@ -36,7 +36,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 72,
+          "line": 53,
           "column": 50
         }
       ]
@@ -172,7 +172,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
+          "line": 97,
           "column": 66
         },
         {
@@ -257,7 +257,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 98,
+          "line": 96,
           "column": 36
         },
         {
@@ -351,7 +351,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 115,
+          "line": 111,
           "column": 24
         }
       ]
@@ -1677,7 +1677,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 88,
+          "line": 86,
           "column": 14
         },
         {
@@ -1737,7 +1737,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 71,
+          "line": 52,
           "column": 33
         },
         {
@@ -2016,7 +2016,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 72,
+          "line": 53,
           "column": 33
         },
         {
@@ -2211,7 +2211,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 77,
+          "line": 58,
           "column": 58
         }
       ]
@@ -2401,7 +2401,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 98,
+          "line": 96,
           "column": 80
         },
         {
@@ -2491,7 +2491,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1449,
+          "line": 1442,
           "column": 23
         }
       ]
@@ -2645,7 +2645,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 94,
+          "line": 75,
           "column": 32
         }
       ]
@@ -2870,7 +2870,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 77,
+          "line": 58,
           "column": 41
         }
       ]
@@ -3166,7 +3166,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 82,
+          "line": 63,
           "column": 39
         }
       ]
@@ -3738,7 +3738,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 124,
           "column": 80
         }
       ]
@@ -4090,7 +4090,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 74,
+          "line": 72,
           "column": 55
         }
       ]
@@ -4178,12 +4178,12 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 106,
+          "line": 87,
           "column": 65
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 108,
+          "line": 105,
           "column": 101
         },
         {
@@ -4257,7 +4257,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 123,
+          "line": 104,
           "column": 39
         }
       ]
@@ -4293,7 +4293,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 79,
+          "line": 60,
           "column": 61
         }
       ]
@@ -4888,12 +4888,12 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 79,
+          "line": 60,
           "column": 39
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 127,
+          "line": 123,
           "column": 70
         }
       ]
@@ -5181,7 +5181,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 122,
+          "line": 103,
           "column": 35
         }
       ]
@@ -5270,12 +5270,12 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 108,
+          "line": 89,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 110,
+          "line": 91,
           "column": 77
         }
       ]
@@ -5364,18 +5364,6 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 157,
           "column": 61
-        }
-      ]
-    },
-    "424f7d34a6c5f0bd": {
-      "source": "本地模式",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 51,
-          "column": 23
         }
       ]
     },
@@ -5620,7 +5608,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 107,
+          "line": 88,
           "column": 79
         },
         {
@@ -5770,7 +5758,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 90,
+          "line": 71,
           "column": 29
         }
       ]
@@ -5813,18 +5801,6 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 55,
           "column": 65
-        }
-      ]
-    },
-    "47bb10ed54b6bf97": {
-      "source": "接管后客户端可能不再提供登录入口。建议先登录；未登录时自动使用 Codex 本地模式。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 138,
-          "column": 11
         }
       ]
     },
@@ -5938,7 +5914,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 120,
+          "line": 116,
           "column": 41
         },
         {
@@ -6816,7 +6792,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 112,
+          "line": 93,
           "column": 52
         },
         {
@@ -7512,7 +7488,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 127,
+          "line": 108,
           "column": 47
         }
       ]
@@ -7975,22 +7951,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 973,
+          "line": 969,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1075,
+          "line": 1068,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1100,
+          "line": 1093,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1252,
+          "line": 1245,
           "column": 29
         }
       ]
@@ -8141,7 +8117,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1503,
+          "line": 1496,
           "column": 43
         }
       ]
@@ -8386,6 +8362,18 @@
         }
       ]
     },
+    "683e8f7d94f563a0": {
+      "source": "接管只替换模型路由，不修改 Codex 的登录方式或界面模式。未登录时 Work 界面可能无法新建任务，建议先登录。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 134,
+          "column": 11
+        }
+      ]
+    },
     "685c3ab561375cd3": {
       "source": "当前路由",
       "kind": "text",
@@ -8460,7 +8448,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 132,
+          "line": 128,
           "column": 14
         }
       ]
@@ -8484,7 +8472,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 119,
+          "line": 115,
           "column": 49
         },
         {
@@ -8534,22 +8522,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 981,
+          "line": 977,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1075,
+          "line": 1068,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1100,
+          "line": 1093,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1252,
+          "line": 1245,
           "column": 41
         }
       ]
@@ -8700,6 +8688,30 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 460,
           "column": 53
+        }
+      ]
+    },
+    "6c59de042d42e7b5": {
+      "source": "未登录时 Work 界面可能无法新建任务；接管不会修改 Codex 的界面模式",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 63,
+          "column": 67
+        }
+      ]
+    },
+    "6cf71d6db29368d4": {
+      "source": "Codex 配置已应用。请完全退出 Codex 后重开，让客户端读取新的模型配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 75,
+          "column": 76
         }
       ]
     },
@@ -9313,7 +9325,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1498,
+          "line": 1491,
           "column": 43
         }
       ]
@@ -9764,7 +9776,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 925,
+          "line": 921,
           "column": 11
         },
         {
@@ -9875,7 +9887,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 98,
+          "line": 96,
           "column": 91
         }
       ]
@@ -9991,18 +10003,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 417,
           "column": 20
-        }
-      ]
-    },
-    "83fb3aa6f8243f51": {
-      "source": "未登录时客户端会拒绝本地任务；接管会自动切回本地模式",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 53,
-          "column": 58
         }
       ]
     },
@@ -10273,7 +10273,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 125,
+          "line": 106,
           "column": 51
         }
       ]
@@ -10453,7 +10453,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1446,
+          "line": 1439,
           "column": 23
         }
       ]
@@ -10607,7 +10607,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 75,
+          "line": 56,
           "column": 40
         }
       ]
@@ -10695,7 +10695,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 91,
+          "line": 72,
           "column": 29
         }
       ]
@@ -11486,7 +11486,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 938,
+          "line": 934,
           "column": 11
         }
       ]
@@ -11534,7 +11534,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 108,
+          "line": 105,
           "column": 68
         }
       ]
@@ -11570,7 +11570,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
+          "line": 97,
           "column": 108
         }
       ]
@@ -11736,7 +11736,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 99,
+          "line": 97,
           "column": 35
         },
         {
@@ -11829,7 +11829,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 75,
+          "line": 56,
           "column": 57
         }
       ]
@@ -12008,7 +12008,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 92,
+          "line": 73,
           "column": 34
         }
       ]
@@ -12145,18 +12145,6 @@
         }
       ]
     },
-    "a2e44b8ce9c1018f": {
-      "source": "Work 模式",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 53,
-          "column": 23
-        }
-      ]
-    },
     "a3030bf8f16dc63c": {
       "source": "保存",
       "kind": "text",
@@ -12169,7 +12157,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 126,
+          "line": 122,
           "column": 115
         },
         {
@@ -12252,18 +12240,6 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 43,
           "column": 11
-        }
-      ]
-    },
-    "a3670e348753aa6b": {
-      "source": "Codex 配置已应用。请从“文件 → 退出”完全退出 Codex 后重开；只关闭窗口不会重新读取界面模式。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 77,
-          "column": 76
         }
       ]
     },
@@ -13099,7 +13075,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 85,
+          "line": 83,
           "column": 80
         }
       ]
@@ -13243,18 +13219,6 @@
           "file": "features/harness/HarnessCapabilities.tsx",
           "line": 58,
           "column": 7
-        }
-      ]
-    },
-    "afc127fd15fc1be3": {
-      "source": "如果 Codex 当前显示 Work 或英文界面，请从“文件 → 退出”完全退出后重开；只关闭窗口不会重新读取本地模式。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 112,
-          "column": 83
         }
       ]
     },
@@ -13472,7 +13436,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 93,
+          "line": 74,
           "column": 31
         }
       ]
@@ -13552,7 +13516,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 90,
+          "line": 88,
           "column": 77
         },
         {
@@ -13723,7 +13687,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 107,
+          "line": 104,
           "column": 18
         }
       ]
@@ -13924,6 +13888,18 @@
         }
       ]
     },
+    "b82899245ccc836f": {
+      "source": "建议先登录再接管；未登录时 Codex 的 Work 界面可能拒绝本地任务，接管不会替你切换界面",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 36,
+          "column": 83
+        }
+      ]
+    },
     "b840d73cc5204ebb": {
       "source": "还没解决的问题？",
       "kind": "text",
@@ -13989,7 +13965,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 119,
+          "line": 115,
           "column": 133
         },
         {
@@ -14224,7 +14200,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 124,
+          "line": 105,
           "column": 41
         }
       ]
@@ -14384,7 +14360,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1514,
+          "line": 1507,
           "column": 43
         }
       ]
@@ -14482,7 +14458,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 95,
+          "line": 76,
           "column": 29
         }
       ]
@@ -14930,7 +14906,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 144,
+          "line": 140,
           "column": 15
         }
       ]
@@ -14944,18 +14920,6 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 453,
           "column": 9
-        }
-      ]
-    },
-    "c359a177fd11ecec": {
-      "source": "未登录时自动保持。如果 Codex 已打开在 Work/英文界面，请完全退出后重开；只关闭窗口不会生效",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 51,
-          "column": 55
         }
       ]
     },
@@ -14997,18 +14961,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 135,
           "column": 6
-        }
-      ]
-    },
-    "c3f78eeeeb276530": {
-      "source": "建议先登录再接管；未登录时自动保持 Codex 本地模式，接管后可能找不到登录入口",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 36,
-          "column": 83
         }
       ]
     },
@@ -15418,7 +15370,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 121,
+          "line": 102,
           "column": 26
         },
         {
@@ -15585,7 +15537,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 138,
+          "line": 119,
           "column": 24
         }
       ]
@@ -15903,7 +15855,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 111,
+          "line": 92,
           "column": 81
         }
       ]
@@ -16553,7 +16505,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 71,
+          "line": 52,
           "column": 50
         }
       ]
@@ -18054,7 +18006,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 133,
+          "line": 129,
           "column": 21
         }
       ]
@@ -18321,18 +18273,6 @@
         }
       ]
     },
-    "eeeb3a75eee403d3": {
-      "source": "未登录时自动使用 Codex 本地模式，接管后可能找不到登录入口",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/codex/codexConnectionView.ts",
-          "line": 82,
-          "column": 67
-        }
-      ]
-    },
     "ef74f300648a75c4": {
       "source": "已指向其他网关",
       "kind": "text",
@@ -18476,7 +18416,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 126,
+          "line": 107,
           "column": 31
         }
       ]
@@ -18868,7 +18808,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
+          "line": 95,
           "column": 77
         }
       ]
@@ -18902,7 +18842,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 109,
+          "line": 90,
           "column": 73
         },
         {
@@ -19007,7 +18947,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
+          "line": 95,
           "column": 91
         }
       ]

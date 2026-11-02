@@ -8,7 +8,7 @@ const loader = await startModuleLoader();
 await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
-const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, conversation_detail_mode: "STEPS_COMMANDS", local_mode_guard: false, home: "test-home", calls: 0, last_error: null };
+const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, home: "test-home", calls: 0, last_error: null };
 
 test("a listening Codex gateway is not presented as applied client configuration", async () => {
   const { codexConnectionView } = await loader.load("/src/features/codex/codexConnectionView.ts");
@@ -339,16 +339,11 @@ test("ChatGPT login is a hint that never changes the routing state", async () =>
   assert.equal(codexConnectionView({ ...state, configured: true, chatgpt_signed_in: false }).state, "taken-over");
 });
 
-test("login and client mode are compact pills, not paragraphs", async () => {
-  const { codexLoginView, codexClientModeView } = await loader.load("/src/features/codex/codexConnectionView.ts");
+test("login is a compact pill, not a paragraph", async () => {
+  const { codexLoginView } = await loader.load("/src/features/codex/codexConnectionView.ts");
   assert.equal(codexLoginView(null).label, "登录检测中…");
   assert.equal(codexLoginView({ ...state, chatgpt_signed_in: true }).label, "ChatGPT 已登录");
   assert.equal(codexLoginView({ ...state, chatgpt_signed_in: false }).label, "ChatGPT 未登录");
-
-  // 未登录时把客户端实际模式摆在旁边；已登录时 Work 模式是正常的，不再提示。
-  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_COMMANDS" }).label, "本地模式");
-  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: false, conversation_detail_mode: "STEPS_PROSE" }).label, "Work 模式");
-  assert.equal(codexClientModeView({ ...state, chatgpt_signed_in: true, conversation_detail_mode: "STEPS_PROSE" }), null);
 });
 
 test("the status card lists at most two next actions and shorter descriptions", async () => {

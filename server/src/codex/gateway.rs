@@ -52,9 +52,6 @@ struct Running {
     shutdown: CancellationToken,
     alive: Arc<AtomicBool>,
     task: JoinHandle<()>,
-    /// 未登录时把客户端保持在本地界面：Codex 自己的 `conversationDetailMode` 被切到
-    /// Work 模式后，它会在创建本地任务前就拒绝请求。轮询得很轻（2s 一次，只在需要时写）。
-    client_guard: JoinHandle<()>,
 }
 
 /// 跨流的活动计数；响应 Body 被客户端丢弃也释放所有权。
@@ -131,15 +128,6 @@ impl CodexGateway {
         // 旧版本把默认模型的窗口写成全局覆盖；启动时清一次，客户端界面不必等到
         // 下一次模型编辑或重新应用才显示逐模型窗口。
         if let Ok(home) = settings.resolved_home() {
-            // Codex 只在进程启动时读取界面模式。应用一启动就先修正，避免用户先打开
-            // Codex 时进入 Work 壳层，之后还必须彻底退出一次才能回到本地界面。
-            match config::ensure_local_mode(&home) {
-                Ok(true) => tracing::info!("Codex client mode prepared at startup"),
-                Ok(false) => {}
-                Err(error) => {
-                    tracing::warn!(%error, "Codex client mode startup repair failed");
-                }
-            }
             if config::inspect(&home).is_ok_and(|status| status.applied) {
                 if let Err(error) = config::drop_global_limits(&home) {
                     tracing::warn!(%error, "Codex global context limit cleanup failed");
@@ -172,8 +160,6 @@ impl CodexGateway {
         };
         if let Some(previous) = runtime.take() {
             previous.shutdown.cancel();
-            previous.client_guard.abort();
-            let _ = previous.client_guard.await;
             let mut task = previous.task;
             match tokio::time::timeout(Duration::from_secs(10), &mut task).await {
                 Ok(_) => {}
@@ -199,41 +185,11 @@ impl CodexGateway {
                 }
                 serving.store(false, Ordering::SeqCst);
             });
-            let guard_shutdown = shutdown.clone();
-            let guard_home = settings.resolved_home().ok();
-            let guard_gateway = self.clone();
-            let guard_alive = alive.clone();
-            // 用 try_lock 与 apply/restore/shutdown 互斥：配置生命周期操作持锁时跳过本轮，
-            // 绝不阻塞等待（否则 shutdown 持锁等 guard、guard 等锁会互相卡死）。
-            let client_guard = tokio::spawn(async move {
-                let mut ticker = tokio::time::interval(Duration::from_secs(2));
-                ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                loop {
-                    tokio::select! {
-                        _ = guard_shutdown.cancelled() => break,
-                        _ = ticker.tick() => {
-                            if !guard_alive.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            let Some(home) = guard_home.as_deref() else {
-                                continue;
-                            };
-                            let Ok(_operation) = guard_gateway.inner.operations.try_lock() else {
-                                continue;
-                            };
-                            if let Err(error) = config::ensure_local_mode(home) {
-                                tracing::warn!(%error, "Codex client mode guard failed");
-                            }
-                        }
-                    }
-                }
-            });
             *runtime = Some(Running {
                 port: settings.port,
                 shutdown,
                 alive,
                 task,
-                client_guard,
             });
         }
         self.record_error(None);
@@ -298,37 +254,25 @@ impl CodexGateway {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home);
-        let (
-            configured,
-            conflict,
-            restorable,
-            conflicts,
-            chatgpt_signed_in,
-            conversation_detail_mode,
-            local_mode_guard,
-            config_error,
-        ) = match inspected {
-            Ok(status) => (
-                status.applied,
-                status.conflict,
-                status.restorable,
-                status.conflicts,
-                status.chatgpt_signed_in,
-                status.conversation_detail_mode,
-                status.local_mode_guard,
-                None,
-            ),
-            Err(error) => (
-                false,
-                true,
-                false,
-                Vec::new(),
-                false,
-                None,
-                false,
-                Some(error.to_string()),
-            ),
-        };
+        let (configured, conflict, restorable, conflicts, chatgpt_signed_in, config_error) =
+            match inspected {
+                Ok(status) => (
+                    status.applied,
+                    status.conflict,
+                    status.restorable,
+                    status.conflicts,
+                    status.chatgpt_signed_in,
+                    None,
+                ),
+                Err(error) => (
+                    false,
+                    true,
+                    false,
+                    Vec::new(),
+                    false,
+                    Some(error.to_string()),
+                ),
+            };
         let runtime = self.inner.runtime.lock().await;
         let listening = runtime
             .as_ref()
@@ -346,8 +290,6 @@ impl CodexGateway {
             restorable,
             conflicts,
             chatgpt_signed_in,
-            conversation_detail_mode,
-            local_mode_guard,
             home: home.display().to_string(),
             calls: calls.max(0) as usize,
             last_error: config_error.or_else(|| {
@@ -768,40 +710,34 @@ mod tests {
         );
     }
 
-    /// Codex 只在进程启动时读取界面模式。应用启动后先修正配置，避免用户第一次打开
-    /// Codex 时先进入 Work 壳层，必须再彻底退出一次才能回到本地界面。
+    /// 界面模式由 Codex 自己管理，网关启动不能改写或回滚它。
     #[tokio::test]
-    async fn start_repairs_the_local_client_mode_immediately() {
+    async fn start_preserves_the_client_display_mode() {
         let (directory, store, gateway, _token) = enabled_gateway().await;
         let mut settings = store.codex_settings().await.unwrap();
         settings.home = directory.path().join("home").display().to_string();
         std::fs::create_dir_all(&settings.home).unwrap();
         store.set_codex_settings(settings.clone()).await.unwrap();
-        gateway.apply().await.unwrap();
-
         let config_path = std::path::Path::new(&settings.home).join("config.toml");
-        let applied = std::fs::read_to_string(&config_path).unwrap();
-        let reset = if applied.contains("conversationDetailMode =") {
-            applied.replace(
-                "conversationDetailMode = \"STEPS_COMMANDS\"",
-                "conversationDetailMode = \"STEPS_PROSE\"",
-            )
-        } else if applied.contains("[desktop]") {
-            applied.replace(
-                "[desktop]\n",
-                "[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\n",
-            )
-        } else {
-            format!("{applied}\n[desktop]\nconversationDetailMode = \"STEPS_PROSE\"\n")
-        };
-        std::fs::write(&config_path, reset).unwrap();
+        std::fs::write(
+            &config_path,
+            "[desktop]\nconversationDetailMode = \"STEPS_COMMANDS\"\n",
+        )
+        .unwrap();
+        gateway.apply().await.unwrap();
+        // 旧版本留下的 marker 也不能触发任何界面模式回滚。
+        std::fs::write(
+            std::path::Path::new(&settings.home).join(".haxsd-byok-client-mode.json"),
+            r#"{"active":true,"original":"STEPS_PROSE","remembered_prose":false}"#,
+        )
+        .unwrap();
 
         gateway.start().await.unwrap();
 
-        let repaired = std::fs::read_to_string(config_path).unwrap();
+        let after = std::fs::read_to_string(config_path).unwrap();
         assert!(
-            repaired.contains("conversationDetailMode = \"STEPS_COMMANDS\""),
-            "gateway start left Codex in Work mode: {repaired}"
+            after.contains("conversationDetailMode = \"STEPS_COMMANDS\""),
+            "gateway start changed the client display mode: {after}"
         );
     }
 
