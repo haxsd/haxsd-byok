@@ -2,7 +2,7 @@
 //! 服务端报告的监听状态。表单草稿只决定编辑与保存（`pendingChanges`），不得
 //! 让一个还没保存的开关看起来已经生效。
 
-import type { DevinHostStatus, DevinSettings, Model } from "../../shared/api";
+import type { DevinHostPorts, DevinHostStatus, DevinSettings, Model } from "../../shared/api";
 import type { PathStage, PathState } from "../../shared/ui/ConnectionPath";
 import type { StatusTone } from "../../shared/ui/StatusPill";
 import { effectiveBindingModelHash } from "./devinBindingEdits";
@@ -50,8 +50,15 @@ export interface DevinConnectionView {
     stages: PathStage[];
     /** 还没完成的步骤；全部完成时为空。 */
     steps: DevinConnectionStep[];
-    footnotes: string | undefined;
   };
+}
+
+export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinHostPorts | null): boolean {
+  return host?.configured === true
+    && host.extension.patched
+    && ports !== null
+    && host.ports?.api_port === ports.api_port
+    && host.ports?.inference_port === ports.inference_port;
 }
 
 export function devinConnectionView(input: DevinConnectionInput): DevinConnectionView {
@@ -59,8 +66,7 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
   const gatewayListening = gatewayReading?.listening ?? null;
   const gatewayReady = gatewayReading?.ready ?? false;
 
-  const standard = saved.bindings.filter((binding) => binding.enabled && binding.kind !== "context_compression");
-  const compression = saved.bindings.filter((binding) => binding.enabled && binding.kind === "context_compression");
+  const standard = saved.bindings.filter((binding) => binding.enabled);
   const defaultUid = saved.default_model_uid?.trim() || null;
   const defaultBinding = defaultUid
     ? standard.find((binding) => binding.model_uid.trim() === defaultUid) ?? null
@@ -72,10 +78,7 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
   const savedEnabled = saved.enabled;
   const settingsConfigured = hostStatus?.configured ?? false;
   const extensionPatched = hostStatus?.extension.patched ?? false;
-  const devinPointsHere = settingsConfigured
-    && extensionPatched
-    && hostStatus?.ports?.api_port === saved.api_port
-    && hostStatus?.ports?.inference_port === saved.inference_port;
+  const devinPointsHere = devinPointsAtGateway(hostStatus, saved);
   const devinState: "here" | "settings-only" | "patch-only" | "elsewhere" | "clean" | "unknown" = !savedEnabled
     ? "unknown"
     : devinPointsHere
@@ -232,7 +235,6 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
         : outstanding[0]?.label ?? t("检查中…"),
       stages,
       steps: outstanding.map(({ key, label, hint }) => ({ key, label, hint })),
-      footnotes: compression.length ? `${t("上下文压缩绑定")}：${t("已配置 {count} 个", { count: compression.length })}` : undefined,
     },
   };
 }

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
-import { api, ServiceUnreachableError, type ModelTokenPricing, type ClaudeStatus, type ClaudeTakeover, type CodexStatus, type CursorHarnessStatus, type CursorMode, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
+import { api, ServiceUnreachableError, type ModelTokenPricing, type ClaudeStatus, type ClaudeTakeover, type CodexStatus, type CursorHarnessStatus, type CursorMode, type DevinHostStatus, type DevinStatus, type LlmCall, type Model, type ModelInput, type Overview, type PluginDescriptor, type PluginRuntimeStatus, type PortSettings, type TokenPricingSettings } from "../api";
 import { applyTheme, defaultThemeId, type ThemeId } from "../theme/theme";
-import { saveUiPreferences } from "./uiPreferences";
+import { getUiPreferences, saveUiPreferences } from "./uiPreferences";
 
 /** Missing rules are unpriced; no supplier's rates become a global default. */
 export const DEFAULT_TOKEN_PRICING: TokenPricingSettings = { models: {} };
@@ -23,6 +23,7 @@ export type AppSnapshot = {
   cursorHarness: CursorHarnessStatus | null;
   /** Gateway state for the Devin module, refreshed with everything else. */
   devinStatus: DevinStatus | null;
+  devinHostStatus: DevinHostStatus | null;
   codexStatus: CodexStatus | null;
   /** Claude 网关的运行状态；与 Claude 接管结果一起刷新。 */
   claudeStatus: ClaudeStatus | null;
@@ -67,6 +68,7 @@ let snapshot: AppSnapshot = {
   theme: defaultThemeId,
   cursorHarness: null,
   devinStatus: null,
+  devinHostStatus: null,
   codexStatus: null,
   claudeStatus: null,
   claudeTakeover: null,
@@ -144,6 +146,15 @@ function commitPricingWrite(modelHash: string, saved: TokenPricingSettings, star
   update({ pricing: { models } });
 }
 
+async function readDevinStatus(signal?: AbortSignal) {
+  const devinStatus = await api.devinStatus(signal);
+  const preferences = getUiPreferences();
+  const devinHostStatus = devinStatus.enabled && devinStatus.ready
+    ? await api.devinHostStatus(preferences.devinHostPath ?? undefined, preferences.devinInstallRoot ?? undefined, signal).catch(() => null)
+    : null;
+  return { devinStatus, devinHostStatus };
+}
+
 export const appStore = {
   subscribe(listener: () => void) {
     listeners.add(listener);
@@ -178,7 +189,7 @@ export const appStore = {
       api.ports(signal),
       api.pricingSettings(signal),
       api.cursorHarness(signal),
-      api.devinStatus(signal),
+      readDevinStatus(signal),
       api.pluginRuntime(signal),
       api.plugins(signal),
       api.desktopSettings(signal),
@@ -208,7 +219,8 @@ export const appStore = {
     if (ports.status === "fulfilled" && !writtenSince("ports")) patch.ports = ports.value;
     if (pricing.status === "fulfilled" && !writtenSince("pricing")) patch.pricing = pricing.value;
     if (cursorHarness.status === "fulfilled") patch.cursorHarness = cursorHarness.value;
-    if (devinStatus.status === "fulfilled") patch.devinStatus = devinStatus.value;
+    if (devinStatus.status === "fulfilled") Object.assign(patch, devinStatus.value);
+    else patch.devinHostStatus = null;
     if (codexStatus.status === "fulfilled") patch.codexStatus = codexStatus.value;
     if (claudeStatus.status === "fulfilled") patch.claudeStatus = claudeStatus.value;
     if (claudeTakeover.status === "fulfilled") patch.claudeTakeover = claudeTakeover.value;
@@ -437,8 +449,10 @@ export const appStore = {
   /** Refresh Devin readiness without pulling every unrelated dashboard endpoint. */
   async refreshDevinStatus() {
     try {
-      update({ devinStatus: await api.devinStatus(), offline: false });
+      invalidateRefresh();
+      update({ ...await readDevinStatus(), offline: false });
     } catch (cause) {
+      update({ devinHostStatus: null });
       if (cause instanceof ServiceUnreachableError) update({ offline: true });
       else update({ error: cause instanceof Error ? cause.message : String(cause) });
     }

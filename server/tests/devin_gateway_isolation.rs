@@ -254,8 +254,7 @@ async fn model_assignment_is_answered_locally_and_unknown_methods_go_upstream() 
     let api_port = gateway.ports.0;
     assert_eq!(await_health(api_port).await.0, 200);
 
-    // 绑定的 UID 落在协议的模型字段(21)上。
-    let payload = wire::serialize_fields(&[wire::Field::bytes(21, "MODEL_ISOLATION")]).unwrap();
+    let payload = wire::serialize_fields(&[wire::Field::bytes(2, "MODEL_ISOLATION")]).unwrap();
     let framed = wire::frame(&payload, false).unwrap();
 
     let (status, body) = post_rpc(api_port, "AssignModel", framed.clone()).await;

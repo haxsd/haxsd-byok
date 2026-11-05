@@ -44,7 +44,6 @@ function binding(overrides = {}) {
     display_name: "Devin E2E Stub",
     context_window_tokens: 128_000,
     enabled: true,
-    kind: "standard",
     routes: [],
     active_route_id: null,
     ...overrides,
@@ -86,7 +85,6 @@ test("default model options show both the Devin name and the answering model", a
     [
       binding(),
       binding({ model_uid: "disabled-uid", enabled: false }),
-      binding({ model_uid: "compact-uid", kind: "context_compression" }),
       binding({ model_uid: "missing-uid", model_hash: "gone" }),
     ],
     [model()],
@@ -101,4 +99,17 @@ test("default model options show both the Devin name and the answering model", a
   assert.equal(options[0].group, "E2E");
   assert.equal(options[1].label, "SWE-1.7 → 模型已删除或不可用");
   assert.equal(options[1].group, "模型库");
+});
+
+test("native model defaults use the model library name without exposing the synthetic UID", async () => {
+  const { devinDefaultModelOptions } = await loader.load("/src/features/devin/devinModelOptions.ts");
+  const options = devinDefaultModelOptions(
+    [binding({ model_uid: "haxsd-byok:f2581e6225494a89" })],
+    [model()],
+    [],
+  );
+
+  assert.equal(options[0].value, "haxsd-byok:f2581e6225494a89");
+  assert.equal(options[0].label, "Local SSE · Devin E2E Stub");
+  assert.ok(!options[0].label.includes("haxsd-byok:"));
 });

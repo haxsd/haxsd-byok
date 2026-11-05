@@ -30,6 +30,7 @@ pub struct DevinChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub requested_model: String,
     pub cascade_id: String,
+    pub session_id: String,
     pub prompt_id: String,
     pub execution_id: String,
     pub context_tokens: u64,
@@ -77,6 +78,7 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
     }
     let requested_model = string_field(&fields, 21)?;
     let cascade_id = string_field(&fields, 16)?;
+    let session_id = string_field(&fields, 28)?;
     let prompt_id = string_field(&fields, 17)?;
     let execution_id = string_field(&fields, 22)?;
     let context_token_source = if declared_context_tokens > 0 {
@@ -103,6 +105,7 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
         tools: prompt.tools,
         requested_model,
         cascade_id,
+        session_id,
         prompt_id,
         execution_id,
         context_tokens,
@@ -115,7 +118,14 @@ pub fn to_invocation(
     binding: &DevinModelBinding,
     model: &ModelConfig,
 ) -> Result<crate::model::ModelInvocation> {
-    if request.requested_model.trim() != binding.model_uid.trim() {
+    let selected = if request.requested_model.trim() == binding.model_uid.trim() {
+        None
+    } else {
+        super::variants::model_variants(&binding.model_uid, model, binding.context_window_tokens)
+            .into_iter()
+            .find(|variant| variant.uid == request.requested_model.trim())
+    };
+    if request.requested_model.trim() != binding.model_uid.trim() && selected.is_none() {
         return Err(Error::Protocol(format!(
             "Devin model '{}' is not assigned to this router binding",
             request.requested_model
@@ -158,7 +168,15 @@ pub fn to_invocation(
     model_spec.context_window_tokens = model
         .context_window_tokens
         .or(binding.context_window_tokens);
-    model_spec.reasoning.effort = model.reasoning_effort.clone();
+    model_spec.reasoning.effort = match model.model_type {
+        crate::model::ModelType::OpenAi => model.reasoning_effort.clone(),
+        crate::model::ModelType::Anthropic => model.anthropic_thinking_effort.clone(),
+    };
+    if let Some(selected) = selected {
+        model_spec.context_window_tokens = selected.context_window_tokens;
+        model_spec.reasoning.enabled = Some(selected.reasoning_effort.is_some());
+        model_spec.reasoning.effort = selected.reasoning_effort;
+    }
 
     Ok(crate::model::ModelInvocation {
         purpose: crate::model::CallPurpose::Chat,
@@ -318,7 +336,7 @@ fn bytes_value(field: &super::wire::Field) -> Result<&[u8]> {
     }
 }
 
-fn string_field(fields: &[super::wire::Field], number: u32) -> Result<String> {
+pub(super) fn string_field(fields: &[super::wire::Field], number: u32) -> Result<String> {
     match super::wire::first_field(fields, number) {
         Some(field) => Ok(String::from_utf8_lossy(bytes_value(field)?).into_owned()),
         None => Ok(String::new()),
@@ -677,5 +695,52 @@ mod tests {
         );
         assert_eq!(request.context_tokens, expected);
         assert!(request.context_tokens > 0);
+    }
+
+    #[test]
+    fn native_selected_parameters_are_frozen_into_the_invocation() {
+        let mut request = parse_chat_request(&fixture()).unwrap();
+        request.requested_model = "haxsd-byok:model-a~low~128000".into();
+        let binding = DevinModelBinding::new("haxsd-byok:model-a", "hash-a");
+        let mut configured = model_config("hash-a");
+        configured.context_window_tokens = Some(500_000);
+        configured.reasoning_effort = Some("max".into());
+        let invocation = to_invocation(request.clone(), &binding, &configured).unwrap();
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            invocation.request.model.context_window_tokens,
+            Some(128_000)
+        );
+        configured.reasoning_effort = Some("high".into());
+        configured.context_window_tokens = Some(256_000);
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            invocation.request.model.context_window_tokens,
+            Some(128_000)
+        );
+        request.requested_model = "haxsd-byok:model-a~max~1000000".into();
+        assert!(to_invocation(request, &binding, &configured).is_err());
+    }
+
+    #[test]
+    fn native_default_uses_the_configured_provider_effort() {
+        let mut request = parse_chat_request(&fixture()).unwrap();
+        request.requested_model = "haxsd-byok:model-a".into();
+        let binding = DevinModelBinding::new("haxsd-byok:model-a", "hash-a");
+        let mut configured = model_config("hash-a");
+        configured.model_type = ModelType::Anthropic;
+        configured.reasoning_effort = Some("max".into());
+        configured.anthropic_thinking_effort = Some("low".into());
+        let invocation = to_invocation(request, &binding, &configured).unwrap();
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
     }
 }

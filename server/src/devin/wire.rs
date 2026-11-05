@@ -6,6 +6,108 @@ use crate::{Error, Result};
 
 pub const MAX_BODY_SIZE: usize = 24 * 1024 * 1024;
 
+pub(super) fn rewrite_response_body(
+    body: &[u8],
+    content_type: &str,
+    content_encoding: Option<&str>,
+    rewrite: impl Fn(&[u8]) -> Result<Vec<u8>>,
+) -> Result<Vec<u8>> {
+    if !content_type.starts_with("application/proto")
+        && !content_type.starts_with("application/connect+proto")
+    {
+        return Err(Error::Protocol(
+            "unsupported Devin response content type".into(),
+        ));
+    }
+    let http_gzip = content_encoding.is_some_and(|value| value.eq_ignore_ascii_case("gzip"));
+    if content_encoding.is_some_and(|value| {
+        !value.eq_ignore_ascii_case("gzip") && !value.eq_ignore_ascii_case("identity")
+    }) {
+        return Err(Error::Protocol(
+            "unsupported Devin response content encoding".into(),
+        ));
+    }
+    let decoded = if http_gzip {
+        gunzip(body)?
+    } else {
+        body.to_vec()
+    };
+    let output = if content_type.starts_with("application/connect+proto") {
+        let mut offset = 0;
+        let mut frames = Vec::new();
+        let mut saw_data = false;
+        let mut saw_end = false;
+        while offset < decoded.len() {
+            let head = decoded
+                .get(offset..offset + 5)
+                .ok_or_else(|| Error::Protocol("truncated Devin response frame header".into()))?;
+            let flags = head[0];
+            let length = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
+            offset += 5;
+            let end = offset
+                .checked_add(length)
+                .filter(|end| *end <= decoded.len())
+                .ok_or_else(|| Error::Protocol("truncated Devin response frame".into()))?;
+            let payload = &decoded[offset..end];
+            match flags {
+                0 | 1 => {
+                    if saw_data || saw_end {
+                        return Err(Error::Protocol(
+                            "Devin response contains multiple response messages".into(),
+                        ));
+                    }
+                    saw_data = true;
+                    let message = if flags == 1 {
+                        gunzip(payload)?
+                    } else {
+                        payload.to_vec()
+                    };
+                    let changed = rewrite(&message)?;
+                    if changed == message {
+                        frames.extend_from_slice(&decoded[offset - 5..end]);
+                    } else {
+                        frames.extend_from_slice(&frame(&changed, flags == 1)?);
+                    }
+                }
+                2 => {
+                    let trailer: serde_json::Value = serde_json::from_slice(payload)?;
+                    if trailer.get("error").is_some() {
+                        return Ok(body.to_vec());
+                    }
+                    if saw_end || end != decoded.len() {
+                        return Err(Error::Protocol(
+                            "Devin response contains data after its end frame".into(),
+                        ));
+                    }
+                    saw_end = true;
+                    frames.extend_from_slice(&decoded[offset - 5..end]);
+                }
+                _ => return Err(Error::Protocol("invalid Devin response frame flags".into())),
+            }
+            offset = end;
+        }
+        if !saw_data || !saw_end {
+            return Err(Error::Protocol(
+                "Devin response is missing its data or end frame".into(),
+            ));
+        }
+        frames
+    } else {
+        rewrite(&decoded)?
+    };
+    if output.len() > MAX_BODY_SIZE {
+        return Err(Error::Protocol("Devin response exceeds 24 MiB".into()));
+    }
+    if output == decoded {
+        return Ok(body.to_vec());
+    }
+    if http_gzip {
+        gzip(&output)
+    } else {
+        Ok(output)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldValue {
     Varint(u64),
@@ -286,13 +388,13 @@ fn read_array<const N: usize>(payload: &[u8], offset: &mut usize) -> Result<[u8;
         .map_err(|_| Error::Protocol("invalid Devin protobuf fixed field".into()))
 }
 
-fn gzip(payload: &[u8]) -> Result<Vec<u8>> {
+pub(super) fn gzip(payload: &[u8]) -> Result<Vec<u8>> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
     encoder.write_all(payload).map_err(Error::Io)?;
     encoder.finish().map_err(Error::Io)
 }
 
-fn gunzip(payload: &[u8]) -> Result<Vec<u8>> {
+pub(super) fn gunzip(payload: &[u8]) -> Result<Vec<u8>> {
     let mut decoder = GzDecoder::new(payload);
     let mut output = Vec::new();
     decoder

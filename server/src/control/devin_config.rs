@@ -284,7 +284,7 @@ fn extension_fallback_reason(status: &GateStatus) -> String {
         .as_deref()
         .map(|path| {
             format!(
-                "no usable extension restore receipt for {}; reinstall Devin 3.11.216 if the \
+                "no usable extension restore receipt for {}; reinstall Devin if the \
                  extension was changed manually",
                 path.display()
             )
@@ -558,5 +558,36 @@ mod tests {
         let error = restore_host(&path, None).unwrap_err().to_string();
         assert!(error.contains("restore receipt"), "{error}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\n}\n");
+    }
+
+    #[test]
+    fn a_partial_takeover_can_restore_after_devin_writes_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, "{\n}\n").unwrap();
+        host_config::apply(
+            &path,
+            DevinHostPorts {
+                api_port: 43_110,
+                inference_port: 43_111,
+            },
+        )
+        .unwrap();
+        let changed = std::fs::read_to_string(&path).unwrap().replacen(
+            '{',
+            "{\n  \"devin.acp.agentPreferences\": {\"local\": true},",
+            1,
+        );
+        std::fs::write(&path, changed).unwrap();
+
+        let status = inspect_host(&path, None).unwrap();
+        assert!(status.settings.restore_receipt.is_some());
+        assert!(status.extension.restore_receipt.is_none());
+        restore_host(&path, None).unwrap();
+        let restored = inspect_host(&path, None).unwrap();
+        assert!(restored.settings.unconfigured);
+        let values: serde_json::Value =
+            json5::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(values["devin.acp.agentPreferences"]["local"], true);
     }
 }

@@ -700,12 +700,19 @@ impl Store {
         settings.validate()?;
         let value_json = serde_json::to_string(&settings)?;
         let _write = self.writes.lock().await;
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         sqlx::query("INSERT INTO service_settings(setting_key, value_json, updated_at_ms) VALUES (?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET value_json = excluded.value_json, updated_at_ms = excluded.updated_at_ms")
             .bind(DEVIN_SETTINGS_KEY)
             .bind(value_json)
             .bind(now_ms())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?;
+        if !settings.enabled {
+            sqlx::query("DELETE FROM devin_session_models")
+                .execute(&mut *transaction)
+                .await?;
+        }
+        transaction.commit().await?;
         // 写进去之后才 +1：先加会让并发读把"还没落库的旧行"标在新版本上。
         self.devin_settings_cache.bump();
         Ok(settings)
@@ -2249,7 +2256,6 @@ mod tests {
         assert_eq!(binding.model_uid, "deven-model");
         assert_eq!(binding.model_hash, "0123abcd");
         assert!(binding.enabled);
-        assert_eq!(binding.kind, crate::devin::DevinBindingKind::Standard);
         assert!(binding.routes.is_empty());
         assert_eq!(binding.active_route_id, None);
         assert_eq!(binding.effective_model_hash(), "0123abcd");

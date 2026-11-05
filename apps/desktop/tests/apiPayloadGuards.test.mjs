@@ -165,7 +165,6 @@ test("devin settings drop bindings whose routes are not a list", async () => {
     display_name: "Example",
     context_window_tokens: null,
     enabled: true,
-    kind: "standard",
     routes: [{ route_id: "route-1", model_hash: "hash-1", label: "Route", enabled: true }],
     active_route_id: "route-1",
   };

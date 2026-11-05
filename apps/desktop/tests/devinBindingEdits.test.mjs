@@ -12,7 +12,6 @@ const binding = (overrides = {}) => ({
   display_name: "Example",
   context_window_tokens: null,
   enabled: true,
-  kind: "standard",
   routes: [],
   active_route_id: null,
   ...overrides,
@@ -40,6 +39,46 @@ test("a new model uses a free UID and refuses to duplicate an occupied one", asy
     null,
     "all available Devin UIDs are already mapped",
   );
+});
+
+test("native model bindings use library models and unique namespaced UIDs", async () => {
+  const { isNativeModelUid, nativeBindingForNextModel, nextNativeModelUid } =
+    await loader.load("/src/features/devin/devinBindingEdits.ts");
+  const models = [
+    { model_hash: "hash-a", display_name: "Library A", context_window_tokens: 128_000 },
+    { model_hash: "hash-b", display_name: "Library B", context_window_tokens: 256_000 },
+  ];
+
+  const first = nativeBindingForNextModel([], models);
+  assert.deepEqual(first, {
+    model_uid: "haxsd-byok:hash-a",
+    model_hash: "hash-a",
+    display_name: "Library A",
+    context_window_tokens: 128_000,
+    enabled: true,
+    routes: [],
+    active_route_id: null,
+  });
+  assert.equal(isNativeModelUid(first.model_uid), true);
+
+  const second = nativeBindingForNextModel([first], models);
+  assert.equal(second.model_uid, "haxsd-byok:hash-b");
+  assert.equal(nativeBindingForNextModel([first, second], models), null);
+  assert.equal(nextNativeModelUid([binding({ model_uid: "haxsd-byok:hash-a" })], "hash-a"), "haxsd-byok:hash-a:2");
+});
+
+test("native model additions skip models whose display name is already used", async () => {
+  const { nativeBindingForNextModel } = await loader.load("/src/features/devin/devinBindingEdits.ts");
+  const existing = binding({ model_uid: "haxsd-byok:old", display_name: "Same label" });
+  const next = nativeBindingForNextModel(
+    [existing],
+    [
+      { model_hash: "hash-a", display_name: "Same label", context_window_tokens: null },
+      { model_hash: "hash-b", display_name: "Different", context_window_tokens: 64_000 },
+    ],
+  );
+
+  assert.equal(next.model_hash, "hash-b");
 });
 
 test("the first fallback route does not become the active route", async () => {
