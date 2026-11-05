@@ -137,8 +137,6 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
         // - `supports_search_tool` / `web_search_tool_type`：托管搜索由模型服务商执行，我们
         //   的上游（Chat Completions / Anthropic / 第三方 Responses）没有这项能力。
         // - `use_responses_lite`：它改的是客户端发往**服务商**的请求形状，只对官方后端验证过。
-        // - `tool_mode`: 官方用 `code_mode_only`，那会换一套工具调用形状；我们的上游是在标准
-        //   工具循环上验证的，不跟着换。
         // - `prefer_websockets`：没有实时传输通道。
         // - `max_context_window`：等于 `context_window`，服务商的真实硬上限我们不知道。
         catalog.push(json!({
@@ -150,7 +148,12 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
             "model_messages":model_messages(),
             "include_skills_usage_instructions":false,"include_apps_usage_instructions":false,"include_plugin_usage_instructions":false,
             "supports_reasoning_summary_parameter":false,"default_reasoning_summary":"none",
-            "support_verbosity":true,"default_verbosity":"low","apply_patch_tool_type":"freeform",
+            "support_verbosity":true,"default_verbosity":"low",
+            // `tool_mode` 必须显式写 `direct`。缺省时客户端会回落到 feature 开关，而
+            // `code_mode` / `code_mode_only` 现在是 UnderDevelopment + 默认关闭；官方一旦
+            // 改默认值，工具面就会从 exec_command/apply_patch 静默换成 freeform 的 exec/wait，
+            // 我们的 bridge 只能按标准工具循环转译上游。
+            "tool_mode":"direct","apply_patch_tool_type":"freeform",
             "web_search_tool_type":"text","truncation_policy":{"mode":"tokens","limit":10000},
             "context_window":context,"max_context_window":context,"auto_compact_token_limit":context*4/5,
             "effective_context_window_percent":95,
@@ -345,7 +348,8 @@ mod tests {
         // 服务商托管的能力与改请求形状的开关仍然不宣告。
         assert_eq!(published["supports_search_tool"], false);
         assert_eq!(published["use_responses_lite"], false);
-        assert!(published.get("tool_mode").is_none());
+        // `tool_mode` 固定为 direct：不能让客户端回落到可能开启的 code mode。
+        assert_eq!(published["tool_mode"], "direct");
     }
 
     /// 持久模式、多代理这些功能靠 `model_messages` 里的段落才会出现。
