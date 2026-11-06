@@ -159,6 +159,7 @@ fn host_config_precheck(
     let ports = DevinHostPorts {
         api_port: settings.api_port,
         inference_port: settings.inference_port,
+        local_api_port: Some(settings.local_api_port),
     };
     ensure_host_ports_listening(ports, bound)?;
     Ok(ports)
@@ -470,6 +471,7 @@ mod tests {
             DevinHostPorts {
                 api_port: crate::devin::DEFAULT_DEVIN_API_PORT,
                 inference_port: crate::devin::DEFAULT_DEVIN_INFERENCE_PORT,
+                local_api_port: Some(crate::devin::DEFAULT_DEVIN_LOCAL_API_PORT),
             }
         );
     }
@@ -484,6 +486,7 @@ mod tests {
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
+                local_api_port: Some(43_112),
             },
         )
         .unwrap();
@@ -541,6 +544,7 @@ mod tests {
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
+                local_api_port: Some(43_112),
             },
         )
         .unwrap();
@@ -570,6 +574,7 @@ mod tests {
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
+                local_api_port: Some(43_112),
             },
         )
         .unwrap();

@@ -74,6 +74,18 @@ impl OutputHub {
         receiver
     }
 
+    /// 当前还活着的订阅者数量（顺带清掉已经关闭的发送端）。
+    ///
+    /// RunSSE 断线时用它判断"是不是最后一个消费者"：客户端先开新流、旧流随后被丢弃时，
+    /// 旧流的 Drop 不能把新流正在消费的 run 取消掉。
+    pub fn live_subscriber_count(&self) -> usize {
+        let mut state = self.state.lock();
+        state
+            .subscribers
+            .retain(|subscriber| !subscriber.is_closed());
+        state.subscribers.len()
+    }
+
     pub fn close(&self) -> bool {
         let mut state = self.state.lock();
         if state.closed {
@@ -178,6 +190,20 @@ mod tests {
             delivered += 1;
         }
         assert_eq!(delivered, SUBSCRIBER_QUEUE_FRAMES * 2 + 1);
+    }
+
+    /// RunSSE 的 Drop 靠这个计数判断"自己是不是最后一个消费者"：已关闭的发送端必须
+    /// 被剔除，否则重连后旧连接的残留会让新断开的连接误以为还有别人在看。
+    #[test]
+    fn live_subscriber_count_ignores_dropped_receivers() {
+        let hub = OutputHub::default();
+        let first = hub.subscribe();
+        let second = hub.subscribe();
+        assert_eq!(hub.live_subscriber_count(), 2);
+        drop(first);
+        assert_eq!(hub.live_subscriber_count(), 1);
+        drop(second);
+        assert_eq!(hub.live_subscriber_count(), 0);
     }
 
     /// 收尾：终止帧已经交给当时在场的订阅者，它们的流到 EOF；此后不再接受新帧。

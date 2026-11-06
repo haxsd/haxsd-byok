@@ -56,8 +56,11 @@ fn local_body_stream(
     handle: TransportHandle,
     trace: Option<CursorTraceRecorder>,
 ) -> impl tokio_stream::Stream<Item = std::result::Result<Bytes, Infallible>> {
+    // guard 在生成器之外构造：响应体在第一次 poll 之前就被丢弃时，生成器从未执行，
+    // 旧写法里的 guard 也从未存在，Disconnect 永远不会发出。构造在这里，stream 被
+    // 丢弃时 guard 随状态一起 drop。
+    let mut guard = LocalRunGuard::new(handle);
     async_stream::stream! {
-        let mut guard = LocalRunGuard::new(handle);
         let mut trace = TraceStreamSink::new(trace, "byok_server");
         while let Some(chunk) = receiver.recv().await {
             let terminal = is_end_stream_frame(&chunk);
@@ -138,13 +141,25 @@ impl Drop for LocalRunGuard {
         if self.completed {
             return;
         }
-        // 走到这里就是 Cursor 侧的 Run 流没了：客户端断开、写回失败、或进程被结束。
-        // 用户看到的"报错"几乎总是这一刻，而这一刻的现场只在这里拿得到，所以既落日志
-        // 也抓一份诊断文件（诊断文件里有 Cursor 的代理配置、系统代理与日志尾部）。
         let elapsed_ms = self.started.elapsed().as_millis() as u64;
         let request_id = self.handle.request_id().to_owned();
         let conversation_id = self.handle.conversation_id().map(str::to_owned);
         let frames = self.frames;
+        // 客户端可能先开新流、再丢弃旧流：旧流不是最后一个消费者时不能取消 run，
+        // 否则新流正在消费的这一轮会被"顺手"打断。只有确实没有别的订阅者才按断开处理。
+        if self.handle.live_subscriber_count() > 1 {
+            tracing::info!(
+                %request_id,
+                conversation_id = conversation_id.as_deref().unwrap_or("none"),
+                elapsed_ms,
+                frames,
+                "a superseded Cursor Run stream dropped; another subscriber is still attached"
+            );
+            return;
+        }
+        // 走到这里就是 Cursor 侧的 Run 流没了：客户端断开、写回失败、或进程被结束。
+        // 用户看到的"报错"几乎总是这一刻，而这一刻的现场只在这里拿得到，所以既落日志
+        // 也抓一份诊断文件（诊断文件里有 Cursor 的代理配置、系统代理与日志尾部）。
         tracing::warn!(
             %request_id,
             conversation_id = conversation_id.as_deref().unwrap_or("none"),

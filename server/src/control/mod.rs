@@ -313,7 +313,10 @@ pub fn devin_status_router(service: ControlService, listening: DevinListening) -
 /// 有副作用的接口,这等于任意网页都能触发本机管理动作。所以进 handler 之前就先拒掉
 /// 非本机来源的浏览器请求。不带 Origin / Sec-Fetch-Site 的是本机其它客户端(curl、
 /// 桌面壳的原生调用),照常放行。
-async fn reject_cross_site(request: Request<Body>, next: Next) -> Response<Body> {
+///
+/// `pub` 是因为桌面壳的窄路由（`open-external-url`）也要套同一道准入：它和这里的管理
+/// 路由并到同一个 HTTP 服务，不能成为跨站 POST 的旁路。
+pub async fn reject_cross_site(request: Request<Body>, next: Next) -> Response<Body> {
     if cross_site_request(request.headers()) {
         return (StatusCode::FORBIDDEN, "cross-site request rejected").into_response();
     }

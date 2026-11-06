@@ -126,6 +126,11 @@ impl TransportHandle {
         self.output.subscribe()
     }
 
+    /// 供 RunSSE 的 Drop 判断"自己是不是最后一个消费者"。
+    pub fn live_subscriber_count(&self) -> usize {
+        self.output.live_subscriber_count()
+    }
+
     pub fn emit_frame(&self, frame: Bytes) -> bool {
         self.output.emit(frame)
     }

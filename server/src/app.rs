@@ -268,6 +268,8 @@ impl App {
                 },
                 () = shutdown.cancelled() => {
                     clean_up_user_files(&codex_gateway, &harness, &claude_gateway, &store).await;
+                    // 正常退出：告诉收尾助手这次不用兜底还原 Devin 接管。
+                    crate::local_app::mark_graceful_exit();
                     codex_cleaned = true;
                     registry.shutdown().await;
                     drain_server(&mut server, DRAIN_BUDGET).await?;

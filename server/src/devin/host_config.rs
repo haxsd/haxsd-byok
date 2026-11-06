@@ -33,14 +33,27 @@ pub const INFERENCE_API_SERVER_KEY: &str = "codeium.inferenceApiServerUrl";
 pub struct DevinHostPorts {
     pub api_port: u16,
     pub inference_port: u16,
+    /// 目录里的 `model_info.server` 指向这个端口；它没监听时模型请求会打空。
+    ///
+    /// `None` 表示"来源处拿不到"（例如从宿主已有配置反解时只有 API/推理两个 URL），
+    /// 这时不参与端口一致性比较。
+    pub local_api_port: Option<u16>,
 }
 
 impl DevinHostPorts {
+    /// 设置文件只编码 API 与推理两个端点；`local_api` 只存在于模型目录，不参与
+    /// "文件里的端口是否就是这次要写的端口"这一比较。
+    pub fn same_endpoints(self, other: Self) -> bool {
+        self.api_port == other.api_port && self.inference_port == other.inference_port
+    }
     pub fn validate(self) -> Result<Self> {
-        if self.api_port == 0 || self.inference_port == 0 {
+        if self.api_port == 0 || self.inference_port == 0 || self.local_api_port == Some(0) {
             return Err(Error::Config("Devin host ports must be non-zero".into()));
         }
-        if self.api_port == self.inference_port {
+        if self.api_port == self.inference_port
+            || self.local_api_port == Some(self.api_port)
+            || self.local_api_port == Some(self.inference_port)
+        {
             return Err(Error::Config("Devin host ports must be distinct".into()));
         }
         Ok(self)
@@ -126,7 +139,11 @@ pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
     let patched_content = configure_endpoints(original_content, ports)?;
     let patched = patched_content.into_bytes();
     let patched_status = inspect_current(path, Some(&patched))?;
-    if !patched_status.configured || patched_status.ports != Some(ports) {
+    if !patched_status.configured
+        || !patched_status
+            .ports
+            .is_some_and(|current| current.same_endpoints(ports))
+    {
         return Err(Error::Config(
             "Devin settings verification failed before writing; the file was left unchanged".into(),
         ));
@@ -159,7 +176,9 @@ pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
     match inspect(path) {
         Ok(verified)
             if verified.configured
-                && verified.ports == Some(ports)
+                && verified
+                    .ports
+                    .is_some_and(|current| current.same_endpoints(ports))
                 && verified.current_sha256 == receipt.patched_sha256 =>
         {
             Ok(receipt)
@@ -184,7 +203,11 @@ pub fn restore(receipt: &HostReceipt) -> Result<()> {
     let current =
         fs::read(&receipt.path).map_err(|error| host_read_error(&receipt.path, &error))?;
     let status = inspect_current(&receipt.path, Some(&current))?;
-    if !status.configured || status.ports != Some(receipt.ports) {
+    if !status.configured
+        || !status
+            .ports
+            .is_some_and(|current| current.same_endpoints(receipt.ports))
+    {
         return Err(Error::Config(format!(
             "Devin settings changed after this application configured them; restore refused; \
              the previous file is kept at {}; restore backup: {}",
@@ -405,6 +428,7 @@ fn inspect_current(path: &Path, current: Option<&[u8]>) -> Result<HostStatus> {
         .map(|(api_port, inference_port)| DevinHostPorts {
             api_port,
             inference_port,
+            local_api_port: None,
         })
         .filter(|ports| ports.validate().is_ok());
     let official_defaults = matches!(
@@ -495,7 +519,11 @@ fn usable_receipt(path: &Path, status: &HostStatus) -> Option<HostReceipt> {
     if receipt.path != path || receipt.backup_path != backup_path(path) {
         return None;
     }
-    if !status.configured || status.ports != Some(receipt.ports) {
+    if !status.configured
+        || !status
+            .ports
+            .is_some_and(|current| current.same_endpoints(receipt.ports))
+    {
         return None;
     }
     match receipt.original_sha256.as_deref() {
@@ -964,6 +992,7 @@ mod tests {
         DevinHostPorts {
             api_port: 43_110,
             inference_port: 43_111,
+            local_api_port: Some(43_112),
         }
     }
 
@@ -983,7 +1012,9 @@ mod tests {
         let receipt = apply(&path, ports()).unwrap();
         let status = inspect(&path).unwrap();
         assert!(status.configured);
-        assert_eq!(status.ports, Some(ports()));
+        assert!(status
+            .ports
+            .is_some_and(|current| current.same_endpoints(ports())));
         assert!(status.restore_receipt.is_some());
         assert!(!receipt.backup_path.exists());
 
@@ -1038,7 +1069,10 @@ mod tests {
             patched.matches("\"codeium.inferenceApiServerUrl\"").count(),
             1
         );
-        assert_eq!(inspect(&path).unwrap().ports, Some(ports()));
+        assert!(inspect(&path)
+            .unwrap()
+            .ports
+            .is_some_and(|current| current.same_endpoints(ports())));
     }
 
     #[test]

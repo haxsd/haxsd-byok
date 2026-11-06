@@ -158,11 +158,21 @@ impl Provider for AnthropicProvider {
                         let kind = required_string(block, "type")?;
                         block_types.insert(index, kind.into());
                         match kind {
-                            "text" => yield ModelEvent::TextStart,
+                            "text" => {
+                                yield ModelEvent::TextStart;
+                                // 部分网关把首段文本直接放进 content_block_start。
+                                if let Some(initial) = block.get("text").and_then(Value::as_str).filter(|text| !text.is_empty()) {
+                                    yield ModelEvent::TextDelta(initial.into());
+                                }
+                            }
                             "thinking" => {
-                                thinking_text.insert(index, String::new());
-                                thinking_signatures.insert(index, String::new());
+                                let initial = block.get("thinking").and_then(Value::as_str).unwrap_or_default();
+                                thinking_text.insert(index, initial.to_string());
+                                thinking_signatures.insert(index, block.get("signature").and_then(Value::as_str).unwrap_or_default().to_string());
                                 yield ModelEvent::ThinkingStart;
+                                if !initial.is_empty() {
+                                    yield ModelEvent::ThinkingDelta(initial.into());
+                                }
                             }
                             "redacted_thinking" => thinking_blocks.push(block.clone()),
                             "tool_use" => {
@@ -172,6 +182,19 @@ impl Provider for AnthropicProvider {
                                     call_id: required_string(block, "id")?.into(),
                                     name: required_string(block, "name")?.into(),
                                 };
+                                // 有的兼容网关把完整 input 放在 start 里、不再发
+                                // input_json_delta。只有非空 input 才交付，避免把 `{}` 当成
+                                // 参数前缀再拼后续分片。
+                                if let Some(input) = block.get("input").filter(|input| match input {
+                                    Value::Object(map) => !map.is_empty(),
+                                    Value::Array(items) => !items.is_empty(),
+                                    _ => false,
+                                }) {
+                                    yield ModelEvent::ToolCallArgumentsDelta {
+                                        index,
+                                        delta: serde_json::to_string(input)?,
+                                    };
+                                }
                             }
                             _ => {}
                         }
@@ -372,11 +395,13 @@ const MIN_THINKING_BUDGET: u64 = 1_024;
 /// adaptive（上游按强度自适应）。预算必须小于 `max_tokens`，否则上游直接 400。
 fn thinking_config(reasoning: &crate::model::ReasoningSpec, max_tokens: u64) -> Value {
     match reasoning.thinking_budget_tokens {
-        Some(budget) => json!({
+        // `budget_tokens` 必须 ≥1024 且 < max_tokens。上限太小的时候两者无法同时满足，
+        // 发 enabled 必然 400；退回 adaptive（仍按强度思考）而不是发一个非法组合。
+        Some(budget) if max_tokens > MIN_THINKING_BUDGET => json!({
             "type": "enabled",
-            "budget_tokens": budget.max(MIN_THINKING_BUDGET).min(max_tokens.saturating_sub(1)),
+            "budget_tokens": budget.max(MIN_THINKING_BUDGET).min(max_tokens - 1),
         }),
-        None => json!({"type":"adaptive", "display":"summarized"}),
+        _ => json!({"type":"adaptive", "display":"summarized"}),
     }
 }
 
@@ -665,6 +690,21 @@ mod tests {
         apply_model(&mut body, &model, MAX_TOKENS).unwrap();
 
         assert_eq!(body["thinking"]["budget_tokens"], 1_024);
+    }
+
+    /// `max_tokens` 小到装不下合法预算时不要发 enabled：`budget_tokens >= 1024`
+    /// 与 `< max_tokens` 无法同时满足，发出去必然 400。退回 adaptive。
+    #[test]
+    fn a_max_tokens_below_the_budget_floor_falls_back_to_adaptive() {
+        let mut model = ModelSpec::new("claude-sonnet-4");
+        model.reasoning.enabled = Some(true);
+        model.reasoning.thinking_budget_tokens = Some(2_048);
+
+        let mut body = serde_json::json!({"messages": []});
+        apply_model(&mut body, &model, 1_024).unwrap();
+
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert!(body["thinking"].get("budget_tokens").is_none());
     }
 
     /// 显式关思考的请求（摘要/压缩）既不发 thinking，也不发预算或强度。

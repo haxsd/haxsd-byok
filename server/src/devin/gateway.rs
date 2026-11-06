@@ -78,11 +78,25 @@ pub fn ensure_host_ports_listening(
                 .into(),
         ));
     };
-    if bound.api != ports.api_port || bound.inference != ports.inference_port {
+    if bound.api != ports.api_port
+        || bound.inference != ports.inference_port
+        || ports
+            .local_api_port
+            .is_some_and(|port| port != bound.local_api)
+    {
+        let local = ports
+            .local_api_port
+            .map(|port| port.to_string())
+            .unwrap_or_else(|| "unchanged".into());
         return Err(Error::Config(format!(
-            "the Devin gateway is listening on {} / {}, not on the configured {} / {}; \
+            "the Devin gateway is listening on {} / {} / {}, not on the configured {} / {} / {}; \
              restart haxsd byok so it binds the saved ports before writing Devin settings",
-            bound.api, bound.inference, ports.api_port, ports.inference_port,
+            bound.api,
+            bound.inference,
+            bound.local_api,
+            ports.api_port,
+            ports.inference_port,
+            local,
         )));
     }
     Ok(())
@@ -789,9 +803,19 @@ async fn forward_native_model_config(
             } else {
                 user_status::with_local_models(payload, &local_models, default_uid)?
             };
-            let harnesses =
-                super::harness::local_assignments(&rewritten, method == "GetUserStatus")?;
-            state.assignments.replace_harnesses(harnesses);
+            let harnesses = if method == "GetCliTeamSettings" {
+                // Team settings 不是模型目录：从它解析出来的 harness 映射是空的，整表
+                // 替换会把刚建立的 harness 分配清掉，随后 AssignModel 就不再返回 harness_uids。
+                None
+            } else {
+                Some(super::harness::local_assignments(
+                    &rewritten,
+                    method == "GetUserStatus",
+                )?)
+            };
+            if let Some(harnesses) = harnesses {
+                state.assignments.replace_harnesses(harnesses);
+            }
             Ok(rewritten)
         });
     let rewritten = match rewritten {
@@ -2288,6 +2312,7 @@ mod tests {
         let ports = DevinHostPorts {
             api_port: 43_110,
             inference_port: 43_111,
+            local_api_port: Some(43_112),
         };
         ensure_host_ports_listening(
             ports,

@@ -1020,6 +1020,12 @@ impl ConversationOutput {
         message: crate::model::CanonicalMessage,
         state: InjectionState<'_>,
     ) -> Result<()> {
+        // 同一个注入/用户消息可能被重投（BidiAppend 换 seqno 重试）：首次投递还在
+        // checkpoint 屏障后排队时，第二次不能再编译一份带新时间戳的正文进去。
+        if self.injection_ids.contains(&injection_id) {
+            tracing::debug!(injection_id, "ignoring a redelivered runtime message");
+            return Ok(());
+        }
         // 客户端重发同一条消息（BidiAppend 重试换了 seqno、或跨 run 再投递）时，
         // 它已经在历史里了。运行时消息的正文带当前时间戳，重新编译会得到不同内容，
         // `append_messages_once` 会把整轮判成 "message id reused with different content"。

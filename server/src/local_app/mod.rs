@@ -25,6 +25,7 @@ pub use account::{AccountState, CursorAccount};
 pub use catalog_health::{CatalogHealth, CatalogHealthTracker};
 /// 收尾助手（`--cleanup-after-exit`）的入口：等应用退出后撤掉它留下的代理配置。
 pub use cleanup::cleanup_after_exit;
+pub(crate) use cleanup::mark_graceful_exit;
 
 /// 诊断快照要读 Cursor 里与代理有关的那几个键；`settings` 模块本身不对外。
 pub use settings::proxy_settings_snapshot;

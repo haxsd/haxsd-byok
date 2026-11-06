@@ -53,10 +53,17 @@ function chatContent(parts: LlmContentPart[]): JsonValue {
 
 export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
   const messages: JsonValue[] = [];
+  // 并行工具结果必须连续：图片攒到这一批 tool 消息之后再以一条 user 消息投递。
+  const pendingToolImages: LlmContentPart[] = [];
+  const flushToolImages = () => {
+    if (pendingToolImages.length === 0) return;
+    messages.push({ role: "user", content: chatContent(pendingToolImages.splice(0)) });
+  };
   if (call.request.instructions) {
     messages.push({ role: "system", content: call.request.instructions });
   }
   for (const message of call.request.messages) {
+    if (message.role !== "tool") flushToolImages();
     if (message.role === "assistant") {
       const reasoning = message.replayState?.providerKind === REPLAY_KIND
         ? text(record(message.replayState.value)?.reasoning_content)
@@ -80,9 +87,17 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
       }
       messages.push(value);
     } else if (message.role === "tool") {
+      // Chat 的 tool 消息只接受文本；图片留到这一批 tool 消息之后。
+      const textParts: string[] = [];
+      for (const part of message.parts) {
+        if (part.type === "text") textParts.push(part.text);
+        else pendingToolImages.push(part);
+      }
+      const toolText = textParts.join("")
+        || (message.parts.length === 0 ? message.content : "");
       messages.push({
         role: "tool",
-        content: message.parts.length === 0 ? message.content : chatContent(message.parts),
+        content: toolText,
         tool_call_id: message.callId,
       });
     } else {
@@ -92,6 +107,7 @@ export function buildChatBody(call: OpenAiChatCall): Record<string, JsonValue> {
       messages.push({ role: message.role, content });
     }
   }
+  flushToolImages();
   const body: Record<string, JsonValue> = {
     model: call.model,
     messages,
@@ -124,8 +140,16 @@ type ToolState = {
 };
 
 /** 部分上游会重发完整片段而不是增量;去重后再拼接。 */
-function mergeFragment(target: string, fragment: string): string {
-  if (target === fragment || target.endsWith(fragment)) return target;
+function mergeIdentifier(target: string, fragment: string): string {
+  if (target === fragment) return target;
+  if (target.startsWith(fragment)) return target;
+  if (fragment.startsWith(target)) return fragment;
+  return target + fragment;
+}
+
+/** 工具参数是流式 JSON：短分片本身就是内容，只有整串重发才去重。 */
+function mergeArguments(target: string, fragment: string): string {
+  if (target === fragment) return target;
   if (fragment.startsWith(target)) return fragment;
   return target + fragment;
 }
@@ -142,9 +166,9 @@ function updateTool(
     tool = { callId: "", name: "", arguments: "", emitted: 0, started: false };
     tools.set(index, tool);
   }
-  if (callId !== null) tool.callId = mergeFragment(tool.callId, callId);
-  if (name !== null) tool.name = mergeFragment(tool.name, name);
-  if (argumentsDelta !== null) tool.arguments += argumentsDelta;
+  if (callId !== null) tool.callId = mergeIdentifier(tool.callId, callId);
+  if (name !== null) tool.name = mergeIdentifier(tool.name, name);
+  if (argumentsDelta !== null) tool.arguments = mergeArguments(tool.arguments, argumentsDelta);
 
   const events: ModelEvent[] = [];
   if (!tool.started && tool.callId && tool.name) {

@@ -545,11 +545,21 @@ fn flush_chat(
             message["reasoning_content"] = json!(reasoning);
         }
         messages.push(message);
+        let mut tool_images = Vec::new();
         for call in &calls {
             if let Some((_, output)) = results.iter().find(|(call_id, _)| call_id == &call.call_id)
             {
-                messages.push(json!({"role": "tool", "tool_call_id": call.call_id, "content": tool_output(output,false)?}));
+                // Chat 的 tool 消息只接受文本；图片留到这一批 tool 消息之后再以 user
+                // 消息投递，否则严格上游会判成非法 tool 内容或"工具调用缺少结果"。
+                let (content, images) = chat_tool_output(output)?;
+                messages.push(
+                    json!({"role": "tool", "tool_call_id": call.call_id, "content": content}),
+                );
+                tool_images.extend(images);
             }
+        }
+        if !tool_images.is_empty() {
+            messages.push(json!({"role": "user", "content": Value::Array(tool_images)}));
         }
     } else if let Some(text) = text {
         let mut message = json!({"role": "assistant", "content": text});
@@ -1125,6 +1135,29 @@ fn image_url(part: &Value) -> Result<String> {
         })
         .filter(|url| !url.trim().is_empty())
         .ok_or_else(|| Error::Protocol("Codex input_image requires an image_url".into()))
+}
+
+/// Chat 的 tool 消息内容：文本进 tool 消息，图片块单独返回，由调用方在这批 tool
+/// 消息之后补一条 user 消息。
+fn chat_tool_output(output: &Value) -> Result<(Value, Vec<Value>)> {
+    if !output.is_array() {
+        return Ok((tool_output(output, false)?, Vec::new()));
+    }
+    let item = json!({"content": output});
+    let mut text = String::new();
+    let mut images = Vec::new();
+    for part in content_parts(&item)? {
+        match part {
+            Part::Text(part) => {
+                if !text.is_empty() {
+                    text.push_str("\n\n");
+                }
+                text.push_str(&part);
+            }
+            Part::Image(image) => images.push(chat_image_part(&image)?),
+        }
+    }
+    Ok((json!(text), images))
 }
 
 /// 工具结果保留文本与图像块，不能降级成只包含 text 的字符串。

@@ -160,6 +160,39 @@ fn images_map_to_chat_parts_and_anthropic_sources() {
     );
 }
 
+/// Chat 的 tool 消息只接受文本；工具输出里的图片要在这批 tool 消息之后用 user 消息补。
+#[test]
+fn tool_result_images_stay_out_of_chat_tool_messages() {
+    let source = json!({
+        "input": [
+            {"role": "user", "content": "look"},
+            {"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "c1", "output": [
+                {"type": "input_text", "text": "captured"},
+                {"type": "input_image", "image_url": "data:image/png;base64,AAAA"}
+            ]}
+        ],
+        "tools": [{"type": "function", "name": "read_file", "parameters": {"type": "object", "properties": {}}}]
+    });
+    let body = chat(source).body;
+    let messages = body["messages"].as_array().expect("messages");
+    let tool = messages
+        .iter()
+        .find(|message| message["role"] == "tool")
+        .expect("tool message");
+    assert!(
+        tool["content"].is_string(),
+        "tool message must stay textual: {tool}"
+    );
+    let after_tool = messages
+        .iter()
+        .skip_while(|message| message["role"] != "tool")
+        .skip(1)
+        .find(|message| message["role"] == "user")
+        .expect("image follow-up message");
+    assert_eq!(after_tool["content"][0]["type"], json!("image_url"));
+}
+
 // ===================== 请求转换：工具声明与映射 =====================
 
 #[test]

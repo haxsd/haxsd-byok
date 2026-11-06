@@ -262,7 +262,19 @@ fn openai_chat_messages(
     if !instructions.is_empty() {
         output.push(json!({"role": "system", "content": instructions}));
     }
+    // 并行工具结果必须连续出现：一旦在 tool 消息之间插入 user 消息，严格上游会判成
+    // "工具调用缺少结果"。所以图片先攒着，等这一批 tool 消息全部输出后再补一条 user。
+    let mut pending_tool_images: Vec<ContentPart> = Vec::new();
     for message in messages {
+        if !matches!(&message.content, ProjectedContent::ToolResult(_))
+            && !pending_tool_images.is_empty()
+        {
+            output.push(json!({
+                "role": "user",
+                "content": chat_content(&Role::User, &pending_tool_images)?,
+            }));
+            pending_tool_images.clear();
+        }
         let mut value = Map::new();
         value.insert(
             "role".into(),
@@ -356,16 +368,17 @@ fn openai_chat_messages(
                 value.insert("content".into(), Value::String(text));
                 value.insert("tool_call_id".into(), Value::String(result.call_id.clone()));
                 output.push(Value::Object(value));
-                if !images.is_empty() {
-                    output.push(json!({
-                        "role": "user",
-                        "content": chat_content(&Role::User, &images)?,
-                    }));
-                }
+                pending_tool_images.extend(images);
                 continue;
             }
         }
         output.push(Value::Object(value));
+    }
+    if !pending_tool_images.is_empty() {
+        output.push(json!({
+            "role": "user",
+            "content": chat_content(&Role::User, &pending_tool_images)?,
+        }));
     }
     Ok(output)
 }
@@ -492,13 +505,13 @@ fn update_chat_tool(
 /// 拼成 `[content"` 这种非法 JSON，只有扁平参数的工具看不出来。标识符（`call_id`、函数名）
 /// 仍然保留这条保护——它们整段下发，前缀重复只可能是旧值；工具参数则改走
 /// [`merge_argument_fragment`]，任何短分片都可能是真内容。
-fn merge_chat_fragment(target: &mut String, fragment: &str) {
+pub(crate) fn merge_chat_fragment(target: &mut String, fragment: &str) {
     merge_fragment(target, fragment, true);
 }
 
 /// 工具参数是流式 JSON 文档，左花括号、双引号、左方括号这类短分片本身就是内容，不能当成
 /// 旧整串丢掉。
-fn merge_argument_fragment(target: &mut String, fragment: &str) {
+pub(crate) fn merge_argument_fragment(target: &mut String, fragment: &str) {
     merge_fragment(target, fragment, false);
 }
 
@@ -742,6 +755,70 @@ mod tests {
         assert_eq!(messages[0]["content"], json!("screenshot attached"));
         assert_eq!(messages[1]["role"], json!("user"));
         assert_eq!(messages[1]["content"][0]["type"], json!("image_url"));
+    }
+
+    /// 并行工具结果的图片必须等这一批 tool 消息结束之后再补 user：中途插入 user 会让
+    /// 严格上游判成"工具调用缺少结果"。
+    #[test]
+    fn parallel_tool_images_do_not_split_the_tool_batch() {
+        let assistant = assistant_message(
+            "",
+            None,
+            vec![
+                ToolCallContent {
+                    index: 0,
+                    call_id: "c1".into(),
+                    name: "read".into(),
+                    arguments: json!({}),
+                },
+                ToolCallContent {
+                    index: 1,
+                    call_id: "c2".into(),
+                    name: "read".into(),
+                    arguments: json!({}),
+                },
+            ],
+        );
+        let tool_result = |call_id: &str, with_image: bool| ProjectedMessage {
+            message_id: format!("tool-{call_id}"),
+            role: Role::Tool,
+            content: ProjectedContent::ToolResult(crate::model::ToolResultContent {
+                call_id: call_id.into(),
+                name: "read".into(),
+                content: "seen".into(),
+                is_error: false,
+                image: None,
+                provider_parts: if with_image {
+                    vec![
+                        ContentPart::Text {
+                            text: "seen".into(),
+                        },
+                        ContentPart::Image {
+                            mime_type: "image/png".into(),
+                            data: vec![1, 2, 3],
+                        },
+                    ]
+                } else {
+                    vec![ContentPart::Text {
+                        text: "seen".into(),
+                    }]
+                },
+            }),
+        };
+        let messages = openai_chat_messages(
+            "",
+            &[assistant, tool_result("c1", true), tool_result("c2", false)],
+            false,
+        )
+        .expect("messages should build");
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|message| message["role"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(roles, ["assistant", "tool", "tool", "user"]);
+        assert!(messages[1]["content"].is_string());
+        assert!(messages[2]["content"].is_string());
+        assert_eq!(messages[3]["content"][0]["type"], json!("image_url"));
     }
 
     /// Other Chat-compatible upstreams reject or ignore DeepSeek's proprietary field,

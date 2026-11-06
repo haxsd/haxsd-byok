@@ -10,6 +10,52 @@
 //! 判定"还在不在"用实例锁而不是进程句柄或心跳：锁跟着内核句柄走，强杀也会立刻释放，
 //! 不需要额外的进程 API，也不会因为探活失败误判成"已经死了"。
 
+/// 等待锁被释放时，优雅退出留下的标记：助手看到它就不再撤销 Devin 接管。
+const GRACEFUL_EXIT_FILE: &str = "graceful-exit.json";
+
+/// 正常退出时写一份"这次是优雅退出"的标记。
+///
+/// 收尾助手只能看到实例锁被释放，无法区分正常退出与强杀。没有这个标记时，用户从托盘
+/// 正常退出也会被助手当成强杀，Devin 的配置和扩展补丁被自动还原——下一次启动用户还得
+/// 重新应用。强杀时没人写标记，助手照旧兜底。
+pub(crate) fn mark_graceful_exit() {
+    let Ok(directory) = crate::config::managed_data_dir() else {
+        return;
+    };
+    let Some(owner) = crate::instance::read_owner(&directory) else {
+        return;
+    };
+    let payload = serde_json::json!({
+        "pid": owner.pid,
+        "started_at_ms": owner.started_at_ms,
+    });
+    if let Err(error) = std::fs::write(directory.join(GRACEFUL_EXIT_FILE), payload.to_string()) {
+        tracing::warn!(
+            %error,
+            "failed to record a graceful exit; the cleanup helper may undo the Devin takeover"
+        );
+    }
+}
+
+/// 消费优雅退出标记：匹配本次守护的实例才返回 true。无论是否匹配都删掉，
+/// 陈旧的标记不能影响下一次判断。
+fn take_graceful_exit(directory: &Path, owner: &Owner) -> bool {
+    let path = directory.join(GRACEFUL_EXIT_FILE);
+    let matched = std::fs::read(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_slice::<serde_json::Value>(&raw).ok())
+        .and_then(|value| {
+            let pid = value.get("pid")?.as_u64()? as u32;
+            let started_at_ms = value
+                .get("started_at_ms")
+                .and_then(serde_json::Value::as_i64);
+            Some(Owner { pid, started_at_ms }).filter(|recorded| recorded.is_same_process(owner))
+        })
+        .is_some();
+    let _ = std::fs::remove_file(path);
+    matched
+}
+
 use std::{path::Path, time::Duration};
 
 use crate::{
@@ -46,6 +92,13 @@ pub async fn cleanup_after_exit() -> Result<bool> {
         tracing::info!("a new instance took over; the exit cleanup helper stands down");
         return Ok(false);
     }
+    // 正常退出：收尾已在 app 的 shutdown 路径里做过，Devin 接管按产品约定保留。
+    if take_graceful_exit(&directory, &owner) {
+        tracing::info!(
+            "the app exited gracefully; the exit cleanup helper leaves the Devin takeover intact"
+        );
+        return Ok(false);
+    }
     clean_leftovers().await
 }
 
@@ -74,8 +127,23 @@ async fn instance_has_exited(directory: &Path, owner: &Owner, interval: Duration
 ///
 /// 每一步失败都不该挡住后面的：助手没有第二次机会，能撤多少撤多少。
 async fn clean_leftovers() -> Result<bool> {
-    super::clear_injected_account().await?;
-    let mut changed = super::settings::clear_proxy_settings()?;
+    // 每一步失败都不该挡住后面的：助手没有第二次机会，能撤多少撤多少。
+    if let Err(error) = super::clear_injected_account().await {
+        tracing::warn!(
+            error = %crate::diagnostics::error_chain(&error),
+            "exit cleanup could not clear the injected account"
+        );
+    }
+    let mut changed = match super::settings::clear_proxy_settings() {
+        Ok(changed) => changed,
+        Err(error) => {
+            tracing::warn!(
+                error = %crate::diagnostics::error_chain(&error),
+                "exit cleanup could not clear the Cursor proxy settings"
+            );
+            false
+        }
+    };
     match restore_codex_routing().await {
         Ok(restored) => changed |= restored,
         Err(error) => tracing::warn!(

@@ -204,18 +204,6 @@ async fn prepare(
             .insert("model".into(), json!(model.model_id));
         (body, None)
     };
-    if provider_type == ProviderType::Anthropic
-        && body.pointer("/thinking/type").and_then(Value::as_str) == Some("enabled")
-    {
-        // Anthropic 的 max_tokens 是必填字段，桥接一定写了它；思考预算不能吃掉
-        // 输出预算，所以按它的实际值夹取。
-        if let (Some(budget), Some(max_tokens)) =
-            (model.thinking_budget_tokens, body["max_tokens"].as_u64())
-        {
-            body["thinking"]["budget_tokens"] =
-                json!(budget.max(1024).min(max_tokens.saturating_sub(1)));
-        }
-    }
     for (key, value) in model
         .extra_params()
         .as_object()
@@ -238,6 +226,22 @@ async fn prepare(
             )));
         }
         body[key] = value.clone();
+    }
+    // 夹取必须放在额外参数之后：extra params 可以改 `max_tokens`，先夹后改会留下
+    // `budget_tokens >= max_tokens` 这种必然 400 的组合。
+    if provider_type == ProviderType::Anthropic
+        && body.pointer("/thinking/type").and_then(Value::as_str) == Some("enabled")
+    {
+        if let (Some(budget), Some(max_tokens)) =
+            (model.thinking_budget_tokens, body["max_tokens"].as_u64())
+        {
+            if max_tokens > 1_024 {
+                body["thinking"]["budget_tokens"] = json!(budget.max(1_024).min(max_tokens - 1));
+            } else {
+                // 装不下合法预算：退回 adaptive，而不是发一个必然被拒的 enabled。
+                body["thinking"] = json!({"type": "adaptive", "display": "summarized"});
+            }
+        }
     }
     if format.is_some() {
         body["stream"] = json!(true);
@@ -334,7 +338,7 @@ async fn prepare(
             let bytes = record_result(
                 read_body(
                     response,
-                    idle,
+                    ERROR_BODY_IDLE,
                     &cancellation,
                     BodyLimit::Truncate(ERROR_BODY_LIMIT),
                 )
@@ -596,6 +600,10 @@ fn redact_value(value: &mut Value, secret: &str) {
 /// 几十 MB 正文的上游不该把这么多字节同时塞进弹窗和数据库。
 const SUCCESS_BODY_LIMIT: usize = 64 * 1024 * 1024;
 const ERROR_BODY_LIMIT: usize = 4 * 1024;
+
+/// 错误正文只是诊断信息：不能拿流式调用的空闲上限（默认 30 分钟）去等一个慢滴的
+/// 上游，否则一次 5xx 能把请求和网关的 active 计数一起拖住。
+const ERROR_BODY_IDLE: Duration = Duration::from_secs(10);
 
 enum BodyLimit {
     Refuse(usize),

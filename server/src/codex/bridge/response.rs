@@ -336,14 +336,14 @@ impl BridgeStream {
                 }
             }
             if let Some(piece) = call.pointer("/function/name").and_then(Value::as_str) {
-                name.push_str(piece);
+                crate::provider::merge_chat_fragment(name, piece);
             }
             fragment.push_str(
                 call.pointer("/function/arguments")
                     .and_then(Value::as_str)
                     .unwrap_or(""),
             );
-            arguments.push_str(&fragment);
+            crate::provider::merge_argument_fragment(arguments, &fragment);
             if !*added && !call_id.is_empty() && self.tools.spec_for(name).is_some() {
                 *added = true;
                 added_now = true;
@@ -735,7 +735,14 @@ impl BridgeStream {
         if self.finished {
             return Ok(Vec::new());
         }
-        if self.format == UpstreamFormat::Anthropic && !self.message_stopped {
+        // 已有的 stop_reason 允许正常完成直接 EOF：部分兼容网关在 message_delta
+        // (end_turn/tool_use) 后不再发 message_stop，provider 路径同样接受。截断
+        // （max_tokens 等 Incomplete）仍然要求 message_stop：那是在区分"上游提前断流"
+        // 与"上游明确告诉我们被截断"。
+        if self.format == UpstreamFormat::Anthropic
+            && !self.message_stopped
+            && !matches!(self.terminal, Some(Terminal::Completed))
+        {
             return Err(Error::Provider(
                 "Anthropic stream ended without message_stop".into(),
             ));
@@ -932,6 +939,8 @@ fn chat_terminal(reason: &str) -> Result<Terminal> {
 fn anthropic_terminal(reason: &str) -> Result<Terminal> {
     match reason {
         "max_tokens" => Ok(Terminal::Incomplete("max_output_tokens")),
+        // 窗口打满与输出截断在 Codex 语义里都是"没写完"，provider 路径已经这样归一。
+        "model_context_window_exceeded" => Ok(Terminal::Incomplete("max_output_tokens")),
         "refusal" => Ok(Terminal::Incomplete("content_filter")),
         // `pause_turn` 是上游"这一轮先停在这里"的正常取值，不是失败。
         "end_turn" | "tool_use" | "stop_sequence" | "pause_turn" => Ok(Terminal::Completed),
