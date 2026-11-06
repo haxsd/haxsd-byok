@@ -36,8 +36,6 @@ export function ClaudeCliTab({
   error,
   keptAfterUndo,
   onChange,
-  onApply,
-  onUndo,
   onCopy,
   onOpenModels,
 }: {
@@ -52,8 +50,6 @@ export function ClaudeCliTab({
   /** 最近一次撤销里服务端保留的条目；没有撤销过或没有保留时为空。 */
   keptAfterUndo: ClaudeTakeoverConflict[];
   onChange: (settings: ClaudeSettings) => void;
-  onApply: () => void;
-  onUndo: () => void;
   onCopy: (text: string, done: string) => void;
   onOpenModels: () => void;
 }) {
@@ -172,15 +168,6 @@ export function ClaudeCliTab({
     {error != null && <p className={styles.error} role="alert">{writeFailureText(error)}</p>}
 
     <div className={styles.actions}>
-      <Button
-        variant="primary"
-        disabled={!gate.apply || busy}
-        onClick={onApply}
-      >{busy ? t("应用中…") : t("应用接管")}</Button>
-      <Button
-        disabled={!gate.undo || busy}
-        onClick={onUndo}
-      >{busy ? t("撤销中…") : t("撤销接管")}</Button>
       {!gate.apply && gate.applyBlockedReason && <small>{gate.applyBlockedReason}</small>}
       {!gate.apply && gate.applyBlockedLink && <Button size="small" onClick={onOpenModels}>{t("去模型库重新选择")}</Button>}
     </div>

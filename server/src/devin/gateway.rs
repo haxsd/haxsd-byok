@@ -37,9 +37,11 @@ use crate::{
 use super::{
     assignment::{assignment_token_response, find_model_reference, AssignmentSessions},
     catalog,
+    directory::{is_native_model_uid, native_entries},
     host_config::DevinHostPorts,
     request::{parse_chat_request, to_invocation},
     response::{finish, stream_event, ResponseState},
+    team_settings, user_status,
     wire::{self, ConnectError, MAX_BODY_SIZE},
     DevinModelBinding, DevinSettings,
 };
@@ -281,6 +283,33 @@ async fn handle_request(
         );
     }
 
+    if matches!(method, "GetUserStatus" | "GetCliTeamSettings") || is_model_catalog_method(method) {
+        tracing::debug!(method, "Devin native model configuration requested");
+        let entries = match state.store.models().await {
+            Ok(models) => native_entries(&settings, &models),
+            Err(error) => Err(error),
+        };
+        match entries {
+            Ok(entries) if !entries.is_empty() => {
+                let method = method.to_owned();
+                return forward_native_model_config(
+                    &state, &settings, parts, body, &entries, &method,
+                )
+                .await;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    "cannot build Devin native model entries; forwarding user status unchanged"
+                );
+            }
+        }
+        if is_model_catalog_method(method) {
+            return forward_upstream(&state, &settings, parts, body).await;
+        }
+    }
+
     // Sign-in, account state, registration and everything else the client needs
     // from its own service travels upstream untouched. Only model traffic is
     // answered here, which is what makes a real account usable behind this
@@ -292,12 +321,28 @@ async fn handle_request(
     {
         return forward_upstream(&state, &settings, parts, body).await;
     }
-    let candidates = settings
+    let mut candidates = settings
         .bindings
         .iter()
         .filter(|binding| binding.enabled)
         .map(|binding| binding.model_uid.clone())
         .collect::<HashSet<_>>();
+    if settings
+        .bindings
+        .iter()
+        .any(|binding| binding.enabled && is_native_model_uid(&binding.model_uid))
+    {
+        let models = match state.store.models().await {
+            Ok(models) => models,
+            Err(error) => {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        };
+        match native_entries(&settings, &models) {
+            Ok(entries) => candidates.extend(entries.into_iter().map(|entry| entry.uid)),
+            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        }
+    }
     // 一条启用绑定都没有时目录不是我们的东西：本地目录会是空的，而客户端只认这
     // 一份 RPC 的结果，空目录会把它原本的官方模型列表整个顶掉。这时把请求交给
     // 上游，与其它非模型流量同一条路径——"只答我们拥有的那部分"才是这里的取舍。
@@ -343,26 +388,102 @@ async fn handle_request(
     let enveloped = unwrapped.enveloped;
     let payload = unwrapped.payload;
 
-    if is_model_catalog_method(method) {
-        let gateway_url = format!("http://127.0.0.1:{}", settings.local_api_port);
-        let models = match state.store.models().await {
-            Ok(models) => models,
+    let fields = match wire::parse_fields(&payload) {
+        Ok(fields) => fields,
+        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+    };
+    let session_id = if method == "GetChatMessage" {
+        match super::request::string_field(&fields, 28) {
+            Ok(session_id) => session_id,
+            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        }
+    } else {
+        String::new()
+    };
+    let is_compaction = method == "GetChatMessage"
+        && super::request::string_field(&fields, 21).is_ok_and(|uid| uid == "compactor");
+    let inherited = if is_compaction {
+        match state.store.devin_session_model(&session_id).await {
+            Ok(Some(selection)) => Some(selection),
+            Ok(None) => return forward_upstream(&state, &settings, parts, Body::from(body)).await,
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
+        }
+    } else {
+        None
+    };
+    let model_field = match method {
+        "AssignModel" => Some(2),
+        "GetChatMessage" => Some(21),
+        "CheckChatCapacity" | "CheckUserMessageRateLimit" => Some(3),
+        _ => None,
+    };
+    let body_assignment_uid = if method == "GetChatMessage" {
+        wire::first_field(&fields, 26).and_then(|field| match &field.value {
+            wire::FieldValue::Bytes(value) => std::str::from_utf8(value)
+                .ok()
+                .and_then(|token| state.assignments.uid_for_token(token)),
+            _ => None,
+        })
+    } else {
+        None
+    };
+    let identity_fields = fields
+        .into_iter()
+        .filter(|field| {
+            Some(field.number) == model_field || (method == "GetChatMessage" && field.number == 26)
+        })
+        .map(|field| match &inherited {
+            Some(selection) if field.number == 21 => wire::Field::bytes(21, &selection.model_uid),
+            _ => field,
+        })
+        .collect::<Vec<_>>();
+    let identity = match wire::serialize_fields(&identity_fields) {
+        Ok(identity) => identity,
+        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+    };
+    let reference =
+        match find_model_reference(&identity, &parts.headers, &candidates, &state.assignments) {
+            Ok(reference) => reference,
+            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
         };
-        let catalog = match catalog::catalog_response_payload(
-            &settings,
-            &models,
-            &gateway_url,
-            catalog_has_default_override(method),
-        ) {
-            Ok(catalog) => catalog,
-            Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+    if reference.ambiguous {
+        return protocol_error(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Devin request contains multiple mapped model UIDs: {}",
+                reference.candidates.join(", ")
+            ),
+        );
+    }
+    if body_assignment_uid
+        .as_ref()
+        .is_some_and(|uid| uid != &reference.uid)
+    {
+        return protocol_error(
+            StatusCode::BAD_REQUEST,
+            "Devin model does not match its assignment",
+        );
+    }
+    if reference.uid.is_empty() {
+        if identity_fields.iter().any(|field| match &field.value {
+            wire::FieldValue::Bytes(value) => {
+                std::str::from_utf8(value).is_ok_and(is_native_model_uid)
             }
-        };
-        return protocol_success_response(enveloped, &catalog);
+            _ => false,
+        }) {
+            return protocol_error(
+                StatusCode::BAD_REQUEST,
+                "Devin local model is not configured",
+            );
+        }
+        if method == "GetChatMessage" {
+            if let Err(error) = state.store.set_devin_session_model(&session_id, None).await {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+            }
+        }
+        return forward_upstream(&state, &settings, parts, Body::from(body)).await;
     }
 
     if method == "CheckChatCapacity" {
@@ -399,20 +520,6 @@ async fn handle_request(
         return protocol_success_response(enveloped, &response);
     }
 
-    let reference =
-        match find_model_reference(&payload, &parts.headers, &candidates, &state.assignments) {
-            Ok(reference) => reference,
-            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
-        };
-    if reference.ambiguous {
-        return protocol_error(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Devin request contains multiple mapped model UIDs: {}",
-                reference.candidates.join(", ")
-            ),
-        );
-    }
     if method == "AssignModel" {
         let Some(uid) = (!reference.uid.is_empty()).then_some(reference.uid) else {
             return protocol_error(
@@ -427,8 +534,8 @@ async fn handle_request(
             );
         }
         let assignment = state.assignments.issue(&uid);
-        let harness_uid = format!("cursor-byok:{uid}");
-        let response = match assignment_token_response(&assignment, &harness_uid) {
+        let harnesses = state.assignments.harnesses_for_uid(&uid);
+        let response = match assignment_token_response(&assignment, &harnesses) {
             Ok(response) => response,
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
@@ -442,6 +549,15 @@ async fn handle_request(
         Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
     let mut request = request;
+    if let Some(selection) = &inherited {
+        request.requested_model = selection.model_uid.clone();
+    }
+    if !request.requested_model.is_empty() && request.requested_model != reference.uid {
+        return protocol_error(
+            StatusCode::BAD_REQUEST,
+            "Devin model does not match its assignment",
+        );
+    }
     if request.requested_model.is_empty() {
         request.requested_model = reference.uid;
     }
@@ -454,7 +570,10 @@ async fn handle_request(
             )
         }
     };
-    let model_hash = model_lookup_hash(&binding);
+    let model_hash = inherited
+        .as_ref()
+        .map(|selection| selection.model.model_id.as_str())
+        .unwrap_or_else(|| model_lookup_hash(&binding));
     let model = match state.store.model(model_hash).await {
         Ok(Some(model)) => model,
         Ok(None) => {
@@ -471,10 +590,27 @@ async fn handle_request(
     };
     let provider_type = model.provider_type();
     let fallback_input_tokens = request.context_tokens;
-    let invocation = match to_invocation(request, &binding, &model) {
+    let selected_uid = request.requested_model.clone();
+    let mut invocation = match to_invocation(request, &binding, &model) {
         Ok(invocation) => invocation,
         Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
+    if let Some(selection) = inherited {
+        invocation.request.model = selection.model;
+        invocation.purpose = crate::model::CallPurpose::CompactionSummary;
+    } else {
+        let selection = crate::store::DevinSessionModel {
+            model_uid: selected_uid,
+            model: invocation.request.model.clone(),
+        };
+        if let Err(error) = state
+            .store
+            .set_devin_session_model(&session_id, Some(&selection))
+            .await
+        {
+            return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+        }
+    }
     let model_uid = binding.model_uid.clone();
     let cancellation = CancellationToken::new();
     let mut provider_stream = state.provider.stream(invocation, cancellation.clone());
@@ -541,6 +677,152 @@ fn authorized(headers: &HeaderMap, configured: &str) -> bool {
             .is_some_and(|value| value == configured)
 }
 
+/// Forwards `GetUserStatus` and appends reserved local models to the official
+/// picker. Any unexpected upstream shape is returned unchanged, so login,
+/// plan, quota and unknown account fields keep working.
+async fn forward_native_model_config(
+    state: &GatewayState,
+    settings: &DevinSettings,
+    mut parts: axum::http::request::Parts,
+    body: Body,
+    entries: &[super::directory::LocalModelEntry],
+    method: &str,
+) -> Response<Body> {
+    let response_started = std::time::Instant::now();
+    parts.headers.insert(
+        header::ACCEPT_ENCODING,
+        axum::http::HeaderValue::from_static("gzip"),
+    );
+    let response = forward_upstream(state, settings, parts, body).await;
+    let response = if response
+        .headers()
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|encoding| encoding.eq_ignore_ascii_case("gzip"))
+    {
+        let (mut response_parts, response_body) = response.into_parts();
+        let decoded = match to_bytes(response_body, MAX_BODY_SIZE).await {
+            Ok(bytes) => match wire::gunzip(&bytes) {
+                Ok(decoded) => decoded,
+                Err(error) => return protocol_error(StatusCode::BAD_GATEWAY, error.to_string()),
+            },
+            Err(error) => return protocol_error(StatusCode::BAD_GATEWAY, error.to_string()),
+        };
+        response_parts.headers.remove(header::CONTENT_ENCODING);
+        response_parts.headers.remove(header::CONTENT_LENGTH);
+        response_parts.headers.remove(header::ETAG);
+        response_parts.headers.remove("content-md5");
+        Response::from_parts(response_parts, Body::from(decoded))
+    } else {
+        response
+    };
+    if !response.status().is_success() {
+        return response;
+    }
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    tracing::debug!(
+        method,
+        status = %response.status(),
+        content_type,
+        local_model_count = entries.len(),
+        "Devin native model configuration received"
+    );
+    if !content_type.starts_with("application/proto")
+        && !content_type.starts_with("application/connect+proto")
+    {
+        return response;
+    }
+
+    let gateway_url = format!("http://127.0.0.1:{}", settings.local_api_port);
+    let local_models = match catalog::client_model_fields(entries, &gateway_url) {
+        Ok(models) => models,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                "cannot encode Devin native model entries; forwarding user status unchanged"
+            );
+            return response;
+        }
+    };
+    let default_uid = entries
+        .iter()
+        .find(|entry| entry.default)
+        .map(|entry| entry.uid.as_str());
+
+    let (mut response_parts, response_body) = response.into_parts();
+    let bytes = match to_bytes(response_body, MAX_BODY_SIZE).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return protocol_error(
+                StatusCode::BAD_GATEWAY,
+                format!("Devin user status could not be read: {error}"),
+            )
+        }
+    };
+    tracing::debug!(
+        method,
+        bytes = bytes.len(),
+        elapsed_ms = response_started.elapsed().as_millis(),
+        "Devin native model response body read"
+    );
+    let content_encoding = response_parts
+        .headers
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok());
+    let rewritten =
+        wire::rewrite_response_body(&bytes, &content_type, content_encoding, |payload| {
+            if method == "GetCliTeamSettings" {
+                return team_settings::with_local_models(payload, entries);
+            }
+            let rewritten = if is_model_catalog_method(method) {
+                catalog::with_local_models(
+                    payload,
+                    &local_models,
+                    default_uid.filter(|_| catalog_has_default_override(method)),
+                    matches!(method, "GetCascadeModelConfigs"),
+                )?
+            } else {
+                user_status::with_local_models(payload, &local_models, default_uid)?
+            };
+            let harnesses =
+                super::harness::local_assignments(&rewritten, method == "GetUserStatus")?;
+            state.assignments.replace_harnesses(harnesses);
+            Ok(rewritten)
+        });
+    let rewritten = match rewritten {
+        Ok(rewritten) => rewritten,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                "cannot rewrite Devin user status; forwarding the official response unchanged"
+            );
+            return Response::from_parts(response_parts, Body::from(bytes));
+        }
+    };
+    if rewritten == bytes {
+        return Response::from_parts(response_parts, Body::from(bytes));
+    }
+    response_parts.headers.remove(header::CONTENT_LENGTH);
+    response_parts.headers.remove(header::ETAG);
+    response_parts.headers.remove("content-md5");
+    response_parts.headers.insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    tracing::debug!(
+        method,
+        bytes = rewritten.len(),
+        elapsed_ms = response_started.elapsed().as_millis(),
+        "Devin native model response ready"
+    );
+    Response::from_parts(response_parts, Body::from(rewritten))
+}
+
 /// Forwards one request to the configured upstream and streams its answer back
 /// unchanged, so the client keeps talking to its own service for everything the
 /// gateway does not own. Hop-by-hop headers are dropped; the rest travels as-is
@@ -557,6 +839,15 @@ async fn forward_upstream(
     parts: axum::http::request::Parts,
     body: Body,
 ) -> Response<Body> {
+    let rpc_method = parts
+        .uri
+        .path()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+    let request_started = std::time::Instant::now();
+    tracing::debug!(method = rpc_method, "Devin upstream RPC started");
     let base = settings.upstream_api_url.trim().trim_end_matches('/');
     let path = parts
         .uri
@@ -591,7 +882,7 @@ async fn forward_upstream(
         for (name, value) in parts.headers.iter() {
             if matches!(
                 name.as_str(),
-                "host" | "connection" | "content-length" | "transfer-encoding" | "accept-encoding"
+                "host" | "connection" | "content-length" | "transfer-encoding"
             ) || name.as_str() == TOKEN_HEADER
             {
                 continue;
@@ -628,6 +919,12 @@ async fn forward_upstream(
     };
 
     let status = response.status();
+    tracing::debug!(
+        method = rpc_method,
+        %status,
+        elapsed_ms = request_started.elapsed().as_millis(),
+        "Devin upstream RPC response received"
+    );
     let mut builder = Response::builder().status(status);
     for (name, value) in response.headers().iter() {
         if matches!(
@@ -804,6 +1101,466 @@ mod tests {
     /// that answers, so the double stays empty on purpose.
     struct IdleProvider;
 
+    struct InvocationProvider(Arc<parking_lot::Mutex<Vec<crate::model::ModelInvocation>>>);
+
+    impl Provider for InvocationProvider {
+        fn stream(
+            &self,
+            invocation: crate::model::ModelInvocation,
+            _cancellation: CancellationToken,
+        ) -> crate::provider::ProviderStream {
+            self.0.lock().push(invocation);
+            Box::pin(futures_util::stream::empty())
+        }
+    }
+
+    #[tokio::test]
+    async fn native_catalog_and_assignment_share_the_official_harness_configuration() {
+        use tower::ServiceExt;
+
+        let catalog = wire::serialize_fields(&[wire::Field::bytes(
+            1,
+            wire::serialize_fields(&[
+                wire::Field::bytes(1, "Official Sol"),
+                wire::Field::bytes(22, "gpt-6-1-sol-medium"),
+                wire::Field::bytes(
+                    23,
+                    wire::serialize_fields(&[
+                        wire::Field::bytes(23, "gpt-6-1-sol"),
+                        wire::Field::bytes(20, "gpt-5p6-codex"),
+                        wire::Field::bytes(20, "gpt-5p6"),
+                    ])
+                    .unwrap(),
+                ),
+            ])
+            .unwrap(),
+        )])
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(any(move || {
+                    let catalog = catalog.clone();
+                    async move {
+                        Response::builder()
+                            .header(header::CONTENT_TYPE, "application/proto")
+                            .body(Body::from(catalog))
+                            .unwrap()
+                    }
+                })),
+            )
+            .into_future(),
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("harness.db").display()
+        ))
+        .await
+        .unwrap();
+        let input = serde_json::from_value(serde_json::json!({
+            "display_name": "My Sol",
+            "type": "openai",
+            "base_url": "http://127.0.0.1:1",
+            "api_key": "local-test",
+            "tooltip_data": "Native harness regression",
+            "model_id": "gpt-6.1-sol"
+        }))
+        .unwrap();
+        let model = store.create_model(&input).await.unwrap();
+        let uid = "haxsd-byok:sol";
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                bindings: vec![DevinModelBinding::new(uid, model.model_hash)],
+                default_model_uid: Some(uid.into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+        let router = DevinGateway::router(&state);
+        let directory_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetCliModelConfigs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(directory_response.status(), StatusCode::OK);
+        assert_eq!(
+            state.assignments.harnesses_for_uid(uid),
+            ["gpt-5p6-codex", "gpt-5p6"]
+        );
+        let assignment = router
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/AssignModel")
+                    .body(Body::from(
+                        wire::serialize_fields(&[wire::Field::bytes(2, uid)]).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(assignment.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        let outer = wire::parse_fields(&body).unwrap();
+        let wire::FieldValue::Bytes(inner) = &outer[0].value else {
+            panic!("model assignment")
+        };
+        let fields = wire::parse_fields(inner).unwrap();
+        let harnesses = wire::all_fields(&fields, 3).cloned().collect::<Vec<_>>();
+        assert_eq!(
+            harnesses,
+            [
+                wire::Field::bytes(3, "gpt-5p6-codex"),
+                wire::Field::bytes(3, "gpt-5p6"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn native_compaction_inherits_only_its_sessions_selection_after_restart() {
+        use tower::ServiceExt;
+
+        let upstream_bodies = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let forwarded = upstream_bodies.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(any(move |body: Bytes| {
+                    forwarded.lock().push(body);
+                    async { "official-response" }
+                })),
+            )
+            .into_future(),
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let database_url = format!(
+            "sqlite://{}",
+            directory.path().join("sessions.db").display()
+        );
+        let store = Store::connect(&database_url).await.unwrap();
+        let mut bindings = Vec::new();
+        for (uid, model_id) in [("haxsd-byok:sol", "sol"), ("haxsd-byok:terra", "terra")] {
+            let model = store
+                .create_model(
+                    &serde_json::from_value(serde_json::json!({
+                        "display_name": model_id,
+                        "type": "openai",
+                        "base_url": "http://127.0.0.1:1",
+                        "api_key": "local-test",
+                        "tooltip_data": "Session routing regression",
+                        "model_id": model_id,
+                        "reasoning_effort": "max",
+                        "context_window_tokens": 500000,
+                        "max_completion_tokens": 8192
+                    }))
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+            bindings.push(DevinModelBinding::new(uid, model.model_hash));
+        }
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                bindings,
+                default_model_uid: Some("haxsd-byok:terra".into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let captured = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let make_state = |store: Store| GatewayState {
+            clients: NetworkClients::new(store.clone()),
+            store,
+            provider: Arc::new(InvocationProvider(captured.clone())),
+            assignments: Arc::new(AssignmentSessions::new()),
+        };
+        let native_request = |uid: &str, session: &str, cascade: &str| {
+            let payload = wire::serialize_fields(&[
+                wire::Field::varint(7, 5),
+                wire::Field::bytes(16, cascade),
+                wire::Field::bytes(21, uid),
+                wire::Field::bytes(28, session),
+            ])
+            .unwrap();
+            Request::builder()
+                .method(Method::POST)
+                .uri("/exa.api_server_pb.ApiServerService/GetChatMessage")
+                .body(Body::from(payload))
+                .unwrap()
+        };
+        let state = make_state(store);
+        let router = DevinGateway::router(&state);
+        for (uid, session) in [
+            ("haxsd-byok:sol~low~128000", "session-sol"),
+            ("haxsd-byok:terra~high~256000", "session-terra"),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(native_request(uid, session, "chat-cascade"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        drop(router);
+        drop(state);
+        let restored = make_state(Store::connect(&database_url).await.unwrap());
+        let router = DevinGateway::router(&restored);
+        for session in ["session-sol", "session-terra"] {
+            let response = router
+                .clone()
+                .oneshot(native_request(
+                    "compactor",
+                    session,
+                    "different-compression-cascade",
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        {
+            let invocations = captured.lock();
+            assert_eq!(
+                invocations.len(),
+                4,
+                "both summaries must reach the own provider"
+            );
+            for (chat, summary) in [(0, 2), (1, 3)] {
+                assert_eq!(
+                    invocations[chat].request.model,
+                    invocations[summary].request.model
+                );
+                assert_eq!(
+                    invocations[summary].purpose,
+                    crate::model::CallPurpose::CompactionSummary
+                );
+            }
+            assert_eq!(
+                invocations[2].request.model.reasoning.effort.as_deref(),
+                Some("low")
+            );
+            assert_eq!(
+                invocations[2].request.model.context_window_tokens,
+                Some(128000)
+            );
+            assert_eq!(
+                invocations[3].request.model.reasoning.effort.as_deref(),
+                Some("high")
+            );
+            assert_eq!(
+                invocations[3].request.model.context_window_tokens,
+                Some(256000)
+            );
+        }
+        for uid in ["haxsd-byok:sol~high~256000", "compactor"] {
+            let response = router
+                .clone()
+                .oneshot(native_request(uid, "session-sol", "after-model-switch"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        {
+            let invocations = captured.lock();
+            assert_eq!(invocations.len(), 6);
+            assert_eq!(invocations[4].request.model, invocations[5].request.model);
+            assert_eq!(
+                invocations[5].request.model.reasoning.effort.as_deref(),
+                Some("high")
+            );
+            assert_eq!(
+                invocations[0].request.model.reasoning.effort.as_deref(),
+                Some("low")
+            );
+        }
+        for (uid, session) in [
+            ("official-sol", "session-sol"),
+            ("compactor", "session-sol"),
+            ("compactor", "unknown-session"),
+            ("compactor", ""),
+        ] {
+            let response = router
+                .clone()
+                .oneshot(native_request(uid, session, "official-cascade"))
+                .await
+                .unwrap();
+            assert_eq!(
+                to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap(),
+                "official-response"
+            );
+        }
+        assert_eq!(captured.lock().len(), 6);
+        assert_eq!(upstream_bodies.lock().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn native_parameter_assignments_keep_each_request_and_reject_conflicts() {
+        use tower::ServiceExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("parameters.db").display()
+        ))
+        .await
+        .unwrap();
+        let input = serde_json::from_value(serde_json::json!({
+            "display_name": "Parameter test",
+            "type": "openai",
+            "base_url": "http://127.0.0.1:1",
+            "api_key": "local-test",
+            "tooltip_data": "Local parameter regression",
+            "model_id": "parameter-test",
+            "openai_endpoint": "/v1/chat/completions",
+            "reasoning_effort": "max",
+            "context_window_tokens": 500000,
+            "max_completion_tokens": 8192
+        }))
+        .unwrap();
+        let model = store.create_model(&input).await.unwrap();
+        let base = "haxsd-byok:parameters";
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: "http://127.0.0.1:1".into(),
+                bindings: vec![DevinModelBinding::new(base, model.model_hash)],
+                default_model_uid: Some(base.into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let captured = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(InvocationProvider(captured.clone())),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+        let router = DevinGateway::router(&state);
+        let first = state.assignments.issue("haxsd-byok:parameters~low~128000");
+        let second = state.assignments.issue("haxsd-byok:parameters~high~256000");
+        for (token, header) in [(&first.token, true), (&second.token, false)] {
+            let mut builder = Request::builder()
+                .method(Method::POST)
+                .uri("/exa.api_server_pb.ApiServerService/GetChatMessage");
+            let payload = if header {
+                builder = builder.header(header::AUTHORIZATION, format!("Bearer {token}"));
+                Vec::new()
+            } else {
+                wire::serialize_fields(&[wire::Field::bytes(26, token)]).unwrap()
+            };
+            let response = router
+                .clone()
+                .oneshot(builder.body(Body::from(payload)).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+        let payload = wire::serialize_fields(&[wire::Field::bytes(21, &second.uid)]).unwrap();
+        let conflict = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetChatMessage")
+                    .header(header::AUTHORIZATION, format!("Bearer {}", first.token))
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(conflict.into_body(), MAX_BODY_SIZE).await.unwrap();
+        assert_eq!(body[0], 2);
+        let error: serde_json::Value = serde_json::from_slice(&body[5..]).unwrap();
+        assert_eq!(error["error"]["code"], "invalid_argument");
+        assert_eq!(
+            error["error"]["message"],
+            "Devin model does not match its assignment"
+        );
+        let payload = wire::serialize_fields(&[
+            wire::Field::bytes(21, &second.uid),
+            wire::Field::bytes(26, &first.token),
+        ])
+        .unwrap();
+        let conflict = router
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/GetChatMessage")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(conflict.into_body(), MAX_BODY_SIZE).await.unwrap();
+        assert_eq!(body[0], 2);
+        let error: serde_json::Value = serde_json::from_slice(&body[5..]).unwrap();
+        assert_eq!(error["error"]["code"], "invalid_argument");
+        assert_eq!(
+            error["error"]["message"],
+            "Devin model does not match its assignment"
+        );
+        let invocations = captured.lock();
+        assert_eq!(invocations.len(), 2);
+        assert_eq!(
+            invocations[0].request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            invocations[0].request.model.context_window_tokens,
+            Some(128_000)
+        );
+        assert_eq!(
+            invocations[1].request.model.reasoning.effort.as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            invocations[1].request.model.context_window_tokens,
+            Some(256_000)
+        );
+    }
+
     impl Provider for IdleProvider {
         fn stream(
             &self,
@@ -950,6 +1707,204 @@ mod tests {
             .unwrap();
         assert!(!body.is_empty());
         assert!(!cancellation.is_cancelled(), "正常结束时不能误发取消信号");
+    }
+
+    #[tokio::test]
+    async fn native_directory_fetches_compressed_upstream_for_identity_clients() {
+        use tower::ServiceExt;
+
+        for status in [StatusCode::OK, StatusCode::FORBIDDEN] {
+            let official = if status.is_success() {
+                wire::serialize_fields(&[wire::Field::bytes(
+                    1,
+                    wire::serialize_fields(&[wire::Field::bytes(13, "official-plan")]).unwrap(),
+                )])
+                .unwrap()
+            } else {
+                br#"{"code":"permission_denied","message":"official denial"}"#.to_vec()
+            };
+            let compressed = wire::gzip(&official).unwrap();
+            let received_encoding: Arc<parking_lot::Mutex<Option<String>>> = Arc::default();
+            let recorded_encoding = received_encoding.clone();
+            let upstream = Router::new().fallback(any(move |request: Request<Body>| {
+                *recorded_encoding.lock() = request
+                    .headers()
+                    .get(header::ACCEPT_ENCODING)
+                    .and_then(|value| value.to_str().ok())
+                    .map(str::to_owned);
+                let body = compressed.clone();
+                async move {
+                    Response::builder()
+                        .status(status)
+                        .header(
+                            header::CONTENT_TYPE,
+                            if status.is_success() {
+                                "application/proto"
+                            } else {
+                                "application/json"
+                            },
+                        )
+                        .header(header::CONTENT_ENCODING, "gzip")
+                        .body(Body::from(body))
+                        .unwrap()
+                }
+            }));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            tokio::spawn(axum::serve(listener, upstream).into_future());
+            let directory = tempfile::tempdir().unwrap();
+            let store = Store::connect(&format!(
+                "sqlite://{}",
+                directory.path().join("native-compression.db").display()
+            ))
+            .await
+            .unwrap();
+            store
+                .set_proxy_settings(crate::store::ProxySettingsInput {
+                    mode: crate::store::ProxyMode::Direct,
+                    address: String::new(),
+                    auth_enabled: false,
+                    username: String::new(),
+                    password: None,
+                })
+                .await
+                .unwrap();
+            store
+                .set_devin_settings(DevinSettings {
+                    enabled: true,
+                    upstream_api_url: format!("http://{address}"),
+                    bindings: vec![DevinModelBinding::new("haxsd-byok:model-a", "hash-a")],
+                    ..DevinSettings::default()
+                })
+                .await
+                .unwrap();
+            let state = GatewayState {
+                store: store.clone(),
+                provider: Arc::new(IdleProvider),
+                assignments: Arc::new(AssignmentSessions::new()),
+                clients: NetworkClients::new(store),
+            };
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/exa.seat_management_pb.SeatManagementService/GetUserStatus")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(received_encoding.lock().as_deref(), Some("gzip"));
+            assert_eq!(response.status(), status);
+            assert!(!response.headers().contains_key(header::CONTENT_ENCODING));
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            if status.is_success() {
+                let response_fields = wire::parse_fields(&body).unwrap();
+                let wire::FieldValue::Bytes(user) =
+                    &wire::first_field(&response_fields, 1).unwrap().value
+                else {
+                    panic!("missing real user status")
+                };
+                let user_fields = wire::parse_fields(user).unwrap();
+                assert_eq!(
+                    wire::first_field(&user_fields, 13),
+                    Some(&wire::Field::bytes(13, "official-plan"))
+                );
+                let wire::FieldValue::Bytes(catalog) =
+                    &wire::first_field(&user_fields, 33).unwrap().value
+                else {
+                    panic!("missing native model directory")
+                };
+                let catalog_fields = wire::parse_fields(catalog).unwrap();
+                assert_eq!(
+                    catalog::client_model_uid(wire::first_field(&catalog_fields, 1).unwrap()),
+                    Some("haxsd-byok:model-a".into())
+                );
+            } else {
+                assert_eq!(body, official);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarding_preserves_compression_negotiation_and_encoded_response() {
+        use std::io::Write;
+        use tower::ServiceExt;
+
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(b"official-user-status").unwrap();
+        let compressed = encoder.finish().unwrap();
+        let upstream_body = compressed.clone();
+        let received_encoding: Arc<parking_lot::Mutex<Option<String>>> = Arc::default();
+        let recorded_encoding = received_encoding.clone();
+        let upstream = Router::new().fallback(any(move |request: Request<Body>| {
+            *recorded_encoding.lock() = request
+                .headers()
+                .get(header::ACCEPT_ENCODING)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            let body = upstream_body.clone();
+            async move {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/proto")
+                    .header(header::CONTENT_ENCODING, "gzip")
+                    .body(Body::from(body))
+                    .unwrap()
+            }
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(axum::serve(listener, upstream).into_future());
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("compression.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://{address}"),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.seat_management_pb.SeatManagementService/GetUserStatus")
+                    .header(header::ACCEPT_ENCODING, "gzip")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(received_encoding.lock().as_deref(), Some("gzip"));
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
+        assert_eq!(
+            to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap(),
+            compressed
+        );
     }
 
     /// Sign-in and account calls must reach the client's own service, otherwise a
@@ -1172,6 +2127,22 @@ mod tests {
         use std::io::Write;
         use tower::ServiceExt;
 
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(any(|| async {
+                    let mut body = wire::frame(&[], false).unwrap();
+                    body.extend(wire::end_frame(None));
+                    Response::builder()
+                        .header(header::CONTENT_TYPE, "application/connect+proto")
+                        .body(Body::from(body))
+                        .unwrap()
+                })),
+            )
+            .into_future(),
+        );
         let directory = tempfile::tempdir().unwrap();
         let store = crate::store::Store::connect(&format!(
             "sqlite://{}",
@@ -1182,7 +2153,7 @@ mod tests {
         store
             .set_devin_settings(DevinSettings {
                 enabled: true,
-                upstream_api_url: "http://127.0.0.1:1".into(),
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
                 bindings: vec![DevinModelBinding {
                     enabled: true,
                     ..DevinModelBinding::new("devin-sonnet", "model-hash")
@@ -1192,6 +2163,16 @@ mod tests {
             .await
             .unwrap();
         let clients = NetworkClients::new(store.clone());
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
         let state = GatewayState {
             store,
             provider: Arc::new(IdleProvider),
@@ -1415,10 +2396,38 @@ mod tests {
     /// 新版客户端在主目录之外还调用 ForSite、Command 与 Cascade 变体。它们都用
     /// `client_model_configs`（字段 1）；Cascade 与 CLI 还会读字段 3 的默认模型。
     #[tokio::test]
-    async fn every_current_catalog_rpc_returns_the_local_model_list() {
+    async fn official_uid_bindings_do_not_replace_the_official_catalog() {
         use axum::body::to_bytes as read_body;
         use tower::ServiceExt;
 
+        let upstream_model = wire::serialize_fields(&[
+            wire::Field::bytes(1, "Official model"),
+            wire::Field::bytes(22, "devin-sonnet"),
+        ])
+        .unwrap();
+        let upstream_catalog = wire::serialize_fields(&[
+            wire::Field::bytes(1, upstream_model),
+            wire::Field::bytes(99, "official-unknown-field"),
+        ])
+        .unwrap();
+        let expected = upstream_catalog.clone();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        tokio::spawn(
+            axum::serve(
+                listener,
+                Router::new().fallback(any(move || {
+                    let body = upstream_catalog.clone();
+                    async move {
+                        Response::builder()
+                            .header(header::CONTENT_TYPE, "application/proto")
+                            .body(Body::from(body))
+                            .unwrap()
+                    }
+                })),
+            )
+            .into_future(),
+        );
         let directory = tempfile::tempdir().unwrap();
         let store = crate::store::Store::connect(&format!(
             "sqlite://{}",
@@ -1429,6 +2438,7 @@ mod tests {
         store
             .set_devin_settings(DevinSettings {
                 enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
                 bindings: vec![DevinModelBinding::new("devin-sonnet", "model-hash")],
                 default_model_uid: Some("devin-sonnet".into()),
                 ..DevinSettings::default()
@@ -1441,14 +2451,25 @@ mod tests {
             assignments: Arc::new(AssignmentSessions::new()),
             clients: NetworkClients::new(store),
         };
+        state
+            .store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
 
-        for (method, has_default_override) in [
-            ("GetCascadeModelConfigs", true),
-            ("GetCascadeModelConfigsForSite", false),
-            ("GetCommandModelConfigs", false),
-            ("GetCommandModelConfigsForSite", false),
-            ("GetCliModelConfigs", true),
-            ("GetCliModelConfigsForSite", false),
+        for method in [
+            "GetCascadeModelConfigs",
+            "GetCascadeModelConfigsForSite",
+            "GetCommandModelConfigs",
+            "GetCommandModelConfigsForSite",
+            "GetCliModelConfigs",
+            "GetCliModelConfigsForSite",
         ] {
             let response = DevinGateway::router(&state)
                 .oneshot(
@@ -1464,25 +2485,7 @@ mod tests {
             let body = read_body(response.into_body(), MAX_BODY_SIZE)
                 .await
                 .unwrap();
-            let fields = wire::parse_fields(&body).unwrap();
-            let models = wire::all_fields(&fields, 1).collect::<Vec<_>>();
-            assert_eq!(models.len(), 1, "{method} must return one local model");
-            let wire::FieldValue::Bytes(model) = &models[0].value else {
-                panic!("{method} model field is not a message");
-            };
-            let model = wire::parse_fields(model).unwrap();
-            assert!(
-                model.iter().any(|field| {
-                    field.number == 22
-                        && field.value == wire::FieldValue::Bytes(b"devin-sonnet".to_vec())
-                }),
-                "{method} must carry the mapped UID"
-            );
-            assert_eq!(
-                wire::first_field(&fields, 3).is_some(),
-                has_default_override,
-                "{method} default-override field mismatch"
-            );
+            assert_eq!(body.as_ref(), expected.as_slice(), "{method}");
         }
     }
 
@@ -1515,17 +2518,16 @@ mod tests {
             clients: NetworkClients::new(store),
         };
 
-        for method in [
-            "CheckChatCapacity",
-            "CheckUserMessageRateLimit",
-            "GetModelStatuses",
-        ] {
+        for method in ["CheckChatCapacity", "CheckUserMessageRateLimit"] {
             let response = DevinGateway::router(&state)
                 .oneshot(
                     Request::builder()
                         .method(Method::POST)
                         .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
-                        .body(Body::from("capacity-request"))
+                        .body(Body::from(
+                            wire::serialize_fields(&[wire::Field::bytes(3, "devin-sonnet")])
+                                .unwrap(),
+                        ))
                         .unwrap(),
                 )
                 .await
@@ -1535,10 +2537,6 @@ mod tests {
                 .await
                 .unwrap();
             let fields = wire::parse_fields(&body).unwrap();
-            if method == "GetModelStatuses" {
-                assert!(fields.is_empty(), "local models need no warning statuses");
-                continue;
-            }
             assert_eq!(
                 wire::first_field(&fields, 1),
                 Some(&wire::Field::varint(1, 1)),
@@ -1628,5 +2626,322 @@ mod tests {
             "第一次连接失败后必须按新配置重试一次"
         );
         assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn native_models_keep_official_state_and_join_the_cli_allowance() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let official_catalog = wire::serialize_fields(&[
+            wire::Field::bytes(
+                1,
+                wire::serialize_fields(&[
+                    wire::Field::bytes(1, "Official model"),
+                    wire::Field::bytes(22, "swe-1-6-slow"),
+                ])
+                .unwrap(),
+            ),
+            wire::Field::bytes(
+                2,
+                wire::serialize_fields(&[
+                    wire::Field::bytes(1, "Recommended"),
+                    wire::Field::bytes(
+                        2,
+                        wire::serialize_fields(&[wire::Field::bytes(2, "Official model")]).unwrap(),
+                    ),
+                ])
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+        let user = wire::serialize_fields(&[
+            wire::Field::varint(1, 0),
+            wire::Field::bytes(13, "real-plan-and-quota"),
+            wire::Field::bytes(33, &official_catalog),
+            wire::Field::fixed32(91, [9, 8, 7, 6]),
+        ])
+        .unwrap();
+        let official_response = wire::serialize_fields(&[
+            wire::Field::bytes(1, user),
+            wire::Field::bytes(2, "real-plan-info"),
+        ])
+        .unwrap();
+
+        let team_fields = vec![
+            wire::Field::varint(1, 1),
+            wire::Field::bytes(7, "swe-1-6-slow"),
+            wire::Field::bytes(9, "Read"),
+            wire::Field::bytes(10, "Exec"),
+            wire::Field::varint(19, 2),
+            wire::Field::bytes(26, "swe-1-6-slow"),
+            wire::Field::fixed32(99, [3, 4, 5, 6]),
+        ];
+        let team_response = wire::serialize_fields(&team_fields).unwrap();
+        let upstream_team_response = team_response.clone();
+        let upstream = Router::new().fallback(any(move |request: Request<Body>| {
+            let response = if request.uri().path().ends_with("/GetCliTeamSettings") {
+                upstream_team_response.clone()
+            } else if is_model_catalog_method(request.uri().path().rsplit('/').next().unwrap()) {
+                official_catalog.clone()
+            } else {
+                official_response.clone()
+            };
+            async move {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/proto")
+                    .body(Body::from(response))
+                    .unwrap()
+            }
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_port = listener.local_addr().unwrap().port();
+        tokio::spawn(axum::serve(listener, upstream).into_future());
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::store::Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("user-status.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                bindings: vec![
+                    DevinModelBinding::new("swe-1-6-slow", "hash-official"),
+                    DevinModelBinding {
+                        display_name: "My model A".into(),
+                        ..DevinModelBinding::new("haxsd-byok:model-a", "hash-a")
+                    },
+                    DevinModelBinding {
+                        display_name: "My model B".into(),
+                        ..DevinModelBinding::new("haxsd-byok:model-b", "hash-b")
+                    },
+                ],
+                default_model_uid: Some("haxsd-byok:model-a".into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.seat_management_pb.SeatManagementService/GetUserStatus")
+                    .body(Body::from(wire::serialize_fields(&[]).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = read_body(response.into_body(), MAX_BODY_SIZE)
+            .await
+            .unwrap();
+        let response = wire::parse_fields(&body).unwrap();
+        assert_eq!(
+            wire::first_field(&response, 2),
+            Some(&wire::Field::bytes(2, "real-plan-info")),
+            "plan info must survive"
+        );
+        let wire::FieldValue::Bytes(user) = &wire::first_field(&response, 1).unwrap().value else {
+            panic!("user status must be a message")
+        };
+        let user = wire::parse_fields(user).unwrap();
+        assert_eq!(
+            user.iter()
+                .filter(|field| field.number != 33)
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![
+                wire::Field::varint(1, 0),
+                wire::Field::bytes(13, "real-plan-and-quota"),
+                wire::Field::fixed32(91, [9, 8, 7, 6]),
+            ],
+            "official account fields must stay untouched"
+        );
+        let wire::FieldValue::Bytes(catalog) = &wire::first_field(&user, 33).unwrap().value else {
+            panic!("catalog must be a message")
+        };
+        let catalog = wire::parse_fields(catalog).unwrap();
+        let uids = wire::all_fields(&catalog, 1)
+            .map(|field| {
+                let wire::FieldValue::Bytes(model) = &field.value else {
+                    panic!("model must be a message")
+                };
+                let model = wire::parse_fields(model).unwrap();
+                let wire::FieldValue::Bytes(uid) = &wire::first_field(&model, 22).unwrap().value
+                else {
+                    panic!("model UID must be bytes")
+                };
+                String::from_utf8(uid.clone()).unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            uids,
+            vec!["swe-1-6-slow", "haxsd-byok:model-a", "haxsd-byok:model-b"]
+        );
+
+        for method in [
+            "GetCascadeModelConfigs",
+            "GetCascadeModelConfigsForSite",
+            "GetCommandModelConfigs",
+            "GetCommandModelConfigsForSite",
+            "GetCliModelConfigs",
+            "GetCliModelConfigsForSite",
+        ] {
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let bytes = read_body(response.into_body(), MAX_BODY_SIZE)
+                .await
+                .unwrap();
+            let fields = wire::parse_fields(&bytes).unwrap();
+            let uids = wire::all_fields(&fields, 1)
+                .filter_map(catalog::client_model_uid)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                uids,
+                ["swe-1-6-slow", "haxsd-byok:model-a", "haxsd-byok:model-b"],
+                "{method} must preserve official models and add local models"
+            );
+        }
+
+        for with_native_models in [true, false] {
+            if !with_native_models {
+                let mut settings = state.store.devin_settings().await.unwrap();
+                settings
+                    .bindings
+                    .retain(|binding| !is_native_model_uid(&binding.model_uid));
+                settings.default_model_uid = Some("swe-1-6-slow".into());
+                state.store.set_devin_settings(settings).await.unwrap();
+            }
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri("/exa.seat_management_pb.SeatManagementService/GetCliTeamSettings")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = read_body(response.into_body(), MAX_BODY_SIZE)
+                .await
+                .unwrap();
+            let mut expected = team_fields.clone();
+            if with_native_models {
+                expected.extend([
+                    wire::Field::bytes(7, "haxsd-byok:model-a"),
+                    wire::Field::bytes(7, "haxsd-byok:model-b"),
+                ]);
+            } else {
+                assert_eq!(body.as_ref(), team_response.as_slice());
+            }
+            assert_eq!(wire::parse_fields(&body).unwrap(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn official_requests_stay_upstream_even_when_prompt_mentions_a_local_uid() {
+        use axum::body::to_bytes as read_body;
+        use tower::ServiceExt;
+
+        let (upstream_port, requests) = answering_upstream().await;
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("official.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled: true,
+                upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
+                bindings: vec![DevinModelBinding::new("haxsd-byok:model-a", "hash-a")],
+                default_model_uid: Some("haxsd-byok:model-a".into()),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        let state = GatewayState {
+            store: store.clone(),
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients: NetworkClients::new(store),
+        };
+        let router = DevinGateway::router(&state);
+        for (method, model_field) in [
+            ("AssignModel", Some(2)),
+            ("GetChatMessage", Some(21)),
+            ("CheckChatCapacity", Some(3)),
+            ("CheckUserMessageRateLimit", Some(3)),
+            ("GetModelStatuses", None),
+        ] {
+            let mut fields = vec![wire::Field::bytes(
+                5,
+                wire::serialize_fields(&[wire::Field::bytes(3, "haxsd-byok:model-a")]).unwrap(),
+            )];
+            if let Some(model_field) = model_field {
+                fields.push(wire::Field::bytes(model_field, "swe-1-6-slow"));
+            }
+            let payload = wire::serialize_fields(&fields).unwrap();
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .body(Body::from(payload))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{method}");
+            let body = read_body(response.into_body(), MAX_BODY_SIZE)
+                .await
+                .unwrap();
+            assert_eq!(body.as_ref(), b"upstream-answer", "{method}");
+        }
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 5);
     }
 }

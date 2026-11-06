@@ -23,6 +23,7 @@ import { copyIcon, keyIcon, shieldIcon, terminalIcon } from "../../shared/ui/ico
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
+import { cursorAvailableModels } from "./cursorAvailableModels";
 
 /** 触发终端后的等待节奏：最长 30 秒，够一次 UAC 授权或一次密码输入。 */
 const CA_READY_POLL_INTERVAL_MS = 2_000;
@@ -41,7 +42,9 @@ const CA_READY_POLL_ATTEMPTS = 15;
  * library and in the call statistics.
  */
 export function CursorSettingsPage() {
-  const { cursorHarness, cursorBusy, models } = useAppStore();
+  const { cursorHarness, cursorBusy, models, plugins } = useAppStore();
+  const availableModels = cursorAvailableModels(models, plugins);
+  const modelCount = availableModels.length;
   const navigate = useNavigate();
   const message = useMessage();
   const [caCommand, setCaCommand] = useState<string | null>(null);
@@ -189,15 +192,15 @@ export function CursorSettingsPage() {
     {
       key: "models",
       label: t("模型库"),
-      detail: models.length > 0 ? t("{count} 个模型", { count: models.length }) : t("还没有模型"),
-      state: models.length > 0 ? "up" : "unknown",
+      detail: modelCount > 0 ? t("{count} 个模型", { count: modelCount }) : t("还没有模型"),
+      state: modelCount > 0 ? "up" : "unknown",
     },
   ];
-  const connected = takesOver && cursorTakenOver && caReady && models.length > 0;
+  const connected = takesOver && cursorTakenOver && caReady && modelCount > 0;
   const outstanding = (!takesOver
     ? [{ key: "mode", label: t("选择本地或混合模式"), hint: t("官方模式下本应用不介入；要用自己的模型就选这两个模式之一。") }]
     : [
-      !models.length && { key: "models", label: t("往模型库里加一个模型"), hint: t("Cursor 的请求需要一个本地模型来回答。") },
+      !modelCount && { key: "models", label: t("往模型库里加一个模型"), hint: t("Cursor 的请求需要一个本地模型来回答。") },
       !caReady && { key: "ca", label: t("初始化并信任本地 CA"), hint: t("没有证书就无法解析 Cursor 的 HTTPS 请求。") },
       caReady && !cursorTakenOver && {
         key: "takeover",
@@ -226,7 +229,7 @@ export function CursorSettingsPage() {
         description={!takesOver
           ? t("Cursor 直连官方：本应用不写代理配置、不注入账号，也不记录它的请求。")
           : connected
-            ? t("代理配置已写入；重启 Cursor 之后，请求会由模型库里的 {count} 个模型回答。", { count: models.length })
+            ? t("代理配置已写入；重启 Cursor 之后，请求会由模型库里的 {count} 个模型回答。", { count: modelCount })
             : foreignConfiguration
               ? t("Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要继续用本应用接管，请先关闭对方的接管，或在上方选择模式。")
               : outstanding[0]?.label ?? t("读取中…")}
@@ -337,15 +340,16 @@ export function CursorSettingsPage() {
 
     <TitledCard
       title={t("模型库")}
-      description={t("Cursor 用这里的模型回答请求；它和其他接入模块共用同一份配置。")}
+      description={t("包括手动配置和插件提供的可用模型；模型旁标明供应商或插件来源。")}
       action={<Button size="small" variant="primary" onClick={() => void navigate("/models")}>{t("管理模型")}</Button>}
     >
       <div className={styles.modelSummary}>
-        <span className={styles.modelCount}>{t("{count} 个模型", { count: models.length })}</span>
-        {models.length > 0
+        <span className={styles.modelCount}>{t("{count} 个模型", { count: modelCount })}</span>
+        {modelCount > 0
           ? <ul className={styles.modelNames}>
-            {models.slice(0, 4).map((model) => <li key={model.model_hash}>{model.display_name}</li>)}
-            {models.length > 4 && <li>{t("还有 {count} 个", { count: models.length - 4 })}</li>}
+            {availableModels.map((model) => <li key={model.id}>
+              {model.name}{model.source && <span> · {model.source}</span>}
+            </li>)}
           </ul>
           : <small>{t("模型库还是空的。Cursor 需要一个模型才能回答请求。")}</small>}
       </div>

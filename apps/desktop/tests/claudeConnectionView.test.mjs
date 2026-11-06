@@ -545,8 +545,6 @@ test("the CLI tab renders conflict messages and separates blocking items from hi
     error: null,
     keptAfterUndo: [],
     onChange: () => {},
-    onApply: () => {},
-    onUndo: () => {},
     onCopy: () => {},
     onOpenModels: () => {},
   }));
@@ -559,8 +557,7 @@ test("the CLI tab renders conflict messages and separates blocking items from hi
   assert.match(markup, /data-code="shell_env"/);
   assert.match(markup, /ANTHROPIC_DEFAULT_SONNET_MODEL_NAME/, "the settings.json preview includes display-name keys");
   assert.match(markup, /CLAUDE_CODE_ATTRIBUTION_HEADER/);
-  assert.match(markup, /应用接管<\/button>/, "the apply button stays rendered");
-  assert.match(markup, /disabled/, "apply is disabled while the client conflicts");
+  assert.match(markup, /Claude Code 的配置存在冲突/, "the blocked reason remains visible next to the client details");
 });
 
 test("a stale tab shows the expiry pill and the re-apply notice above the conflict list", async () => {
@@ -720,8 +717,7 @@ test("a running Claude Desktop is called out and cannot be applied", async () =>
   assert.match(markup, /先完全退出 Claude Desktop/);
   assert.match(markup, /Claude Desktop 正在运行，请先完全退出。/);
   assert.equal(gate.apply, false);
-  assert.match(markup, /应用接管<\/button>/);
-  assert.match(markup, /disabled/);
+  assert.doesNotMatch(markup, /应用接管<\/button>/, "takeover commands belong to the page header");
 });
 
 test("the real server takeover JSON parses without dropping conflicts, receipts or missing models", async () => {

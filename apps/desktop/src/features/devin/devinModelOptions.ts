@@ -1,7 +1,7 @@
 import type { DevinModelBinding, DevinModelChoice, Model } from "../../shared/api";
 import type { ModelSelectOption } from "../../shared/ui/ModelSelect";
 import { modelProviderName } from "../../shared/utils/modelProvider";
-import { effectiveBindingModelHash } from "./devinBindingEdits";
+import { effectiveBindingModelHash, isNativeModelUid } from "./devinBindingEdits";
 
 export function devinModelOptionLabel(model: Pick<Model, "display_name" | "tooltip_data" | "model_id" | "model_hash">): string {
   const displayName = model.display_name.trim();
@@ -25,7 +25,7 @@ export function devinModelOptions(models: Model[]): ModelSelectOption[] {
 /**
  * The explicit Devin default is a binding choice, not another model-library
  * choice: the label keeps the Devin-side name and the model that actually
- * answers. Disabled and context-compression mappings are not selectable.
+ * answers. Disabled mappings are not selectable.
  */
 export function devinDefaultModelOptions(
   bindings: DevinModelBinding[],
@@ -34,16 +34,18 @@ export function devinDefaultModelOptions(
 ): ModelSelectOption[] {
   const seen = new Set<string>();
   return bindings.flatMap((binding) => {
-    if (!binding.enabled || binding.kind !== "standard") return [];
+    if (!binding.enabled) return [];
     const uid = binding.model_uid.trim();
     if (!uid || seen.has(uid)) return [];
     seen.add(uid);
 
-    const choiceName = choices.find((choice) => choice.uid.trim() === uid)?.name.trim() || uid;
     const model = models.find(
       (candidate) => candidate.model_hash === effectiveBindingModelHash(binding),
     );
     const modelName = model ? devinModelOptionLabel(model) : t("模型已删除或不可用");
+    const choiceName = isNativeModelUid(uid)
+      ? model ? modelName : binding.display_name.trim() || modelName
+      : choices.find((choice) => choice.uid.trim() === uid)?.name.trim() || uid;
     return [{
       value: uid,
       label: choiceName === modelName ? modelName : `${choiceName} → ${modelName}`,

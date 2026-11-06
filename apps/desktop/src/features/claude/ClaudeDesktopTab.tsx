@@ -1,5 +1,4 @@
 import type { ClaudeDesktopTakeover, ClaudeSettings, ClaudeStatus, Model, ClaudeTakeoverConflict } from "../../shared/api";
-import { Button } from "../../shared/ui/Button";
 import { FormField } from "../../shared/ui/FormControls";
 import { Icon } from "../../shared/ui/Icon";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
@@ -41,8 +40,6 @@ export function ClaudeDesktopTab({
   error,
   keptAfterUndo,
   onDesktopModelsChange,
-  onApply,
-  onUndo,
   onCopy,
 }: {
   draft: ClaudeSettings | null;
@@ -56,8 +53,6 @@ export function ClaudeDesktopTab({
   /** 最近一次撤销里服务端保留的条目；没有撤销过或没有保留时为空。 */
   keptAfterUndo: ClaudeTakeoverConflict[];
   onDesktopModelsChange: (hashes: string[]) => void;
-  onApply: () => void;
-  onUndo: () => void;
   onCopy: (text: string, done: string) => void;
 }) {
   const guided = claudeDesktopGuided(takeover);
@@ -153,9 +148,6 @@ export function ClaudeDesktopTab({
             <strong>{t("撤销会移除本应用写入的内容")}</strong>
             <small>{t("撤销移除本应用写入的 profile 与 configLibrary 条目，并还原原来的 appliedId；你之后改过 profile 时会保留并报告，不会静默删除。")}</small>
           </div>
-          <div className={styles.actions}>
-            <Button disabled={busy} onClick={onUndo}>{busy ? t("撤销中…") : t("撤销接管")}</Button>
-          </div>
         </>}
       </section>
       : <section className={styles.section} aria-label={t("Desktop 模型列表")}>
@@ -219,15 +211,6 @@ export function ClaudeDesktopTab({
         </section>
 
         <div className={styles.actions}>
-          <Button
-            variant="primary"
-            disabled={!gate.apply || busy}
-            onClick={onApply}
-          >{busy ? t("应用中…") : t("应用接管")}</Button>
-          <Button
-            disabled={!gate.undo || busy}
-            onClick={onUndo}
-          >{busy ? t("撤销中…") : t("撤销接管")}</Button>
           {!gate.apply && gate.applyBlockedReason && <small>{gate.applyBlockedReason}</small>}
         </div>
       </section>}

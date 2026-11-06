@@ -143,7 +143,6 @@ export interface AppInfo {
   data_dir: string;
 }
 
-export type DevinBindingKind = "standard" | "context_compression";
 
 export interface DevinRoute {
   route_id: string;
@@ -158,7 +157,6 @@ export interface DevinModelBinding {
   display_name: string;
   context_window_tokens: number | null;
   enabled: boolean;
-  kind: DevinBindingKind;
   routes: DevinRoute[];
   active_route_id: string | null;
 }
@@ -378,7 +376,6 @@ export interface DevinHostReceipt {
 export interface DevinExtensionStatus {
   path: string | null;
   version: string;
-  supported_sha256: string;
   compatible: boolean;
   clean: boolean;
   patched: boolean;
@@ -1453,7 +1450,7 @@ export const api = {
   devinStatus: (signal?: AbortSignal) => request<unknown>("/devin/status", { signal }).then(requireDevinStatus),
   setDevinSettings: (settings: DevinSettings) => request<unknown>("/devin/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableDevinSettings(saved, true)),
   /** Without a path the server finds the Devin data directory itself. */
-  devinHostStatus: (path?: string, installRoot?: string) => request<DevinHostStatus>(`/harness/devin/host/status${devinHostQuery(path, installRoot)}`),
+  devinHostStatus: (path?: string, installRoot?: string, signal?: AbortSignal) => request<DevinHostStatus>(`/harness/devin/host/status${devinHostQuery(path, installRoot)}`, { signal }),
   /** The identifiers Devin itself asks for, read from the installed client. */
   devinModelUids: (installRoot?: string) => request<DevinModelUids>(`/harness/devin/model-uids${devinHostQuery(undefined, installRoot)}`),
   applyDevinHostConfiguration: (path?: string, installRoot?: string) => request<DevinHostApplyResult>("/harness/devin/host/apply", { method: "POST", body: devinHostBody(path, installRoot) }),

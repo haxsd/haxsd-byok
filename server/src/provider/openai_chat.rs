@@ -409,7 +409,7 @@ fn update_chat_tool(
         merge_chat_fragment(&mut tool.name, name);
     }
     if let Some(arguments) = arguments {
-        merge_chat_fragment(&mut tool.arguments, arguments);
+        merge_argument_fragment(&mut tool.arguments, arguments);
     }
 
     let mut events = Vec::new();
@@ -434,19 +434,37 @@ fn update_chat_tool(
 /// 上游有两种用法：多数只发增量，少数每个分片都重复下发完整的当前值（这个函数就是为后者
 /// 存在的）。判据只用"整串的前后包含"这种确定关系：
 ///   * 与当前值相同 —— 重复下发整串，忽略；
-///   * 当前值是分片的严格前缀 —— 分片是新的完整值，替换；
-///   * 分片是当前值的严格前缀 —— 分片是旧的完整值（迟到的重复），忽略；
-///   * 其余（含"分片恰好等于当前值的末尾"）—— 按增量追加。
+///   * 当前值是分片的严格前缀 —— 分片是新的完整值，追加多出来的后缀；
+///   * 其余 —— 一律按增量追加，包括恰好是已累积串前缀的短分片。
 ///
 /// 最后一条是重点：以前 `target.ends_with(fragment)` 会把合法的重复增量当重复下发吞掉
 /// （参数 JSON 里 `{`、`"`、`a` 这类片段挨着重复是常态），而更容易被重复下发的
 /// `arguments` 又完全没走这套归并，于是整串参数被拼两遍、拼出 `{...}{...}` 这种非法 JSON。
+///
+/// 另一条以前的分支把"分片是当前值的前缀"当成迟到的旧整串吞掉，这条同样吃合法的增量：
+/// 参数里数组和嵌套对象的每一个左花括号都恰好是已累积串的前缀，于是带嵌套对象的工具参数被
+/// 拼成 `[content"` 这种非法 JSON，只有扁平参数的工具看不出来。标识符（`call_id`、函数名）
+/// 仍然保留这条保护——它们整段下发，前缀重复只可能是旧值；工具参数则改走
+/// [`merge_argument_fragment`]，任何短分片都可能是真内容。
 fn merge_chat_fragment(target: &mut String, fragment: &str) {
-    if target.starts_with(fragment) {
+    merge_fragment(target, fragment, true);
+}
+
+/// 工具参数是流式 JSON 文档，左花括号、双引号、左方括号这类短分片本身就是内容，不能当成
+/// 旧整串丢掉。
+fn merge_argument_fragment(target: &mut String, fragment: &str) {
+    merge_fragment(target, fragment, false);
+}
+
+fn merge_fragment(target: &mut String, fragment: &str, ignore_older_snapshot: bool) {
+    if target.as_str() == fragment {
+        return;
+    }
+    if ignore_older_snapshot && target.starts_with(fragment) {
         return;
     }
     if fragment.starts_with(target.as_str()) {
-        *target = fragment.into();
+        target.push_str(&fragment[target.len()..]);
         return;
     }
     target.push_str(fragment);
@@ -725,5 +743,24 @@ mod tests {
         let mut target = "call-abc".to_string();
         merge_chat_fragment(&mut target, "call-");
         assert_eq!(target, "call-abc");
+    }
+
+    /// 带嵌套对象的参数分片：每一个左花括号都恰好是已累积串的前缀。把它们当旧整串丢掉，
+    /// 拼出来就是 `[content"` 这种非法 JSON。多选、批量操作这类工具都长这样，而扁平
+    /// 参数的单个对象工具走不到这条路径，所以以前只在复杂参数上暴露。
+    #[test]
+    fn nested_json_arguments_keep_their_opening_braces() {
+        let tools = chat_tools(&[
+            (Some("call-1"), Some("todo_write"), Some(r#"{"todos":["#)),
+            (None, None, Some("{")),
+            (None, None, Some(r#""content":"x","status":"pending""#)),
+            (None, None, Some("}")),
+            (None, None, Some("]}")),
+        ]);
+        assert_eq!(
+            tools[&0].arguments,
+            r#"{"todos":[{"content":"x","status":"pending"}]}"#
+        );
+        serde_json::from_str::<Value>(&tools[&0].arguments).expect("嵌套参数拼出来必须是合法 JSON");
     }
 }

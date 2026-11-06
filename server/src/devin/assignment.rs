@@ -36,6 +36,7 @@ pub struct AssignmentSessions {
 
 struct SessionState {
     tokens: HashMap<String, Assignment>,
+    harnesses: HashMap<String, Vec<String>>,
 }
 
 impl Default for AssignmentSessions {
@@ -56,6 +57,7 @@ impl AssignmentSessions {
         Self {
             inner: Arc::new(Mutex::new(SessionState {
                 tokens: HashMap::new(),
+                harnesses: HashMap::new(),
             })),
             ttl,
             clock: Arc::new(clock),
@@ -94,11 +96,29 @@ impl AssignmentSessions {
     }
 
     pub fn clear(&self) {
+        let mut state = self
+            .inner
+            .lock()
+            .expect("assignment session mutex poisoned");
+        state.tokens.clear();
+        state.harnesses.clear();
+    }
+
+    pub fn replace_harnesses(&self, harnesses: HashMap<String, Vec<String>>) {
         self.inner
             .lock()
             .expect("assignment session mutex poisoned")
-            .tokens
-            .clear();
+            .harnesses = harnesses;
+    }
+
+    pub fn harnesses_for_uid(&self, uid: &str) -> Vec<String> {
+        self.inner
+            .lock()
+            .expect("assignment session mutex poisoned")
+            .harnesses
+            .get(uid)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -260,12 +280,16 @@ fn scan_fields(
     }
 }
 
-pub fn assignment_token_response(assignment: &Assignment, harness_uid: &str) -> Result<Vec<u8>> {
-    let model_assignment = wire::serialize_fields(&[
+pub fn assignment_token_response(
+    assignment: &Assignment,
+    harness_uids: &[String],
+) -> Result<Vec<u8>> {
+    let mut fields = vec![
         wire::Field::bytes(1, &assignment.token),
         wire::Field::bytes(2, &assignment.uid),
-        wire::Field::bytes(3, harness_uid),
-    ])?;
+    ];
+    fields.extend(harness_uids.iter().map(|uid| wire::Field::bytes(3, uid)));
+    let model_assignment = wire::serialize_fields(&fields)?;
     wire::serialize_fields(&[wire::Field::bytes(1, model_assignment)])
 }
 
@@ -316,7 +340,9 @@ mod tests {
     fn assignment_response_uses_the_nested_model_assignment_message() {
         let sessions = AssignmentSessions::new();
         let assignment = sessions.issue("model-a");
-        let response = assignment_token_response(&assignment, "cursor-byok:model-a").unwrap();
+        let response =
+            assignment_token_response(&assignment, &["native-a".into(), "native-b".into()])
+                .unwrap();
         let outer = wire::parse_fields(&response).unwrap();
         assert_eq!(outer.len(), 1);
         assert_eq!(outer[0].number, 1);
@@ -326,7 +352,8 @@ mod tests {
         let inner = wire::parse_fields(inner).unwrap();
         assert_eq!(string_field(&inner, 1), assignment.token);
         assert_eq!(string_field(&inner, 2), "model-a");
-        assert_eq!(string_field(&inner, 3), "cursor-byok:model-a");
+        assert_eq!(string_field(&inner, 3), "native-a");
+        assert_eq!(wire::all_fields(&inner, 3).count(), 2);
     }
 
     /// 只有 UUID 形状的字段才值得当令牌查一次会话表：模型 UID 与二进制子消息都不该进锁。

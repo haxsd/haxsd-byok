@@ -53,14 +53,6 @@ impl Default for DevinSettings {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum DevinBindingKind {
-    #[default]
-    Standard,
-    ContextCompression,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct DevinRoute {
     #[serde(default)]
@@ -95,8 +87,6 @@ pub struct DevinModelBinding {
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default)]
-    pub kind: DevinBindingKind,
-    #[serde(default)]
     pub routes: Vec<DevinRoute>,
     #[serde(default)]
     pub active_route_id: Option<String>,
@@ -110,7 +100,6 @@ impl DevinModelBinding {
             display_name: String::new(),
             context_window_tokens: None,
             enabled: true,
-            kind: DevinBindingKind::default(),
             routes: Vec::new(),
             active_route_id: None,
         }
@@ -211,12 +200,6 @@ impl DevinSettings {
                 return Err(Error::Config(format!("duplicate Devin model UID: {uid}")));
             }
 
-            if binding.kind == DevinBindingKind::ContextCompression && !binding.routes.is_empty() {
-                return Err(Error::Config(format!(
-                    "Devin context compression binding {uid} must not define candidate routes"
-                )));
-            }
-
             let mut route_ids = HashSet::with_capacity(binding.routes.len());
             for route in &binding.routes {
                 let route_id = route.route_id.as_str();
@@ -273,11 +256,6 @@ impl DevinSettings {
                     "Devin default model must be enabled: {default_uid}"
                 )));
             }
-            if binding.kind != DevinBindingKind::Standard {
-                return Err(Error::Config(format!(
-                    "Devin default model must be a standard binding: {default_uid}"
-                )));
-            }
         }
         Ok(())
     }
@@ -300,11 +278,9 @@ impl DevinSettings {
         if uid.is_empty() {
             return None;
         }
-        self.bindings.iter().find(|binding| {
-            binding.enabled
-                && binding.kind == DevinBindingKind::Standard
-                && binding.model_uid.trim() == uid
-        })
+        self.bindings
+            .iter()
+            .find(|binding| binding.enabled && binding.model_uid.trim() == uid)
     }
 
     pub fn binding(&self, model_uid: &str) -> Option<&DevinModelBinding> {
@@ -312,6 +288,16 @@ impl DevinSettings {
         self.bindings
             .iter()
             .find(|binding| binding.enabled && binding.model_uid == model_uid)
+            .or_else(|| {
+                let base = variants::base_model_uid(model_uid);
+                (base != model_uid)
+                    .then(|| {
+                        self.bindings
+                            .iter()
+                            .find(|binding| binding.enabled && binding.model_uid == base)
+                    })
+                    .flatten()
+            })
     }
 }
 
@@ -350,13 +336,18 @@ pub const DEVIN_EXECUTION_ID_PREFIX: &str = "devin:";
 
 pub mod assignment;
 pub mod catalog;
+pub mod directory;
 pub mod gateway;
+mod harness;
 pub mod host_config;
 pub mod host_detect;
 pub mod host_patch;
 pub mod model_uids;
 pub mod request;
 pub mod response;
+mod team_settings;
+pub mod user_status;
+pub mod variants;
 pub mod wire;
 
 #[cfg(test)]
@@ -380,12 +371,10 @@ mod tests {
     }
 
     #[test]
-    fn default_model_must_name_an_enabled_standard_binding() {
+    fn default_model_must_name_an_enabled_binding() {
         let standard = DevinModelBinding::new("model-a", "hash-a");
-        let mut compression = DevinModelBinding::new("compact", "hash-c");
-        compression.kind = DevinBindingKind::ContextCompression;
         let base = DevinSettings {
-            bindings: vec![standard, compression],
+            bindings: vec![standard],
             ..DevinSettings::default()
         };
 
@@ -398,16 +387,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Devin default model UID not found"));
-
-        let compression = DevinSettings {
-            default_model_uid: Some("compact".into()),
-            ..base.clone()
-        };
-        assert!(compression
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("Devin default model must be a standard binding"));
 
         let mut disabled_binding = base.clone();
         disabled_binding.bindings[0].enabled = false;
@@ -474,7 +453,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(binding.kind, DevinBindingKind::Standard);
         assert!(binding.routes.is_empty());
         assert_eq!(binding.active_route_id, None);
         assert_eq!(binding.effective_model_hash(), "legacy-hash");
@@ -501,13 +479,11 @@ mod tests {
     #[test]
     fn route_state_round_trips_with_snake_case_json() {
         let mut binding = DevinModelBinding::new("devin-model", "legacy-hash");
-        binding.kind = DevinBindingKind::ContextCompression;
         binding.routes = vec![route("active-route", "active-hash", true)];
         binding.active_route_id = Some("active-route".into());
 
         let value = serde_json::to_value(&binding).unwrap();
 
-        assert_eq!(value["kind"], "context_compression");
         assert_eq!(value["routes"][0]["route_id"], "active-route");
         assert_eq!(value["routes"][0]["model_hash"], "active-hash");
         assert_eq!(value["active_route_id"], "active-route");
@@ -588,23 +564,6 @@ mod tests {
             .to_string();
 
         assert!(error.contains("Devin active route must be enabled"));
-    }
-
-    #[test]
-    fn context_compression_bindings_stay_single_line() {
-        let mut binding = DevinModelBinding::new("devin-compaction", "hash-a");
-        binding.kind = DevinBindingKind::ContextCompression;
-        assert!(settings_with_binding(binding.clone()).validate().is_ok());
-
-        binding.routes = vec![route("route-a", "hash-b", true)];
-        binding.active_route_id = Some("route-a".into());
-
-        let error = settings_with_binding(binding)
-            .validate()
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("must not define candidate routes"));
     }
 
     #[test]

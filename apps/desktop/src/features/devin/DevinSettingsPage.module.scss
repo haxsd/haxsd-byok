@@ -23,6 +23,7 @@
 
 /* 同一张卡片里"按钮为什么点不了"的一行说明：跟着它解释的控件走，用次要字号。 */
 .reason { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.addActions { display: flex; align-items: center; gap: 8px; }
 
 /* A mapping row: the two values that actually decide it, then the disclosure. */
 .bindingRow {
@@ -74,7 +75,6 @@
 .remove { padding: 4px; color: var(--vscode-textLink-foreground); background: transparent; border: 0; cursor: pointer; }
 .remove:hover { color: var(--oa-accent); }
 .remove:disabled { opacity: .5; cursor: default; }
-.hostActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .hostStatus { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
 
 /* 接入卡片的正文：状态说明与「按钮为什么点不了」是同一段话的几行，间距比两段独立

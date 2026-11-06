@@ -39,7 +39,6 @@ function binding(overrides = {}) {
     display_name: "Example",
     context_window_tokens: 128_000,
     enabled: true,
-    kind: "standard",
     routes: [],
     active_route_id: null,
     ...overrides,
@@ -108,7 +107,6 @@ function extensionStatus(overrides = {}) {
   return {
     path: "D:\\devin\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js",
     version: "3.11.216",
-    supported_sha256: "A063DAE82C91328E17AE16121E90780087674B65839B5AD39915C9C59C652FF0",
     compatible: true,
     clean: true,
     patched: false,

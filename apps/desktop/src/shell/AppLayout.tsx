@@ -10,6 +10,7 @@ import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
 import { navCallsIcon, navHarnessIcon, navModelsIcon, navOverviewIcon, navPluginsIcon, navSettingsIcon, navTutorialIcon } from "../shared/ui/navIcons";
 import { refreshIcon, searchIcon } from "../shared/ui/icons";
 import { appStore, useAppStore } from "../shared/store/appStore";
+import { configuredPluginModels } from "../shared/api";
 import { saveUiPreferences, useUiPreferences } from "../shared/store/uiPreferences";
 import { MessageProvider } from "../shared/ui/MessageProvider";
 import { useMessage } from "../shared/ui/message";
@@ -31,7 +32,7 @@ const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor"
 /** 教程从「外部文档」变成产品内页面后，这个标记表示「打开过」。存在服务端，见 uiPreferences.ts。 */
 
 export function AppLayout() {
-  const { busy, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, models, offline, error } = useAppStore();
+  const { busy, cursorHarness, devinStatus, devinHostStatus, codexStatus, claudeStatus, claudeTakeover, models, plugins, offline, error } = useAppStore();
   const availableUpdate = useAvailableUpdate();
   const location = useLocation();
   const navigate = useNavigate();
@@ -92,7 +93,7 @@ export function AppLayout() {
   // 客户端状态挂在各自的接入页上（见 HarnessTabs）：Cursor 的接管模式和 Devin、
   // Codex 的网关状态互不代表对方，也都不是「整个应用」的状态。顶栏那一个入口只
   // 汇总成「几个客户端在用本机网关」；只有全接或硬冲突才着色，部分接入保持中性。
-  const harnessState = { cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover };
+  const harnessState = { cursorHarness, devinStatus, devinHostStatus, codexStatus, claudeStatus, claudeTakeover };
   const harnessEntry = harnessEntryStatus(harnessState);
   // 接入页多一条切换带，窗口顶部的两条带依次往下排（见 .harnessModule / .harnessBar）。
   const currentClient = harnessClientAt(location.pathname);
@@ -153,7 +154,7 @@ export function AppLayout() {
         </TooltipTrigger>
         <span className={styles.statusDivider} aria-hidden="true" />
         <TooltipTrigger label={t("模型库里可用的模型")}>
-          <span className={styles.statusFact}><strong>{models.length}</strong>{t("个模型")}</span>
+          <span className={styles.statusFact}><strong>{models.length + configuredPluginModels(plugins).length}</strong>{t("个模型")}</span>
         </TooltipTrigger>
         {/* 启动时静默检查发现的更新：只留一个小标记，点进设置页的更新卡片。
             不是弹窗、也没有自动下载——是否安装由用户在更新卡片上决定。 */}

@@ -168,7 +168,6 @@ let devinSettings: DevinSettings = {
     display_name: models[0].display_name,
     context_window_tokens: models[0].context_window_tokens,
     enabled: true,
-    kind: "standard",
     routes: [],
     active_route_id: null,
   }],
@@ -408,7 +407,6 @@ export function installDemoApi() {
         extension: {
           path: extensionPath,
           version: "3.11.216",
-          supported_sha256: "A063DAE82C91328E17AE16121E90780087674B65839B5AD39915C9C59C652FF0",
           compatible: true,
           clean: !extensionPatched,
           patched: extensionPatched,

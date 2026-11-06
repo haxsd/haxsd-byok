@@ -19,6 +19,29 @@ async function loadAppStore() {
   return module.appStore;
 }
 
+test("Devin status reads its host and clears stale takeover evidence when inspection fails", async () => {
+  const { backend } = installAppBackend({
+    devinStatus: {
+      enabled: true, listening: true, ready: true,
+      bound_ports: { api: 44110, inference: 44111, local_api: 44112 },
+      calls: 0, last_call_success: null, last_call_at_ms: null,
+    },
+  });
+  const host = {
+    configured: true,
+    ports: { api_port: 44110, inference_port: 44111 },
+    extension: { patched: true },
+  };
+  backend.route("GET", `${API_ROOT}/harness/devin/host/status`, () => ({ body: host }));
+  const appStore = await loadAppStore();
+  await appStore.refresh();
+  assert.deepEqual(appStore.getSnapshot().devinHostStatus, host);
+  backend.route("GET", `${API_ROOT}/harness/devin/host/status`, () => ({ status: 500, body: { error: "cannot inspect host" } }));
+  await appStore.refreshDevinStatus();
+  assert.equal(appStore.getSnapshot().devinStatus.ready, true);
+  assert.equal(appStore.getSnapshot().devinHostStatus, null);
+});
+
 test("refreshOverview updates the dashboard without pulling unrelated endpoints", async () => {
   const { backend, state } = installAppBackend();
   state.overview.metrics.llm_calls = 1;

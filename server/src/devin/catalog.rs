@@ -5,12 +5,24 @@
 //! local catalog from cursor-byok bindings so no upstream account or license
 //! behavior is copied into this project.
 
-use crate::{devin::wire, model::ModelConfig, Result};
+use std::collections::HashSet;
 
-use super::DevinSettings;
+use crate::{devin::wire, Error, Result};
 
-const MODEL_FIELD: u32 = 1;
-const DEFAULT_OVERRIDE_FIELD: u32 = 3;
+use super::directory::LocalModelEntry;
+
+#[cfg(test)]
+use {
+    super::{directory::local_entries, DevinSettings},
+    crate::model::ModelConfig,
+};
+
+pub(super) const MODEL_FIELD: u32 = 1;
+pub(super) const DEFAULT_OVERRIDE_FIELD: u32 = 3;
+const SORT_FIELD: u32 = 2;
+const SORT_NAME_FIELD: u32 = 1;
+const SORT_GROUP_FIELD: u32 = 2;
+const GROUP_LABEL_FIELD: u32 = 2;
 const DEFAULT_OVERRIDE_UID_FIELD: u32 = 3;
 const MODEL_NAME_FIELD: u32 = 1;
 const MODEL_IDENTITY_FIELD: u32 = 2;
@@ -22,119 +34,369 @@ const MODEL_IDENTITY_FIELD: u32 = 2;
 /// 所以这里也报 true：两个客户端对同一份模型库的说法必须一致。
 const MODEL_SUPPORTS_IMAGES_FIELD: u32 = 5;
 const MODEL_DISPLAY_CONTEXT_FIELD: u32 = 18;
-const MODEL_UID_FIELD: u32 = 22;
+pub(super) const MODEL_UID_FIELD: u32 = 22;
 const MODEL_INFO_FIELD: u32 = 23;
 const MODEL_DEFAULT_FIELD: u32 = 31;
 const MODEL_METADATA_FIELD: u32 = 30;
 const MODEL_INFO_CONTEXT_FIELD: u32 = 4;
 const MODEL_INFO_UID_FIELD: u32 = 17;
 const MODEL_INFO_SERVER_FIELD: u32 = 18;
-const MODEL_INFO_HARNESS_FIELD: u32 = 20;
+const MODEL_INFO_FAMILY_FIELD: u32 = 23;
 const IDENTITY_UID_FIELD: u32 = 3;
 const METADATA_NAME_FIELD: u32 = 1;
 
-pub fn model_configs_payload(
+#[cfg(test)]
+fn model_configs_payload(
     settings: &DevinSettings,
     models: &[ModelConfig],
     gateway_url: &str,
 ) -> Result<Vec<u8>> {
-    let mut fields = Vec::new();
-    let default_uid = settings
-        .default_binding()
-        .map(|binding| binding.model_uid.trim());
-    for binding in settings.bindings.iter().filter(|binding| binding.enabled) {
-        let model = models
-            .iter()
-            .find(|model| model.model_hash == binding.effective_model_hash());
-        let is_default = default_uid.is_some_and(|uid| uid == binding.model_uid.trim());
-        fields.push(wire::Field::bytes(
-            MODEL_FIELD,
-            build_model(binding, model, gateway_url, is_default)?,
-        ));
-    }
-    wire::serialize_fields(&fields)
+    let entries = local_entries(settings, models)?;
+    wire::serialize_fields(&encoded_models(&entries, gateway_url)?)
 }
 
 /// A complete model-catalog response. Every current catalog RPC uses field 1
 /// for `client_model_configs`; Cascade and CLI additionally accept a default
 /// override in field 3.
-pub fn catalog_response_payload(
+#[cfg(test)]
+fn catalog_response_payload(
     settings: &DevinSettings,
     models: &[ModelConfig],
     gateway_url: &str,
     include_default_override: bool,
 ) -> Result<Vec<u8>> {
-    let catalog = model_configs_payload(settings, models, gateway_url)?;
+    let entries = local_entries(settings, models)?;
+    let mut fields = encoded_models(&entries, gateway_url)?;
     if !include_default_override {
-        return Ok(catalog);
+        return wire::serialize_fields(&fields);
     }
-    let Some(binding) = settings.default_binding() else {
-        return Ok(catalog);
+    let Some(entry) = entries.iter().find(|entry| entry.default) else {
+        return wire::serialize_fields(&fields);
     };
-    let mut fields = wire::parse_fields(&catalog)?;
-    fields.push(wire::Field::bytes(
-        DEFAULT_OVERRIDE_FIELD,
-        wire::serialize_fields(&[wire::Field::bytes(
-            DEFAULT_OVERRIDE_UID_FIELD,
-            binding.model_uid.trim(),
-        )])?,
-    ));
+    fields.push(default_override_field(&entry.uid)?);
     wire::serialize_fields(&fields)
 }
 
-fn build_model(
-    binding: &super::DevinModelBinding,
-    model: Option<&ModelConfig>,
+fn encoded_models(entries: &[LocalModelEntry], gateway_url: &str) -> Result<Vec<wire::Field>> {
+    entries
+        .iter()
+        .map(|entry| {
+            build_model(entry, gateway_url).map(|model| wire::Field::bytes(MODEL_FIELD, model))
+        })
+        .collect()
+}
+
+pub(super) fn client_model_fields(
+    entries: &[LocalModelEntry],
     gateway_url: &str,
-    is_default: bool,
+) -> Result<Vec<wire::Field>> {
+    encoded_models(entries, gateway_url)
+}
+
+pub(super) fn with_local_models(
+    payload: &[u8],
+    local_models: &[wire::Field],
+    local_default_uid: Option<&str>,
+    include_sorts: bool,
 ) -> Result<Vec<u8>> {
-    let uid = binding.model_uid.trim();
-    let display_name = model
-        .map(|model| model.display_name.trim())
-        .filter(|value| !value.is_empty())
-        .or_else(|| (!binding.display_name.trim().is_empty()).then(|| binding.display_name.trim()))
-        .unwrap_or(uid);
-    let context = model
-        .and_then(|model| model.context_window_tokens)
-        .or(binding.context_window_tokens)
-        .unwrap_or_default();
-    let harness_uid = format!("cursor-byok:{uid}");
+    if local_models.is_empty() && local_default_uid.is_none() {
+        return Ok(payload.to_vec());
+    }
+    let mut fields = wire::parse_fields(payload)?;
+    let original = fields.clone();
+    let harnesses = super::harness::HarnessCatalog::from_fields(&fields)?;
+    let mut existing = wire::all_fields(&fields, MODEL_FIELD)
+        .filter_map(client_model_uid)
+        .collect::<HashSet<_>>();
+    let labels = wire::all_fields(&fields, MODEL_FIELD)
+        .filter_map(client_model_label)
+        .collect::<HashSet<_>>();
+    let mut local_labels = HashSet::new();
+    let mut additions = Vec::new();
+    for local in local_models {
+        let local = harnesses.attach(local)?;
+        let uid = client_model_uid(&local).ok_or_else(|| {
+            Error::Protocol("generated Devin local model has no model UID".into())
+        })?;
+        if existing.insert(uid) {
+            let label = client_model_label(&local).ok_or_else(|| {
+                Error::Protocol("generated Devin local model has no label".into())
+            })?;
+            if labels.contains(&label) {
+                return Err(Error::Protocol(
+                    "Devin local model label conflicts with an official model".into(),
+                ));
+            }
+            if !local_labels.insert(label) {
+                return Err(Error::Protocol(
+                    "Devin local model labels must be unique".into(),
+                ));
+            }
+            additions.push(local.clone());
+        }
+    }
+    if include_sorts {
+        append_local_model_labels(&mut fields, &additions)?;
+    }
+    fields.extend(additions);
+    if let Some(uid) = local_default_uid
+        .map(str::trim)
+        .filter(|uid| !uid.is_empty())
+    {
+        fields.retain(|field| field.number != DEFAULT_OVERRIDE_FIELD);
+        fields.push(default_override_field(uid)?);
+    }
+    if fields == original {
+        return Ok(payload.to_vec());
+    }
+    wire::serialize_fields(&fields)
+}
+
+pub(super) fn client_model_uid(field: &wire::Field) -> Option<String> {
+    if field.number != MODEL_FIELD {
+        return None;
+    }
+    let wire::FieldValue::Bytes(model) = &field.value else {
+        return None;
+    };
+    let fields = wire::parse_fields(model).ok()?;
+    let wire::FieldValue::Bytes(uid) = &wire::first_field(&fields, MODEL_UID_FIELD)?.value else {
+        return None;
+    };
+    String::from_utf8(uid.clone())
+        .ok()
+        .map(|uid| uid.trim().to_owned())
+        .filter(|uid| !uid.is_empty())
+}
+
+pub(super) fn client_model_label(field: &wire::Field) -> Option<String> {
+    if field.number != MODEL_FIELD {
+        return None;
+    }
+    let wire::FieldValue::Bytes(model) = &field.value else {
+        return None;
+    };
+    let fields = wire::parse_fields(model).ok()?;
+    text_field(&fields, MODEL_NAME_FIELD).filter(|label| !label.trim().is_empty())
+}
+
+/// Devin renders `client_model_configs` through `client_model_sorts` groups.
+/// A model without a label in a default group is searchable but absent from the
+/// normal picker, so local models must join the first default-sort group.
+pub(super) fn append_local_model_labels(
+    catalog: &mut Vec<wire::Field>,
+    additions: &[wire::Field],
+) -> Result<bool> {
+    let labels = additions
+        .iter()
+        .filter_map(client_model_label)
+        .collect::<Vec<_>>();
+    if labels.is_empty() {
+        return Ok(false);
+    }
+
+    let mut unique_local = HashSet::with_capacity(labels.len());
+    for label in &labels {
+        if !unique_local.insert(label.clone()) {
+            return Err(Error::Protocol(format!(
+                "Devin local model labels must be unique: {label}"
+            )));
+        }
+    }
+    let existing_labels = wire::all_fields(catalog, MODEL_FIELD)
+        .filter_map(client_model_label)
+        .collect::<HashSet<_>>();
+    for label in &labels {
+        if existing_labels.contains(label) {
+            return Err(Error::Protocol(format!(
+                "Devin local model label conflicts with an official model: {label}"
+            )));
+        }
+    }
+
+    let Some(sort_index) = default_sort_index(catalog) else {
+        let group = local_group(&labels)?;
+        catalog.push(wire::Field::bytes(
+            SORT_FIELD,
+            wire::serialize_fields(&[wire::Field::bytes(SORT_NAME_FIELD, "All"), group])?,
+        ));
+        return Ok(true);
+    };
+
+    let wire::FieldValue::Bytes(sort_bytes) = &catalog[sort_index].value else {
+        return Err(Error::Protocol("Devin model sort is not a message".into()));
+    };
+    let mut sort = wire::parse_fields(sort_bytes)?;
+    let Some(group_index) = sort
+        .iter()
+        .position(|field| field.number == SORT_GROUP_FIELD)
+    else {
+        sort.push(local_group(&labels)?);
+        catalog[sort_index] = wire::Field::bytes(SORT_FIELD, wire::serialize_fields(&sort)?);
+        return Ok(true);
+    };
+
+    let wire::FieldValue::Bytes(group_bytes) = &sort[group_index].value else {
+        return Err(Error::Protocol("Devin model group is not a message".into()));
+    };
+    let mut group = wire::parse_fields(group_bytes)?;
+    let mut present = group
+        .iter()
+        .filter(|field| field.number == GROUP_LABEL_FIELD)
+        .filter_map(|field| match &field.value {
+            wire::FieldValue::Bytes(value) => String::from_utf8(value.clone()).ok(),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let mut changed = false;
+    for label in labels {
+        if present.insert(label.clone()) {
+            group.push(wire::Field::bytes(GROUP_LABEL_FIELD, &label));
+            changed = true;
+        }
+    }
+    if changed {
+        sort[group_index] = wire::Field::bytes(SORT_GROUP_FIELD, wire::serialize_fields(&group)?);
+        catalog[sort_index] = wire::Field::bytes(SORT_FIELD, wire::serialize_fields(&sort)?);
+    }
+    Ok(changed)
+}
+
+fn default_sort_index(catalog: &[wire::Field]) -> Option<usize> {
+    let mut first = None;
+    for (index, field) in catalog.iter().enumerate() {
+        if field.number != SORT_FIELD {
+            continue;
+        }
+        let wire::FieldValue::Bytes(bytes) = &field.value else {
+            continue;
+        };
+        let Ok(fields) = wire::parse_fields(bytes) else {
+            continue;
+        };
+        first.get_or_insert(index);
+        if matches!(
+            text_field(&fields, SORT_NAME_FIELD).as_deref(),
+            Some("Recommended" | "All")
+        ) {
+            return Some(index);
+        }
+    }
+    first
+}
+
+fn local_group(labels: &[String]) -> Result<wire::Field> {
+    let fields = labels
+        .iter()
+        .map(|label| wire::Field::bytes(GROUP_LABEL_FIELD, label))
+        .collect::<Vec<_>>();
+    Ok(wire::Field::bytes(
+        SORT_GROUP_FIELD,
+        wire::serialize_fields(&fields)?,
+    ))
+}
+
+fn text_field(fields: &[wire::Field], number: u32) -> Option<String> {
+    let wire::FieldValue::Bytes(value) = &wire::first_field(fields, number)?.value else {
+        return None;
+    };
+    String::from_utf8(value.clone()).ok()
+}
+
+pub(super) fn default_override_field(uid: &str) -> Result<wire::Field> {
+    Ok(wire::Field::bytes(
+        DEFAULT_OVERRIDE_FIELD,
+        wire::serialize_fields(&[wire::Field::bytes(DEFAULT_OVERRIDE_UID_FIELD, uid.trim())])?,
+    ))
+}
+
+fn build_model(entry: &LocalModelEntry, gateway_url: &str) -> Result<Vec<u8>> {
+    let uid = entry.uid.as_str();
+    let display_name = entry
+        .parameters
+        .as_ref()
+        .filter(|parameters| parameters.uid != parameters.family_uid)
+        .map(|parameters| {
+            format!(
+                "{} · {} · {}",
+                entry.display_name,
+                parameters.effort_name(),
+                parameters.context_name()
+            )
+        })
+        .unwrap_or_else(|| entry.display_name.clone());
+    let context = entry.context_window_tokens.unwrap_or_default();
     let mut model_info = vec![
         wire::Field::bytes(MODEL_INFO_UID_FIELD, uid),
         wire::Field::bytes(MODEL_INFO_SERVER_FIELD, gateway_url.trim_end_matches('/')),
-        wire::Field::bytes(MODEL_INFO_HARNESS_FIELD, &harness_uid),
     ];
     if context > 0 {
         model_info.push(wire::Field::varint(MODEL_INFO_CONTEXT_FIELD, context));
     }
+    if let Some(parameters) = &entry.parameters {
+        model_info.push(wire::Field::bytes(8, &parameters.model_id));
+        model_info.push(wire::Field::bytes(
+            MODEL_INFO_FAMILY_FIELD,
+            &parameters.family_uid,
+        ));
+    }
+    let family_default = entry
+        .parameters
+        .as_ref()
+        .is_some_and(|parameters| parameters.uid == parameters.family_uid);
+    let mut metadata = vec![wire::Field::bytes(METADATA_NAME_FIELD, &entry.display_name)];
+    if let Some(parameters) = &entry.parameters {
+        metadata.push(parameter_dimension(
+            "Reasoning Effort",
+            parameters.effort_order(),
+            parameters.effort_name(),
+            1,
+        )?);
+        metadata.push(parameter_dimension(
+            "Context size",
+            parameters.context_order(),
+            &parameters.context_name(),
+            3,
+        )?);
+        metadata.push(wire::Field::varint(3, u64::from(family_default)));
+    }
     let mut fields = vec![
-        wire::Field::bytes(MODEL_NAME_FIELD, display_name),
+        wire::Field::bytes(MODEL_NAME_FIELD, &display_name),
         wire::Field::bytes(
             MODEL_IDENTITY_FIELD,
             wire::serialize_fields(&[wire::Field::bytes(IDENTITY_UID_FIELD, uid)])?,
         ),
         wire::Field::bytes(MODEL_UID_FIELD, uid),
         wire::Field::bytes(MODEL_INFO_FIELD, wire::serialize_fields(&model_info)?),
-        wire::Field::bytes(
-            MODEL_METADATA_FIELD,
-            wire::serialize_fields(&[wire::Field::bytes(METADATA_NAME_FIELD, display_name)])?,
-        ),
+        wire::Field::bytes(MODEL_METADATA_FIELD, wire::serialize_fields(&metadata)?),
         // 与 Cursor 侧一致：模型库里的模型按「能看图」报给客户端。
         wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 1),
     ];
     if context > 0 {
         fields.push(wire::Field::varint(MODEL_DISPLAY_CONTEXT_FIELD, context));
     }
-    if is_default {
+    if entry.default || family_default {
         fields.push(wire::Field::varint(MODEL_DEFAULT_FIELD, 1));
     }
     wire::serialize_fields(&fields)
 }
 
+fn parameter_dimension(name: &str, order: u64, value: &str, control: u64) -> Result<wire::Field> {
+    let value = wire::serialize_fields(&[
+        wire::Field::varint(1, order),
+        wire::Field::bytes(2, value),
+        wire::Field::varint(3, control),
+    ])?;
+    Ok(wire::Field::bytes(
+        2,
+        wire::serialize_fields(&[wire::Field::bytes(1, name), wire::Field::bytes(2, value)])?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devin::{DevinBindingKind, DevinRoute};
+    use crate::devin::DevinRoute;
     use crate::model::{ModelType, OPENAI_CHAT_ENDPOINT};
 
     fn varint_field(fields: &[wire::Field], number: u32) -> Option<u64> {
@@ -331,7 +593,6 @@ mod tests {
     #[test]
     fn catalog_generation_does_not_mutate_binding_route_state() {
         let mut settings = settings();
-        settings.bindings[0].kind = DevinBindingKind::ContextCompression;
         settings.bindings[0].routes = vec![
             DevinRoute {
                 route_id: "secondary".into(),
@@ -355,7 +616,6 @@ mod tests {
 
         assert_eq!(before, after);
         let binding = &settings.bindings[0];
-        assert_eq!(binding.kind, DevinBindingKind::ContextCompression);
         assert_eq!(binding.active_route_id.as_deref(), Some("primary"));
         assert_eq!(
             binding
@@ -387,5 +647,136 @@ mod tests {
             varint_field(&fields, MODEL_DISPLAY_CONTEXT_FIELD),
             Some(256_000)
         );
+    }
+
+    #[test]
+    fn native_parameters_are_encoded_as_family_dimensions() {
+        let settings = DevinSettings {
+            bindings: vec![super::super::DevinModelBinding::new(
+                "haxsd-byok:a",
+                "hash-a",
+            )],
+            default_model_uid: Some("haxsd-byok:a".into()),
+            ..DevinSettings::default()
+        };
+        let mut model = model_config("hash-a", "My model", 500_000);
+        model.reasoning_effort = Some("max".into());
+        let entries = super::super::directory::native_entries(&settings, &[model]).unwrap();
+        let encoded = client_model_fields(&entries, "http://127.0.0.1:43112").unwrap();
+        let model = encoded
+            .iter()
+            .find(|field| client_model_uid(field).as_deref() == Some("haxsd-byok:a~low~128000"))
+            .unwrap();
+        let wire::FieldValue::Bytes(bytes) = &model.value else {
+            panic!("model message")
+        };
+        let fields = wire::parse_fields(bytes).unwrap();
+        let wire::FieldValue::Bytes(info) =
+            &wire::first_field(&fields, MODEL_INFO_FIELD).unwrap().value
+        else {
+            panic!("model info")
+        };
+        let info = wire::parse_fields(info).unwrap();
+        assert_eq!(
+            bytes_field(&info, MODEL_INFO_FAMILY_FIELD).as_deref(),
+            Some("haxsd-byok:a")
+        );
+        assert_eq!(varint_field(&info, MODEL_INFO_CONTEXT_FIELD), Some(128_000));
+        let wire::FieldValue::Bytes(metadata) = &wire::first_field(&fields, MODEL_METADATA_FIELD)
+            .unwrap()
+            .value
+        else {
+            panic!("family metadata")
+        };
+        let metadata = wire::parse_fields(metadata).unwrap();
+        assert_eq!(bytes_field(&metadata, 1).as_deref(), Some("My model"));
+        let dimensions = wire::all_fields(&metadata, 2)
+            .map(|field| {
+                let wire::FieldValue::Bytes(bytes) = &field.value else {
+                    panic!("dimension")
+                };
+                let fields = wire::parse_fields(bytes).unwrap();
+                let wire::FieldValue::Bytes(value) = &wire::first_field(&fields, 2).unwrap().value
+                else {
+                    panic!("dimension value")
+                };
+                let value = wire::parse_fields(value).unwrap();
+                (
+                    bytes_field(&fields, 1).unwrap(),
+                    bytes_field(&value, 2).unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            dimensions,
+            vec![
+                ("Reasoning Effort".into(), "Low".into()),
+                ("Context size".into(), "128K".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn native_models_reuse_official_harnesses_without_matching_partial_aliases() {
+        let official = wire::Field::bytes(
+            1,
+            wire::serialize_fields(&[
+                wire::Field::bytes(1, "Official Sol"),
+                wire::Field::bytes(22, "gpt-6-1-sol-medium"),
+                wire::Field::bytes(
+                    23,
+                    wire::serialize_fields(&[
+                        wire::Field::bytes(23, "gpt-6-1-sol"),
+                        wire::Field::bytes(20, "gpt-5p6-codex"),
+                        wire::Field::bytes(20, "gpt-5p6"),
+                    ])
+                    .unwrap(),
+                ),
+            ])
+            .unwrap(),
+        );
+        let payload = wire::serialize_fields(&[official.clone()]).unwrap();
+        for (model_id, expected) in [
+            ("gpt-6.1-sol", vec!["gpt-5p6-codex", "gpt-5p6"]),
+            ("gpt-6.1", Vec::new()),
+            ("deepseek-flash", Vec::new()),
+        ] {
+            let local = wire::Field::bytes(
+                1,
+                wire::serialize_fields(&[
+                    wire::Field::bytes(1, "My model"),
+                    wire::Field::bytes(22, "haxsd-byok:a"),
+                    wire::Field::bytes(
+                        23,
+                        wire::serialize_fields(&[
+                            wire::Field::bytes(8, model_id),
+                            wire::Field::bytes(17, "haxsd-byok:a"),
+                            wire::Field::bytes(20, "cursor-byok:haxsd-byok:a"),
+                        ])
+                        .unwrap(),
+                    ),
+                ])
+                .unwrap(),
+            );
+            let output = with_local_models(&payload, &[local], None, false).unwrap();
+            let output = wire::parse_fields(&output).unwrap();
+            assert_eq!(output[0], official);
+            let wire::FieldValue::Bytes(local) = &output[1].value else {
+                panic!("local model");
+            };
+            let local = wire::parse_fields(local).unwrap();
+            let wire::FieldValue::Bytes(info) = &wire::first_field(&local, 23).unwrap().value
+            else {
+                panic!("model info");
+            };
+            let info = wire::parse_fields(info).unwrap();
+            let harnesses = wire::all_fields(&info, 20)
+                .map(|field| match &field.value {
+                    wire::FieldValue::Bytes(value) => String::from_utf8(value.clone()).unwrap(),
+                    _ => panic!("harness UID"),
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(harnesses, expected, "{model_id}");
+        }
     }
 }

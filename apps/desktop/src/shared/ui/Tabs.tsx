@@ -7,20 +7,29 @@ export type TabItem = {
   content: ReactNode;
 };
 
-export function Tabs({ items, defaultValue }: { items: TabItem[]; defaultValue?: string }) {
+export function Tabs({ items, defaultValue, value, onValueChange }: {
+  items: TabItem[];
+  defaultValue?: string;
+  value?: string;
+  onValueChange?: (value: string) => void;
+}) {
   const initialValue = defaultValue && items.some((item) => item.value === defaultValue)
     ? defaultValue
     : items[0]?.value;
   const [activeValue, setActiveValue] = useState(initialValue);
   const tabsId = useId();
-  const activeItem = items.find((item) => item.value === activeValue) ?? items[0];
+  const activeItem = items.find((item) => item.value === (value ?? activeValue)) ?? items[0];
+  const select = (next: string) => {
+    if (value === undefined) setActiveValue(next);
+    onValueChange?.(next);
+  };
 
   if (!activeItem) return null;
 
   const selectAdjacent = (event: KeyboardEvent<HTMLButtonElement>, offset: number) => {
     const currentIndex = items.findIndex((item) => item.value === activeItem.value);
     const nextIndex = (currentIndex + offset + items.length) % items.length;
-    setActiveValue(items[nextIndex].value);
+    select(items[nextIndex].value);
     event.currentTarget.parentElement
       ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]
       ?.focus();
@@ -39,7 +48,7 @@ export function Tabs({ items, defaultValue }: { items: TabItem[]; defaultValue?:
           aria-selected={selected}
           aria-controls={`${tabsId}-panel-${item.value}`}
           tabIndex={selected ? 0 : -1}
-          onClick={() => setActiveValue(item.value)}
+          onClick={() => select(item.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") selectAdjacent(event, -1);
             if (event.key === "ArrowRight") selectAdjacent(event, 1);

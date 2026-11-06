@@ -1,14 +1,14 @@
-//! Version-locked access to Devin's own endpoint settings.
+//! Structure-based access to Devin's own endpoint settings.
 //!
 //! Devin only reads `codeium.apiServerUrl` and
 //! `codeium.inferenceApiServerUrl` when the `Codeium.codeium-dev` extension is
 //! present. Packaged builds therefore ignore those user settings and keep using
 //! the official endpoints. This module removes that one development-only gate
-//! from the known Devin 3.11.216 extension bundle.
+//! from a uniquely identified endpoint settings function.
 //!
 //! The patch never embeds gateway URLs: the two user settings remain the source
-//! of truth. It is limited to one exact gate anchor, refuses every other bundle,
-//! and keeps a SHA-256-verified backup and receipt next to the host file.
+//! of truth. Surrounding settings code identifies the gate across builds;
+//! SHA-256 verifies the backup and restore receipt next to the host file.
 
 use std::{
     fs,
@@ -16,25 +16,32 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{Error, Result};
 
-pub const SUPPORTED_VERSION: &str = "3.11.216";
-pub const SUPPORTED_SHA256: &str =
-    "A063DAE82C91328E17AE16121E90780087674B65839B5AD39915C9C59C652FF0";
 pub const BACKUP_SUFFIX: &str = ".devin-router-gate.backup";
 pub const RECEIPT_SUFFIX: &str = ".devin-router-gate.receipt";
 
-const CLEAN_GATE: &str = "if(!R()&&!(0,p.isDevelopment)())return i();";
-const PATCHED_GATE: &str = "if(!1)return i();";
+const CLEAN_GATE_PATTERN: &str = r"if\(![A-Za-z_$][A-Za-z0-9_$]*\(\)&&!\(0,[A-Za-z_$][A-Za-z0-9_$]*\.isDevelopment\)\(\)\)return ([A-Za-z_$][A-Za-z0-9_$]*)\(\);";
+const PATCHED_GATE_PATTERN: &str = r"if\(!1\)return ([A-Za-z_$][A-Za-z0-9_$]*)\(\);";
+const GATE_CONTEXT_WINDOW: usize = 2_048;
+const GATE_CONTEXT_ANCHORS: [&str; 7] = [
+    "deployment_default",
+    "getConfiguration",
+    "workspace.isTrusted",
+    "workspaceFolderValue",
+    "workspaceValue",
+    "globalValue",
+    "user_setting",
+];
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct GateStatus {
     pub path: Option<PathBuf>,
     pub version: String,
-    pub supported_sha256: String,
     pub compatible: bool,
     pub clean: bool,
     pub patched: bool,
@@ -58,13 +65,11 @@ pub struct GateReceipt {
 }
 
 pub fn inspect(path: Option<&Path>) -> GateStatus {
-    path.map_or_else(GateStatus::not_found, |path| {
-        inspect_existing(path, SUPPORTED_VERSION, SUPPORTED_SHA256)
-    })
+    path.map_or_else(GateStatus::not_found, inspect_existing)
 }
 
 pub fn apply(path: &Path) -> Result<GateReceipt> {
-    apply_with(path, SUPPORTED_VERSION, SUPPORTED_SHA256)
+    apply_with(path)
 }
 
 pub fn restore(receipt: &GateReceipt) -> Result<()> {
@@ -94,7 +99,7 @@ pub fn restore(receipt: &GateReceipt) -> Result<()> {
         ));
     }
     atomic_replace(&receipt.path, &backup)?;
-    let restored = inspect_existing(&receipt.path, &receipt.version, &receipt.original_sha256);
+    let restored = inspect_existing(&receipt.path);
     if !restored.clean {
         let _ = atomic_replace(&receipt.path, &current);
         return Err(Error::Config(
@@ -108,7 +113,7 @@ pub fn restore(receipt: &GateReceipt) -> Result<()> {
 /// Restore a verified receipt left by an unclean exit. Returns whether a host
 /// file was actually changed.
 pub fn restore_persisted(path: &Path) -> bool {
-    let status = inspect_existing(path, SUPPORTED_VERSION, SUPPORTED_SHA256);
+    let status = inspect_existing(path);
     let Some(receipt) = status.restore_receipt else {
         return false;
     };
@@ -129,8 +134,7 @@ impl GateStatus {
     fn not_found() -> Self {
         Self {
             path: None,
-            version: SUPPORTED_VERSION.to_owned(),
-            supported_sha256: SUPPORTED_SHA256.to_owned(),
+            version: "unknown".into(),
             compatible: false,
             clean: false,
             patched: false,
@@ -146,12 +150,12 @@ impl GateStatus {
     }
 }
 
-fn apply_with(path: &Path, version: &str, expected_sha256: &str) -> Result<GateReceipt> {
+fn apply_with(path: &Path) -> Result<GateReceipt> {
     recover_displaced(path);
     let current = fs::read(path).map_err(|error| host_read_error(path, &error))?;
     let content = std::str::from_utf8(&current)
         .map_err(|_| Error::Config("Devin extension is not UTF-8; patch refused".into()))?;
-    let status = inspect_existing(path, version, expected_sha256);
+    let status = inspect_existing(path);
     if !status.clean {
         return Err(Error::Config(refusal_message(&status)));
     }
@@ -162,7 +166,7 @@ fn apply_with(path: &Path, version: &str, expected_sha256: &str) -> Result<GateR
     let receipt = GateReceipt {
         path: path.to_owned(),
         backup_path,
-        version: version.to_owned(),
+        version: status.version,
         original_sha256: sha256(&current),
         patched_sha256: sha256(patched.as_bytes()),
     };
@@ -174,7 +178,7 @@ fn apply_with(path: &Path, version: &str, expected_sha256: &str) -> Result<GateR
         }
     }
 
-    let verified = inspect_existing(path, version, expected_sha256);
+    let verified = inspect_existing(path);
     if verified.patched && verified.current_sha256 == receipt.patched_sha256 {
         Ok(receipt)
     } else {
@@ -187,8 +191,9 @@ fn apply_with(path: &Path, version: &str, expected_sha256: &str) -> Result<GateR
     }
 }
 
-fn inspect_existing(path: &Path, version: &str, expected_sha256: &str) -> GateStatus {
+fn inspect_existing(path: &Path) -> GateStatus {
     recover_displaced(path);
+    let version = product_version(path);
     let backup_path = backup_path(path);
     let (backup_available, backup_sha256) = match fs::read(&backup_path) {
         Ok(bytes) => (true, Some(sha256(&bytes))),
@@ -199,8 +204,7 @@ fn inspect_existing(path: &Path, version: &str, expected_sha256: &str) -> GateSt
         Err(error) => {
             return GateStatus {
                 path: Some(path.to_owned()),
-                version: version.to_owned(),
-                supported_sha256: expected_sha256.to_owned(),
+                version,
                 compatible: false,
                 clean: false,
                 patched: false,
@@ -219,8 +223,7 @@ fn inspect_existing(path: &Path, version: &str, expected_sha256: &str) -> GateSt
         Err(_) => {
             return GateStatus {
                 path: Some(path.to_owned()),
-                version: version.to_owned(),
-                supported_sha256: expected_sha256.to_owned(),
+                version,
                 compatible: false,
                 clean: false,
                 patched: false,
@@ -233,31 +236,23 @@ fn inspect_existing(path: &Path, version: &str, expected_sha256: &str) -> GateSt
             }
         }
     };
-    let clean_count = content.matches(CLEAN_GATE).count();
-    let patched_count = content.matches(PATCHED_GATE).count();
-    let hash_matches = current_sha256 == expected_sha256;
-    let clean = clean_count == 1 && patched_count == 0 && hash_matches;
+    let clean_count = gate_occurrences(content, CLEAN_GATE_PATTERN).len();
+    let patched_count = gate_occurrences(content, PATCHED_GATE_PATTERN).len();
+    let clean = clean_count == 1 && patched_count == 0;
     let patched = clean_count == 0 && patched_count == 1;
     let compatible = clean || patched;
     let message = if compatible {
         String::new()
-    } else if !hash_matches {
-        format!(
-            "Devin {version} extension SHA-256 {current_sha256} is not supported (expected \
-             {expected_sha256}); this integration currently supports Devin {SUPPORTED_VERSION} \
-             only. Reinstall the supported Devin version or update this application"
-        )
     } else {
         format!(
-            "Devin {version} extension does not contain exactly one supported endpoint settings \
-             gate (clean={clean_count}, patched={patched_count}); reinstall Devin {version} and \
-             try again"
+            "Devin {version} extension does not contain exactly one recognizable endpoint settings \
+             gate (clean={clean_count}, patched={patched_count}); its code context may have \
+             changed; update haxsd byok before writing"
         )
     };
     let mut status = GateStatus {
         path: Some(path.to_owned()),
-        version: version.to_owned(),
-        supported_sha256: expected_sha256.to_owned(),
+        version,
         compatible,
         clean,
         patched,
@@ -272,14 +267,60 @@ fn inspect_existing(path: &Path, version: &str, expected_sha256: &str) -> GateSt
     status
 }
 
+fn gate_occurrences<'content>(
+    content: &'content str,
+    pattern: &str,
+) -> Vec<(std::ops::Range<usize>, &'content str)> {
+    Regex::new(pattern)
+        .expect("static endpoint gate regex")
+        .captures_iter(content)
+        .filter_map(|captures| {
+            let matched = captures.get(0)?;
+            let mut from = matched.start().saturating_sub(GATE_CONTEXT_WINDOW);
+            while !content.is_char_boundary(from) {
+                from -= 1;
+            }
+            let mut until = (matched.end() + GATE_CONTEXT_WINDOW).min(content.len());
+            while !content.is_char_boundary(until) {
+                until += 1;
+            }
+            let context = &content[from..until];
+            GATE_CONTEXT_ANCHORS
+                .iter()
+                .all(|anchor| context.contains(anchor))
+                .then(|| {
+                    (
+                        matched.range(),
+                        captures.get(1).expect("return name").as_str(),
+                    )
+                })
+        })
+        .collect()
+}
+
+fn product_version(path: &Path) -> String {
+    path.ancestors()
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "app"))
+        .and_then(|app| fs::read(app.join("package.json")).ok())
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|package| package.get("version")?.as_str().map(str::to_owned))
+        .filter(|version| !version.trim().is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
 fn patch_content(content: &str) -> Result<String> {
-    if content.matches(CLEAN_GATE).count() != 1 || content.matches(PATCHED_GATE).count() != 0 {
+    let gates = gate_occurrences(content, CLEAN_GATE_PATTERN);
+    if gates.len() != 1 || !gate_occurrences(content, PATCHED_GATE_PATTERN).is_empty() {
         return Err(Error::Config(
             "Devin endpoint settings gate is missing or ambiguous; patch refused".into(),
         ));
     }
-    let patched = content.replacen(CLEAN_GATE, PATCHED_GATE, 1);
-    if patched.matches(PATCHED_GATE).count() != 1 || patched.matches(CLEAN_GATE).count() != 0 {
+    let (range, return_name) = &gates[0];
+    let mut patched = content.to_owned();
+    patched.replace_range(range.clone(), &format!("if(!1)return {return_name}();"));
+    if gate_occurrences(&patched, PATCHED_GATE_PATTERN).len() != 1
+        || !gate_occurrences(&patched, CLEAN_GATE_PATTERN).is_empty()
+    {
         return Err(Error::Config(
             "Devin endpoint settings gate verification failed before writing".into(),
         ));
@@ -318,7 +359,7 @@ fn restore_refusal(receipt: &GateReceipt, reason: &str) -> Error {
         ))
     } else {
         Error::Config(format!(
-            "{reason}; the verified backup is unavailable, so reinstall Devin 3.11.216; backup: {}",
+            "{reason}; the verified backup is unavailable, so reinstall Devin; backup: {}",
             receipt.backup_path.display()
         ))
     }
@@ -346,7 +387,8 @@ fn usable_receipt(path: &Path, status: &GateStatus) -> Option<GateReceipt> {
 fn is_clean_bytes(bytes: &[u8], expected_sha256: &str) -> bool {
     sha256(bytes) == expected_sha256
         && std::str::from_utf8(bytes).is_ok_and(|content| {
-            content.matches(CLEAN_GATE).count() == 1 && content.matches(PATCHED_GATE).count() == 0
+            gate_occurrences(content, CLEAN_GATE_PATTERN).len() == 1
+                && gate_occurrences(content, PATCHED_GATE_PATTERN).is_empty()
         })
 }
 
@@ -488,23 +530,56 @@ fn sha256(bytes: &[u8]) -> String {
 mod tests {
     use super::*;
 
+    const CLEAN_GATE: &str = "if(!R()&&!(0,p.isDevelopment)())return i();";
+    const PATCHED_GATE: &str = "if(!1)return i();";
+
     fn fixture() -> String {
         r#"var p={isDevelopment:()=>false};function R(){return !1}
-function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment_default"});if(e===m.API_SERVER_URL){const e=null;if(void 0!==e&&""!==e)return{value:e,source:"local_account"}}if(!R()&&!(0,p.isDevelopment)())return i();const r=a.workspace.getConfiguration(t).inspect(n);return r}
+function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment_default"});if(e===m.API_SERVER_URL){const e=null;if(void 0!==e&&""!==e)return{value:e,source:"local_account"}}if(!R()&&!(0,p.isDevelopment)())return i();const r=a.workspace.getConfiguration(t).inspect(n);if(!a.workspace.isTrusted){const e=r?.globalValue??void 0;return void 0!==e?{value:e,source:"user_setting"}:i()}const s=r?.workspaceFolderValue??r?.workspaceValue??r?.globalValue;return void 0!==s?{value:s,source:"user_setting"}:i()}
 "#
         .into()
     }
 
     fn apply_fixture(path: &Path) -> GateReceipt {
-        let content = fs::read_to_string(path).unwrap();
-        let digest = sha256(content.as_bytes());
-        apply_with(path, "fixture", &digest).unwrap()
+        apply(path).unwrap()
     }
 
     fn inspect_fixture(path: &Path) -> GateStatus {
-        let content = fs::read_to_string(path).unwrap();
-        let digest = sha256(content.as_bytes());
-        inspect_existing(path, "fixture", &digest)
+        inspect_existing(path)
+    }
+
+    #[test]
+    fn changed_build_and_minified_names_can_be_patched_and_restored() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let content = format!("const build='next';{}", fixture()).replace(
+            CLEAN_GATE,
+            "if(!R9()&&!(0,dev.isDevelopment)())return ret();",
+        );
+        fs::write(&path, &content).unwrap();
+
+        assert!(inspect(Some(&path)).clean);
+        let receipt = apply(&path).unwrap();
+        assert!(inspect(Some(&path)).patched);
+        assert!(fs::read_to_string(&path)
+            .unwrap()
+            .contains("if(!1)return ret();"));
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), content);
+    }
+
+    #[test]
+    fn identical_gate_outside_endpoint_settings_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let content = format!("function unrelated(){{{CLEAN_GATE}}}");
+        fs::write(&path, &content).unwrap();
+
+        assert!(patch_content(&content).is_err());
+        assert!(!inspect(Some(&path)).compatible);
+        assert_eq!(fs::read_to_string(&path).unwrap(), content);
+        assert!(!backup_path(&path).exists());
+        assert!(!receipt_path(&path).exists());
     }
 
     #[test]
@@ -541,16 +616,14 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
     }
 
     #[test]
-    fn unknown_extension_hash_is_refused_before_backup_or_receipt() {
+    fn duplicated_endpoint_settings_gate_is_refused_before_writing() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("extension.js");
-        let content = fixture();
+        let content = fixture().repeat(2);
         fs::write(&path, &content).unwrap();
 
-        let error = apply_with(&path, "fixture", &"0".repeat(64))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("not supported"), "{error}");
+        let error = apply(&path).unwrap_err().to_string();
+        assert!(error.contains("exactly one"), "{error}");
         assert_eq!(fs::read_to_string(&path).unwrap(), content);
         assert!(!backup_path(&path).exists());
         assert!(!receipt_path(&path).exists());
@@ -626,7 +699,11 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
             .map(PathBuf::from)
             .expect("HAXSD_BYOK_DEVIN_TEST_EXTENSION must point at a disposable extension.js copy");
         let original = fs::read(&path).unwrap();
-        assert_eq!(sha256(&original), SUPPORTED_SHA256);
+        assert!(
+            inspect(Some(&path)).clean,
+            "{}",
+            inspect(Some(&path)).message
+        );
 
         let receipt = apply(&path).unwrap();
         let patched = inspect(Some(&path));

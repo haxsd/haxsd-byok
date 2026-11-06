@@ -30,6 +30,7 @@ pub struct DevinChatRequest {
     pub tools: Vec<ToolDefinition>,
     pub requested_model: String,
     pub cascade_id: String,
+    pub session_id: String,
     pub prompt_id: String,
     pub execution_id: String,
     pub context_tokens: u64,
@@ -70,13 +71,12 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
     let tools = super::wire::all_fields(&fields, 10)
         .map(|field| parse_tool(bytes_value(field)?))
         .collect::<Result<Vec<_>>>()?;
-    if super::wire::first_field(&fields, 12).is_some() {
-        return Err(Error::Protocol(
-            "Devin tool choice is not supported by the shared model request yet".into(),
-        ));
-    }
+    // 字段 12 在真实请求里出现过，但它的编码没有可核对的证据，模型请求里也没有对应字段。
+    // 以前这里直接报错，于是一个我们用不上的字段就能让整轮对话失败；现在忽略它，让模型按
+    // 自己的判断选工具。
     let requested_model = string_field(&fields, 21)?;
     let cascade_id = string_field(&fields, 16)?;
+    let session_id = string_field(&fields, 28)?;
     let prompt_id = string_field(&fields, 17)?;
     let execution_id = string_field(&fields, 22)?;
     let context_token_source = if declared_context_tokens > 0 {
@@ -103,6 +103,7 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
         tools: prompt.tools,
         requested_model,
         cascade_id,
+        session_id,
         prompt_id,
         execution_id,
         context_tokens,
@@ -111,11 +112,18 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
 }
 
 pub fn to_invocation(
-    request: DevinChatRequest,
+    mut request: DevinChatRequest,
     binding: &DevinModelBinding,
     model: &ModelConfig,
 ) -> Result<crate::model::ModelInvocation> {
-    if request.requested_model.trim() != binding.model_uid.trim() {
+    let selected = if request.requested_model.trim() == binding.model_uid.trim() {
+        None
+    } else {
+        super::variants::model_variants(&binding.model_uid, model, binding.context_window_tokens)
+            .into_iter()
+            .find(|variant| variant.uid == request.requested_model.trim())
+    };
+    if request.requested_model.trim() != binding.model_uid.trim() && selected.is_none() {
         return Err(Error::Protocol(format!(
             "Devin model '{}' is not assigned to this router binding",
             request.requested_model
@@ -158,7 +166,17 @@ pub fn to_invocation(
     model_spec.context_window_tokens = model
         .context_window_tokens
         .or(binding.context_window_tokens);
-    model_spec.reasoning.effort = model.reasoning_effort.clone();
+    model_spec.reasoning.effort = match model.model_type {
+        crate::model::ModelType::OpenAi => model.reasoning_effort.clone(),
+        crate::model::ModelType::Anthropic => model.anthropic_thinking_effort.clone(),
+    };
+    if let Some(selected) = selected {
+        model_spec.context_window_tokens = selected.context_window_tokens;
+        model_spec.reasoning.enabled = Some(selected.reasoning_effort.is_some());
+        model_spec.reasoning.effort = selected.reasoning_effort;
+    }
+
+    replay_thinking(&mut request.history, model);
 
     Ok(crate::model::ModelInvocation {
         purpose: crate::model::CallPurpose::Chat,
@@ -180,6 +198,36 @@ pub fn to_invocation(
             history: request.history,
         },
     })
+}
+
+/// 客户端回传的思考块带着 Anthropic 的签名（见 `parse_message`）。绑定到别的协议时那段
+/// 签名没法回放：`openai_chat` 只认 `provider_kind == "openai_chat"` 的
+/// `reasoning_content`，于是每轮工具循环都要重新思考一遍。思考文本本来就在消息里，按绑定
+/// 的协议重写一次回放状态即可。Responses 协议需要的是推理 item 的 id，这里没有，保持原样。
+fn replay_thinking(history: &mut [ProjectedMessage], model: &ModelConfig) {
+    if model.model_type != crate::model::ModelType::OpenAi
+        || model.openai_endpoint.as_str() != crate::model::OPENAI_CHAT_ENDPOINT
+    {
+        return;
+    }
+    for message in history.iter_mut() {
+        let ProjectedContent::Assistant {
+            thinking,
+            replay_state,
+            ..
+        } = &mut message.content
+        else {
+            continue;
+        };
+        *replay_state = if thinking.is_empty() {
+            None
+        } else {
+            Some(ProviderReplayState {
+                provider_kind: "openai_chat".into(),
+                value: json!({ "reasoning_content": thinking }),
+            })
+        };
+    }
 }
 
 fn parse_message(
@@ -266,12 +314,25 @@ fn parse_message(
 
 fn parse_tool_call(bytes: &[u8], index: usize) -> Result<ToolCallContent> {
     let fields = super::wire::parse_fields(bytes)?;
+    let call_id = string_field(&fields, 1)?;
     let arguments = string_field(&fields, 3)?;
+    // 参数不是合法 JSON 时以前静默换成 `{}`，于是一个解析不了的工具调用会被当成"没有
+    // 参数"重放给模型：模型看到自己上一轮什么都没要，接着重试同一个空调用。宁可让这一轮
+    // 失败并指明是哪个调用，也不要伪造一个空参数。
+    let arguments = if arguments.trim().is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(&arguments).map_err(|error| {
+            Error::Protocol(format!(
+                "Devin tool call {call_id} has arguments that are not valid JSON: {error}"
+            ))
+        })?
+    };
     Ok(ToolCallContent {
         index,
-        call_id: string_field(&fields, 1)?,
+        call_id,
         name: string_field(&fields, 2)?,
-        arguments: serde_json::from_str(&arguments).unwrap_or_else(|_| json!({})),
+        arguments,
     })
 }
 
@@ -318,7 +379,7 @@ fn bytes_value(field: &super::wire::Field) -> Result<&[u8]> {
     }
 }
 
-fn string_field(fields: &[super::wire::Field], number: u32) -> Result<String> {
+pub(super) fn string_field(fields: &[super::wire::Field], number: u32) -> Result<String> {
     match super::wire::first_field(fields, number) {
         Some(field) => Ok(String::from_utf8_lossy(bytes_value(field)?).into_owned()),
         None => Ok(String::new()),
@@ -677,5 +738,135 @@ mod tests {
         );
         assert_eq!(request.context_tokens, expected);
         assert!(request.context_tokens > 0);
+    }
+
+    #[test]
+    fn native_selected_parameters_are_frozen_into_the_invocation() {
+        let mut request = parse_chat_request(&fixture()).unwrap();
+        request.requested_model = "haxsd-byok:model-a~low~128000".into();
+        let binding = DevinModelBinding::new("haxsd-byok:model-a", "hash-a");
+        let mut configured = model_config("hash-a");
+        configured.context_window_tokens = Some(500_000);
+        configured.reasoning_effort = Some("max".into());
+        let invocation = to_invocation(request.clone(), &binding, &configured).unwrap();
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            invocation.request.model.context_window_tokens,
+            Some(128_000)
+        );
+        configured.reasoning_effort = Some("high".into());
+        configured.context_window_tokens = Some(256_000);
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+        assert_eq!(
+            invocation.request.model.context_window_tokens,
+            Some(128_000)
+        );
+        request.requested_model = "haxsd-byok:model-a~max~1000000".into();
+        assert!(to_invocation(request, &binding, &configured).is_err());
+    }
+
+    #[test]
+    fn native_default_uses_the_configured_provider_effort() {
+        let mut request = parse_chat_request(&fixture()).unwrap();
+        request.requested_model = "haxsd-byok:model-a".into();
+        let binding = DevinModelBinding::new("haxsd-byok:model-a", "hash-a");
+        let mut configured = model_config("hash-a");
+        configured.model_type = ModelType::Anthropic;
+        configured.reasoning_effort = Some("max".into());
+        configured.anthropic_thinking_effort = Some("low".into());
+        let invocation = to_invocation(request, &binding, &configured).unwrap();
+        assert_eq!(
+            invocation.request.model.reasoning.effort.as_deref(),
+            Some("low")
+        );
+    }
+
+    /// 参数拼坏时以前静默换成 `{}`，模型会看到自己上一轮没要任何参数，然后重试同一个
+    /// 空调用。现在让这一轮失败，并指明是哪个调用。
+    #[test]
+    fn invalid_tool_arguments_fail_instead_of_becoming_an_empty_object() {
+        let call = serialize_fields(&[
+            Field::bytes(1, b"call-1"),
+            Field::bytes(2, b"todo_write"),
+            Field::bytes(3, br#"[content":""#),
+        ])
+        .unwrap();
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"assistant-1"),
+                Field::varint(2, 2),
+                Field::bytes(3, b"text"),
+                Field::bytes(6, call),
+            ]),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let error = parse_chat_request(&payload).unwrap_err().to_string();
+        assert!(
+            error.contains("call-1"),
+            "错误里要能认出错在哪个调用: {error}"
+        );
+    }
+
+    /// 字段 12（tool choice）没有可核对的编码，也没有对应的模型请求字段。以前它让整轮
+    /// 对话失败，现在只被忽略。
+    #[test]
+    fn an_unmodelled_tool_choice_field_does_not_fail_the_turn() {
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"user-1"),
+                Field::varint(2, 1),
+                Field::bytes(3, b"hello"),
+            ]),
+            Field::bytes(12, b"read_file"),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+        assert_eq!(request.history.len(), 1);
+    }
+
+    /// 回传的思考块带的是 Anthropic 签名。绑定 OpenAI Chat 协议时那段签名无法回放，
+    /// 以前 `openai_chat` 按 `provider_kind` 过滤掉，于是每轮工具循环都重新思考一遍。
+    #[test]
+    fn thinking_is_replayed_in_the_protocol_of_the_bound_model() {
+        let request = parse_chat_request(&fixture()).unwrap();
+        let binding = DevinModelBinding {
+            model_uid: "MODEL_CLAUDE_4_SONNET_BYOK".into(),
+            model_hash: "0123abcd".into(),
+            enabled: true,
+            ..DevinModelBinding::new("", "")
+        };
+
+        let mut anthropic_model = model_config("0123abcd");
+        anthropic_model.model_type = ModelType::Anthropic;
+        let anthropic = to_invocation(request.clone(), &binding, &anthropic_model).unwrap();
+        let ProjectedContent::Assistant { replay_state, .. } =
+            &anthropic.request.history[1].content
+        else {
+            panic!("assistant message must stay an assistant message");
+        };
+        assert_eq!(replay_state.as_ref().unwrap().provider_kind, "anthropic");
+
+        let openai = to_invocation(request, &binding, &model_config("0123abcd")).unwrap();
+        let ProjectedContent::Assistant { replay_state, .. } = &openai.request.history[1].content
+        else {
+            panic!("assistant message must stay an assistant message");
+        };
+        let replay = replay_state
+            .as_ref()
+            .expect("OpenAI 绑定时要按 reasoning_content 回放");
+        assert_eq!(replay.provider_kind, "openai_chat");
+        assert_eq!(replay.value["reasoning_content"], json!("thinking"));
     }
 }

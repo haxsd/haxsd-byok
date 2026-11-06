@@ -1,4 +1,5 @@
-import type { CursorHarnessStatus, DevinStatus } from "../shared/api";
+import type { CursorHarnessStatus, DevinHostStatus, DevinStatus } from "../shared/api";
+import { devinPointsAtGateway } from "../features/devin/devinConnectionView";
 
 /**
  * 顶部常驻状态与各入口状态的推导。
@@ -37,14 +38,19 @@ export function cursorEntryStatus(status: CursorHarnessStatus | null): EntryStat
   return { state: "not-taken-over", tone: "idle", label: t("未接管") };
 }
 
-export type DevinEntryState = "running" | "pending-restart" | "disabled-listening" | "disabled";
+export type DevinEntryState = "taken-over" | "checking" | "pending-configuration" | "pending-restart" | "disabled-listening" | "disabled";
 
-export function devinEntryStatus(status: DevinStatus | null): EntryStatus<DevinEntryState> | null {
+export function devinEntryStatus(status: DevinStatus | null, host: DevinHostStatus | null): EntryStatus<DevinEntryState> | null {
   if (!status) return null;
   if (status.enabled) {
-    return status.ready
-      ? { state: "running", tone: "ok", label: t("运行中") }
-      : { state: "pending-restart", tone: "warn", label: t("待重启") };
+    if (!status.ready) return { state: "pending-restart", tone: "warn", label: t("待重启") };
+    if (!host) return { state: "checking", tone: "warn", label: t("检查中…") };
+    const ports = status.bound_ports
+      ? { api_port: status.bound_ports.api, inference_port: status.bound_ports.inference }
+      : null;
+    return devinPointsAtGateway(host, ports)
+      ? { state: "taken-over", tone: "ok", label: t("已接管") }
+      : { state: "pending-configuration", tone: "warn", label: t("待完成") };
   }
   // 已保存关闭、端口却还在听：网关任务是在上一轮运行里起来的，会一直应答到进程退出。
   // 这时报"未启用"会骗人——端口是真的开着，还可能在产生调用记录。

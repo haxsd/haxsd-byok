@@ -2,7 +2,7 @@ import type { IconifyIcon } from "@iconify/react";
 import cursorIconUrl from "../../shared/assets/icons/cursor.svg";
 import { navCodexIcon, navDevinIcon } from "../../shared/ui/navIcons";
 import { terminalIcon } from "../../shared/ui/icons";
-import type { ClaudeStatus, ClaudeTakeover, CodexStatus, CursorHarnessStatus, DevinStatus } from "../../shared/api";
+import type { ClaudeStatus, ClaudeTakeover, CodexStatus, CursorHarnessStatus, DevinHostStatus, DevinStatus } from "../../shared/api";
 import type { EntryStatus, StatusTone } from "../../shell/connectionStatus";
 import { cursorEntryStatus, devinEntryStatus } from "../../shell/connectionStatus";
 import { codexConnectionView } from "../codex/codexConnectionView";
@@ -32,6 +32,7 @@ export interface HarnessClient {
 export interface HarnessState {
   cursorHarness: CursorHarnessStatus | null;
   devinStatus: DevinStatus | null;
+  devinHostStatus: DevinHostStatus | null;
   codexStatus: CodexStatus | null;
   claudeStatus: ClaudeStatus | null;
   claudeTakeover: ClaudeTakeover | null;
@@ -53,9 +54,9 @@ export const harnessClients: HarnessClient[] = [
     path: "/harness/devin",
     label: "Devin",
     icon: navDevinIcon,
-    entry: ({ devinStatus }) => {
-      const status = devinEntryStatus(devinStatus);
-      return { active: status?.state === "running", status };
+    entry: ({ devinStatus, devinHostStatus }) => {
+      const status = devinEntryStatus(devinStatus, devinHostStatus);
+      return { active: status?.state === "taken-over", status };
     },
   },
   {

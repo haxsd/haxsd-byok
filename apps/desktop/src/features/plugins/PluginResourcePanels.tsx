@@ -190,6 +190,8 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
           failed: failures.length,
           models: failures.map((failure) => failure.item.displayName).join("、"),
         }));
+      } else {
+        setModelProviderId(null);
       }
     } catch (cause) {
       setModelError(errorText(cause));

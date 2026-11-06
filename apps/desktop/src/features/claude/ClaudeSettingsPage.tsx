@@ -20,6 +20,7 @@ import {
   claudeConnectionView,
   claudeTokenRotationGate,
   claudeUndoKept,
+  type ClaudeTakeoverTarget,
 } from "./claudeConnectionView";
 import { claudeDesktopModelDraft } from "./claudeTakeoverPlan";
 import styles from "./ClaudeSettingsPage.module.scss";
@@ -40,6 +41,7 @@ export function ClaudeSettingsPage() {
   const [saved, setSaved] = useState<ClaudeSettings | null>(null);
   const [draft, setDraft] = useState<ClaudeSettings | null>(null);
   const [desktopModels, setDesktopModels] = useState<string[]>([]);
+  const [target, setTarget] = useState<ClaudeTakeoverTarget>("cli");
   // 撤销不保证全部还原：服务端保留的条目要留在页面上，不能只弹一句「已撤销」。
   const [cliKept, setCliKept] = useState<ClaudeTakeoverConflict[]>([]);
   const [desktopKept, setDesktopKept] = useState<ClaudeTakeoverConflict[]>([]);
@@ -82,6 +84,7 @@ export function ClaudeSettingsPage() {
     dirty,
     desktopModels,
   });
+  const activeGate = target === "cli" ? gate : desktopGate;
 
   const run = async (next: Busy, operation: () => Promise<void>) => {
     setBusy(next);
@@ -190,7 +193,7 @@ export function ClaudeSettingsPage() {
         : dirty ? <StatusPill tone="warn">{t("有未保存的改动")}</StatusPill> : undefined}
     >
       <div className={styles.tabsBody}>
-        <Tabs items={[
+        <Tabs value={target} onValueChange={value => setTarget(value as ClaudeTakeoverTarget)} items={[
           {
             value: "cli",
             label: "Claude Code CLI",
@@ -205,8 +208,6 @@ export function ClaudeSettingsPage() {
               error={error?.scope === "cli" ? error.cause : null}
               keptAfterUndo={cliKept}
               onChange={setDraft}
-              onApply={applyCli}
-              onUndo={undoCli}
               onCopy={copy}
               onOpenModels={() => void navigate("/models")}
             />,
@@ -225,8 +226,6 @@ export function ClaudeSettingsPage() {
               error={error?.scope === "desktop" ? error.cause : null}
               keptAfterUndo={desktopKept}
               onDesktopModelsChange={setDesktopModels}
-              onApply={applyDesktop}
-              onUndo={undoDesktop}
               onCopy={copy}
             />,
           },
@@ -242,6 +241,15 @@ export function ClaudeSettingsPage() {
         disabled={!draft || !dirty || busy !== null}
         onClick={() => void save()}
       >{busy?.action === "save" ? t("保存中…") : t("保存")}</Button>
+      <Button
+        disabled={busy !== null || !activeGate.apply}
+        title={activeGate.applyBlockedReason ?? undefined}
+        onClick={target === "cli" ? applyCli : applyDesktop}
+      >{target === "cli" ? t("应用到 Claude Code") : t("应用到 Claude Desktop")}</Button>
+      <Button
+        disabled={busy !== null || !activeGate.undo}
+        onClick={target === "cli" ? undoCli : undoDesktop}
+      >{target === "cli" ? t("撤销 Claude Code 接管") : t("撤销 Claude Desktop 接管")}</Button>
     </PageActions>
     <PageContent
       title={<PageTitle

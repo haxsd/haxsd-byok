@@ -29,7 +29,7 @@
 | 模型库 | 地址、API Key、模型 ID；支持 OpenAI Chat / Responses 与 Anthropic 协议；发现后多选添加、带连接测试 |
 | Cursor 接入 | 官方 / 本地 / 混合三种模型来源，含本机代理、本地 CA 与接管状态 |
 | Cursor 上下文压缩 | 本机模型长会话的自动与手动摘要；保留工程交接、历史/当前状态、压缩归档与摘要详细度重试 |
-| Devin 接入 | 可选本机网关、显式默认模型与模型映射、Devin 3.11.216 版本化兼容补丁；支持自定义安装目录 |
+| Devin 接入 | 可选本机网关、显式默认模型与模型映射、按端点设置结构识别的接入补丁与备份恢复；支持自定义安装目录 |
 | Codex 接入 | ChatGPT 客户端里的本地 Codex 保留工具、终端、审批、沙箱与任务循环，只替换模型推理；支持 Responses / Chat Completions / Anthropic |
 | Claude 接入 | 本机 Anthropic 网关（`/v1/messages`），适配 Claude Code CLI 与 Claude Desktop；Desktop 受组织策略托管时只给手工配置引导 |
 | 调用观测 | 调用成败、耗时、Token 用量，按参考单价估算金额 |

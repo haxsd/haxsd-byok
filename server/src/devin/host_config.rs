@@ -183,7 +183,8 @@ pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
 pub fn restore(receipt: &HostReceipt) -> Result<()> {
     let current =
         fs::read(&receipt.path).map_err(|error| host_read_error(&receipt.path, &error))?;
-    if sha256(&current) != receipt.patched_sha256 {
+    let status = inspect_current(&receipt.path, Some(&current))?;
+    if !status.configured || status.ports != Some(receipt.ports) {
         return Err(Error::Config(format!(
             "Devin settings changed after this application configured them; restore refused; \
              the previous file is kept at {}; restore backup: {}",
@@ -192,7 +193,7 @@ pub fn restore(receipt: &HostReceipt) -> Result<()> {
         )));
     }
 
-    if let Some(original_sha256) = receipt.original_sha256.as_deref() {
+    let original = if let Some(original_sha256) = receipt.original_sha256.as_deref() {
         let backup = fs::read(&receipt.backup_path).map_err(|error| {
             Error::Config(format!(
                 "Devin settings backup {} is unavailable ({error}); restore refused; restore \
@@ -207,9 +208,48 @@ pub fn restore(receipt: &HostReceipt) -> Result<()> {
                 receipt.backup_path.display()
             )));
         }
-        atomic_replace(&receipt.path, &backup)?;
+        Some(backup)
     } else {
-        fs::remove_file(&receipt.path).map_err(Error::Io)?;
+        None
+    };
+    if sha256(&current) == receipt.patched_sha256 {
+        if let Some(original) = original {
+            atomic_replace(&receipt.path, &original)?;
+        } else {
+            fs::remove_file(&receipt.path).map_err(Error::Io)?;
+        }
+    } else {
+        let current = std::str::from_utf8(&current).map_err(|_| {
+            Error::Config("Devin settings file is not UTF-8; restore refused".into())
+        })?;
+        let original = std::str::from_utf8(original.as_deref().unwrap_or(b"{}")).map_err(|_| {
+            Error::Config("Devin settings backup is not UTF-8; restore refused".into())
+        })?;
+        let original: serde_json::Value = json5::from_str(original).map_err(|error| {
+            Error::Config(format!(
+                "Devin settings backup is invalid; restore refused: {error}"
+            ))
+        })?;
+        let mut restored = current.to_owned();
+        for key in [API_SERVER_KEY, INFERENCE_API_SERVER_KEY] {
+            restored = match original.get(key) {
+                Some(serde_json::Value::String(value)) => {
+                    set_string_property(&restored, key, value)?
+                }
+                None => remove_string_property(&restored, key)?,
+                Some(_) => {
+                    return Err(Error::Config(format!(
+                        "Devin settings backup contains an invalid {key}; restore refused"
+                    )))
+                }
+            };
+        }
+        json5::from_str::<serde_json::Value>(&restored).map_err(|error| {
+            Error::Config(format!(
+                "Devin settings restore produced invalid JSONC: {error}"
+            ))
+        })?;
+        atomic_replace(&receipt.path, restored.as_bytes())?;
     }
 
     let _ = fs::remove_file(receipt_path(&receipt.path));
@@ -455,10 +495,7 @@ fn usable_receipt(path: &Path, status: &HostStatus) -> Option<HostReceipt> {
     if receipt.path != path || receipt.backup_path != backup_path(path) {
         return None;
     }
-    if !status.configured
-        || status.ports != Some(receipt.ports)
-        || status.current_sha256 != receipt.patched_sha256
-    {
+    if !status.configured || status.ports != Some(receipt.ports) {
         return None;
     }
     match receipt.original_sha256.as_deref() {
@@ -551,6 +588,43 @@ fn set_string_property(content: &str, key: &str, value: &str) -> Result<String> 
             Ok(output)
         }
     }
+}
+
+fn remove_string_property(content: &str, key: &str) -> Result<String> {
+    let (comments, structure) = mask_jsonc(content)?;
+    let Some(value) = top_level_value_range(content, &comments, &structure, key)? else {
+        return Ok(content.to_owned());
+    };
+    let needle = format!("\"{key}\"");
+    let start = comments[..value.start]
+        .windows(needle.len())
+        .rposition(|bytes| bytes == needle.as_bytes())
+        .filter(|start| depth_at(&structure, *start) == 1)
+        .ok_or_else(|| {
+            Error::Config(format!(
+                "cannot locate Devin setting {key}; restore refused"
+            ))
+        })?;
+    let mut after = value.end;
+    skip_mask_space(&comments, &mut after);
+    let comma = if comments.get(after) == Some(&b',') {
+        Some(after)
+    } else {
+        comments[..start]
+            .iter()
+            .rposition(|byte| !byte.is_ascii_whitespace())
+            .filter(|index| comments[*index] == b',')
+    };
+    let mut ranges = vec![start..value.end];
+    if let Some(comma) = comma {
+        ranges.push(comma..comma + 1);
+    }
+    ranges.sort_unstable_by(|left, right| right.start.cmp(&left.start));
+    let mut output = content.to_owned();
+    for range in ranges {
+        output.replace_range(range, "");
+    }
+    Ok(output)
 }
 
 fn top_level_value_range(
@@ -1002,6 +1076,87 @@ mod tests {
         let error = restore(&receipt).unwrap_err().to_string();
         assert!(error.contains("restore refused"), "{error}");
         assert_eq!(fs::read_to_string(&path).unwrap(), changed);
+        assert!(inspect(&path).unwrap().restore_receipt.is_none());
+    }
+
+    #[test]
+    fn unrelated_client_changes_keep_the_receipt_and_survive_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let original = r#"{
+  // user preference
+  "editor.fontSize": 15,
+  "codeium.apiServerUrl": "https://server.codeium.com",
+  "codeium.inferenceApiServerUrl": "https://inference.codeium.com"
+}
+"#;
+        let path = settings_file(&directory, Some(original));
+        let receipt = apply(&path, ports()).unwrap();
+        let changed = fs::read_to_string(&path).unwrap().replace(
+            "\"editor.fontSize\": 15",
+            "\"editor.fontSize\": 16,\n  \"devin.acp.agentPreferences\": {\"local\": true}",
+        );
+        fs::write(&path, changed).unwrap();
+
+        assert!(inspect(&path).unwrap().restore_receipt.is_some());
+        assert!(restore_persisted(&path));
+        let restored = fs::read_to_string(&path).unwrap();
+        assert!(restored.contains("// user preference"));
+        let values: serde_json::Value = json5::from_str(&restored).unwrap();
+        assert_eq!(values["editor.fontSize"], 16);
+        assert_eq!(values["devin.acp.agentPreferences"]["local"], true);
+        assert_eq!(values[API_SERVER_KEY], "https://server.codeium.com");
+        assert_eq!(
+            values[INFERENCE_API_SERVER_KEY],
+            "https://inference.codeium.com"
+        );
+        assert!(!receipt_path(&path).exists());
+        assert!(receipt.backup_path.exists());
+    }
+
+    #[test]
+    fn restore_removes_only_injected_endpoints_when_the_client_adds_preferences() {
+        for original in [Some("{\n  // original comment\n}\n"), None] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = settings_file(&directory, original);
+            let receipt = apply(&path, ports()).unwrap();
+            let current = fs::read_to_string(&path).unwrap();
+            let changed = current.replacen(
+                '{',
+                "{\n  \"devin.acp.agentPreferences\": {\"local\": true},",
+                1,
+            );
+            fs::write(&path, changed).unwrap();
+
+            restore(&receipt).unwrap();
+            let restored = fs::read_to_string(&path).unwrap();
+            let values: serde_json::Value = json5::from_str(&restored).unwrap();
+            assert_eq!(values["devin.acp.agentPreferences"]["local"], true);
+            assert!(values.get(API_SERVER_KEY).is_none());
+            assert!(values.get(INFERENCE_API_SERVER_KEY).is_none());
+            if original.is_some() {
+                assert!(restored.contains("// original comment"));
+            }
+        }
+    }
+
+    #[test]
+    fn unrelated_changes_do_not_allow_restore_from_a_tampered_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_file(&directory, Some("{\n}\n"));
+        let receipt = apply(&path, ports()).unwrap();
+        let current =
+            fs::read_to_string(&path)
+                .unwrap()
+                .replacen('{', "{\n  \"editor.fontSize\": 16,", 1);
+        fs::write(&path, &current).unwrap();
+        fs::write(&receipt.backup_path, "{\"changed\":true}").unwrap();
+
+        assert!(inspect(&path).unwrap().restore_receipt.is_none());
+        assert!(restore(&receipt)
+            .unwrap_err()
+            .to_string()
+            .contains("SHA-256 mismatch"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), current);
     }
 
     #[test]

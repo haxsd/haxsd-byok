@@ -15,8 +15,37 @@ await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
 
-const idle = { cursorHarness: null, devinStatus: null, codexStatus: null, claudeStatus: null, claudeTakeover: null };
+const idle = { cursorHarness: null, devinStatus: null, devinHostStatus: null, codexStatus: null, claudeStatus: null, claudeTakeover: null };
 const state = (overrides) => ({ ...idle, ...overrides });
+const connectedDevin = {
+  devinStatus: {
+    enabled: true, listening: true, ready: true,
+    bound_ports: { api: 44110, inference: 44111, local_api: 44112 },
+  },
+  devinHostStatus: {
+    configured: true,
+    ports: { api_port: 44110, inference_port: 44111 },
+    extension: { patched: true },
+  },
+};
+
+test("Devin settings without the extension patch do not count as connected", async () => {
+  const { harnessClients, harnessEntryStatus } = await loader.load("/src/features/harness/harnessClients.ts");
+  const snapshot = state({
+    devinStatus: {
+      enabled: true, listening: true, ready: true,
+      bound_ports: { api: 44110, inference: 44111, local_api: 44112 },
+    },
+    devinHostStatus: {
+      configured: true,
+      ports: { api_port: 44110, inference_port: 44111 },
+      extension: { patched: false },
+    },
+    codexStatus: { enabled: true, listening: true, configured: true, config_conflict: false, last_error: null },
+  });
+  assert.equal(harnessClients.find((client) => client.id === "devin").entry(snapshot).active, false);
+  assert.equal(harnessEntryStatus(snapshot).label, "1/4 已接入");
+});
 
 test("every client module is declared once, with its own path and status", async () => {
   const { harnessClients, harnessClientAt } = await loader.load("/src/features/harness/harnessClients.ts");
@@ -63,7 +92,7 @@ test("the top entry keeps a neutral tone while only some clients are in use", as
   // 截图里的真实状态：3/4 在用，第 4 个只是没启用/待重启，整体保持中性。
   const partial = harnessEntryStatus(state({
     cursorHarness: { mode: "local", settings_applied: true },
-    devinStatus: { enabled: true, listening: true, ready: true },
+    ...connectedDevin,
     codexStatus: { enabled: true, listening: true, port: 43120, configured: true, config_conflict: false, home: "x", calls: 0, last_error: null },
   }));
   assert.equal(partial.label, "3/4 已接入");
@@ -91,7 +120,7 @@ test("the page-level switch renders one entry per declared client with its own s
       createElement(HarnessTabs, {
         state: state({
           cursorHarness: { mode: "local", settings_applied: true },
-          devinStatus: { enabled: true, listening: true, ready: true },
+          ...connectedDevin,
         }),
       }),
     ),
@@ -102,7 +131,7 @@ test("the page-level switch renders one entry per declared client with its own s
     assert.match(markup, new RegExp(`>${label}<`), `${label} keeps its own label`);
   }
   assert.match(markup, /已接管/, "Cursor reports its own takeover state");
-  assert.match(markup, /运行中/, "Devin reports its own gateway state");
+  assert.match(markup, /Devin[\s\S]*已接管/, "Devin reports its verified takeover state");
   assert.match(markup, /aria-current="page"[^>]*>[\s\S]*Devin/, "the current client is the marked one");
 });
 
