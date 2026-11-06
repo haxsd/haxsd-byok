@@ -24,17 +24,14 @@ use crate::{
         ModelRequest, ModelSpec, ModelType, Overview, ProjectedContent, ProjectedMessage,
         PromptSpec, ProviderType, Role,
     },
-    plugin::{PluginDescriptor, PluginRegistry, PluginRuntime, PluginRuntimeStatus},
+    plugin::{PluginRegistry, PluginRuntime},
     provider::{is_valid_response_event, ModelEvent, Provider},
-    store::{
-        CommitSettings, DesktopSettings, DesktopSettingsPatch, ModelTokenPricing, PortSettings,
-        ProxySettings, ProxySettingsInput, StatisticsStorage, StatisticsStorageScope, Store,
-        TabSettings, TokenPricingSettings,
-    },
+    store::Store,
     Error, Result,
 };
 
-use super::settings::OutboundStatus;
+mod plugins;
+mod settings;
 
 /// 模型发现的整体上界:候选 URL 串行试、Anthropic 还要翻页,单个请求的上界盖不住总时长。
 /// 超时按上游错误返回,让界面拿到真实原因,而不是自己的 15 秒超时。
@@ -383,116 +380,6 @@ impl ControlService {
         &self.cursor_harness
     }
 
-    pub async fn plugins(&self) -> Vec<PluginDescriptor> {
-        self.plugins.plugins().await
-    }
-
-    pub async fn plugin_oauth_begin(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        method_id: &str,
-    ) -> Result<crate::plugin::OAuthBeginResponse> {
-        self.plugins
-            .oauth_begin(plugin_id, resource_type, method_id)
-            .await
-    }
-
-    pub async fn plugin_oauth_poll(
-        &self,
-        session_id: &str,
-    ) -> Result<crate::plugin::OAuthPollResponse> {
-        self.plugins.oauth_poll(session_id).await
-    }
-
-    pub async fn plugin_import(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        files: serde_json::Value,
-    ) -> Result<crate::plugin::ImportResponse> {
-        self.plugins
-            .import_resources(plugin_id, resource_type, files)
-            .await
-    }
-
-    pub async fn plugin_export_resources(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-    ) -> Result<serde_json::Value> {
-        self.plugins
-            .export_resources(plugin_id, resource_type)
-            .await
-    }
-
-    pub async fn plugin_refresh_resource(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        resource_id: &str,
-    ) -> Result<()> {
-        self.plugins
-            .refresh_resource(plugin_id, resource_type, resource_id)
-            .await
-    }
-
-    pub async fn plugin_resource_action(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        resource_id: &str,
-        action_id: &str,
-        input: serde_json::Value,
-    ) -> Result<serde_json::Value> {
-        self.plugins
-            .resource_action(plugin_id, resource_type, resource_id, action_id, input)
-            .await
-    }
-
-    pub async fn plugin_delete_resource(
-        &self,
-        plugin_id: &str,
-        resource_type: &str,
-        resource_id: &str,
-    ) -> Result<()> {
-        self.plugins
-            .delete_resource(plugin_id, resource_type, resource_id)
-            .await
-    }
-
-    pub async fn plugin_sync_models(&self, plugin_id: &str, provider_id: &str) -> Result<usize> {
-        self.plugins.sync_models(plugin_id, provider_id).await
-    }
-
-    pub async fn plugin_set_model_enabled(
-        &self,
-        plugin_id: &str,
-        provider_id: &str,
-        model_id: &str,
-        enabled: bool,
-    ) -> Result<()> {
-        self.plugins
-            .set_model_enabled(plugin_id, provider_id, model_id, enabled)
-            .await
-    }
-
-    pub async fn remove_plugin_configuration(&self, plugin_id: &str) -> Result<()> {
-        self.plugins.remove(plugin_id).await
-    }
-
-    pub fn plugin_runtime_status(&self) -> PluginRuntimeStatus {
-        self.plugin_runtime.status()
-    }
-
-    pub fn initialize_plugin_runtime(&self) -> PluginRuntimeStatus {
-        self.plugin_runtime.initialize(self.store.clone())
-    }
-
-    pub fn cancel_plugin_runtime_initialization(&self) -> PluginRuntimeStatus {
-        self.plugin_runtime.cancel_initialization()
-    }
-
     pub async fn models(&self) -> Result<Vec<ModelConfig>> {
         self.store.models().await
     }
@@ -821,10 +708,6 @@ impl ControlService {
         Ok(settings)
     }
 
-    pub async fn ports(&self) -> Result<PortSettings> {
-        self.store.port_settings().await
-    }
-
     pub async fn devin_settings(&self) -> Result<DevinSettings> {
         self.store.devin_settings().await
     }
@@ -844,113 +727,6 @@ impl ControlService {
     /// 否则客户端会打到没人接的地址上。
     pub fn devin_bound_ports(&self) -> DevinListening {
         self.devin_bound_ports.clone()
-    }
-
-    pub async fn set_ports(&self, settings: PortSettings) -> Result<PortSettings> {
-        self.store.set_port_settings(settings).await?;
-        Ok(settings)
-    }
-
-    pub async fn statistics_storage(&self) -> Result<StatisticsStorage> {
-        self.store.statistics_storage().await
-    }
-
-    /// 开始一次清理：立刻返回"已在清理"，不在这里等全部批次跑完。
-    ///
-    /// 删除本身跑在 store 的后台任务里（每批一个事务、批间放掉写锁），接口只负责把任务
-    /// 启动起来并把此刻的进度带回去——库大的时候几百个批次要跑几十秒，同步等的那个请求
-    /// 会先撞上桌面端 15 秒超时，用户看到的是"清理失败"，而库其实正在被清。
-    pub async fn start_clear_statistics_storage(
-        &self,
-        scope: StatisticsStorageScope,
-    ) -> Result<StatisticsStorage> {
-        self.store.start_clear_statistics_storage(scope).await
-    }
-
-    /// 请求压缩数据库；执行由维护循环在确认没有活跃 Agent 请求后接手。
-    pub async fn start_storage_compaction(&self) -> Result<StatisticsStorage> {
-        self.store.start_storage_compaction().await
-    }
-
-    pub async fn proxy_settings(&self) -> Result<ProxySettings> {
-        self.store.proxy_settings().await
-    }
-
-    /// 出网此刻实际走哪条路。设置页用它说明"正在绕过系统代理"这类与配置不一致的状态。
-    pub async fn outbound_status(&self) -> Result<OutboundStatus> {
-        Ok(OutboundStatus {
-            system_proxy_bypassed: crate::network::system_proxy_bypassed(),
-        })
-    }
-
-    pub async fn set_proxy_settings(&self, settings: ProxySettingsInput) -> Result<ProxySettings> {
-        if settings.mode.is_custom() {
-            let local_proxy_port = match self.cursor_harness.proxy_port().await {
-                Some(port) => port,
-                None => self.store.port_settings().await?.proxy_port,
-            };
-            crate::network::reject_self_proxy(&settings.address, local_proxy_port)?;
-        }
-        let settings = self.store.set_proxy_settings(settings).await?;
-        self.clients.settings_saved().await;
-        Ok(settings)
-    }
-
-    pub async fn tab_settings(&self) -> Result<TabSettings> {
-        self.store.tab_settings().await
-    }
-
-    pub async fn set_tab_settings(&self, settings: TabSettings) -> Result<TabSettings> {
-        self.cursor_harness.set_tab_settings(settings).await
-    }
-
-    pub async fn desktop_settings(&self) -> Result<DesktopSettings> {
-        self.store.desktop_settings().await
-    }
-
-    /// 桌面设置按字段更新：界面每次只提交改动的字段，合并由 store 在写锁内完成。
-    pub async fn update_desktop_settings(
-        &self,
-        patch: DesktopSettingsPatch,
-    ) -> Result<DesktopSettings> {
-        self.store.update_desktop_settings(patch).await
-    }
-
-    pub async fn commit_settings(&self) -> Result<CommitSettings> {
-        self.store.commit_settings().await
-    }
-
-    pub async fn set_commit_settings(&self, settings: CommitSettings) -> Result<CommitSettings> {
-        self.store.set_commit_settings(settings).await
-    }
-
-    pub async fn compaction_settings(&self) -> Result<crate::store::CompactionSettings> {
-        self.store.compaction_settings().await
-    }
-
-    pub async fn set_compaction_settings(
-        &self,
-        settings: crate::store::CompactionSettings,
-    ) -> Result<crate::store::CompactionSettings> {
-        self.store.set_compaction_settings(settings).await
-    }
-
-    pub async fn pricing_settings(&self) -> Result<TokenPricingSettings> {
-        self.store.pricing_settings().await
-    }
-
-    /// 保存一个模型的价格规则，返回合并后的完整规则表。
-    pub async fn set_model_pricing(
-        &self,
-        model_hash: &str,
-        pricing: ModelTokenPricing,
-    ) -> Result<TokenPricingSettings> {
-        self.store.set_model_pricing(model_hash, pricing).await
-    }
-
-    /// 删除一个模型的价格规则，返回合并后的完整规则表。
-    pub async fn remove_model_pricing(&self, model_hash: &str) -> Result<TokenPricingSettings> {
-        self.store.remove_model_pricing(model_hash).await
     }
 }
 
