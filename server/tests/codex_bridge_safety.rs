@@ -65,7 +65,7 @@ fn terminal_events_have_contiguous_sequence_numbers_and_all_argument_fragments()
     }
 }
 #[test]
-fn unknown_finish_reason_and_missing_anthropic_message_stop_are_errors() {
+fn failed_finish_reasons_and_truncated_streams_are_errors() {
     let m = mapped();
     let mut stream = BridgeStream::new(UpstreamFormat::Chat, "vendor".into(), m.tools);
     assert!(stream
@@ -79,20 +79,33 @@ fn unknown_finish_reason_and_missing_anthropic_message_stop_are_errors() {
         4096,
     )
     .unwrap();
-    let mut stream = BridgeStream::new(UpstreamFormat::Anthropic, "vendor".into(), m.tools);
+    // 正常完成（end_turn）即使网关不发 message_stop，也按完成收尾。
+    let mut stream = BridgeStream::new(UpstreamFormat::Anthropic, "vendor".into(), m.tools.clone());
     stream.push(&json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hi"}})).unwrap();
     stream
         .push(&json!({"type":"message_delta","delta":{"stop_reason":"end_turn"}}))
         .unwrap();
+    assert!(stream.finish().is_ok());
+
+    // 截断（max_tokens）缺 message_stop 仍然报错：不能把截断当成完整回答。
+    let mut stream = BridgeStream::new(UpstreamFormat::Anthropic, "vendor".into(), m.tools);
+    stream.push(&json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hi"}})).unwrap();
+    stream
+        .push(&json!({"type":"message_delta","delta":{"stop_reason":"max_tokens"}}))
+        .unwrap();
     assert!(stream.finish().is_err());
 }
+
 #[test]
-fn images_in_tool_results_survive_both_protocols() {
+fn images_in_tool_results_stay_out_of_chat_tool_messages() {
     let source = json!({"input":[{"role":"user","content":"look"},{"type":"function_call","name":"view_image","call_id":"c","arguments":"{}"},
         {"type":"function_call_output","call_id":"c","output":[{"type":"input_text","text":"image"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}]});
     let chat = translate_request(&source, UpstreamFormat::Chat, "vendor", 4096).unwrap();
+    // Chat 的 tool 消息只放文本；图片跟在整批工具结果之后，以 user 消息投递。
+    assert_eq!(chat.body["messages"][2]["role"], json!("tool"));
+    assert!(chat.body["messages"][2]["content"].is_string());
     assert_eq!(
-        chat.body["messages"][2]["content"][1]["image_url"]["url"],
+        chat.body["messages"][3]["content"][0]["image_url"]["url"],
         "data:image/png;base64,AAAA"
     );
     let anthropic = translate_request(&source, UpstreamFormat::Anthropic, "vendor", 4096).unwrap();

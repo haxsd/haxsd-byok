@@ -70,9 +70,6 @@ pub(crate) fn read_proxy_settings(value: &str) -> ProxySettingsSecret {
     })
 }
 
-/// Devin 设置的解析缓存。
-///
-
 impl Store {
     pub(crate) async fn proxy_settings_secret(&self) -> Result<ProxySettingsSecret> {
         let value = sqlx::query_scalar::<_, String>(
