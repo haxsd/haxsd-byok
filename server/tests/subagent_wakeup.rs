@@ -4,7 +4,10 @@ mod fake_provider;
 #[path = "support/fixtures.rs"]
 mod fixtures;
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use cursor_server::{
     cursor::{
@@ -827,6 +830,25 @@ async fn a_background_subagent_that_keeps_working_is_not_cut_off_by_a_fixed_dead
             _ => {}
         }
     }
+    // 从子代理还在跑的时候就开始刷新它的活动时间。父轮的等待时钟可能在工具结果
+    // 落库后立刻开始走；如果等到第三次模型请求才刷新，慢一点的 runner 上父轮会
+    // 在这段空窗里先按空闲阈值收尾（Windows 上碰巧没撞上，Linux CI 撞上了）。
+    let refresh_pool = store.pool().clone();
+    let stop_refresh = Arc::new(AtomicBool::new(false));
+    let refresh_stop = stop_refresh.clone();
+    let refresh_task = tokio::spawn(async move {
+        while !refresh_stop.load(Ordering::Relaxed) {
+            sqlx::query(
+                "UPDATE runs
+                    SET updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+                  WHERE cursor_request_id = 'active-child-request'",
+            )
+            .execute(&refresh_pool)
+            .await
+            .ok();
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        }
+    });
     wait_for_tool_call_completed(&store, ACTIVE_TASK_CALL).await;
     // 父轮发起第二次模型调用之前还要回完 blob 的 KV 回执；不读帧它就会停在那里，
     // 等不到"进入等待"的那一刻。
@@ -874,14 +896,6 @@ async fn a_background_subagent_that_keeps_working_is_not_cut_off_by_a_fixed_dead
     let mut saw_heartbeat = false;
     let refresh_deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(1_500);
     while tokio::time::Instant::now() < refresh_deadline {
-        sqlx::query(
-            "UPDATE runs
-                SET updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
-              WHERE cursor_request_id = 'active-child-request'",
-        )
-        .execute(store.pool())
-        .await
-        .unwrap();
         match tokio::time::timeout(std::time::Duration::from_millis(30), parent_output.recv()).await
         {
             Ok(Some(frame)) => match frame_role(&frame) {
@@ -927,6 +941,8 @@ async fn a_background_subagent_that_keeps_working_is_not_cut_off_by_a_fixed_dead
         "父轮 2 次 + 子代理那条挂住的调用；等待期间父轮不该再问模型，也不该提前收尾"
     );
     assert!(saw_heartbeat, "长等待期间没有发出保活帧");
+    stop_refresh.store(true, Ordering::Relaxed);
+    let _ = refresh_task.await;
 
     // 停止刷新：子代理真的空闲了，父轮应在空闲阈值后收尾，而不是永久挂住。
     let mut ended = false;
