@@ -237,6 +237,21 @@ jobs:
           fi
           gh release upload "${tag}" manifest/latest.json --repo "${GITHUB_REPOSITORY}" --clobber
 
+      # 转正前先核对资产：只上传了部分产物（或 .sig 缺失）时，latest.json 仍可能指向
+      # 一个不存在的安装包。草稿阶段就拦下，别让客户端拿到半套发布。
+      - name: Verify release assets before publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="haxsd-byok-v${VERSION}"
+          assets=$(gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')
+          printf '%s\n' "${assets}"
+          echo "${assets}" | grep -qE '^.*-setup\.exe$'
+          echo "${assets}" | grep -qE '\.exe\.sig$'
+          echo "${assets}" | grep -qx 'latest.json'
+
       # 显式 --repo 不依赖工作树：这一步失败会让版本停在草稿状态，不能靠"gh 能从
       # checkout 推断仓库"这种隐式前提（本任务只是为了跑上面的共享脚本才 checkout）。
       - name: Publish the completed release

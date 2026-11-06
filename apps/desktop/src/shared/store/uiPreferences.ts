@@ -257,15 +257,33 @@ export function useUiPreferences(): UiPreferences {
 }
 
 async function runBoot(): Promise<UiPreferences> {
-  const settings = await api.desktopSettings();
+  let settings: DesktopSettings | null;
+  try {
+    settings = await api.desktopSettings();
+  } catch (error) {
+    // 服务还没起来时先把本地旧偏好用上：主题/语言/教程已读不该因为一次失败的
+    // 设置读取整体回落到默认值。仍然抛错，调用方据此显示离线状态并在恢复后重试。
+    const legacy = readLegacyPreferences();
+    if (hasAnyPreference(legacy)) publish(legacy);
+    throw error;
+  }
   const plan = planPreferenceBoot(settings, readLegacyPreferences());
+  // 先把读到的偏好发布出去，再尝试上传旧 localStorage：上传失败只影响"服务端是否
+  // 收到"，不能连本地已经生效的偏好一起丢掉。
+  publish(plan.preferences);
   if (plan.upload) {
-    const echoed = preferencesFromSettings(await api.setDesktopSettings(preferencePatch(plan.upload)));
-    if (coversPreferences(echoed, plan.upload)) clearLegacyPreferences();
+    try {
+      const echoed = preferencesFromSettings(
+        await api.setDesktopSettings(preferencePatch(plan.upload)),
+      );
+      if (coversPreferences(echoed, plan.upload)) clearLegacyPreferences();
+    } catch (error) {
+      // 保留旧值，下次启动再试；本次启动继续用已发布的偏好。
+      console.warn("failed to upload legacy UI preferences; keeping them locally", error);
+    }
   } else if (plan.clearLegacy) {
     clearLegacyPreferences();
   }
-  publish(plan.preferences);
   return plan.preferences;
 }
 

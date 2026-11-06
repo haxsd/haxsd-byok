@@ -164,6 +164,10 @@ fn desktop_api_router(app: AppHandle) -> Router {
             "/__byok-api__/api/desktop/open-external-url",
             post(open_external_url_handler),
         )
+        // 与管理面共用同一道来源准入：这个路由能拉起系统浏览器，不能成为跨站 POST 的旁路。
+        .layer(axum::middleware::from_fn(
+            cursor_server::control::reject_cross_site,
+        ))
         .layer(Extension(app))
 }
 

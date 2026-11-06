@@ -31,6 +31,10 @@ type TimeRange = { startMs: number; endMs: number };
 const CALENDAR_DAYS = 365;
 const DAY_MS = 24 * 60 * 60_000;
 const OVERVIEW_REFRESH_INTERVAL_MS = 2_000;
+/// 区间概览（整段 token 聚合 + 日粒度的小时分桶）比"最近调用"贵得多：
+/// 每 2 秒重算一遍会把服务端读 IO 按 15 倍放大。实时刷新只给调用列表，
+/// 区间卡片按这个间隔推进；焦点/可见性回来时强制刷新一次。
+const RANGE_REFRESH_INTERVAL_MS = 30_000;
 
 function contributionCalendarData(overview: Overview, endMs: number) {
   const tokensByDate = new Map<string, number>();
@@ -126,10 +130,15 @@ export function HomePage() {
   useEffect(() => {
     if (location.pathname !== "/") return;
     let disposed = false;
-    const refreshCurrentRange = () => {
-      if (!disposed && document.visibilityState === "visible") {
-        void appStore.refreshCalls();
-        if (!rangeBusyRef.current) setRefreshVersion((version) => version + 1);
+    let lastRangeRefreshMs = 0;
+    const refreshCurrentRange = (force = false) => {
+      if (disposed || document.visibilityState !== "visible") return;
+      void appStore.refreshCalls();
+      const now = Date.now();
+      const due = force || now - lastRangeRefreshMs >= RANGE_REFRESH_INTERVAL_MS;
+      if (due && !rangeBusyRef.current) {
+        lastRangeRefreshMs = now;
+        setRefreshVersion((version) => version + 1);
       }
     };
     const refreshOnReturn = () => {
@@ -137,9 +146,9 @@ export function HomePage() {
       // The range cards and recent calls are the live preview. The year calendar is
       // all-time data and does not need to be recomputed on every two-second tick.
       void appStore.refreshOverview();
-      refreshCurrentRange();
+      refreshCurrentRange(true);
     };
-    const interval = window.setInterval(refreshCurrentRange, OVERVIEW_REFRESH_INTERVAL_MS);
+    const interval = window.setInterval(() => refreshCurrentRange(), OVERVIEW_REFRESH_INTERVAL_MS);
     window.addEventListener("focus", refreshOnReturn);
     document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {

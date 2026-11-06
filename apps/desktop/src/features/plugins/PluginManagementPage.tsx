@@ -36,8 +36,24 @@ export function PluginManagementPage() {
   useEffect(() => {
     if (pluginRuntime?.state !== "initializing") return;
     if (!cancelRequested.current) setProgressOpen(true);
-    const timer = window.setInterval(() => void appStore.refreshPluginRuntime(), 300);
-    return () => window.clearInterval(timer);
+    // 递归 setTimeout：上一拍 settle 之后再排下一拍。固定 300ms interval 会在下载/校验
+    // 慢于 300ms 时叠请求，失败时同一句错误被反复写进全局状态。
+    let timer = 0;
+    let cancelled = false;
+    let inFlight = false;
+    const tick = () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      void appStore.refreshPluginRuntime().finally(() => {
+        inFlight = false;
+        if (!cancelled) timer = window.setTimeout(tick, 300);
+      });
+    };
+    timer = window.setTimeout(tick, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [pluginRuntime?.state]);
 
   const initialize = async () => {

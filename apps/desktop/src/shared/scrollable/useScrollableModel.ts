@@ -157,6 +157,11 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
   const notificationScheduledRef = useRef(false)
   const mountedRef = useRef(true)
   const defaultScrollTopAppliedRef = useRef(false)
+  // 高度放进 ref：`snapshot` 在每次行高测量时都会重算，如果它依赖 `contentHeight`，
+  // 滚动监听与 ResizeObserver 会在首屏测量阶段被反复拆除重建。高度变化仍由下面
+  // 独立的 effect 触发一次重测。
+  const contentHeightRef = useRef(contentHeight)
+  contentHeightRef.current = contentHeight
   const onScrollRef = useRef(onScroll)
   const onViewportResizeRef = useRef(onViewportResize)
 
@@ -187,7 +192,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
       const metrics = measureScrollArea(
         viewportRef.current,
         trackRef.current,
-        contentHeight,
+        contentHeightRef.current,
         minThumbSize,
         isScrolling
       )
@@ -200,7 +205,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
 
       return metrics
     },
-    [contentHeight, minThumbSize, scheduleNotification, thumbRef, trackRef, viewportRef]
+    [minThumbSize, scheduleNotification, thumbRef, trackRef, viewportRef]
   )
 
   const scheduleScrollEnd = useCallback(() => {

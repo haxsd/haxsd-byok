@@ -32,28 +32,43 @@ export const OfflineBanner = memo(function OfflineBanner() {
     let cancelled = false;
     let timer = 0;
     let attempt = 0;
+    let inFlight = false;
     const schedule = () => {
       if (cancelled) return;
       timer = window.setTimeout(run, retryDelayMs(attempt));
     };
     const run = () => {
-      if (cancelled) return;
-      // 用户没在看这个窗口：这一拍不发请求，只把下一次排上，等他切回来再补。
+      if (cancelled || inFlight) return;
+      // 用户没在看这个窗口：这一拍不发请求，也不推进退避（它不是一次真实失败），
+      // 只把下一次排上；切回来时由 wake 立刻补一拍。
       if (!shouldAutoRetry(windowVisibility(document))) {
-        attempt += 1;
         schedule();
         return;
       }
+      inFlight = true;
       setAttempts((count) => count + 1);
       void appStore.refresh().finally(() => {
+        inFlight = false;
         attempt += 1;
         schedule();
       });
     };
+    // 窗口重新可见/拿到焦点时不要等满退避：清零退避并立即试一拍。
+    const wake = () => {
+      if (cancelled || inFlight) return;
+      if (!shouldAutoRetry(windowVisibility(document))) return;
+      window.clearTimeout(timer);
+      attempt = 0;
+      timer = window.setTimeout(run, 0);
+    };
     schedule();
+    window.addEventListener("focus", wake);
+    document.addEventListener("visibilitychange", wake);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.removeEventListener("focus", wake);
+      document.removeEventListener("visibilitychange", wake);
     };
   }, [offline]);
 
