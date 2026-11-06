@@ -58,8 +58,13 @@ impl OutputHub {
         let mut state = self.state.lock();
         // 重放必须无损：容量至少覆盖当前 history，否则晚到的订阅者会拿到一段被截断的
         // run（它不是"慢"，只是来晚了）。帧是引用计数的 `Bytes`，队列里多出来的只是
-        // 槽位而不是正文的又一份拷贝；运行期的积压仍由 `emit` 的 `try_send` 管。`
-        let (sender, receiver) = mpsc::channel(SUBSCRIBER_QUEUE_FRAMES.max(state.history.len()));
+        // 槽位而不是正文的又一份拷贝；运行期的积压仍由 `emit` 的 `try_send` 管。
+        //
+        // 历史帧占满 capacity 就等于没有留下任何实时帧的余量：重放一结束，
+        // 下一个 `emit` 的 `try_send` 立刻 `Full`，订阅者被当成"读不动"摘掉。
+        // 所以容量是 history + 固定的实时余量，而不是两者取大。
+        let (sender, receiver) =
+            mpsc::channel(SUBSCRIBER_QUEUE_FRAMES.saturating_add(state.history.len()));
         for frame in &state.history {
             let _ = sender.try_send(frame.clone());
         }
@@ -148,6 +153,31 @@ mod tests {
             replayed += 1;
         }
         assert_eq!(replayed, SUBSCRIBER_QUEUE_FRAMES * 2);
+    }
+
+    /// 重放占满历史帧之后，队列里必须还留着实时帧的余量；否则晚到但读得动的订阅者
+    /// 会在重放后的第一帧就被误判成"读不动"而摘掉（SSE 无 END_STREAM 直接 EOF）。
+    #[test]
+    fn a_late_subscriber_still_receives_live_frames_after_a_long_replay() {
+        let hub = OutputHub::default();
+        for index in 0..SUBSCRIBER_QUEUE_FRAMES * 2 {
+            hub.emit(frame(&index.to_string()));
+        }
+
+        let mut late = hub.subscribe();
+        // 不先排空：重放已经填满同一个队列。
+        assert!(hub.emit(frame("live")));
+        assert_eq!(
+            hub.state.lock().subscribers.len(),
+            1,
+            "晚到但读得动的订阅者不能被摘掉"
+        );
+
+        let mut delivered = 0;
+        while late.try_recv().is_ok() {
+            delivered += 1;
+        }
+        assert_eq!(delivered, SUBSCRIBER_QUEUE_FRAMES * 2 + 1);
     }
 
     /// 收尾：终止帧已经交给当时在场的订阅者，它们的流到 EOF；此后不再接受新帧。

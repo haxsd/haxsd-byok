@@ -71,7 +71,14 @@ impl Provider for OpenAiChatProvider {
                 tools_count = request.prompt.tools.len(),
                 "OpenAI Chat provider stream started"
             );
-            let messages = openai_chat_messages(&request.prompt.instructions, &request.history)?;
+            let messages = openai_chat_messages(
+                &request.prompt.instructions,
+                &request.history,
+                // 这是上游协议要求，不是本地的思考开关：DeepSeek 默认开启思考模式，
+                // 模型配置里没写 reasoning_effort 时 `is_enabled()` 为 false，但上游
+                // 依然要求带 tools 的请求回传每一轮 assistant 的 reasoning_content。
+                is_deepseek_chat(&request.model.model_id, &config.request_url),
+            )?;
             let mut body = json!({
                 "model": request.model.model_id,
                 "messages": messages,
@@ -246,7 +253,11 @@ fn apply_model(
     Ok(())
 }
 
-fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
+fn openai_chat_messages(
+    instructions: &str,
+    messages: &[ProjectedMessage],
+    deepseek_reasoning: bool,
+) -> Result<Vec<Value>> {
     let mut output = Vec::with_capacity(messages.len() + usize::from(!instructions.is_empty()));
     if !instructions.is_empty() {
         output.push(json!({"role": "system", "content": instructions}));
@@ -300,6 +311,12 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
                 );
                 if let Some(reasoning) = replay_reasoning {
                     value.insert("reasoning_content".into(), Value::String(reasoning.into()));
+                } else if deepseek_reasoning {
+                    // DeepSeek thinking mode with tools requires `reasoning_content` on
+                    // every assistant turn — even text-only turns and turns that emitted
+                    // no visible reasoning. A single missing field is an immediate 400,
+                    // and the broken history then poisons every later request.
+                    value.insert("reasoning_content".into(), Value::String(String::new()));
                 }
                 if !calls.is_empty() {
                     value.insert(
@@ -314,20 +331,49 @@ fn openai_chat_messages(instructions: &str, messages: &[ProjectedMessage]) -> Re
                 }
             }
             ProjectedContent::ToolResult(result) => {
-                value.insert(
-                    "content".into(),
-                    if result.provider_parts.is_empty() {
-                        Value::String(result.content.clone())
-                    } else {
-                        chat_content(&Role::User, &result.provider_parts)?
-                    },
-                );
+                // Chat Completions 的 tool 消息只接受字符串或纯文本分片；把 image_url
+                // 塞进 tool 消息会被上游判为非法参数，并且这条历史会让该会话之后每个
+                // 请求都重复同一个 400。文本留在 tool 消息，图片改由紧随其后的 user
+                // 消息投递，模型仍能看到。
+                let images: Vec<ContentPart> = result
+                    .provider_parts
+                    .iter()
+                    .filter(|part| matches!(part, ContentPart::Image { .. }))
+                    .cloned()
+                    .collect();
+                let text = if result.provider_parts.is_empty() {
+                    result.content.clone()
+                } else {
+                    result
+                        .provider_parts
+                        .iter()
+                        .filter_map(|part| match part {
+                            ContentPart::Text { text } => Some(text.as_str()),
+                            ContentPart::Image { .. } => None,
+                        })
+                        .collect::<String>()
+                };
+                value.insert("content".into(), Value::String(text));
                 value.insert("tool_call_id".into(), Value::String(result.call_id.clone()));
+                output.push(Value::Object(value));
+                if !images.is_empty() {
+                    output.push(json!({
+                        "role": "user",
+                        "content": chat_content(&Role::User, &images)?,
+                    }));
+                }
+                continue;
             }
         }
         output.push(Value::Object(value));
     }
     Ok(output)
+}
+
+fn is_deepseek_chat(model_id: &str, request_url: &str) -> bool {
+    [model_id, request_url]
+        .iter()
+        .any(|value| value.to_ascii_lowercase().contains("deepseek"))
 }
 
 fn chat_content(_role: &Role, parts: &[ContentPart]) -> Result<Value> {
@@ -598,7 +644,7 @@ mod tests {
     #[test]
     fn assistant_with_only_reasoning_content_is_omitted() {
         let message = assistant_message("", Some("only thinking"), Vec::new());
-        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
         assert!(
             messages.is_empty(),
             "reasoning-only assistant turn must be omitted, got: {messages:?}"
@@ -608,7 +654,7 @@ mod tests {
     #[test]
     fn assistant_with_text_and_reasoning_content_is_kept() {
         let message = assistant_message("hello", Some("reasoning"), Vec::new());
-        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], json!("assistant"));
         assert_eq!(messages[0]["content"], json!("hello"));
@@ -627,13 +673,109 @@ mod tests {
                 arguments: json!({}),
             }],
         );
-        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], json!("assistant"));
         assert_eq!(messages[0]["content"], Value::Null);
         assert_eq!(messages[0]["reasoning_content"], json!("reasoning"));
         assert_eq!(messages[0]["tool_calls"][0]["id"], json!("c1"));
         assert_eq!(messages[0]["tool_calls"][0]["function"]["name"], json!("f"));
+    }
+
+    /// DeepSeek thinking mode requires the field on every tool-call assistant message,
+    /// including turns where the model emitted no visible reasoning text.
+    #[test]
+    fn deepseek_tool_calls_get_an_empty_reasoning_content_when_none_was_emitted() {
+        let message = assistant_message(
+            "",
+            None,
+            vec![ToolCallContent {
+                index: 0,
+                call_id: "c1".into(),
+                name: "f".into(),
+                arguments: json!({}),
+            }],
+        );
+        let messages = openai_chat_messages("", &[message], true).expect("messages should build");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["reasoning_content"], json!(""));
+    }
+
+    /// The requirement applies to text-only assistant turns as well: with tools in the
+    /// request, DeepSeek rejects any assistant message that lacks the field.
+    #[test]
+    fn deepseek_text_only_assistant_turns_get_an_empty_reasoning_content() {
+        let message = assistant_message("done", None, Vec::new());
+        let messages = openai_chat_messages("", &[message], true).expect("messages should build");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["role"], json!("assistant"));
+        assert_eq!(messages[0]["reasoning_content"], json!(""));
+    }
+
+    /// Chat Completions tool messages only accept text. Images must ride in a following
+    /// user message; an image part inside the tool message is a permanent 400.
+    #[test]
+    fn tool_result_images_move_to_a_following_user_message() {
+        let message = ProjectedMessage {
+            message_id: "tool-1".into(),
+            role: Role::Tool,
+            content: ProjectedContent::ToolResult(crate::model::ToolResultContent {
+                call_id: "c1".into(),
+                name: "read_file".into(),
+                content: "screenshot attached".into(),
+                is_error: false,
+                image: None,
+                provider_parts: vec![
+                    ContentPart::Text {
+                        text: "screenshot attached".into(),
+                    },
+                    ContentPart::Image {
+                        mime_type: "image/png".into(),
+                        data: vec![1, 2, 3],
+                    },
+                ],
+            }),
+        };
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["role"], json!("tool"));
+        assert_eq!(messages[0]["content"], json!("screenshot attached"));
+        assert_eq!(messages[1]["role"], json!("user"));
+        assert_eq!(messages[1]["content"][0]["type"], json!("image_url"));
+    }
+
+    /// Other Chat-compatible upstreams reject or ignore DeepSeek's proprietary field,
+    /// so the fallback must only be enabled for DeepSeek.
+    #[test]
+    fn other_chat_upstreams_do_not_gain_reasoning_content() {
+        let message = assistant_message(
+            "",
+            None,
+            vec![ToolCallContent {
+                index: 0,
+                call_id: "c1".into(),
+                name: "f".into(),
+                arguments: json!({}),
+            }],
+        );
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
+        assert!(messages[0].get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn deepseek_is_recognized_by_model_or_endpoint() {
+        assert!(is_deepseek_chat(
+            "deepseek-flash",
+            "https://api.example.com/v1/chat/completions"
+        ));
+        assert!(is_deepseek_chat(
+            "vendor-alias",
+            "https://api.deepseek.com/v1/chat/completions"
+        ));
+        assert!(!is_deepseek_chat(
+            "gpt-4.1-mini",
+            "https://api.example.com/v1/chat/completions"
+        ));
     }
 
     #[test]
@@ -645,7 +787,7 @@ mod tests {
                 text: String::new(),
             }]),
         };
-        let messages = openai_chat_messages("", &[message]).expect("messages should build");
+        let messages = openai_chat_messages("", &[message], false).expect("messages should build");
         assert!(
             messages.is_empty(),
             "empty Parts content must be omitted, got: {messages:?}"

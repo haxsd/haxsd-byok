@@ -1,10 +1,14 @@
 //! Persists content-addressed blobs and their edges.
 //! Storage accounting and cleanup for disposable observability data.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
 
 use serde::{Deserialize, Serialize};
 use sqlx::{Connection, SqliteConnection};
+use tokio::sync::Notify;
 
 use crate::Result;
 
@@ -19,18 +23,54 @@ use super::{now_ms, retention::RETENTION_MS, BlobId, Store};
 /// `retention::MAX_PRUNED_TRACES_PER_PASS`）。
 const CLEAR_DETAILS_BATCH_ROWS: i64 = 4_096;
 
+/// `llm_calls` 一行连同索引的保守估算。这里不逐行 `LENGTH(...)`：设置页每次挂载都会读
+/// 统计，61k 行真实库上那条表达式曾让整次读取变成数秒级全表扫描。摘要正文里的长字段很
+/// 少见，界面明确标成“约”；请求/响应正文仍按精确的 `byte_count` 单列。
+const CALL_RECORD_BYTES_ESTIMATE: i64 = 640;
+/// 一条轨迹摘要连同 `received_at_ms` 索引的保守估算。
+const TRACE_RECORD_BYTES_ESTIMATE: i64 = 128;
+/// 增量回收每次最多归还的页数（4 KiB 页下约 8 MiB）。保持维护循环一次只做一小段，
+/// 不让它像一次 `VACUUM` 那样长时间占住写路径。
+const INCREMENTAL_VACUUM_PAGES_PER_PASS: i64 = 2_048;
+/// 少于这么多空闲页（约 1 MiB）时先不动，避免维护循环为几页反复重排 B 树。
+const MIN_FREE_PAGES_TO_RECLAIM: i64 = 256;
+
+/// 设置页“存储管理”的数据。所有 `*_bytes` 都是字节，`*_count` 都是行数/文件数。
+///
+/// 这里把四个容易被混成一个数字的概念分开：
+/// * `database_bytes`：SQLite 文件当前分配的全部页；
+/// * `database_used_bytes`：有效页，仍装着数据或索引；
+/// * `database_free_bytes`：`DELETE` 后留在 freelist 中、可供复用但尚未归还磁盘的页；
+/// * `observability_bytes`：可以手动清理的调用摘要与明细估算。
+///
+/// 对话消息与内容块、抓取缓存、落盘工件又各自单列：它们的生命周期和清理入口都不同。
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct StatisticsStorage {
-    /// 可清理的观测数据（调用行、请求/响应正文、追踪附件）的估算大小。
-    pub bytes: i64,
-    /// 数据库文件的当前大小：清理不会让它变小（SQLite 复用释放页），所以两个数字要一起给。
+    /// 数据库文件的当前大小：清理不会让它变小（SQLite 复用释放页）。
     pub database_bytes: i64,
+    /// 数据库文件里仍被有效页占用的部分（含索引与页开销）。
+    pub database_used_bytes: i64,
+    /// 已释放、等待复用或压缩归还的空闲页。
+    pub database_free_bytes: i64,
+    /// SQLite 的 `-wal` 独立文件；正常由 checkpoint 自动截断，不属于主库页。
+    pub wal_bytes: i64,
+    /// `llm_calls` 摘要与轨迹索引的估算大小；清空调用历史会删除它们。
+    pub call_record_bytes: i64,
+    /// 请求/响应正文和追踪附件的估算大小；清理详细记录只删这一部分。
+    pub call_detail_bytes: i64,
+    /// `call_record_bytes + call_detail_bytes`，即清空调用历史会回收的估算总量。
+    pub observability_bytes: i64,
+    pub call_count: i64,
+    pub trace_count: i64,
+    /// 对话消息正文与内容块正文的估算大小；清理统计不碰它们。
+    pub conversation_bytes: i64,
+    pub message_count: i64,
+    /// 内容块数量（含对话 checkpoint、工具图片与追踪附件引用的块）。
+    pub blob_count: i64,
     /// 落盘的大工具结果与压缩历史（`tool-results`、`compaction-history`）合计大小。
     pub artifact_bytes: i64,
     /// 上面那两个目录的保留天数（它们与日志各自按 7 天清理）。
     pub artifact_retention_days: i64,
-    pub call_count: i64,
-    pub trace_count: i64,
     /// 服务端对话副本的闲置回收窗口（天）：见 `retention::CONVERSATION_RETENTION_MS`。
     ///
     /// 只读、不可配置：界面用它说明"这块空间不是无底洞"，而不是给一个可以调小的旋钮
@@ -38,14 +78,28 @@ pub struct StatisticsStorage {
     pub conversation_retention_days: i64,
     /// 抓取结果缓存（`<数据目录>/cache/web`）的当前占用。
     ///
-    /// 它不在数据库里，所以与 `bytes` 分开报：把文件系统的数字混进"可清理的观测数据"会让
+    /// 它不在数据库里，所以与库内统计分开报：把文件系统的数字混进"可清理的观测数据"会让
     /// "清理之后数据库文件没变小"这件事更难解释。界面应当把它单列一行，并且只有
     /// `web_cache` 作用域会清它。
     pub web_cache_bytes: i64,
     pub web_cache_files: i64,
+    /// 滚动日志目录的占用与文件数；它们不在数据库里，单独显示。
+    pub log_bytes: i64,
+    pub log_files: i64,
+    /// 插件目录（运行时、已安装插件、账号数据）的递归占用；不在数据库里。
+    pub plugin_bytes: i64,
+    pub plugin_files: i64,
+    /// 当前数据库是否已启用增量 `auto_vacuum`。已有库第一次启用需要一次整库压缩。
+    pub incremental_vacuum_enabled: bool,
     /// 有后台清理在跑时是它此刻的进度：界面据此显示"正在清理"，而不是把"还没清完"
     /// 当成失败。没有任务在跑时是 `None`。
     pub clearing: Option<ClearProgress>,
+    /// 已经请求压缩，正在等待所有 Agent 请求结束。
+    pub compaction_requested: bool,
+    /// 数据库正在被整库重写；此时界面应继续轮询而不是允许第二个任务。
+    pub compacting: bool,
+    /// 上一次压缩失败。界面据此给出可操作提示，而不是让“排队中”悄悄消失。
+    pub compaction_failed: bool,
 }
 
 /// 一次后台清理的进度快照。
@@ -57,15 +111,19 @@ pub struct ClearProgress {
     pub deleted_files: u64,
 }
 
-/// 后台清理任务的进度。
+/// 后台清理、压缩与页回收的共享状态。
 ///
-/// 清理是进程级唯一的动作（一个库只有一条写路径），所以状态挂在 `Store` 上而不是每个
-/// 请求里：界面在任务跑完之前会一直问 `statistics_storage`。
+/// 一个库只有一条写路径，所以状态挂在 `Store` 上而不是每个请求里。`wake` 让用户点下
+/// “压缩数据库”时立刻叫醒维护循环；没有它只能等下一次 60 秒 tick。
 #[derive(Default)]
-pub(crate) struct ClearState {
-    running: AtomicBool,
+pub(crate) struct StorageMaintenanceState {
+    clearing: AtomicBool,
     deleted_rows: AtomicU64,
     deleted_files: AtomicU64,
+    compaction_requested: AtomicBool,
+    compacting: AtomicBool,
+    compaction_failed: AtomicBool,
+    wake: Arc<Notify>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
@@ -80,44 +138,49 @@ pub enum StatisticsStorageScope {
 }
 
 impl Store {
-    /// 可清理观测数据的估算大小。
+    /// 存储分解。
     ///
-    /// 正文类的大块（请求体、响应分片、追踪附件正文）全部读各自已存的 `byte_count`：
-    /// 这里是设置页一挂载就请求的接口，逐行 `LENGTH(body_json)` / `LENGTH(data)` /
-    /// 回表 `blobs` 取附件正文会让它变成一次全库正文扫描。留下的 `LENGTH(...)` 只覆盖
-    /// 两张摘要表自己的短文本列——它们就是"估算"里省不掉的那部分。
+    /// 大正文全部读各自已存的 `byte_count`，调用摘要按行数估算：设置页每次挂载都会问
+    /// 这个接口，逐行 `LENGTH(body_json)` / `LENGTH(error_message)` 会让 61k 行的真实库
+    /// 变成数秒级全表扫描。消息与内容块则只扫正文列本身，用于说明“几十 MB 逻辑数据”
+    /// 到底在哪，不把 SQLite 索引和空闲页混进去。
     pub async fn statistics_storage(&self) -> Result<StatisticsStorage> {
-        let (bytes, database_bytes, call_count, trace_count) = sqlx::query_as::<_, (i64, i64, i64, i64)>(
+        let (
+            database_bytes,
+            database_free_bytes,
+            call_count,
+            trace_count,
+            call_detail_bytes,
+            conversation_bytes,
+            message_count,
+            blob_count,
+            auto_vacuum,
+            database_path,
+        ) = sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64, i64, i64, i64, String)>(
             r#"
             SELECT
-                COALESCE((
-                    SELECT SUM(
-                        LENGTH(call_id) + LENGTH(run_id) + LENGTH(conversation_id) +
-                        LENGTH(provider_type) + LENGTH(provider_url) + LENGTH(request_type) +
-                        LENGTH(request_url) + LENGTH(model_id) + LENGTH(display_name) +
-                        LENGTH(status) + COALESCE(LENGTH(finish_reason), 0) +
-                        COALESCE(LENGTH(usage_json), 0) + COALESCE(LENGTH(error_kind), 0) +
-                        COALESCE(LENGTH(error_message), 0) + 256
-                    ) FROM llm_calls
-                ), 0) +
-                COALESCE((SELECT SUM(byte_count + LENGTH(headers_json) + 24) FROM llm_call_requests), 0) +
-                COALESCE((SELECT SUM(byte_count + 24) FROM llm_call_response_chunks), 0) +
-                COALESCE((
-                    SELECT SUM(
-                        LENGTH(request_id) + COALESCE(LENGTH(conversation_id), 0) +
-                        LENGTH(route) + COALESCE(LENGTH(model_id), 0) + LENGTH(status) +
-                        COALESCE(LENGTH(error_message), 0) + 96
-                    ) FROM cursor_run_traces
-                ), 0) +
-                COALESCE((
-                    SELECT SUM(
-                        byte_count + LENGTH(artifact_type) + LENGTH(source) +
-                        LENGTH(metadata_json) + 48
-                    ) FROM cursor_run_trace_artifacts
-                ), 0),
-                COALESCE((SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()), 0),
+                COALESCE((SELECT page_count * page_size
+                          FROM pragma_page_count(), pragma_page_size()), 0),
+                COALESCE((SELECT freelist_count * page_size
+                          FROM pragma_freelist_count(), pragma_page_size()), 0),
                 (SELECT COUNT(*) FROM llm_calls),
-                (SELECT COUNT(*) FROM cursor_run_traces)
+                (SELECT COUNT(*) FROM cursor_run_traces),
+                COALESCE((SELECT SUM(byte_count + LENGTH(headers_json) + 24)
+                          FROM llm_call_requests), 0) +
+                COALESCE((SELECT SUM(byte_count + 24)
+                          FROM llm_call_response_chunks), 0) +
+                COALESCE((SELECT SUM(
+                              byte_count + LENGTH(artifact_type) + LENGTH(source) +
+                              LENGTH(metadata_json) + 48
+                          ) FROM cursor_run_trace_artifacts), 0),
+                COALESCE((SELECT SUM(LENGTH(payload_json) + 64)
+                          FROM messages), 0) +
+                COALESCE((SELECT SUM(LENGTH(data) + 32)
+                          FROM blobs), 0),
+                (SELECT COUNT(*) FROM messages),
+                (SELECT COUNT(*) FROM blobs),
+                COALESCE((SELECT auto_vacuum FROM pragma_auto_vacuum()), 0),
+                COALESCE((SELECT file FROM pragma_database_list() WHERE name = 'main'), '')
             "#,
         )
         .fetch_one(&self.pool)
@@ -125,7 +188,22 @@ impl Store {
 
         // 抓取结果缓存的占用要读目录（几百个 stat），放进阻塞线程池：这是设置页一挂载
         // 就会问的接口，不该让它去占住 async 工作线程。
-        let web_cache = tokio::task::spawn_blocking(crate::diagnostics::web_cache_usage)
+        let (web_cache, log_usage, plugin_usage, wal_bytes) =
+            tokio::task::spawn_blocking(move || {
+                let wal_bytes = if database_path.is_empty() {
+                    0
+                } else {
+                    std::fs::metadata(format!("{database_path}-wal"))
+                        .map(|metadata| metadata.len())
+                        .unwrap_or(0)
+                };
+                (
+                    crate::diagnostics::web_cache_usage(),
+                    crate::diagnostics::log_usage(),
+                    crate::diagnostics::plugin_usage(),
+                    wal_bytes,
+                )
+            })
             .await
             .unwrap_or_default();
         // 大工具结果与压缩历史同样在文件系统里（每个目录最多几千个文件）：一并放到阻塞
@@ -134,28 +212,60 @@ impl Store {
             .await
             .unwrap_or(0);
 
+        let database_free_bytes = database_free_bytes.clamp(0, database_bytes);
+        let database_used_bytes = database_bytes - database_free_bytes;
+        let call_record_bytes =
+            call_count * CALL_RECORD_BYTES_ESTIMATE + trace_count * TRACE_RECORD_BYTES_ESTIMATE;
         Ok(StatisticsStorage {
-            bytes,
             database_bytes,
-            artifact_bytes: artifact_bytes as i64,
-            artifact_retention_days: crate::model::ARTIFACT_RETENTION_DAYS,
+            database_used_bytes,
+            database_free_bytes,
+            wal_bytes: wal_bytes as i64,
+            call_record_bytes,
+            call_detail_bytes,
+            observability_bytes: call_record_bytes + call_detail_bytes,
             call_count,
             trace_count,
+            conversation_bytes,
+            message_count,
+            blob_count,
+            artifact_bytes: artifact_bytes as i64,
+            artifact_retention_days: crate::model::ARTIFACT_RETENTION_DAYS,
             conversation_retention_days: super::retention::CONVERSATION_RETENTION_DAYS,
             web_cache_bytes: web_cache.bytes as i64,
             web_cache_files: web_cache.files as i64,
+            log_bytes: log_usage.bytes as i64,
+            log_files: log_usage.files as i64,
+            plugin_bytes: plugin_usage.bytes as i64,
+            plugin_files: plugin_usage.files as i64,
+            incremental_vacuum_enabled: auto_vacuum == 2,
             clearing: self.clear_progress(),
+            compaction_requested: self
+                .storage_maintenance
+                .compaction_requested
+                .load(Ordering::SeqCst),
+            compacting: self.storage_maintenance.compacting.load(Ordering::SeqCst),
+            compaction_failed: self
+                .storage_maintenance
+                .compaction_failed
+                .load(Ordering::SeqCst),
         })
     }
 
     /// 此刻是否有后台清理在跑；有就带上进度。
     fn clear_progress(&self) -> Option<ClearProgress> {
-        self.clear
-            .running
+        self.storage_maintenance
+            .clearing
             .load(Ordering::SeqCst)
             .then(|| ClearProgress {
-                deleted_rows: self.clear.deleted_rows.load(Ordering::Relaxed),
-                deleted_files: self.clear.deleted_files.load(Ordering::Relaxed),
+                deleted_rows: self
+                    .storage_maintenance
+                    .deleted_rows
+                    .load(Ordering::Relaxed),
+                deleted_files: self
+                    .storage_maintenance
+                    .deleted_files
+                    .load(Ordering::Relaxed),
             })
     }
 
@@ -173,16 +283,29 @@ impl Store {
         scope: StatisticsStorageScope,
     ) -> Result<StatisticsStorage> {
         if self
-            .clear
-            .running
+            .storage_maintenance
+            .compaction_requested
+            .load(Ordering::SeqCst)
+            || self.storage_maintenance.compacting.load(Ordering::SeqCst)
+        {
+            tracing::warn!("storage compaction is active; not starting a clear");
+            return self.statistics_storage().await;
+        }
+        if self
+            .storage_maintenance
+            .clearing
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_err()
         {
             tracing::warn!("a statistics clear is already running; not starting a second one");
             return self.statistics_storage().await;
         }
-        self.clear.deleted_rows.store(0, Ordering::Relaxed);
-        self.clear.deleted_files.store(0, Ordering::Relaxed);
+        self.storage_maintenance
+            .deleted_rows
+            .store(0, Ordering::Relaxed);
+        self.storage_maintenance
+            .deleted_files
+            .store(0, Ordering::Relaxed);
         let store = self.clone();
         tokio::spawn(async move {
             let cleared = match scope {
@@ -190,10 +313,16 @@ impl Store {
                 StatisticsStorageScope::All => store.clear_all_statistics_storage().await,
                 StatisticsStorageScope::WebCache => store.clear_web_cache_at(None).await,
             };
-            store.clear.running.store(false, Ordering::SeqCst);
+            store
+                .storage_maintenance
+                .clearing
+                .store(false, Ordering::SeqCst);
             match cleared {
                 Ok(storage) => tracing::info!(
-                    deleted_rows = store.clear.deleted_rows.load(Ordering::Relaxed),
+                    deleted_rows = store
+                        .storage_maintenance
+                        .deleted_rows
+                        .load(Ordering::Relaxed),
                     call_count = storage.call_count,
                     trace_count = storage.trace_count,
                     "cleared statistics storage"
@@ -207,8 +336,141 @@ impl Store {
         self.statistics_storage().await
     }
 
-    pub async fn clear_statistics_storage(&self) -> Result<StatisticsStorage> {
+    /// 维护循环等待这个 `Notify`：用户请求压缩时立即醒来，不必空等下一个 60 秒 tick。
+    pub(crate) fn storage_wake(&self) -> Arc<Notify> {
+        self.storage_maintenance.wake.clone()
+    }
+
+    /// 请求一次整库压缩；真正执行仍在维护循环里，只有确认没有活跃 Agent 请求时才开始。
+    ///
+    /// 接口必须立即返回：1 GiB 级数据库的 `VACUUM` 会重写整个文件，远超桌面端请求超时。
+    /// `compaction_requested` 让界面先显示“等待空闲”，维护循环开始后切到“正在压缩”。
+    pub async fn start_storage_compaction(&self) -> Result<StatisticsStorage> {
+        if self.storage_maintenance.clearing.load(Ordering::SeqCst) {
+            tracing::warn!("a statistics clear is running; not starting compaction");
+            return self.statistics_storage().await;
+        }
+        if self.storage_maintenance.compacting.load(Ordering::SeqCst) {
+            return self.statistics_storage().await;
+        }
+        self.storage_maintenance
+            .compaction_requested
+            .store(true, Ordering::SeqCst);
+        self.storage_maintenance
+            .compaction_failed
+            .store(false, Ordering::SeqCst);
+        self.storage_maintenance.wake.notify_one();
+        self.statistics_storage().await
+    }
+
+    /// 维护循环在确认没有活跃请求后调用。返回是否真的执行了一次压缩。
+    pub(crate) async fn compact_if_requested(&self) -> Result<bool> {
+        if self.storage_maintenance.clearing.load(Ordering::SeqCst)
+            || self.storage_maintenance.compacting.load(Ordering::SeqCst)
+            || !self
+                .storage_maintenance
+                .compaction_requested
+                .load(Ordering::SeqCst)
+        {
+            return Ok(false);
+        }
+        let _write = self.writes.lock().await;
+        if self.storage_maintenance.clearing.load(Ordering::SeqCst)
+            || self.storage_maintenance.compacting.load(Ordering::SeqCst)
+            || !self
+                .storage_maintenance
+                .compaction_requested
+                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        {
+            return Ok(false);
+        }
+
+        self.storage_maintenance
+            .compacting
+            .store(true, Ordering::SeqCst);
+        let result = self.vacuum_database().await;
+        self.storage_maintenance
+            .compacting
+            .store(false, Ordering::SeqCst);
+        self.storage_maintenance
+            .compaction_failed
+            .store(result.is_err(), Ordering::SeqCst);
+        result?;
+        tracing::info!("database compaction completed");
+        Ok(true)
+    }
+
+    async fn vacuum_database(&self) -> Result<()> {
         let mut connection = self.pool.acquire().await?;
+        let auto_vacuum: i64 = sqlx::query_scalar("PRAGMA auto_vacuum")
+            .fetch_one(&mut *connection)
+            .await?;
+        if auto_vacuum != 2 {
+            // 只有 `VACUUM` 能让这个持久设置对既有库生效；之后每次维护只归还一小批页，
+            // 不需要再整库重写。
+            sqlx::query("PRAGMA auto_vacuum = INCREMENTAL")
+                .execute(&mut *connection)
+                .await?;
+        }
+        sqlx::query("VACUUM").execute(&mut *connection).await?;
+        // `VACUUM` 会先把重写后的页写进 WAL；自动 checkpoint 只限制后续增长，不会立刻
+        // 把这个临时大水槽截回。主库已经空闲，这里主动截断；短读事务暂时占用时只记警告，
+        // 不把已经成功的主库压缩判成失败。
+        let (busy, log_frames, checkpointed): (i64, i64, i64) =
+            sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+                .fetch_one(&mut *connection)
+                .await?;
+        if busy != 0 {
+            tracing::warn!(
+                log_frames,
+                checkpointed,
+                "database compacted, but WAL truncation was busy"
+            );
+        }
+        Ok(())
+    }
+
+    /// 已启用增量 `auto_vacuum` 时，每次空闲维护最多归还 8 MiB，让后续删除不再长期
+    /// 堆积成第二个 1 GiB 空闲页池。第一次启用仍由用户触发的整库压缩完成。
+    pub(crate) async fn reclaim_free_pages(&self) -> Result<()> {
+        if self.storage_maintenance.clearing.load(Ordering::SeqCst)
+            || self
+                .storage_maintenance
+                .compaction_requested
+                .load(Ordering::SeqCst)
+            || self.storage_maintenance.compacting.load(Ordering::SeqCst)
+        {
+            return Ok(());
+        }
+        let (auto_vacuum, freelist): (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE((SELECT auto_vacuum FROM pragma_auto_vacuum()), 0),
+                    COALESCE((SELECT freelist_count FROM pragma_freelist_count()), 0)",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        if auto_vacuum != 2 || freelist < MIN_FREE_PAGES_TO_RECLAIM {
+            return Ok(());
+        }
+
+        let _write = self.writes.lock().await;
+        let freelist: i64 =
+            sqlx::query_scalar("SELECT freelist_count FROM pragma_freelist_count()")
+                .fetch_one(&self.pool)
+                .await?;
+        if freelist < MIN_FREE_PAGES_TO_RECLAIM {
+            return Ok(());
+        }
+        sqlx::query(&format!(
+            "PRAGMA incremental_vacuum({INCREMENTAL_VACUUM_PAGES_PER_PASS})"
+        ))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn clear_statistics_storage(&self) -> Result<StatisticsStorage> {
+        let mut connection = self.maintenance_pool.acquire().await?;
         self.clear_details(&mut connection).await?;
         drop(connection);
         self.statistics_storage().await
@@ -228,14 +490,14 @@ impl Store {
         })
         .await
         .map_err(|error| crate::Error::Store(format!("web cache clear task failed: {error}")))??;
-        self.clear
+        self.storage_maintenance
             .deleted_files
             .fetch_add(cleared.files, Ordering::Relaxed);
         self.statistics_storage().await
     }
 
     pub async fn clear_all_statistics_storage(&self) -> Result<StatisticsStorage> {
-        let mut connection = self.pool.acquire().await?;
+        let mut connection = self.maintenance_pool.acquire().await?;
         self.clear_details(&mut connection).await?;
         // 摘要行在明细之后删：级联（`llm_call_requests` / 响应分片 / 追踪工件）带走的那
         // 部分已经空了，每批要干的活只剩摘要行自己。
@@ -285,7 +547,7 @@ impl Store {
             if deleted == 0 {
                 return Ok(batches);
             }
-            self.clear
+            self.storage_maintenance
                 .deleted_rows
                 .fetch_add(deleted, Ordering::Relaxed);
             batches += 1;
@@ -354,7 +616,7 @@ impl Store {
             if deleted == 0 {
                 return Ok(());
             }
-            self.clear
+            self.storage_maintenance
                 .deleted_rows
                 .fetch_add(deleted, Ordering::Relaxed);
         }
@@ -555,6 +817,9 @@ mod tests {
         assert_eq!(storage.web_cache_files, usage.files as i64);
         assert_eq!(storage.web_cache_bytes, usage.bytes as i64);
         assert!(storage.web_cache_files >= 0 && storage.web_cache_bytes >= 0);
+        let logs = crate::diagnostics::log_usage();
+        assert_eq!(storage.log_files, logs.files as i64);
+        assert_eq!(storage.log_bytes, logs.bytes as i64);
     }
 
     /// `web_cache` 作用域清缓存目录，不碰数据库：清理是后台跑的（分批复用同一套
@@ -582,7 +847,10 @@ mod tests {
             "目录要被保留：服务端还要往里写新的抓取结果"
         );
         assert_eq!(
-            store.clear.deleted_files.load(Ordering::Relaxed),
+            store
+                .storage_maintenance
+                .deleted_files
+                .load(Ordering::Relaxed),
             2,
             "进度要记下删了几个文件"
         );
@@ -603,7 +871,13 @@ mod tests {
 
         let storage = store.clear_web_cache_at(Some(missing)).await.unwrap();
 
-        assert_eq!(store.clear.deleted_files.load(Ordering::Relaxed), 0);
+        assert_eq!(
+            store
+                .storage_maintenance
+                .deleted_files
+                .load(Ordering::Relaxed),
+            0
+        );
         assert!(storage.web_cache_files >= 0);
     }
 
@@ -817,9 +1091,9 @@ mod tests {
         let storage = store.statistics_storage().await.unwrap();
 
         assert!(
-            storage.bytes >= 8_000_000,
+            storage.call_detail_bytes >= 8_000_000,
             "估算必须跟着已存的 byte_count 走: {}",
-            storage.bytes
+            storage.call_detail_bytes
         );
     }
 
@@ -839,9 +1113,9 @@ mod tests {
         let storage = store.statistics_storage().await.unwrap();
 
         assert!(
-            storage.bytes >= 6_000_000,
+            storage.call_detail_bytes >= 6_000_000,
             "估算必须跟着工件记下的 byte_count 走: {}",
-            storage.bytes
+            storage.call_detail_bytes
         );
     }
 
@@ -878,9 +1152,9 @@ mod tests {
         assert_eq!(byte_count, 4096);
         let storage = store.statistics_storage().await.unwrap();
         assert!(
-            storage.bytes >= 4096,
+            storage.call_detail_bytes >= 4096,
             "刚写的附件正文必须进估算: {}",
-            storage.bytes
+            storage.call_detail_bytes
         );
     }
 
@@ -926,7 +1200,11 @@ mod tests {
             "交给后台之后还是要真的删掉"
         );
         assert!(
-            store.clear.deleted_rows.load(Ordering::Relaxed) > 0,
+            store
+                .storage_maintenance
+                .deleted_rows
+                .load(Ordering::Relaxed)
+                > 0,
             "进度要真的走"
         );
         assert!(
@@ -948,7 +1226,10 @@ mod tests {
             .unwrap();
         assert!(first.clearing.is_some());
         // 假装第一批已经提交：第二次请求必须沿用这份进度，而不是重置成一次新任务的样子。
-        store.clear.deleted_rows.store(7, Ordering::Relaxed);
+        store
+            .storage_maintenance
+            .deleted_rows
+            .store(7, Ordering::Relaxed);
 
         let second = store
             .start_clear_statistics_storage(StatisticsStorageScope::All)
@@ -968,6 +1249,63 @@ mod tests {
         })
         .await
         .expect("后台清理必须自己收尾");
+    }
+
+    /// 1 GiB 文件的解释与真正缩小：已删除的行先进入 freelist，统计必须把有效页和空闲页
+    /// 分开；用户请求压缩后，`VACUUM` 既归还文件，也把后续库切到增量回收。
+    #[tokio::test]
+    async fn compaction_reclaims_free_pages_and_enables_incremental_reclaim() {
+        let (_directory, store) = temp_store().await;
+        let mut transaction = store.pool().begin().await.unwrap();
+        sqlx::query(
+            "WITH RECURSIVE seq(n) AS (
+                 SELECT 0 UNION ALL SELECT n + 1 FROM seq WHERE n + 1 < 2048
+             )
+             INSERT INTO blobs(blob_id, data, created_at_ms, last_used_at_ms)
+             SELECT randomblob(32), randomblob(4096), 1, 1 FROM seq",
+        )
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+        sqlx::query("DELETE FROM blobs")
+            .execute(store.pool())
+            .await
+            .unwrap();
+
+        let before = store.statistics_storage().await.unwrap();
+        assert_eq!(
+            before.database_used_bytes + before.database_free_bytes,
+            before.database_bytes,
+            "有效页与空闲页必须解释完整个文件"
+        );
+        assert!(
+            before.database_free_bytes > 0,
+            "删除约 8 MiB 内容块后，SQLite 应留下可回收空闲页"
+        );
+
+        let requested = store.start_storage_compaction().await.unwrap();
+        assert!(
+            requested.compaction_requested,
+            "接口要立刻告诉界面压缩已经排队"
+        );
+        assert!(store.compact_if_requested().await.unwrap());
+
+        let after = store.statistics_storage().await.unwrap();
+        assert!(
+            after.database_bytes < before.database_bytes,
+            "整库压缩后文件必须真的变小"
+        );
+        assert_eq!(after.database_free_bytes, 0, "压缩后不应继续背空闲页");
+        assert!(
+            after.incremental_vacuum_enabled,
+            "压缩同时应让后续维护能小步归还空闲页"
+        );
+        assert!(
+            after.wal_bytes <= 4096,
+            "压缩结束后要把 VACUUM 撑大的 WAL 截断，实际还有 {} 字节",
+            after.wal_bytes
+        );
     }
 
     /// 存储卡片多报的那行数字只数两个落盘目录里的直接子文件：子目录不是工具结果或压缩

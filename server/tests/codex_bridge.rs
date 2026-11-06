@@ -444,27 +444,175 @@ fn only_create_thread_may_omit_its_call_id() {
 }
 
 #[test]
-fn encrypted_subagent_messages_explain_the_model_switch_limit() {
+fn subagent_task_messages_become_user_turns_on_both_upstreams() {
+    let payload = "你是独立只读审查员，不是实现者。\n仓库根目录：D:\\workspace。";
     let source = json!({
         "input": [{
             "type": "agent_message",
-            "id": "amsg_1",
+            "id": "amsg_task",
             "author": "/root",
             "recipient": "/root/child",
             "content": [
-                {"type": "input_text", "text": "Message Type: MESSAGE\nPayload:\n"},
-                {"type": "encrypted_content", "encrypted_content": "opaque"}
+                {"type": "input_text", "text": "Message Type: NEW_TASK\nTask name: /root/child\nSender: /root\nPayload:\n"},
+                {"type": "encrypted_content", "encrypted_content": payload}
             ]
         }]
     });
-    for format in [UpstreamFormat::Chat, UpstreamFormat::Anthropic] {
-        let error = match translate_request(&source, format, "vendor", 4096) {
-            Ok(_) => panic!("encrypted subagent history must be rejected"),
-            Err(error) => error.to_string(),
-        };
-        assert!(error.contains("Codex subagent messages"), "{error}");
-        assert!(error.contains("OpenAI Responses model"), "{error}");
-        assert!(error.contains("start a new conversation"), "{error}");
+
+    let chat = chat(source.clone());
+    let chat_text = chat.body["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|message| message["role"] == "user")
+        .and_then(|message| message["content"].as_str())
+        .expect("chat history carries the subagent task as a user message");
+    assert!(chat_text.contains("Message Type: NEW_TASK"), "{chat_text}");
+    assert!(chat_text.contains(payload), "{chat_text}");
+
+    let anthropic = anthropic(source);
+    assert_eq!(anthropic.body["messages"][0]["role"], "user");
+    let anthropic_text = anthropic.body["messages"][0]["content"][0]["text"]
+        .as_str()
+        .expect("anthropic history carries the subagent task as text");
+    assert!(anthropic_text.contains("Message Type: NEW_TASK"));
+    assert!(anthropic_text.contains(payload));
+}
+
+#[test]
+fn subagent_final_answers_stay_visible_without_encrypted_content() {
+    let source = json!({
+        "input": [{
+            "type": "agent_message",
+            "id": "amsg_answer",
+            "author": "/root/child",
+            "recipient": "/root",
+            "content": [{
+                "type": "input_text",
+                "text": "Message Type: FINAL_ANSWER\nSender: /root/child\nPayload:\n审查完成：未发现 P0。"
+            }]
+        }]
+    });
+
+    for body in [chat(source.clone()).body, anthropic(source).body] {
+        let text = body.to_string();
+        assert!(text.contains("审查完成：未发现 P0。"), "{text}");
+    }
+}
+
+#[test]
+fn subagent_message_arriving_mid_tool_round_is_reordered_after_the_result() {
+    let source = json!({
+        "input": [
+            {"type": "message", "role": "user", "content": "run"},
+            {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{}"},
+            {
+                "type": "agent_message",
+                "id": "amsg_update",
+                "author": "/root/child",
+                "recipient": "/root",
+                "content": [{
+                    "type": "input_text",
+                    "text": "Message Type: MESSAGE\nPayload:\nchild update"
+                }]
+            },
+            {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+        ],
+        "tools": [{"type": "function", "name": "exec_command", "parameters": {"type": "object", "properties": {}}}]
+    });
+
+    let chat = chat(source.clone());
+    let messages = chat.body["messages"].as_array().unwrap();
+    let tool_index = messages
+        .iter()
+        .position(|message| message["role"] == "tool")
+        .expect("chat history keeps the tool result");
+    let update_index = messages
+        .iter()
+        .position(|message| {
+            message["role"] == "user"
+                && message["content"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("child update"))
+        })
+        .expect("chat history carries the subagent update");
+    assert!(
+        update_index > tool_index,
+        "子代理消息必须排在这一轮工具结果之后"
+    );
+
+    let anthropic = anthropic(source);
+    let last = anthropic.body["messages"]
+        .as_array()
+        .unwrap()
+        .last()
+        .expect("anthropic history is not empty");
+    let blocks = last["content"].as_array().unwrap();
+    let result_index = blocks
+        .iter()
+        .position(|block| block["type"] == "tool_result")
+        .expect("anthropic history keeps the tool result");
+    let update_index = blocks
+        .iter()
+        .position(|block| {
+            block["type"] == "text"
+                && block["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("child update"))
+        })
+        .expect("anthropic history carries the subagent update");
+    assert!(
+        update_index > result_index,
+        "Anthropic 同一用户回合里，文本必须排在 tool_result 之后"
+    );
+}
+
+#[test]
+fn opaque_subagent_payloads_degrade_to_a_note_instead_of_blocking_the_turn() {
+    let opaque = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo".repeat(8);
+    let source = json!({
+        "input": [{
+            "type": "agent_message",
+            "id": "amsg_opaque",
+            "author": "/root/child",
+            "recipient": "/root",
+            "content": [
+                {"type": "input_text", "text": "Message Type: FINAL_ANSWER\nPayload:\n"},
+                {"type": "encrypted_content", "encrypted_content": opaque}
+            ]
+        }]
+    });
+
+    for body in [chat(source.clone()).body, anthropic(source).body] {
+        let text = body.to_string();
+        assert!(!text.contains(&opaque), "密文不能当正文送给第三方上游");
+        assert!(text.contains("subagent payload omitted"), "{text}");
+    }
+}
+
+#[test]
+fn a_long_english_subagent_message_is_not_mistaken_for_ciphertext() {
+    let payload = "This is a long English subagent report. ".repeat(8);
+    let source = json!({
+        "input": [{
+            "type": "agent_message",
+            "id": "amsg_english",
+            "author": "/root/child",
+            "recipient": "/root",
+            "content": [{
+                "type": "encrypted_content",
+                "encrypted_content": payload
+            }]
+        }]
+    });
+
+    for body in [chat(source.clone()).body, anthropic(source).body] {
+        let text = body.to_string();
+        assert!(
+            text.contains("This is a long English subagent report."),
+            "长英文子代理消息不能被当成密文丢掉: {text}"
+        );
+        assert!(!text.contains("subagent payload omitted"), "{text}");
     }
 }
 

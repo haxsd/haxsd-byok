@@ -867,6 +867,11 @@ impl ControlService {
         self.store.start_clear_statistics_storage(scope).await
     }
 
+    /// 请求压缩数据库；执行由维护循环在确认没有活跃 Agent 请求后接手。
+    pub async fn start_storage_compaction(&self) -> Result<StatisticsStorage> {
+        self.store.start_storage_compaction().await
+    }
+
     pub async fn proxy_settings(&self) -> Result<ProxySettings> {
         self.store.proxy_settings().await
     }

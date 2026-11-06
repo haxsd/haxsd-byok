@@ -763,6 +763,71 @@ async fn tool_call_with_empty_arguments_does_not_fail_the_run() {
     assert_eq!(provider.requests().len(), 2);
 }
 
+/// 同一轮多个工具的结果几乎同时到达时，整轮仍要正常收尾。
+///
+/// 收尾与否由每次提交自己的 `settled` 决定，不能在 output 层事后读实时轮状态：
+/// 并行结果可能已经全部落库，把"非收尾提交"误判成收尾就会要求一个不属于它的
+/// completion barrier（`settled tool round has no completion barrier`）。
+#[tokio::test]
+async fn parallel_tool_results_complete_the_round_without_a_protocol_error() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(parallel_tool_response([
+        ("call-1", "Read", "{\"path\":\"/tmp/a\"}"),
+        ("call-2", "Read", "{\"path\":\"/tmp/b\"}"),
+    ]));
+    provider.push(text_response("done after parallel tools"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry
+        .get_or_create("parallel-tools-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "parallel-tools-request",
+                "parallel-tools-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let first = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    let second = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    assert_ne!(first, second, "两个调用必须各自拿到一个 exec id");
+    // 两个结果背靠背送达，中间不给 output 层处理第一个结果的机会。
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(read_success(first)),
+        })
+        .await
+        .unwrap();
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno + 1,
+            message: Box::new(read_success(second)),
+        })
+        .await
+        .unwrap();
+    append_seqno += 2;
+
+    drain_successfully(&handle, &mut output, &mut append_seqno).await;
+}
+
 #[tokio::test]
 async fn injected_user_context_restarts_only_the_active_model_cycle() {
     let (_directory, store) = fixtures::temp_store().await;
@@ -1761,6 +1826,29 @@ fn tool_response(call_id: &str, name: &str, arguments: &str) -> Vec<ModelEvent> 
         ModelEvent::ToolCallEnd { index: 0 },
         ModelEvent::Done(FinishReason::ToolUse),
     ]
+}
+
+/// 同一轮里的两个并行调用，索引必须分开，否则第二轮会被当成重复的同一调用。
+fn parallel_tool_response(calls: [(&str, &str, &str); 2]) -> Vec<ModelEvent> {
+    let mut events = vec![ModelEvent::Start {
+        model_call_id: "parallel-tool-call".into(),
+    }];
+    for (index, (call_id, name, arguments)) in calls.into_iter().enumerate() {
+        events.extend([
+            ModelEvent::ToolCallStart {
+                index,
+                call_id: call_id.into(),
+                name: name.into(),
+            },
+            ModelEvent::ToolCallArgumentsDelta {
+                index,
+                delta: arguments.into(),
+            },
+            ModelEvent::ToolCallEnd { index },
+        ]);
+    }
+    events.push(ModelEvent::Done(FinishReason::ToolUse));
+    events
 }
 
 async fn wait_for_exec(

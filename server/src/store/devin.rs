@@ -10,6 +10,67 @@ pub(crate) struct DevinSessionModel {
     pub model: ModelSpec,
 }
 
+impl Store {
+    pub(crate) async fn devin_session_model(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<DevinSessionModel>> {
+        let row = sqlx::query(
+            "SELECT model_uid, model_spec_json FROM devin_session_models WHERE session_id = ?",
+        )
+        .bind(session_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|row| {
+            Ok(DevinSessionModel {
+                model_uid: row.get(0),
+                model: serde_json::from_str(row.get::<&str, _>(1))?,
+            })
+        })
+        .transpose()
+    }
+
+    pub(crate) async fn set_devin_session_model(
+        &self,
+        session_id: &str,
+        selection: Option<&DevinSessionModel>,
+    ) -> Result<()> {
+        if session_id.is_empty() {
+            return Ok(());
+        }
+        let _write = self.writes.lock().await;
+        match selection {
+            Some(selection) => {
+                if !self.devin_settings().await?.enabled {
+                    return Ok(());
+                }
+                sqlx::query(
+                    "INSERT INTO devin_session_models
+                     (session_id, model_uid, model_spec_json, updated_at_ms)
+                     VALUES (?, ?, ?, ?)
+                     ON CONFLICT(session_id) DO UPDATE SET
+                     model_uid = excluded.model_uid,
+                     model_spec_json = excluded.model_spec_json,
+                     updated_at_ms = excluded.updated_at_ms",
+                )
+                .bind(session_id)
+                .bind(&selection.model_uid)
+                .bind(serde_json::to_string(&selection.model)?)
+                .bind(now_ms())
+                .execute(&self.pool)
+                .await?;
+            }
+            None => {
+                sqlx::query("DELETE FROM devin_session_models WHERE session_id = ?")
+                    .bind(session_id)
+                    .execute(&self.pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,66 +174,5 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(updated_at, 123);
-    }
-}
-
-impl Store {
-    pub(crate) async fn devin_session_model(
-        &self,
-        session_id: &str,
-    ) -> Result<Option<DevinSessionModel>> {
-        let row = sqlx::query(
-            "SELECT model_uid, model_spec_json FROM devin_session_models WHERE session_id = ?",
-        )
-        .bind(session_id)
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(|row| {
-            Ok(DevinSessionModel {
-                model_uid: row.get(0),
-                model: serde_json::from_str(row.get::<&str, _>(1))?,
-            })
-        })
-        .transpose()
-    }
-
-    pub(crate) async fn set_devin_session_model(
-        &self,
-        session_id: &str,
-        selection: Option<&DevinSessionModel>,
-    ) -> Result<()> {
-        if session_id.is_empty() {
-            return Ok(());
-        }
-        let _write = self.writes.lock().await;
-        match selection {
-            Some(selection) => {
-                if !self.devin_settings().await?.enabled {
-                    return Ok(());
-                }
-                sqlx::query(
-                    "INSERT INTO devin_session_models
-                     (session_id, model_uid, model_spec_json, updated_at_ms)
-                     VALUES (?, ?, ?, ?)
-                     ON CONFLICT(session_id) DO UPDATE SET
-                     model_uid = excluded.model_uid,
-                     model_spec_json = excluded.model_spec_json,
-                     updated_at_ms = excluded.updated_at_ms",
-                )
-                .bind(session_id)
-                .bind(&selection.model_uid)
-                .bind(serde_json::to_string(&selection.model)?)
-                .bind(now_ms())
-                .execute(&self.pool)
-                .await?;
-            }
-            None => {
-                sqlx::query("DELETE FROM devin_session_models WHERE session_id = ?")
-                    .bind(session_id)
-                    .execute(&self.pool)
-                    .await?;
-            }
-        }
-        Ok(())
     }
 }

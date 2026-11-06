@@ -112,7 +112,10 @@ pub(super) async fn subagent_finished(
         return;
     };
     let store = &registry.dependencies().store;
-    let (parent_conversation, title) = match store.background_task(tool_call_id).await {
+    let (parent_conversation, title) = match store
+        .background_task(&ConversationId::new(child_conversation), tool_call_id)
+        .await
+    {
         Ok(Some(task)) => task,
         Ok(None) => return,
         Err(error) => {
@@ -173,25 +176,35 @@ pub(super) async fn subagent_finished(
             return;
         }
     };
-    let result = registry
-        .deliver_wake(
-            &parent_conversation,
-            CompiledMessages {
-                event_id,
-                target_run_id: None,
-                messages: vec![message],
-                delivery: MessageDelivery::InsertMessages,
-            },
-        )
-        .await;
-    tracing::info!(
-        conversation_id = parent_conversation.as_str(),
-        subagent_id = child_conversation,
-        tool_call_id,
-        title,
-        ?result,
-        "subagent finished; notified the parent conversation"
-    );
+    // 投递不能阻塞子代理 actor：`insert_messages` 的回执要等父轮当前模型调用结束或
+    // 工具轮收尾（工具轮上限 30 分钟），阻塞在这里会把子代理的 TurnCompleted 收尾和
+    // END_STREAM 一起拖住。通知是"尽力而为"的旁路，交给独立任务。
+    let registry = registry.clone();
+    let parent = parent_conversation.clone();
+    let subagent_id = child_conversation.to_string();
+    let call_id = tool_call_id.to_string();
+    let event_id_for_log = event_id;
+    tokio::spawn(async move {
+        let result = registry
+            .deliver_wake(
+                &parent,
+                CompiledMessages {
+                    event_id: event_id_for_log.clone(),
+                    target_run_id: None,
+                    messages: vec![message],
+                    delivery: MessageDelivery::InsertMessages,
+                },
+            )
+            .await;
+        tracing::info!(
+            conversation_id = parent.as_str(),
+            subagent_id,
+            tool_call_id = call_id,
+            title,
+            ?result,
+            "subagent finished; notified the parent conversation"
+        );
+    });
 }
 
 #[cfg(test)]

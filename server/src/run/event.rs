@@ -75,6 +75,12 @@ pub enum CommitCause {
     ToolResult {
         call_id: String,
         interrupted: bool,
+        /// 这一次提交是否收尾了整轮工具（它是最后一个结果）。
+        ///
+        /// 必须随事件传递，不能让接收方事后查库：并行的工具结果可能在接收方处理前
+        /// 全部提交，实时轮状态会把"非收尾提交"看成已收尾，从而要求一个不属于它的
+        /// completion barrier（`settled tool round has no completion barrier`）。
+        settled: bool,
     },
     FinalTurn,
     Compaction {

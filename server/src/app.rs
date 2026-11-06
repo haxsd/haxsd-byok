@@ -232,13 +232,17 @@ impl App {
             shutdown.clone(),
         ));
 
+        let storage_wake = registry.store().storage_wake();
         let maintenance = async {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                interval.tick().await;
+                tokio::select! {
+                    _ = interval.tick() => {}
+                    _ = storage_wake.notified() => {}
+                }
                 if let Err(error) = registry.maintain_storage_if_idle().await {
-                    tracing::warn!(%error, "storage retention failed; retained data for retry");
+                    tracing::warn!(%error, "storage maintenance failed; retained data for retry");
                 }
                 // 日志清理与数据库无关，放在同一拍里：跟着维护循环走就不会出现"谁忘了调"。
                 match crate::diagnostics::prune_logs() {

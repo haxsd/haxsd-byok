@@ -263,9 +263,9 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
             provider_call_index: invocation.provider_call_index.min(i64::MAX as u64) as i64,
             model_hash: model_hash.into(),
             provider_type,
-            provider_url: request_url.into(),
+            provider_url: redact_url(request_url),
             request_type: provider_type,
-            request_url: request_url.into(),
+            request_url: redact_url(request_url),
             model_id: model_id.into(),
             display_name: display_name.into(),
             reasoning_effort: reasoning_effort.map(str::to_owned),
@@ -439,6 +439,48 @@ fn build_inner(
         }
     };
     Ok(Arc::new(NormalizedProvider::new(provider)))
+}
+
+/// 落库与界面展示用的 URL：去掉内嵌凭据。
+///
+/// 有些自建网关把凭据写进 `base_url`（`user:pass@host` 或 `?key=`）。调用记录会和
+/// 调用详情页一起长期保存，原样入库等于把凭据复制进本地数据库并展示出来。
+fn redact_url(url: &str) -> String {
+    let Ok(mut parsed) = reqwest::Url::parse(url) else {
+        return url.to_owned();
+    };
+    let mut changed = false;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        let _ = parsed.set_username("***");
+        let _ = parsed.set_password(Some("***"));
+        changed = true;
+    }
+    const SENSITIVE: [&str; 8] = [
+        "key",
+        "token",
+        "secret",
+        "password",
+        "auth",
+        "signature",
+        "credential",
+        "sig",
+    ];
+    let pairs: Vec<(String, String)> = parsed
+        .query_pairs()
+        .map(|(key, value)| {
+            let lowered = key.to_ascii_lowercase();
+            if SENSITIVE.iter().any(|needle| lowered.contains(needle)) {
+                changed = true;
+                (key.into_owned(), "***".to_owned())
+            } else {
+                (key.into_owned(), value.into_owned())
+            }
+        })
+        .collect();
+    if changed {
+        parsed.query_pairs_mut().clear().extend_pairs(pairs);
+    }
+    parsed.to_string()
 }
 
 #[cfg(test)]
@@ -797,5 +839,24 @@ mod tests {
             request,
             "provider request timed out after 3600 seconds (60 minutes)"
         );
+    }
+
+    /// 写进调用记录的 URL 不能带着内嵌凭据：它会长期保存在本地库里并显示在调用详情页。
+    #[test]
+    fn recorded_urls_drop_embedded_credentials_and_sensitive_query_values() {
+        assert_eq!(
+            redact_url("https://user:pa55@example.com/v1/chat/completions?key=sk-123&model=x"),
+            "https://***:***@example.com/v1/chat/completions?key=***&model=x"
+        );
+        assert_eq!(
+            redact_url("https://example.com/v1?api_key=abc&access_token=xyz"),
+            "https://example.com/v1?api_key=***&access_token=***"
+        );
+        assert_eq!(
+            redact_url("https://example.com/v1/chat/completions"),
+            "https://example.com/v1/chat/completions"
+        );
+        // 不是 URL 的值原样返回，只有真实可解析的 URL 才做脱敏。
+        assert_eq!(redact_url("not a url"), "not a url");
     }
 }

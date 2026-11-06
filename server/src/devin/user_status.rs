@@ -259,24 +259,24 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_or_official_conflicting_labels_fail_closed() {
+    fn conflicting_labels_skip_only_the_conflicting_local_model() {
         let payload = payload_with_sorted_catalog();
-        let official = with_local_models(&payload, &[model_field(LOCAL_A, "Official model")], None)
-            .unwrap_err()
-            .to_string();
-        assert!(
-            official.contains("conflicts with an official model"),
-            "{official}"
-        );
+        // 展示名撞了官方模型：跳过这一个，官方目录和其余本地模型照常可用。
+        let official =
+            with_local_models(&payload, &[model_field(LOCAL_A, "Official model")], None).unwrap();
+        assert_eq!(model_uids(&catalog_fields(&official)), vec![OFFICIAL_UID]);
 
+        // 两个本地模型同名：保留第一个，跳过第二个，不能整份目录失败。
         let duplicate = with_local_models(
             &payload,
             &[model_field(LOCAL_A, "Same"), model_field(LOCAL_B, "Same")],
             None,
         )
-        .unwrap_err()
-        .to_string();
-        assert!(duplicate.contains("must be unique"), "{duplicate}");
+        .unwrap();
+        assert_eq!(
+            model_uids(&catalog_fields(&duplicate)),
+            vec![OFFICIAL_UID, LOCAL_A]
+        );
     }
 
     #[test]

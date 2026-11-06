@@ -140,6 +140,7 @@ pub(super) async fn execute(
                         cause: CommitCause::ToolResult {
                             call_id,
                             interrupted: false,
+                            settled: committed.settled,
                         },
                         barrier,
                     }),
@@ -267,6 +268,7 @@ async fn interrupt_remaining(
                 cause: CommitCause::ToolResult {
                     call_id: call.call_id.clone(),
                     interrupted: true,
+                    settled: committed.settled,
                 },
                 barrier,
             }),

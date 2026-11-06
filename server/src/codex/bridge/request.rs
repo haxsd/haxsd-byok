@@ -3,6 +3,7 @@
 //! 无法表达的语义（远端存储、跨请求引用、hosted 工具、远端压缩）一律明确报错，不做静默降级。
 //! 少数为了兼容严格上游的必要动作（未配对工具回合、孤儿工具结果）在下面逐处说明；不属于本
 //! 模型/协议的推理密文则降级成"没有可回放状态"（见 `replay::decode`），不拖着整轮一起失败。
+//! Codex 多代理消息在非 Responses 上游投影成用户消息；只有无法解密的载荷降级为占位。
 use super::{replay, tools::ToolMap, BridgeRequest, UpstreamFormat};
 use crate::{Error, Result};
 use serde_json::{json, Map, Value};
@@ -169,6 +170,10 @@ struct Turn {
     reasoning_text: Option<String>,
     calls: Vec<Call>,
     results: Vec<(String, Value)>,
+    /// 子代理消息可能在父会话的工具调用还没拿到结果时到达。Chat/Anthropic 不允许
+    /// 消息插在 assistant tool_calls 与 tool result 之间，所以先按到达顺序暂存，
+    /// 等这一轮工具结果写完后，再作为用户消息补在末尾。
+    incoming: Vec<String>,
 }
 
 fn item_type(item: &Value) -> &str {
@@ -206,10 +211,84 @@ fn is_internal_context(item: &Value) -> bool {
             .is_ok_and(|text| text.trim_start().starts_with("<codex_internal_context"))
 }
 
-const AGENT_MESSAGE_REQUIRES_RESPONSES: &str =
-    "this conversation contains Codex subagent messages (agent_message) whose encrypted payload \
-     can only be replayed to an OpenAI Responses model; switch back to the original model or \
-     start a new conversation";
+const AGENT_PAYLOAD_OMITTED: &str = "[subagent payload omitted: it is encrypted for another model]";
+
+/// Codex 多代理消息是当前模型收到的一条外部消息，不是助手的输出。非 Responses 上游
+/// 无法回放 `agent_message` 条目本身，但可以把它投影成一条 user 消息，让子代理的
+/// `NEW_TASK` / `FINAL_ANSWER` 继续参与工具循环。
+///
+/// 新版 Codex 在本机把任务正文放在 `encrypted_content` 里时仍是明文，所以可读内容
+/// 原样保留；官方 Responses 模型签发的真正密文（base64 / hex / JWT 形状）不能解密，
+/// 替换为明确占位，避免把密文当正文送给第三方上游。
+fn agent_message_text(item: &Value) -> String {
+    let mut parts = Vec::new();
+    match item.get("content") {
+        Some(Value::String(text)) => parts.push(text.clone()),
+        Some(Value::Array(content)) => {
+            for part in content {
+                match part.get("type").and_then(Value::as_str) {
+                    Some("input_text" | "text" | "output_text") => {
+                        if let Some(text) = part.get("text").and_then(Value::as_str) {
+                            if !text.trim().is_empty() {
+                                parts.push(text.to_string());
+                            }
+                        }
+                    }
+                    Some("encrypted_content") => {
+                        if let Some(text) = part.get("encrypted_content").and_then(Value::as_str) {
+                            let text = text.trim();
+                            if !text.is_empty() {
+                                parts.push(if agent_payload_is_readable(text) {
+                                    text.to_string()
+                                } else {
+                                    AGENT_PAYLOAD_OMITTED.to_string()
+                                });
+                            }
+                        }
+                    }
+                    Some(_) | None => {}
+                }
+            }
+        }
+        Some(Value::Null) | None => {}
+        Some(_) => {}
+    }
+    let text = parts.join("\n").trim().to_string();
+    if !text.is_empty() {
+        return text;
+    }
+    let author = item
+        .get("author")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let recipient = item
+        .get("recipient")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    format!("[subagent message from {author} to {recipient} is unavailable to this model]")
+}
+
+/// `encrypted_content` 在官方 Responses 历史里是密文；在本机多代理历史里可能是明文。
+/// 只把明显是密文的整块（base64 / hex / JWT）降级，避免误伤自然语言。
+fn agent_payload_is_readable(text: &str) -> bool {
+    // 自然语言几乎一定有空白（句间空格或换行）。先在原文上判断，不能先剥掉空白再比
+    // 字符集，否则一段 128 字符以上的纯英文会被误判成密文而整段丢掉。
+    if text.chars().any(char::is_whitespace) {
+        return true;
+    }
+    let compact: Vec<char> = text.chars().filter(|ch| !ch.is_whitespace()).collect();
+    if compact.len() < 128 {
+        return true;
+    }
+    if compact.iter().any(|ch| !ch.is_ascii()) {
+        return true;
+    }
+    let opaque = compact
+        .iter()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '=' | '-' | '_' | '.'))
+        .count();
+    opaque != compact.len()
+}
 
 fn history_call(item: &Value, tools: &ToolMap, kind: &str) -> Result<Call> {
     let name = required_str(item, "name")?;
@@ -255,7 +334,8 @@ fn validate_tool_history(items: &[Value]) -> Result<()> {
                 pending.insert(id, kind);
             }
             "agent_message" => {
-                return Err(Error::Protocol(AGENT_MESSAGE_REQUIRES_RESPONSES.into()))
+                // 子代理消息是异步到达的，不切断工具调用链；投影时会把它排到
+                // 当前工具结果之后。工具结果本身仍由下面的分支严格配对。
             }
             kind @ ("function_call_output" | "custom_tool_call_output") => {
                 let id = required_str(item, "call_id")?;
@@ -374,6 +454,15 @@ fn chat_body(
                 let _ = kind;
                 push_tool_result(&mut turn, item);
             }
+            "agent_message" => {
+                let text = agent_message_text(item);
+                if turn.calls.is_empty() {
+                    flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
+                    messages.push(json!({"role": "user", "content": text}));
+                } else {
+                    turn.incoming.push(text);
+                }
+            }
             other => {
                 return Err(Error::Protocol(format!(
                     "unsupported Codex input item: {other}"
@@ -384,6 +473,14 @@ fn chat_body(
     flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
     if let Some(reasoning) = pending_reasoning.take() {
         attach_trailing_reasoning(&mut messages, reasoning);
+    }
+    let definitions = tools.definitions(false);
+    // DeepSeek 的思考模式在请求带 `tools` 时要求把历史里**每一轮** assistant 的
+    // `reasoning_content` 都回传，包括没有调用工具的轮次；缺一轮就 400，而且该会话
+    // 之后每一轮都会带着这条坏历史重放。所以按"带工具 + 未显式关闭思考"补齐字段，
+    // 已有真实推理内容的轮次不动。
+    if !thinking_disabled(source) && requires_deepseek_tool_reasoning(model) {
+        ensure_reasoning_content(&mut messages);
     }
     let mut body = json!({
         "model": model,
@@ -396,7 +493,6 @@ fn chat_body(
     if let Some(max_tokens) = max_tokens {
         body["max_tokens"] = json!(max_tokens);
     }
-    let definitions = tools.definitions(false);
     if !definitions.is_empty() {
         body["tools"] = json!(definitions);
         if let Some(choice) = source.get("tool_choice") {
@@ -462,6 +558,9 @@ fn flush_chat(
         }
         messages.push(message);
     }
+    for text in turn.incoming.drain(..) {
+        messages.push(json!({"role": "user", "content": text}));
+    }
     Ok(())
 }
 
@@ -482,6 +581,42 @@ fn attach_trailing_reasoning(messages: &mut Vec<Value>, reasoning: String) {
         Some(previous) => format!("{previous}\n\n{reasoning}"),
         None => reasoning,
     });
+}
+
+/// DeepSeek 思考模式 + `tools`：历史里每一条 assistant 消息都要带
+/// `reasoning_content`，哪怕那一轮没有思考文本、也没有调用工具（空串即可）。
+/// 少任何一轮上游都会 400，该会话之后每一轮都会带着这条坏历史重放、永久失败。
+/// 已有真实推理内容的轮次保持不变。
+fn ensure_reasoning_content(messages: &mut [Value]) {
+    for message in messages.iter_mut() {
+        if message["role"] == "assistant" && message.get("reasoning_content").is_none() {
+            message["reasoning_content"] = json!("");
+        }
+    }
+}
+
+/// DeepSeek 的思考模式默认开启，只有显式要求才关闭。
+///
+/// 这里判断"关闭"，不能判断"开启"：客户端不传 `reasoning.effort` 时上游仍然是
+/// 思考模式，按"开启"判断会漏补 `reasoning_content`，下一轮直接 400。
+fn thinking_disabled(source: &Map<String, Value>) -> bool {
+    let effort_off = source
+        .get("reasoning")
+        .and_then(|reasoning| reasoning.get("effort"))
+        .and_then(Value::as_str)
+        .map(|effort| matches!(effort.trim(), "none" | "off" | "disabled"));
+    let thinking_off = source
+        .get("thinking")
+        .and_then(|thinking| thinking.get("type"))
+        .and_then(Value::as_str)
+        .map(|kind| kind.trim() == "disabled");
+    effort_off == Some(true) || thinking_off == Some(true)
+}
+
+/// DeepSeek 的思考模式在带工具的请求上要求 `reasoning_content`。
+/// 其它 Chat 兼容上游不认这个字段，不能因为客户端开了思考强度就一并塞过去。
+fn requires_deepseek_tool_reasoning(model: &str) -> bool {
+    model.to_ascii_lowercase().contains("deepseek")
 }
 
 fn chat_tool_choice(value: &Value, tools: &ToolMap) -> Result<Value> {
@@ -559,6 +694,19 @@ fn anthropic_body(
                 turn.calls.push(call);
             }
             "function_call_output" | "custom_tool_call_output" => push_tool_result(&mut turn, item),
+            "agent_message" => {
+                let text = agent_message_text(item);
+                if turn.calls.is_empty() {
+                    flush_anthropic(&mut messages, &mut turn, &mut pending_thinking)?;
+                    push_anthropic(
+                        &mut messages,
+                        "user",
+                        vec![json!({"type": "text", "text": text})],
+                    );
+                } else {
+                    turn.incoming.push(text);
+                }
+            }
             other => {
                 return Err(Error::Protocol(format!(
                     "unsupported Codex input item: {other}"
@@ -645,6 +793,13 @@ fn flush_anthropic(
         let mut blocks = std::mem::take(pending_thinking);
         blocks.push(json!({"type": "text", "text": text}));
         push_anthropic(messages, "assistant", blocks);
+    }
+    for text in turn.incoming.drain(..) {
+        push_anthropic(
+            messages,
+            "user",
+            vec![json!({"type": "text", "text": text})],
+        );
     }
     Ok(())
 }
@@ -1003,10 +1158,19 @@ mod tests {
 
     /// 模型没配输出上限时上游请求正文里的 `max_tokens`：Chat 缺省就是不写这个字段，
     /// Anthropic 是必填字段，用与 provider 路径同一个兜底。
-    fn mapped(format: UpstreamFormat, source: Value, configured: Option<u64>) -> Value {
-        translate_request_owned(&source, format, "vendor-model", configured, "owner")
+    fn mapped_for(
+        format: UpstreamFormat,
+        source: Value,
+        configured: Option<u64>,
+        model: &str,
+    ) -> Value {
+        translate_request_owned(&source, format, model, configured, "owner")
             .unwrap()
             .body
+    }
+
+    fn mapped(format: UpstreamFormat, source: Value, configured: Option<u64>) -> Value {
+        mapped_for(format, source, configured, "vendor-model")
     }
 
     #[test]
@@ -1123,6 +1287,110 @@ mod tests {
                 .iter()
                 .all(|text| !text.contains("<codex_internal_context")),
             "内部上下文消息只能进 system 指令，不能当用户消息重放"
+        );
+    }
+
+    /// 思考模式下用工具但那一轮没有思考文本：必须补空 `reasoning_content`，
+    /// 否则上游 400，且该会话后续每一轮都会带着这条坏历史重放。
+    #[test]
+    fn a_tool_call_without_reasoning_still_carries_the_field() {
+        let source = json!({
+            "reasoning": {"effort": "max"},
+            "input": [
+                {"type": "message", "role": "user", "content": "跑一下"},
+                {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+            ]
+        });
+        let body = mapped_for(UpstreamFormat::Chat, source, None, "deepseek-flash");
+        let call_message = body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message.get("tool_calls").is_some())
+            .expect("历史里应有带工具调用的助手消息");
+        assert_eq!(call_message["reasoning_content"], json!(""));
+    }
+
+    /// 带 `tools` 时，DeepSeek 要求历史里所有 assistant 轮次都回传字段——纯文本轮次
+    /// 也算。少一轮就会一直带着坏历史 400。
+    #[test]
+    fn a_text_only_assistant_turn_also_carries_the_field() {
+        let source = json!({
+            "reasoning": {"effort": "max"},
+            "tools": [{"type": "function", "name": "shell", "parameters": {"type": "object", "properties": {}}}],
+            "input": [
+                {"type": "message", "role": "user", "content": "看看"},
+                {"type": "message", "role": "assistant", "content": "看完了"},
+                {"type": "message", "role": "user", "content": "继续"},
+                {"type": "function_call", "call_id": "c1", "name": "shell", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+            ]
+        });
+        let body = mapped_for(UpstreamFormat::Chat, source, None, "deepseek-flash");
+        let assistants: Vec<&Value> = body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|message| message["role"] == "assistant")
+            .collect();
+        assert_eq!(
+            assistants.len(),
+            2,
+            "history must keep both assistant turns"
+        );
+        for message in assistants {
+            assert_eq!(
+                message["reasoning_content"],
+                json!(""),
+                "每一条 assistant 消息都要带字段: {message}"
+            );
+        }
+    }
+
+    /// 客户端显式关闭思考时不该伪造推理字段：上游不看，也不该把空串塞进历史。
+    #[test]
+    fn explicitly_disabled_thinking_does_not_gain_reasoning_content() {
+        let source = json!({
+            "reasoning": {"effort": "none"},
+            "input": [
+                {"type": "message", "role": "user", "content": "跑一下"},
+                {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+            ]
+        });
+        let body = mapped_for(UpstreamFormat::Chat, source, None, "deepseek-flash");
+        let call_message = body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message.get("tool_calls").is_some())
+            .expect("历史里应有带工具调用的助手消息");
+        assert!(call_message.get("reasoning_content").is_none());
+    }
+
+    /// 只有 DeepSeek 的思考模式需要回传 `reasoning_content`；其它 Chat 上游不认这个
+    /// 字段，不能因为客户端选了思考强度就一起塞过去。
+    #[test]
+    fn a_non_deepseek_chat_model_does_not_gain_reasoning_content() {
+        let source = json!({
+            "reasoning": {"effort": "max"},
+            "input": [
+                {"type": "message", "role": "user", "content": "跑一下"},
+                {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{}"},
+                {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+            ]
+        });
+        let body = mapped_for(UpstreamFormat::Chat, source, None, "gpt-4.1-mini");
+        let call_message = body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|message| message.get("tool_calls").is_some())
+            .expect("历史里应有带工具调用的助手消息");
+        assert!(
+            call_message.get("reasoning_content").is_none(),
+            "非 DeepSeek 上游不应收到 DeepSeek 专有字段: {call_message}"
         );
     }
 }

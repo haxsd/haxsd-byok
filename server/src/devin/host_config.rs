@@ -615,11 +615,12 @@ fn remove_string_property(content: &str, key: &str) -> Result<String> {
             .rposition(|byte| !byte.is_ascii_whitespace())
             .filter(|index| comments[*index] == b',')
     };
-    let mut ranges = vec![start..value.end];
+    let mut ranges = Vec::with_capacity(2);
+    ranges.push(start..value.end);
     if let Some(comma) = comma {
         ranges.push(comma..comma + 1);
     }
-    ranges.sort_unstable_by(|left, right| right.start.cmp(&left.start));
+    ranges.sort_unstable_by_key(|range| std::cmp::Reverse(range.start));
     let mut output = content.to_owned();
     for range in ranges {
         output.replace_range(range, "");
@@ -935,12 +936,20 @@ fn displaced_path(path: &Path) -> PathBuf {
     ))
 }
 
+/// 追加后缀必须走 `OsStr`：`display()` 会把无法用 UTF-8 表示的路径分量替换成
+/// U+FFFD，再拼回 `PathBuf` 就指向了另一个文件（备份写到错误位置、恢复找不到）。
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut raw = path.as_os_str().to_os_string();
+    raw.push(suffix);
+    PathBuf::from(raw)
+}
+
 fn backup_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}{}", path.display(), BACKUP_SUFFIX))
+    with_suffix(path, BACKUP_SUFFIX)
 }
 
 fn receipt_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}{}", path.display(), RECEIPT_SUFFIX))
+    with_suffix(path, RECEIPT_SUFFIX)
 }
 
 fn sha256(bytes: &[u8]) -> String {

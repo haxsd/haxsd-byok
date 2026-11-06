@@ -118,19 +118,19 @@ pub(super) fn with_local_models(
         let uid = client_model_uid(&local).ok_or_else(|| {
             Error::Protocol("generated Devin local model has no model UID".into())
         })?;
-        if existing.insert(uid) {
+        if existing.insert(uid.clone()) {
             let label = client_model_label(&local).ok_or_else(|| {
                 Error::Protocol("generated Devin local model has no label".into())
             })?;
-            if labels.contains(&label) {
-                return Err(Error::Protocol(
-                    "Devin local model label conflicts with an official model".into(),
-                ));
-            }
-            if !local_labels.insert(label) {
-                return Err(Error::Protocol(
-                    "Devin local model labels must be unique".into(),
-                ));
+            // 展示名冲突时只跳过这一个模型：整份目录失败会让所有本地模型一起从
+            // 选择器消失，而设置页仍显示"已写入"，用户无从排查。
+            if labels.contains(&label) || !local_labels.insert(label.clone()) {
+                tracing::warn!(
+                    uid = %uid,
+                    %label,
+                    "skipping a Devin local model whose label conflicts; keeping the rest"
+                );
+                continue;
             }
             additions.push(local.clone());
         }
@@ -735,7 +735,7 @@ mod tests {
             ])
             .unwrap(),
         );
-        let payload = wire::serialize_fields(&[official.clone()]).unwrap();
+        let payload = wire::serialize_fields(std::slice::from_ref(&official)).unwrap();
         for (model_id, expected) in [
             ("gpt-6.1-sol", vec!["gpt-5p6-codex", "gpt-5p6"]),
             ("gpt-6.1", Vec::new()),

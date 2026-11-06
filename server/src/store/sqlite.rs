@@ -13,9 +13,13 @@ use super::{migrations, writer::WriteCoordinator};
 #[derive(Clone)]
 pub struct Store {
     pub(crate) pool: SqlitePool,
+    /// 清理专用连接池：清理的批次会在 `writes` 前持有一条连接，若和主池共用，
+    /// 池被读请求占满时可能与等待连接的写请求互相等待。独立连接池只有一条连接，
+    /// 不参与主池配额。
+    pub(crate) maintenance_pool: SqlitePool,
     pub(crate) writes: WriteCoordinator,
-    /// 后台清理统计数据任务的进度（见 `storage::start_clear_statistics_storage`）。
-    pub(crate) clear: std::sync::Arc<super::storage::ClearState>,
+    /// 后台清理、压缩与页回收的共享进度。
+    pub(crate) storage_maintenance: std::sync::Arc<super::storage::StorageMaintenanceState>,
     /// Devin 设置的解析缓存（见 `settings::DevinSettingsCache`）：网关每请求读一次设置，
     /// 不该每次都重新解析 JSON。`Arc` 是必须的——`Store` 会按值克隆，克隆体必须共享同一份
     /// 缓存与同一个版本号。
@@ -31,19 +35,41 @@ impl Store {
             .synchronous(SqliteSynchronous::Full)
             .busy_timeout(Duration::from_secs(5));
         let database_path = options.get_filename().to_owned();
+        let is_new = !database_path.exists();
         let pool = SqlitePoolOptions::new()
             .max_connections(8)
             .after_release(|connection, _| Box::pin(connection_is_reusable(connection)))
-            .connect_with(options)
+            .connect_with(options.clone())
             .await?;
+        // 内存库的第二个连接会是另一个空数据库；内存库直接复用主池。
+        let maintenance_pool = if database_path.as_os_str().is_empty()
+            || database_path == std::path::Path::new(":memory:")
+        {
+            pool.clone()
+        } else {
+            SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(options)
+                .await?
+        };
+        // 新库在第一次建表前启用增量回收；既有库要等用户执行一次整库压缩才真正生效。
+        if is_new {
+            let mut connection = pool.acquire().await?;
+            sqlx::query("PRAGMA auto_vacuum = INCREMENTAL")
+                .execute(&mut *connection)
+                .await?;
+        }
         migrations::run(&pool, &database_path).await?;
         // 旧版的接管布尔在这里换成模式：设置行是用户数据，迁移只做一次，
         // 之后所有代码只认 `cursor_mode`。
         super::settings::migrate_cursor_mode(&pool).await?;
         Ok(Self {
             pool,
+            maintenance_pool,
             writes: WriteCoordinator::default(),
-            clear: std::sync::Arc::new(super::storage::ClearState::default()),
+            storage_maintenance: std::sync::Arc::new(
+                super::storage::StorageMaintenanceState::default(),
+            ),
             devin_settings_cache: std::sync::Arc::new(
                 super::settings::DevinSettingsCache::default(),
             ),

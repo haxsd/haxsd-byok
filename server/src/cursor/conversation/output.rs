@@ -31,7 +31,7 @@ use crate::{
     },
     model::{ConversationId, ToolCall, ToolRoundId, Usage},
     run::{CommandResult, CommitCause, RunEvent, RunFailure, RunHandle, RunOutcome, RunSession},
-    store::{Store, ToolRoundStatus},
+    store::Store,
     Error, Result,
 };
 
@@ -607,6 +607,7 @@ impl ConversationOutput {
                         if let CommitCause::ToolResult {
                             call_id,
                             interrupted,
+                            settled,
                         } = &state.cause
                         {
                             let snapshot = self
@@ -638,7 +639,9 @@ impl ConversationOutput {
                                 presentation.tool_completed(&completion);
                             }
                             completed.insert(call_id.clone());
-                            tool_round_settled = snapshot.status == ToolRoundStatus::Settled;
+                            // 收尾与否只认这一次提交自己报告的结果。轮状态是实时读的，
+                            // 并行的工具结果可能已经全部落库，把这条非收尾提交误判成收尾。
+                            tool_round_settled = *settled;
                         }
                         let final_turn = state.cause == CommitCause::FinalTurn;
                         if let CommitCause::Compaction {
@@ -1017,6 +1020,25 @@ impl ConversationOutput {
         message: crate::model::CanonicalMessage,
         state: InjectionState<'_>,
     ) -> Result<()> {
+        // 客户端重发同一条消息（BidiAppend 重试换了 seqno、或跨 run 再投递）时，
+        // 它已经在历史里了。运行时消息的正文带当前时间戳，重新编译会得到不同内容，
+        // `append_messages_once` 会把整轮判成 "message id reused with different content"。
+        // 以已落库的消息身份为准，直接当作已投递。
+        let conversation = ConversationId::new(&self.context.exec.conversation_id);
+        if self
+            .store
+            .message(&conversation, &message.message_id)
+            .await?
+            .is_some()
+        {
+            tracing::debug!(
+                injection_id,
+                message_id = %message.message_id,
+                "runtime message was already committed; ignoring the redelivery"
+            );
+            self.injection_ids.insert(injection_id);
+            return Ok(());
+        }
         let delivery_batch_id = injection_id.clone();
         self.injection_ids.insert(injection_id.clone());
         self.pending_injections.insert(

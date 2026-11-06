@@ -210,18 +210,29 @@ impl Store {
     ///
     /// 阻塞式 Task 的工具结果要等子代理跑完才提交，而后台子代理的结果在它开跑后立刻
     /// 就回来了——所以这条查询既是"该不该由服务端唤醒"的判据，也顺带给出标题和父会话。
-    /// 只按 `call_id` 匹配（它本身唯一），不依赖工具名，免得客户端换个名字就把唤醒断掉。
-    pub async fn background_task(&self, call_id: &str) -> Result<Option<(ConversationId, String)>> {
+    ///
+    /// 必须以**子运行自己的** `parent_run_id`/`parent_tool_call_id` 定位父调用：
+    /// `call_id` 只在轮内唯一（OpenAI Chat 兼容端点在缺 id 时会合成 `call-0`…），
+    /// 只按 call_id 取最新一条会把完成通知投到另一个会话里。
+    pub async fn background_task(
+        &self,
+        child_conversation: &ConversationId,
+        call_id: &str,
+    ) -> Result<Option<(ConversationId, String)>> {
         let row: Option<(String, String)> = sqlx::query_as(
-            "SELECT runs.conversation_id, tool_round_calls.arguments_json
-             FROM tool_round_calls
-             JOIN tool_rounds ON tool_rounds.round_id = tool_round_calls.round_id
-             JOIN runs ON runs.run_id = tool_rounds.run_id
-             WHERE tool_round_calls.call_id = ?
-               AND tool_round_calls.status = 'completed'
-             ORDER BY tool_round_calls.completed_at_ms DESC
+            "SELECT parent.conversation_id, call.arguments_json
+             FROM runs child
+             JOIN runs parent ON parent.run_id = child.parent_run_id
+             JOIN tool_rounds round ON round.run_id = parent.run_id
+             JOIN tool_round_calls call
+               ON call.round_id = round.round_id AND call.call_id = child.parent_tool_call_id
+             WHERE child.conversation_id = ?
+               AND call.call_id = ?
+               AND call.status = 'completed'
+             ORDER BY call.completed_at_ms DESC
              LIMIT 1",
         )
+        .bind(child_conversation.as_str())
         .bind(call_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -794,19 +805,44 @@ mod tests {
         // 还没结果 = 阻塞式 Task：此刻不该由服务端唤醒。
         insert_call(0, "foreground-call", "running").await;
         assert!(store
-            .background_task("foreground-call")
+            .background_task(
+                &crate::model::ConversationId("child-conversation".into()),
+                "foreground-call"
+            )
             .await
             .unwrap()
             .is_none());
         // 结果已经提交 = 后台子代理：给出父会话与标题。
         insert_call(1, "background-call", "completed").await;
+        let child = crate::model::ConversationId("child-conversation".into());
+        store.ensure_conversation(&child).await.unwrap();
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,parent_run_id,parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES ('child-run','child-conversation',?,?,'task-run','background-call','subagent','running',1,1)",
+        )
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .execute(store.pool())
+        .await
+        .unwrap();
         let (parent, title) = store
-            .background_task("background-call")
+            .background_task(&child, "background-call")
             .await
             .unwrap()
             .expect("background task");
         assert_eq!(parent.as_str(), "task-conversation");
         assert_eq!(title, "研究多智能体模式");
+
+        // 同名的 call_id 在别的会话里不能把唤醒投到本条子运行的父会话之外：
+        // 没有匹配的父运行/父调用时必须返回 None。
+        assert!(store
+            .background_task(
+                &crate::model::ConversationId("other-child".into()),
+                "background-call"
+            )
+            .await
+            .unwrap()
+            .is_none());
     }
 
     /// 上一次崩溃留下的 running 行必须被清算：回收不再停摆、界面不再永远显示"进行中"。

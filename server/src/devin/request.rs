@@ -116,18 +116,30 @@ pub fn to_invocation(
     binding: &DevinModelBinding,
     model: &ModelConfig,
 ) -> Result<crate::model::ModelInvocation> {
-    let selected = if request.requested_model.trim() == binding.model_uid.trim() {
+    let requested = request.requested_model.trim();
+    let selected = if requested == binding.model_uid.trim() {
         None
     } else {
         super::variants::model_variants(&binding.model_uid, model, binding.context_window_tokens)
             .into_iter()
-            .find(|variant| variant.uid == request.requested_model.trim())
+            .find(|variant| variant.uid == requested)
     };
-    if request.requested_model.trim() != binding.model_uid.trim() && selected.is_none() {
-        return Err(Error::Protocol(format!(
-            "Devin model '{}' is not assigned to this router binding",
-            request.requested_model
-        )));
+    if requested != binding.model_uid.trim() && selected.is_none() {
+        // 变体 UID 是"某一刻配置"的函数（`~effort~context`）。配置改过之后，旧会话
+        // 手里还拿着旧变体名；它仍然指同一个绑定模型，按基础模型继续，不能因为配置
+        // 漂移把整轮拒掉。真正不属于这个绑定的 UID 仍然拒绝。
+        if super::variants::base_model_uid(requested) == binding.model_uid.trim() {
+            tracing::warn!(
+                requested,
+                binding = %binding.model_uid,
+                "stale Devin model variant; falling back to the bound model's current config"
+            );
+        } else {
+            return Err(Error::Protocol(format!(
+                "Devin model '{}' is not assigned to this router binding",
+                request.requested_model
+            )));
+        }
     }
     let model_hash = binding.effective_model_hash();
     if model_hash != model.model_hash {
@@ -768,6 +780,16 @@ mod tests {
             Some(128_000)
         );
         request.requested_model = "haxsd-byok:model-a~max~1000000".into();
+        // 配置改过之后旧变体名不再出现在列表里：它仍然指同一个绑定模型，按当前
+        // 配置继续，而不是把整轮拒掉。
+        let drifted = to_invocation(request.clone(), &binding, &configured).unwrap();
+        assert_eq!(
+            drifted.request.model.reasoning.effort.as_deref(),
+            Some("high")
+        );
+        assert_eq!(drifted.request.model.context_window_tokens, Some(256_000));
+        // 真正不属于这个绑定的 UID 仍然拒绝。
+        request.requested_model = "haxsd-byok:model-b~low~128000".into();
         assert!(to_invocation(request, &binding, &configured).is_err());
     }
 

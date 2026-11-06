@@ -510,16 +510,23 @@ fn recover_displaced(path: &Path) {
     }
 }
 
+/// 同 `host_config::with_suffix`：追加后缀不能经过 `Path::display()`。
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut raw = path.as_os_str().to_os_string();
+    raw.push(suffix);
+    PathBuf::from(raw)
+}
+
 fn displaced_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.devin-router-gate-replace", path.display()))
+    with_suffix(path, ".devin-router-gate-replace")
 }
 
 fn backup_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}{}", path.display(), BACKUP_SUFFIX))
+    with_suffix(path, BACKUP_SUFFIX)
 }
 
 fn receipt_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}{}", path.display(), RECEIPT_SUFFIX))
+    with_suffix(path, RECEIPT_SUFFIX)
 }
 
 fn sha256(bytes: &[u8]) -> String {

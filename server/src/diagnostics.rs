@@ -205,6 +205,71 @@ pub fn web_cache_usage() -> DirectoryUsage {
     }
 }
 
+/// 滚动日志目录的当前占用。日志不归“清理统计”管，但设置页必须能把这块磁盘占用
+/// 和数据库、缓存分开显示，否则用户又会把日志字节当成对话数据。
+pub fn log_usage() -> DirectoryUsage {
+    match config::managed_data_dir() {
+        Ok(root) => directory_usage_in(&root.join(LOG_DIRECTORY_NAME)),
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the log directory");
+            DirectoryUsage::default()
+        }
+    }
+}
+
+/// 插件目录名：`<数据目录>/plugins`。
+///
+/// 运行时、已安装插件和插件账号数据都在这里；它与数据库、日志一样，是设置页必须
+/// 单独解释的一块磁盘占用。
+pub const PLUGIN_DIRECTORY_NAME: &str = "plugins";
+
+/// 插件目录；只拼路径，不建目录（统计读路径不该有副作用）。
+pub fn plugin_directory() -> Result<PathBuf> {
+    Ok(config::managed_data_dir()?.join(PLUGIN_DIRECTORY_NAME))
+}
+
+/// 插件目录的递归占用。插件运行时是多层目录，不能像缓存那样只数直接子文件。
+pub fn plugin_usage() -> DirectoryUsage {
+    match plugin_directory() {
+        Ok(directory) => directory_usage_recursive(&directory),
+        Err(error) => {
+            tracing::warn!(%error, "cannot resolve the plugin directory");
+            DirectoryUsage::default()
+        }
+    }
+}
+
+/// 递归统计目录里的普通文件；符号链接跳过，避免插件目录里的链接形成环。
+fn directory_usage_recursive(directory: &Path) -> DirectoryUsage {
+    let mut usage = DirectoryUsage::default();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.filter_map(std::result::Result::ok) {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                pending.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            if let Ok(metadata) = entry.metadata() {
+                usage.files += 1;
+                usage.bytes += metadata.len();
+            }
+        }
+    }
+    usage
+}
+
 /// 清空抓取结果缓存，返回删掉的量。
 pub fn clear_web_cache() -> Result<DirectoryUsage> {
     clear_web_cache_in(&web_cache_directory()?)
@@ -471,6 +536,38 @@ mod tests {
                 .join("web")
         );
         assert!(!directory.exists() || directory.is_dir());
+    }
+
+    /// 插件目录是多层结构：运行时二进制、SDK、已安装插件和账号数据不能只数第一层。
+    #[test]
+    fn plugin_usage_counts_nested_runtime_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = directory.path().join("runtime");
+        let sdk = runtime.join("sdk").join("v1");
+        std::fs::create_dir_all(&sdk).unwrap();
+        std::fs::write(runtime.join("deno.exe"), b"runtime").unwrap();
+        std::fs::write(sdk.join("types.ts"), b"types").unwrap();
+        std::fs::write(directory.path().join("installed.json"), b"installed").unwrap();
+
+        let usage = directory_usage_recursive(directory.path());
+
+        assert_eq!(
+            usage,
+            DirectoryUsage {
+                files: 3,
+                bytes: 7 + 5 + 9,
+            },
+            "运行时、SDK 和安装记录都要计入插件占用"
+        );
+    }
+
+    /// 插件目录必须落在数据目录下；运行时、目录清单和账号数据都跟着这份路径走。
+    #[test]
+    fn plugin_directory_sits_under_the_data_directory() {
+        assert_eq!(
+            plugin_directory().unwrap(),
+            config::managed_data_dir().unwrap().join("plugins")
+        );
     }
 
     #[test]

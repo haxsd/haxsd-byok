@@ -210,6 +210,9 @@ impl TransportRegistry {
             // 删掉。放在这里而不是写入路径，既躲开工具热路径的同步目录扫描，也保证
             // "提示里的路径"与"文件"同生共死。
             self.inner.store.prune_artifact_files().await?;
+            if !self.inner.store.compact_if_requested().await? {
+                self.inner.store.reclaim_free_pages().await?;
+            }
         }
         Ok(())
     }

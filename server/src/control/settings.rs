@@ -58,6 +58,13 @@ pub async fn clear_storage(
     Ok(Json(service.start_clear_statistics_storage(scope).await?))
 }
 
+pub async fn compact_storage(
+    State(service): State<ControlService>,
+) -> Result<Json<StatisticsStorage>> {
+    // 与清理一样立刻返回：真正的 VACUUM 在维护循环确认空闲后执行，界面轮询统计。
+    Ok(Json(service.start_storage_compaction().await?))
+}
+
 #[derive(Deserialize)]
 pub struct ClearStorageInput {
     #[serde(default)]

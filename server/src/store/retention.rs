@@ -177,12 +177,26 @@ impl Store {
         .execute(&mut *tx)
         .await?
         .rows_affected();
-        for statement in [
-            "DELETE FROM llm_call_requests WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
-            "DELETE FROM llm_call_response_chunks WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
-            "DELETE FROM cursor_run_trace_artifacts WHERE request_id IN (SELECT request_id FROM cursor_run_traces WHERE received_at_ms < ? AND status != 'running')",
+        for (table, statement) in [
+            (
+                "llm_call_requests",
+                "DELETE FROM llm_call_requests WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
+            ),
+            (
+                "llm_call_response_chunks",
+                "DELETE FROM llm_call_response_chunks WHERE call_id IN (SELECT call_id FROM llm_calls WHERE created_at_ms < ? AND status != 'running')",
+            ),
+            (
+                "cursor_run_trace_artifacts",
+                "DELETE FROM cursor_run_trace_artifacts WHERE request_id IN (SELECT request_id FROM cursor_run_traces WHERE received_at_ms < ? AND status != 'running')",
+            ),
         ] {
-            sqlx::query(statement).bind(cutoff).execute(&mut *tx).await?;
+            // 三张明细表通常为空（约 41 MB 的观测数据主要来自 llm_calls），而 DELETE
+            // 仍会先扫一遍 61k 行摘要表来判断“没有东西可删”。真实库上这条空跑语句
+            // 曾占 1.3–3.7 秒；先做一个 O(1) 的存在性探测，空表直接跳过。
+            if Self::table_has_rows(&mut tx, table).await? {
+                sqlx::query(statement).bind(cutoff).execute(&mut *tx).await?;
+            }
         }
         // 载荷被回收之后，轨迹摘要行只剩计数器，而调用列表只覆盖最近 200 条：这些
         // 行按最老优先、每轮限量删除，把表压回 `RETAINED_TRACE_ROWS` 条以内。
@@ -312,6 +326,18 @@ impl Store {
         .bind(unrooted_cutoff)
         .fetch_one(&mut **tx)
         .await?)
+    }
+
+    /// `SELECT EXISTS` 走表本身的第一行，空表不用进入 DELETE 的候选扫描。
+    async fn table_has_rows(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        table: &'static str,
+    ) -> Result<bool> {
+        let sql = format!("SELECT EXISTS(SELECT 1 FROM {table} LIMIT 1)");
+        Ok(sqlx::query_scalar::<_, i64>(&sql)
+            .fetch_one(&mut **tx)
+            .await?
+            != 0)
     }
 
     /// 已回收载荷的轨迹摘要行：`cursor_run_traces` 按设计永不删除，长期使用后没人
@@ -465,6 +491,25 @@ mod tests {
                 .unwrap();
             assert_eq!(ids, vec!["recent"]);
         }
+    }
+
+    /// 三张明细表为空时，维护循环只做一次存在性探测；真正的空 DELETE 会先扫一遍
+    /// `llm_calls` 判断候选，真实库上曾耗 1.3–3.7 秒。
+    #[tokio::test]
+    async fn detail_table_probe_short_circuits_empty_tables() {
+        let (_dir, store) = fixture().await;
+        let mut tx = store.pool().begin().await.unwrap();
+        for table in [
+            "llm_call_requests",
+            "llm_call_response_chunks",
+            "cursor_run_trace_artifacts",
+        ] {
+            assert!(
+                !Store::table_has_rows(&mut tx, table).await.unwrap(),
+                "{table} 为空时探测必须返回 false"
+            );
+        }
+        tx.rollback().await.unwrap();
     }
 
     /// 一次 checkpoint 会给当前 turn 落一份新版本，并把上一版变成无人引用的中间态。
