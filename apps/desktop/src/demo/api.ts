@@ -1,3 +1,4 @@
+import { version as appVersion } from "../../package.json";
 import type {
   CallDetail,
   ClaudeSettings,
@@ -253,7 +254,7 @@ export function installDemoApi() {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const body = await readBody(input, init);
 
-    if (path === "/app-info") return json({ version: "1.7.3", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok" });
+    if (path === "/app-info") return json({ version: appVersion, executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok" });
     if (path === "/models" && method === "GET") return json(models);
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
@@ -322,6 +323,9 @@ export function installDemoApi() {
       return json(claudeSettings);
     }
     if (path === "/claude/status") return json(claudeStatus());
+    if (path === "/claude/token/rotate" && method === "POST") {
+      return json({ token: claudeStatus().token, cli_synced: false });
+    }
     if (path === "/claude/takeover") return json(claudeTakeover);
     if (path === "/claude/takeover/cli" && method === "PUT") {
       const action = (body as { action?: string } | null)?.action ?? "apply";
