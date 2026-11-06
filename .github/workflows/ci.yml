@@ -228,8 +228,20 @@ jobs:
           done
           exit "$failed"
 
-      # 真的起一次 worker 求值内置插件的定义：这条用例需要 pin 住的运行时，本机默认
-      # `#[ignore]`（不写成没有运行时也绿的假用例），所以在装好运行时的这里用 --ignored 跑。
+      - name: Run the plugin SDK protocol cases
+        run: |
+          set -uo pipefail
+          if ! output=$(deno test --no-lock server/src/plugin/sdk/protocol/chat_wire_test.ts); then
+            echo "$output"
+            exit 1
+          fi
+          echo "$output"
+          grep -qE '[1-9][0-9]* passed' <<<"$output" || {
+            echo "::error::plugin SDK protocol cases did not run"
+            exit 1
+          }
+
+      # 真的起一次 worker 求值内置插件的定义：这条用例需要 pin 住的运行时，本机默认      # `#[ignore]`（不写成没有运行时也绿的假用例），所以在装好运行时的这里用 --ignored 跑。
       - name: Run the plugin worker smoke test against the pinned runtime
         env:
           CURSOR_SERVER_DENO: /tmp/deno-bin/deno

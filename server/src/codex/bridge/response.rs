@@ -4,6 +4,8 @@
 //! added/delta/done → completed/incomplete。没有上游终态（finish_reason / stop_reason）时
 //! `finish()` 返回错误，绝不伪造 completed。
 use super::{replay, tools::ToolKind, ToolMap, UpstreamFormat};
+use crate::provider::wire::anthropic::{anthropic_stop, AnthropicStop};
+use crate::provider::wire::chat::{chat_finish, ChatFinish};
 use crate::{Error, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -336,14 +338,14 @@ impl BridgeStream {
                 }
             }
             if let Some(piece) = call.pointer("/function/name").and_then(Value::as_str) {
-                crate::provider::merge_chat_fragment(name, piece);
+                crate::provider::wire::chat::merge_identifier(name, piece);
             }
             fragment.push_str(
                 call.pointer("/function/arguments")
                     .and_then(Value::as_str)
                     .unwrap_or(""),
             );
-            crate::provider::merge_argument_fragment(arguments, &fragment);
+            crate::provider::wire::chat::merge_arguments(arguments, &fragment);
             if !*added && !call_id.is_empty() && self.tools.spec_for(name).is_some() {
                 *added = true;
                 added_now = true;
@@ -922,30 +924,28 @@ fn replayable_thinking_block(block: &Value) -> bool {
 /// 旧取值（`function_call`）或自造成功值（`eos`）时，一整轮明明产出正常的回答被判成
 /// 失败。真正的失败不会因此被放过——这一轮没有任何可用输出时，`finish()` 仍会报错。
 fn chat_terminal(reason: &str) -> Result<Terminal> {
-    match reason.to_ascii_lowercase().as_str() {
-        "length" => Ok(Terminal::Incomplete("max_output_tokens")),
-        "content_filter" => Ok(Terminal::Incomplete("content_filter")),
-        failed
-            if failed.contains("fail") || failed.contains("error") || failed.contains("cancel") =>
-        {
-            Err(Error::Protocol(format!(
-                "the Chat upstream reported a failed turn: {reason}"
-            )))
-        }
-        _ => Ok(Terminal::Completed),
+    match chat_finish(reason) {
+        ChatFinish::Length => Ok(Terminal::Incomplete("max_output_tokens")),
+        ChatFinish::ContentFilter => Ok(Terminal::Incomplete("content_filter")),
+        ChatFinish::Failed => Err(Error::Protocol(format!(
+            "the Chat upstream reported a failed turn: {reason}"
+        ))),
+        ChatFinish::Stop | ChatFinish::ToolUse => Ok(Terminal::Completed),
     }
 }
 
 fn anthropic_terminal(reason: &str) -> Result<Terminal> {
-    match reason {
-        "max_tokens" => Ok(Terminal::Incomplete("max_output_tokens")),
-        // 窗口打满与输出截断在 Codex 语义里都是"没写完"，provider 路径已经这样归一。
-        "model_context_window_exceeded" => Ok(Terminal::Incomplete("max_output_tokens")),
-        "refusal" => Ok(Terminal::Incomplete("content_filter")),
-        // `pause_turn` 是上游"这一轮先停在这里"的正常取值，不是失败。
-        "end_turn" | "tool_use" | "stop_sequence" | "pause_turn" => Ok(Terminal::Completed),
-        other => Err(Error::Protocol(format!(
-            "unsupported Anthropic stop_reason: {other}"
+    match anthropic_stop(reason) {
+        AnthropicStop::MaxTokens | AnthropicStop::ContextWindowExceeded => {
+            Ok(Terminal::Incomplete("max_output_tokens"))
+        }
+        AnthropicStop::Refusal => Ok(Terminal::Incomplete("content_filter")),
+        AnthropicStop::EndTurn
+        | AnthropicStop::ToolUse
+        | AnthropicStop::StopSequence
+        | AnthropicStop::Pause => Ok(Terminal::Completed),
+        AnthropicStop::Unknown => Err(Error::Protocol(format!(
+            "unsupported Anthropic stop_reason: {reason}"
         ))),
     }
 }

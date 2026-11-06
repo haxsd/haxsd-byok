@@ -1,5 +1,6 @@
 import type { JsonValue, PluginContext } from "../plugin.ts";
 import type { LlmContentPart, LlmRequest, ModelEvent, ProviderOutput } from "../provider.ts";
+import { chatFinish, mergeArguments, mergeIdentifier } from "./chat_wire.ts";
 
 /** 本协议产生的回放状态种类;与宿主内置 Chat Provider 一致,可互相回放。 */
 export const REPLAY_KIND = "openai_chat";
@@ -139,21 +140,6 @@ type ToolState = {
   started: boolean;
 };
 
-/** 部分上游会重发完整片段而不是增量;去重后再拼接。 */
-function mergeIdentifier(target: string, fragment: string): string {
-  if (target === fragment) return target;
-  if (target.startsWith(fragment)) return target;
-  if (fragment.startsWith(target)) return fragment;
-  return target + fragment;
-}
-
-/** 工具参数是流式 JSON：短分片本身就是内容，只有整串重发才去重。 */
-function mergeArguments(target: string, fragment: string): string {
-  if (target === fragment) return target;
-  if (fragment.startsWith(target)) return fragment;
-  return target + fragment;
-}
-
 function updateTool(
   index: number,
   callId: string | null,
@@ -209,10 +195,18 @@ function usageEvent(value: unknown): ModelEvent {
 }
 
 function mapFinish(reason: string, hasTools: boolean): "stop" | "length" | "tool-use" {
-  if (reason === "tool_calls" || reason === "function_call") return "tool-use";
-  if (reason === "length") return "length";
-  if (reason === "stop" || reason === "content_filter") return "stop";
-  return hasTools ? "tool-use" : "stop";
+  switch (chatFinish(reason)) {
+    case "tool-use":
+      return "tool-use";
+    case "length":
+      return "length";
+    case "content-filter":
+    case "failed":
+      // 明确失败/被拦截的轮次不因为带了工具就改判成工具使用。
+      return "stop";
+    default:
+      return hasTools ? "tool-use" : "stop";
+  }
 }
 
 async function readBody(lines: AsyncIterable<string>): Promise<string> {

@@ -232,14 +232,13 @@ async fn prepare(
     if provider_type == ProviderType::Anthropic
         && body.pointer("/thinking/type").and_then(Value::as_str) == Some("enabled")
     {
-        if let (Some(budget), Some(max_tokens)) =
+        if let (Some(configured), Some(max_tokens)) =
             (model.thinking_budget_tokens, body["max_tokens"].as_u64())
         {
-            if max_tokens > 1_024 {
-                body["thinking"]["budget_tokens"] = json!(budget.max(1_024).min(max_tokens - 1));
-            } else {
+            match crate::provider::wire::anthropic::thinking_budget(Some(configured), max_tokens) {
+                Some(budget) => body["thinking"]["budget_tokens"] = json!(budget),
                 // 装不下合法预算：退回 adaptive，而不是发一个必然被拒的 enabled。
-                body["thinking"] = json!({"type": "adaptive", "display": "summarized"});
+                None => body["thinking"] = json!({"type": "adaptive", "display": "summarized"}),
             }
         }
     }

@@ -13,7 +13,9 @@ use crate::{
 };
 
 use super::{
-    map_sse_error, merge_extra_params, provider_event_error, recorder::recorded_headers,
+    map_sse_error, merge_extra_params, provider_event_error,
+    recorder::recorded_headers,
+    wire::anthropic::{anthropic_stop, thinking_budget, AnthropicStop},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
 use crate::upstream::{self, UpstreamCall};
@@ -254,11 +256,24 @@ impl Provider for AnthropicProvider {
                             yield ModelEvent::StopSequence(sequence.into());
                         }
                         finish = match value.pointer("/delta/stop_reason").and_then(Value::as_str) {
-                            Some("tool_use") => Some(FinishReason::ToolUse),
-                            Some("max_tokens" | "model_context_window_exceeded") => Some(FinishReason::Length),
-                            Some("end_turn" | "stop_sequence" | "pause_turn" | "refusal") => Some(FinishReason::Stop),
+                            Some(reason) => Some(match anthropic_stop(reason) {
+                                AnthropicStop::ToolUse => FinishReason::ToolUse,
+                                AnthropicStop::MaxTokens | AnthropicStop::ContextWindowExceeded => {
+                                    FinishReason::Length
+                                }
+                                AnthropicStop::EndTurn
+                                | AnthropicStop::StopSequence
+                                | AnthropicStop::Pause
+                                | AnthropicStop::Refusal => FinishReason::Stop,
+                                AnthropicStop::Unknown => {
+                                    if saw_tool {
+                                        FinishReason::ToolUse
+                                    } else {
+                                        FinishReason::Stop
+                                    }
+                                }
+                            }),
                             None => finish,
-                            Some(_) => Some(if saw_tool { FinishReason::ToolUse } else { FinishReason::Stop }),
                         };
                     }
                     "message_stop" => {
@@ -387,21 +402,16 @@ fn apply_model(body: &mut Value, model: &crate::model::ModelSpec, max_tokens: u6
     Ok(())
 }
 
-/// Anthropic 要求 `budget_tokens` 不小于 1024；`codex/upstream.rs` 对同一个字段做同样的夹取。
-const MIN_THINKING_BUDGET: u64 = 1_024;
-
 /// 思考配置。界面上的"思考预算 Token"有值时发 `{"type":"enabled","budget_tokens":N}`——
 /// 这是"按预算思考"的形态，也是 Cursor/Devin 路径上唯一会读这个字段的地方；留空才发
 /// adaptive（上游按强度自适应）。预算必须小于 `max_tokens`，否则上游直接 400。
 fn thinking_config(reasoning: &crate::model::ReasoningSpec, max_tokens: u64) -> Value {
-    match reasoning.thinking_budget_tokens {
-        // `budget_tokens` 必须 ≥1024 且 < max_tokens。上限太小的时候两者无法同时满足，
-        // 发 enabled 必然 400；退回 adaptive（仍按强度思考）而不是发一个非法组合。
-        Some(budget) if max_tokens > MIN_THINKING_BUDGET => json!({
+    match thinking_budget(reasoning.thinking_budget_tokens, max_tokens) {
+        Some(budget) => json!({
             "type": "enabled",
-            "budget_tokens": budget.max(MIN_THINKING_BUDGET).min(max_tokens - 1),
+            "budget_tokens": budget,
         }),
-        _ => json!({"type":"adaptive", "display":"summarized"}),
+        None => json!({"type":"adaptive", "display":"summarized"}),
     }
 }
 

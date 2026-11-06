@@ -17,9 +17,11 @@ use crate::{
     Error, Result,
 };
 
+use super::wire::chat::{merge_arguments, merge_identifier};
 use super::{
     apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
-    recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
+    recorder::recorded_headers, wire::chat::ChatFinish, CallRecorder, FinishReason, ModelEvent,
+    Provider, ProviderStream,
 };
 use crate::upstream::{self, UpstreamCall};
 
@@ -442,14 +444,14 @@ fn role_name(role: &Role) -> &'static str {
 }
 
 fn map_finish(value: &str, has_tools: bool) -> FinishReason {
-    match value {
-        "tool_calls" | "function_call" => FinishReason::ToolUse,
-        "length" => FinishReason::Length,
-        "content_filter" => FinishReason::Stop,
-        // Observed tool calls outrank ordinary or unknown stop labels because
-        // OpenAI-compatible servers commonly emit tools with `stop`.
-        _ if has_tools => FinishReason::ToolUse,
-        _ => FinishReason::Stop,
+    match super::wire::chat::chat_finish(value) {
+        ChatFinish::ToolUse => FinishReason::ToolUse,
+        ChatFinish::Length => FinishReason::Length,
+        // `content_filter` 明确是"没有正常完成"，即使带工具也不改判。
+        ChatFinish::ContentFilter => FinishReason::Stop,
+        // 未知/失败值沿用现有行为：有工具调用时工具优先级更高，否则按完成处理。
+        ChatFinish::Stop | ChatFinish::Failed if has_tools => FinishReason::ToolUse,
+        ChatFinish::Stop | ChatFinish::Failed => FinishReason::Stop,
     }
 }
 
@@ -462,13 +464,13 @@ fn update_chat_tool(
 ) -> Vec<ModelEvent> {
     let tool = tools.entry(index).or_default();
     if let Some(call_id) = call_id {
-        merge_chat_fragment(&mut tool.call_id, call_id);
+        merge_identifier(&mut tool.call_id, call_id);
     }
     if let Some(name) = name {
-        merge_chat_fragment(&mut tool.name, name);
+        merge_identifier(&mut tool.name, name);
     }
     if let Some(arguments) = arguments {
-        merge_argument_fragment(&mut tool.arguments, arguments);
+        merge_arguments(&mut tool.arguments, arguments);
     }
 
     let mut events = Vec::new();
@@ -486,47 +488,6 @@ fn update_chat_tool(
         events.push(ModelEvent::ToolCallArgumentsDelta { index, delta });
     }
     events
-}
-
-/// 归并同一个字段的分片。
-///
-/// 上游有两种用法：多数只发增量，少数每个分片都重复下发完整的当前值（这个函数就是为后者
-/// 存在的）。判据只用"整串的前后包含"这种确定关系：
-///   * 与当前值相同 —— 重复下发整串，忽略；
-///   * 当前值是分片的严格前缀 —— 分片是新的完整值，追加多出来的后缀；
-///   * 其余 —— 一律按增量追加，包括恰好是已累积串前缀的短分片。
-///
-/// 最后一条是重点：以前 `target.ends_with(fragment)` 会把合法的重复增量当重复下发吞掉
-/// （参数 JSON 里 `{`、`"`、`a` 这类片段挨着重复是常态），而更容易被重复下发的
-/// `arguments` 又完全没走这套归并，于是整串参数被拼两遍、拼出 `{...}{...}` 这种非法 JSON。
-///
-/// 另一条以前的分支把"分片是当前值的前缀"当成迟到的旧整串吞掉，这条同样吃合法的增量：
-/// 参数里数组和嵌套对象的每一个左花括号都恰好是已累积串的前缀，于是带嵌套对象的工具参数被
-/// 拼成 `[content"` 这种非法 JSON，只有扁平参数的工具看不出来。标识符（`call_id`、函数名）
-/// 仍然保留这条保护——它们整段下发，前缀重复只可能是旧值；工具参数则改走
-/// [`merge_argument_fragment`]，任何短分片都可能是真内容。
-pub(crate) fn merge_chat_fragment(target: &mut String, fragment: &str) {
-    merge_fragment(target, fragment, true);
-}
-
-/// 工具参数是流式 JSON 文档，左花括号、双引号、左方括号这类短分片本身就是内容，不能当成
-/// 旧整串丢掉。
-pub(crate) fn merge_argument_fragment(target: &mut String, fragment: &str) {
-    merge_fragment(target, fragment, false);
-}
-
-fn merge_fragment(target: &mut String, fragment: &str, ignore_older_snapshot: bool) {
-    if target.as_str() == fragment {
-        return;
-    }
-    if ignore_older_snapshot && target.starts_with(fragment) {
-        return;
-    }
-    if fragment.starts_with(target.as_str()) {
-        target.push_str(&fragment[target.len()..]);
-        return;
-    }
-    target.push_str(fragment);
 }
 
 pub(crate) fn openai_usage(value: &Value) -> Usage {
@@ -935,7 +896,7 @@ mod tests {
     #[test]
     fn a_fragment_that_merely_repeats_the_tail_is_still_appended() {
         let mut target = "abc".to_string();
-        merge_chat_fragment(&mut target, "c");
+        merge_identifier(&mut target, "c");
         assert_eq!(target, "abcc");
 
         // 正常增量流里的相邻重复：`{"path":"a` 之后再来一个 `a`。
@@ -952,7 +913,7 @@ mod tests {
     #[test]
     fn an_identical_fragment_is_treated_as_a_resend() {
         let mut target = r#"{"path":"a.txt"}"#.to_string();
-        merge_chat_fragment(&mut target, r#"{"path":"a.txt"}"#);
+        merge_identifier(&mut target, r#"{"path":"a.txt"}"#);
         assert_eq!(target, r#"{"path":"a.txt"}"#);
     }
 
@@ -960,7 +921,7 @@ mod tests {
     #[test]
     fn a_late_older_snapshot_does_not_truncate_the_field() {
         let mut target = "call-abc".to_string();
-        merge_chat_fragment(&mut target, "call-");
+        merge_identifier(&mut target, "call-");
         assert_eq!(target, "call-abc");
     }
 

@@ -7,6 +7,7 @@ mod openai_responses;
 mod recorder;
 mod request_template;
 mod router;
+pub(crate) mod wire;
 
 use std::pin::Pin;
 
@@ -18,7 +19,6 @@ use crate::{model::ModelInvocation, Result};
 pub use anthropic::AnthropicProvider;
 pub use event::*;
 pub use openai_chat::OpenAiChatProvider;
-pub(crate) use openai_chat::{merge_argument_fragment, merge_chat_fragment};
 pub use openai_responses::OpenAiResponsesProvider;
 pub use recorder::CallRecorder;
 pub use router::{build as build_provider, ProviderRouter};

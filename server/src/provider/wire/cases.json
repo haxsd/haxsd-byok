@@ -1,0 +1,45 @@
+{
+  "merge_identifier": [
+    {"target": "", "fragment": "call_1", "expect": "call_1"},
+    {"target": "call_1", "fragment": "call_1", "expect": "call_1"},
+    {"target": "call_1", "fragment": "call", "expect": "call_1"},
+    {"target": "call", "fragment": "call_1", "expect": "call_1"},
+    {"target": "call_1", "fragment": "call_2", "expect": "call_1call_2"}
+  ],
+  "merge_arguments": [
+    {"target": "", "fragment": "{", "expect": "{"},
+    {"target": "{\"a\":", "fragment": "1}", "expect": "{\"a\":1}"},
+    {"target": "{\"a\":1", "fragment": "{\"a\":1}", "expect": "{\"a\":1}"},
+    {"target": "{\"a\":1}", "fragment": "{\"a\":1}", "expect": "{\"a\":1}"},
+    {"target": "{\"a\":1}", "fragment": "}", "expect": "{\"a\":1}}"},
+    {"target": "[", "fragment": "]", "expect": "[]"}
+  ],
+  "chat_finish": [
+    {"reason": "tool_calls", "expect": "tool-use"},
+    {"reason": "function_call", "expect": "tool-use"},
+    {"reason": "length", "expect": "length"},
+    {"reason": "content_filter", "expect": "content-filter"},
+    {"reason": "vendor_failed", "expect": "failed"},
+    {"reason": "cancelled", "expect": "failed"},
+    {"reason": "ERROR", "expect": "failed"},
+    {"reason": "stop", "expect": "stop"},
+    {"reason": "eos", "expect": "stop"}
+  ],
+  "anthropic_stop": [
+    {"reason": "end_turn", "expect": "end-turn"},
+    {"reason": "tool_use", "expect": "tool-use"},
+    {"reason": "stop_sequence", "expect": "stop-sequence"},
+    {"reason": "pause_turn", "expect": "pause"},
+    {"reason": "max_tokens", "expect": "max-tokens"},
+    {"reason": "model_context_window_exceeded", "expect": "context-window-exceeded"},
+    {"reason": "refusal", "expect": "refusal"},
+    {"reason": "vendor_extension", "expect": "unknown"}
+  ],
+  "thinking_budget": [
+    {"configured": 2048, "max_tokens": 8192, "expect": 2048},
+    {"configured": 100, "max_tokens": 8192, "expect": 1024},
+    {"configured": 10000, "max_tokens": 8192, "expect": 8191},
+    {"configured": 2048, "max_tokens": 1024, "expect": null},
+    {"configured": null, "max_tokens": 8192, "expect": null}
+  ]
+}
