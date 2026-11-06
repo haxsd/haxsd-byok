@@ -113,10 +113,11 @@ fn system_parts(source: &Map<String, Value>, items: &[Value]) -> Result<Vec<Stri
     }
     for item in items {
         if item_type(item) == "message"
-            && matches!(
-                item.get("role").and_then(Value::as_str),
-                Some("system" | "developer")
-            )
+            && (is_internal_context(item)
+                || matches!(
+                    item.get("role").and_then(Value::as_str),
+                    Some("system" | "developer")
+                ))
         {
             let text = message_text(item)?.trim().to_string();
             if !text.is_empty() {
@@ -197,6 +198,14 @@ fn create_thread_input(item: &Value) -> Option<&str> {
         .filter(|value| !value.trim().is_empty())
 }
 
+/// Goal 会在工具调用还没拿到结果时插入一条 `<codex_internal_context …>` 消息。
+/// 它不是用户的新一轮发言，也不该切断工具调用链；按 system 处理。
+fn is_internal_context(item: &Value) -> bool {
+    item_type(item) == "message"
+        && message_text(item)
+            .is_ok_and(|text| text.trim_start().starts_with("<codex_internal_context"))
+}
+
 const AGENT_MESSAGE_REQUIRES_RESPONSES: &str =
     "this conversation contains Codex subagent messages (agent_message) whose encrypted payload \
      can only be replayed to an OpenAI Responses model; switch back to the original model or \
@@ -226,6 +235,9 @@ fn validate_tool_history(items: &[Value]) -> Result<()> {
     let mut pending = HashMap::new();
     let mut seen = HashSet::new();
     for item in items {
+        if is_internal_context(item) {
+            continue;
+        }
         if create_thread_input(item).is_some() {
             if !pending.is_empty() {
                 return Err(Error::Protocol(
@@ -309,6 +321,9 @@ fn chat_body(
     let mut turn = Turn::default();
     let mut pending_reasoning: Option<String> = None;
     for item in items {
+        if is_internal_context(item) {
+            continue;
+        }
         if let Some(text) = create_thread_input(item) {
             flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
             messages.push(json!({"role": "user", "content": text}));
@@ -505,6 +520,9 @@ fn anthropic_body(
     let mut turn = Turn::default();
     let mut pending_thinking: Vec<Value> = Vec::new();
     for item in items {
+        if is_internal_context(item) {
+            continue;
+        }
         if let Some(text) = create_thread_input(item) {
             flush_anthropic(&mut messages, &mut turn, &mut pending_thinking)?;
             push_anthropic(
@@ -1077,5 +1095,34 @@ mod tests {
         .unwrap();
         let system = system_text(source.as_object().unwrap(), &[], &tools).unwrap();
         assert!(system.contains("update_plan"), "{system}");
+    }
+    /// Goal 在工具调用未拿到结果时插入 `<codex_internal_context …>`；它不能算新的一轮，
+    /// 否则整段历史被判成“工具调用缺结果”，会话直接卡死。
+    #[test]
+    fn goal_internal_context_does_not_break_a_pending_tool_call() {
+        let source = json!({
+            "input": [
+                {"type": "message", "role": "user", "content": "跑一下"},
+                {"type": "function_call", "call_id": "c1", "name": "exec_command", "arguments": "{}"},
+                {"type": "message", "role": "user", "content": "<codex_internal_context source=\"user_goal\">目标</codex_internal_context>"},
+                {"type": "function_call_output", "call_id": "c1", "output": "ok"}
+            ]
+        });
+        let body = mapped(UpstreamFormat::Chat, source, None);
+        let text = body.to_string();
+        assert!(text.contains("ok"), "工具结果必须留在历史里");
+        let users: Vec<String> = body["messages"]
+            .as_array()
+            .expect("chat body carries messages")
+            .iter()
+            .filter(|message| message["role"] == "user")
+            .map(|message| message.to_string())
+            .collect();
+        assert!(
+            users
+                .iter()
+                .all(|text| !text.contains("<codex_internal_context")),
+            "内部上下文消息只能进 system 指令，不能当用户消息重放"
+        );
     }
 }
