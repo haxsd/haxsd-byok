@@ -15,9 +15,18 @@ const loader = await startModuleLoader();
 test.after(() => loader.close());
 
 const STORAGE = `${API_ROOT}/settings/storage/statistics`;
+const COMPACT = `${API_ROOT}/settings/storage/compact`;
 const STORAGE_FIXTURE = {
-  bytes: 26_004_480,
   database_bytes: 1_212_334_080,
+  database_used_bytes: 139_580_416,
+  database_free_bytes: 1_072_753_664,
+  wal_bytes: 4_235_392,
+  call_record_bytes: 24_000_000,
+  call_detail_bytes: 2_004_480,
+  observability_bytes: 26_004_480,
+  conversation_bytes: 44_040_192,
+  message_count: 922,
+  blob_count: 183,
   artifact_bytes: 41_943_040,
   artifact_retention_days: 7,
   call_count: 12,
@@ -25,6 +34,14 @@ const STORAGE_FIXTURE = {
   conversation_retention_days: 3,
   web_cache_bytes: 8_912_896,
   web_cache_files: 412,
+  log_bytes: 154_397_136,
+  log_files: 43,
+  plugin_bytes: 99_792_345,
+  plugin_files: 81,
+  incremental_vacuum_enabled: false,
+  compaction_requested: false,
+  compacting: false,
+  compaction_failed: false,
 };
 
 function installStorageBackend(initial = {}) {
@@ -36,8 +53,12 @@ function installStorageBackend(initial = {}) {
     stored = scope === "web_cache"
       ? { ...stored, web_cache_bytes: 0, web_cache_files: 0 }
       : scope === "all"
-        ? { ...stored, bytes: 0, call_count: 0, trace_count: 0 }
-        : { ...stored, bytes: 0 };
+        ? { ...stored, observability_bytes: 0, call_record_bytes: 0, call_detail_bytes: 0, call_count: 0, trace_count: 0 }
+        : { ...stored, observability_bytes: stored.call_record_bytes, call_detail_bytes: 0 };
+    return { body: { ...stored } };
+  });
+  backend.route("POST", COMPACT, () => {
+    stored = { ...stored, database_bytes: stored.database_used_bytes, database_free_bytes: 0, incremental_vacuum_enabled: true };
     return { body: { ...stored } };
   });
   return { backend, stored: () => stored };
@@ -57,8 +78,8 @@ test("the fetched-cache numbers are shown apart from the library bytes", async (
 
   assert.equal(formatBytes(storage.web_cache_bytes), "8.5 MB", "抓取缓存体积单独格式化");
   assert.equal(storage.web_cache_files, 412, "还要给出文件数");
-  assert.equal(formatBytes(storage.bytes), "24.8 MB", "库内占用是另一个数字");
-  assert.notEqual(formatBytes(storage.web_cache_bytes), formatBytes(storage.bytes), "两个数字不能合并成一个");
+  assert.equal(formatBytes(storage.observability_bytes), "24.8 MB", "库内观测数据是另一个数字");
+  assert.notEqual(formatBytes(storage.web_cache_bytes), formatBytes(storage.observability_bytes), "两个数字不能合并成一个");
   assert.equal(hasWebCache(storage), true);
   assert.equal(backend.requestsFor("GET", STORAGE).length, 1);
 });
@@ -82,7 +103,7 @@ test("clearing the fetched cache sends the web_cache scope and keeps the library
   assert.deepEqual(writes[0].body, { scope: "web_cache" }, "作用域必须是 web_cache，不能顺手清库内数据");
   assert.equal(after.web_cache_bytes, 0);
   assert.equal(after.web_cache_files, 0);
-  assert.equal(stored().bytes, STORAGE_FIXTURE.bytes, "库内观测数据不受影响");
+  assert.equal(stored().observability_bytes, STORAGE_FIXTURE.observability_bytes, "库内观测数据不受影响");
   assert.equal(stored().call_count, STORAGE_FIXTURE.call_count);
 });
 
@@ -117,9 +138,10 @@ test("the card renders both rows and wires the cache button to the dialog", asyn
 
   assert.match(source, /web_cache_bytes/, "卡片要显示抓取缓存体积");
   assert.match(source, /web_cache_files/, "卡片要显示抓取缓存文件数");
-  assert.match(source, /setScope\("web_cache"\)/, "缓存那一行的按钮要把作用域设成 web_cache");
+  assert.match(source, /setDialog\("web_cache"\)/, "缓存那一行的按钮要把作用域设成 web_cache");
   assert.match(source, /clearingCounter\(clearingScope, clearing\)/, "进度按作用域取对应的计数");
   assert.doesNotMatch(source, /bytes \+ storage\.web_cache_bytes/, "别把两个数字加起来");
+  assert.doesNotMatch(source, /<Select\b/, "清理范围不该再用重复显示当前值的下拉框");
 });
 
 // 大工具结果与压缩历史也不在库里：服务端按"引用还在不在"清理（维护循环）。卡片要把体积与
@@ -127,9 +149,45 @@ test("the card renders both rows and wires the cache button to the dialog", asyn
 test("the artifact row reports disk usage and only names a window the server sent", async () => {
   const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /formatBytes\(storage\.artifact_bytes\)/, "要显示落盘目录的合计体积");
+  assert.match(source, /formatBytes\(storage\?\.artifact_bytes \?\? 0\)/, "要显示落盘目录的合计体积");
   assert.match(source, /retentionDays\(storage\?\.artifact_retention_days\)/, "天数走与对话窗口同一套判定");
-  assert.match(source, /大工具结果与压缩历史：\{size\}（随会话一起回收；没有引用的文件最多再留 \{days\} 天）/, "有正数天数时的句子");
-  assert.match(source, /大工具结果与压缩历史：\{size\}（随会话一起回收）/, "天数缺失时的句子不能带 {days}");
+  assert.match(source, /随会话一起回收；没有引用的文件最多再留 \{days\} 天/, "有正数天数时的句子");
+  assert.match(source, /t\("随会话一起回收"\)/, "天数缺失时的句子不能带 {days}");
   assert.doesNotMatch(source, /artifact_retention_days \?\? \d+/, "别在前端写死保留天数");
+});
+
+test("the log row reports its own size and file count", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /formatBytes\(storage\?\.log_bytes \?\? 0\)/, "要显示日志实际占用");
+  assert.match(source, /storage\?\.log_files \?\? 0/, "日志文件数也单独显示");
+});
+
+test("the storage card keeps WAL and plugin disk usage apart from database pages", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /WAL 文件 \{size\}/, "WAL 是独立文件，必须单独显示");
+  assert.match(source, /formatBytes\(storage\.wal_bytes\)/, "WAL 的数字来自服务端");
+  assert.match(source, /插件运行时与插件数据/, "插件目录占用的来源要写清楚");
+  assert.match(source, /formatBytes\(storage\?\.plugin_bytes \?\? 0\)/, "插件运行时与已安装插件单独计数");
+  assert.match(source, /storage\?\.plugin_files \?\? 0/, "插件目录文件数也单独显示");
+  assert.match(source, /数据库内部明细/, "库内明细与文件大小分开解释");
+  assert.match(source, /文件系统（独立于数据库）/, "文件系统项目不能与数据库页相加");
+});
+
+test("the storage card separates used pages from free pages and asks for compaction", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /database_used_bytes/, "要显示有效数据页");
+  assert.match(source, /database_free_bytes/, "要显示可回收空闲页");
+  assert.match(source, /Number\.isFinite\(storage\.database_used_bytes\)/, "旧服务端缺字段时不能算出 NaN%");
+  assert.match(source, /api\.compactStatisticsStorage\(\)/, "压缩走独立接口");
+  assert.match(source, /compaction_requested/, "排队等待期间要轮询");
+});
+
+test("a failed progress poll schedules another read", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /setPollNonce\(value => value \+ 1\)/, "读取失败后要触发下一次轮询");
+  assert.match(source, /\[polling, storage, timers, pollNonce\]/, "重试计数必须进入轮询依赖");
 });

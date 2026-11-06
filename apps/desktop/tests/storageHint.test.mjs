@@ -1,7 +1,5 @@
-// 「存储管理」的阈值提示：两个数字决定说哪句话，判定统一放在 storageHint.ts。
-//
-// 背景：真实库 1.07 GiB，但可清理的观测数据只有 18 MB——大头是对话内容与内容块，
-// 这里的清理不删它们。提示必须分清这两种"大"，否则用户会以为点一下能腾出整个数据库。
+// 「存储管理」的两类提示：已删除数据的空闲页要压缩，观测数据要清理；两者不能混成
+// "点清理就能腾出整个数据库"。
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -17,33 +15,33 @@ const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
 test("small cleanable data and a small file stay quiet", () => {
-  assert.equal(module.storageHint({ bytes: 18 * MB, database_bytes: 300 * MB }), null);
+  assert.equal(module.storageHint({ observability_bytes: 18 * MB, database_free_bytes: 20 * MB }), null);
 });
 
 test("cleanable observability data over the threshold asks for a cleanup", () => {
-  assert.equal(module.storageHint({ bytes: 300 * MB, database_bytes: 300 * MB }), "clean-observability");
-  // 边界：正好等于阈值也算超过（提示与格式化出来的数字一致，不会出现"256.0 MB 却提示超过 256 MB"）。
-  assert.equal(module.storageHint({ bytes: module.CLEANUP_HINT_BYTES, database_bytes: 0 }), "clean-observability");
+  assert.equal(module.storageHint({ observability_bytes: 300 * MB, database_free_bytes: 0 }), "clean-observability");
+  assert.equal(module.storageHint({ observability_bytes: module.CLEANUP_HINT_BYTES, database_free_bytes: 0 }), "clean-observability");
 });
 
-test("a big file with little cleanable data explains where the space went", () => {
-  assert.equal(module.storageHint({ bytes: 18 * MB, database_bytes: 1.07 * GB }), "conversation-data");
+test("deleted rows left on disk ask for compaction, not another cleanup", () => {
+  assert.equal(module.storageHint({ observability_bytes: 18 * MB, database_free_bytes: 1.07 * GB }), "reclaim-space");
+  assert.equal(module.storageHint({ observability_bytes: 0, database_free_bytes: module.RECLAIM_HINT_BYTES }), "reclaim-space");
 });
 
-test("cleanable data wins when both are big, because that is the actionable one", () => {
-  assert.equal(module.storageHint({ bytes: 300 * MB, database_bytes: 4 * GB }), "clean-observability");
+test("a large freelist wins because the user already deleted those rows", () => {
+  assert.equal(module.storageHint({ observability_bytes: 300 * MB, database_free_bytes: 4 * GB }), "reclaim-space");
 });
 
 test("the printed threshold is the one the check uses", () => {
-  for (const hint of ["clean-observability", "conversation-data"]) {
+  for (const hint of ["reclaim-space", "clean-observability"]) {
     const threshold = module.storageHintThreshold(hint);
     assert.ok(threshold > 0);
     if (hint === "clean-observability") {
-      assert.equal(module.storageHint({ bytes: threshold, database_bytes: 0 }), hint);
-      assert.equal(module.storageHint({ bytes: threshold - 1, database_bytes: 0 }), null);
+      assert.equal(module.storageHint({ observability_bytes: threshold, database_free_bytes: 0 }), hint);
+      assert.equal(module.storageHint({ observability_bytes: threshold - 1, database_free_bytes: 0 }), null);
     } else {
-      assert.equal(module.storageHint({ bytes: 0, database_bytes: threshold }), hint);
-      assert.equal(module.storageHint({ bytes: 0, database_bytes: threshold - 1 }), null);
+      assert.equal(module.storageHint({ observability_bytes: 0, database_free_bytes: threshold }), hint);
+      assert.equal(module.storageHint({ observability_bytes: 0, database_free_bytes: threshold - 1 }), null);
     }
   }
 });
@@ -53,6 +51,12 @@ test("byte sizes read the way the card prints them", () => {
   assert.equal(module.formatBytes(2048), "2.0 KB");
   assert.equal(module.formatBytes(18_167_299), "17.3 MB");
   assert.equal(module.formatBytes(1_212_334_080), "1.1 GB");
+});
+
+test("missing or nonsensical byte counts read as zero", () => {
+  for (const value of [undefined, null, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    assert.equal(module.formatBytes(value), "0 B", `value: ${String(value)}`);
+  }
 });
 
 // 卡片里"服务端对话副本闲置 N 天后自动回收"的 N 直接印在句子中间：坏数字（缺失、0、

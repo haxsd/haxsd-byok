@@ -98,12 +98,27 @@ function proxyFixture() {
 
 function storageFixture() {
   return {
-    bytes: 1024,
+    observability_bytes: 1024,
+    call_record_bytes: 768,
+    call_detail_bytes: 256,
     call_count: 3,
     trace_count: 0,
     database_bytes: 2048,
+    database_used_bytes: 1536,
+    database_free_bytes: 512,
+    conversation_bytes: 0,
+    message_count: 0,
+    blob_count: 0,
     artifact_bytes: 4096,
     artifact_retention_days: 7,
     conversation_retention_days: 30,
+    web_cache_bytes: 0,
+    web_cache_files: 0,
+    log_bytes: 0,
+    log_files: 0,
+    incremental_vacuum_enabled: true,
+    compaction_requested: false,
+    compacting: false,
+    compaction_failed: false,
   };
 }

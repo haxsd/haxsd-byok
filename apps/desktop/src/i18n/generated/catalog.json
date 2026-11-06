@@ -146,8 +146,13 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 81,
-          "column": 147
+          "line": 134,
+          "column": 9
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 197,
+          "column": 163
         }
       ]
     },
@@ -197,7 +202,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 406,
+          "line": 408,
           "column": 16
         }
       ]
@@ -221,6 +226,20 @@
         }
       ]
     },
+    "030bddc40398a8e7": {
+      "source": "将删除调用摘要、请求/响应正文与追踪记录，约 {size}。费用和用量历史会清空；对话消息、配置和抓取缓存不受影响。数据库文件不会因此立刻变小。",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 246,
+          "column": 13
+        }
+      ]
+    },
     "030d4446c3bfda99": {
       "source": "本机网关",
       "kind": "text",
@@ -238,7 +257,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 189,
+          "line": 188,
           "column": 14
         },
         {
@@ -427,7 +446,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 590,
+          "line": 589,
           "column": 86
         }
       ]
@@ -466,7 +485,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 155,
+          "line": 154,
           "column": 19
         },
         {
@@ -550,7 +569,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 587,
+          "line": 586,
           "column": 119
         }
       ]
@@ -564,6 +583,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 433,
           "column": 21
+        }
+      ]
+    },
+    "066717a35d4465bd": {
+      "source": "压缩可能需要数十秒并占用额外临时磁盘空间，只在没有活跃 Agent 请求时执行。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 257,
+          "column": 17
         }
       ]
     },
@@ -663,7 +694,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 594,
+          "line": 593,
           "column": 39
         }
       ]
@@ -703,7 +734,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 589,
+          "line": 588,
           "column": 69
         }
       ]
@@ -749,7 +780,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 161,
+          "line": 160,
           "column": 14
         }
       ]
@@ -828,7 +859,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 99,
+          "line": 98,
           "column": 19
         }
       ]
@@ -907,20 +938,6 @@
         }
       ]
     },
-    "0ad1106dc0952e5e": {
-      "source": "可清理的观测数据已超过 {threshold}：清理详细记录能收回这部分空间，调用列表与用量统计不受影响。",
-      "kind": "template",
-      "placeholders": [
-        "threshold"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 90,
-          "column": 11
-        }
-      ]
-    },
     "0ae09ee7b1d24e06": {
       "source": "留空使用默认 {percent}%。",
       "kind": "template",
@@ -983,12 +1000,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 295,
+          "line": 297,
           "column": 13
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 362,
+          "line": 364,
           "column": 72
         }
       ]
@@ -1136,6 +1153,18 @@
         }
       ]
     },
+    "0dbd1f223921aa7d": {
+      "source": "插件运行时与插件数据",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 210,
+          "column": 18
+        }
+      ]
+    },
     "0dc322a884a1b9bf": {
       "source": "路由被其他程序占用",
       "kind": "text",
@@ -1172,21 +1201,6 @@
         }
       ]
     },
-    "0e3bbd41165a02a4": {
-      "source": "大工具结果与压缩历史：{size}（随会话一起回收；没有引用的文件最多再留 {days} 天）",
-      "kind": "template",
-      "placeholders": [
-        "size",
-        "days"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 97,
-          "column": 11
-        }
-      ]
-    },
     "0e41f8e3d59ec47b": {
       "source": "存储管理",
       "kind": "text",
@@ -1199,7 +1213,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 68,
+          "line": 138,
           "column": 24
         }
       ]
@@ -1363,6 +1377,20 @@
         }
       ]
     },
+    "104ba630b29b16fe": {
+      "source": "空闲页 {size}",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 159,
+          "column": 18
+        }
+      ]
+    },
     "105a9082c346f958": {
       "source": "测试中…",
       "kind": "text",
@@ -1473,6 +1501,20 @@
         {
           "file": "features/home/HomePage.tsx",
           "line": 284,
+          "column": 7
+        }
+      ]
+    },
+    "11d7ce47c2f94940": {
+      "source": "随会话一起回收；没有引用的文件最多再留 {days} 天",
+      "kind": "template",
+      "placeholders": [
+        "days"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 123,
           "column": 7
         }
       ]
@@ -1833,7 +1875,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 649,
+          "line": 648,
           "column": 48
         }
       ]
@@ -1954,6 +1996,18 @@
         }
       ]
     },
+    "1ac909450942db72": {
+      "source": "随会话一起回收",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 124,
+          "column": 7
+        }
+      ]
+    },
     "1add43f798162a38": {
       "source": "已运行",
       "kind": "text",
@@ -1961,7 +2015,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 190,
+          "line": 189,
           "column": 31
         }
       ]
@@ -2021,7 +2075,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 667,
+          "line": 666,
           "column": 27
         }
       ]
@@ -2067,13 +2121,8 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 70,
-          "column": 82
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 78,
-          "column": 92
+          "line": 142,
+          "column": 88
         }
       ]
     },
@@ -2182,8 +2231,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 85,
-          "column": 13
+          "line": 228,
+          "column": 15
         }
       ]
     },
@@ -2242,7 +2291,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 487,
+          "line": 489,
           "column": 14
         }
       ]
@@ -2338,7 +2387,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 614,
+          "line": 613,
           "column": 23
         }
       ]
@@ -2352,6 +2401,20 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 95,
           "column": 14
+        }
+      ]
+    },
+    "1eabaf7e39562ebe": {
+      "source": "WAL 文件 {size}",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 160,
+          "column": 18
         }
       ]
     },
@@ -2389,7 +2452,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 122,
+          "line": 121,
           "column": 13
         },
         {
@@ -2469,7 +2532,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1439,
+          "line": 1468,
           "column": 23
         }
       ]
@@ -2493,7 +2556,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 150,
+          "line": 149,
           "column": 15
         }
       ]
@@ -2560,12 +2623,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 117,
+          "line": 116,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 217,
+          "line": 216,
           "column": 13
         },
         {
@@ -2599,7 +2662,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 460,
+          "line": 462,
           "column": 50
         }
       ]
@@ -2707,7 +2770,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 668,
+          "line": 667,
           "column": 132
         }
       ]
@@ -2748,18 +2811,6 @@
         }
       ]
     },
-    "23ae7a90b1b9816d": {
-      "source": "清理范围",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 105,
-          "column": 42
-        }
-      ]
-    },
     "2400fbd0aeab9e13": {
       "source": "已下载 {downloaded}",
       "kind": "template",
@@ -2786,7 +2837,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 101,
+          "line": 100,
           "column": 12
         }
       ]
@@ -2836,7 +2887,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 672,
+          "line": 671,
           "column": 27
         }
       ]
@@ -2900,20 +2951,6 @@
           "file": "features/codex/codexModelOptions.ts",
           "line": 76,
           "column": 85
-        }
-      ]
-    },
-    "26b5a45115e77ac1": {
-      "source": "日志文件保留 {days} 天，过期自动删除。",
-      "kind": "template",
-      "placeholders": [
-        "days"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 100,
-          "column": 42
         }
       ]
     },
@@ -2981,22 +3018,6 @@
           "file": "features/home/overview/ModelUsageList.tsx",
           "line": 38,
           "column": 38
-        }
-      ]
-    },
-    "27cfb4ede1f31fb6": {
-      "source": "{calls} 次调用 · {traces} 条追踪 · 数据库文件 {database}",
-      "kind": "template",
-      "placeholders": [
-        "calls",
-        "traces",
-        "database"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 71,
-          "column": 31
         }
       ]
     },
@@ -3108,7 +3129,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 144,
+          "line": 143,
           "column": 14
         }
       ]
@@ -3238,7 +3259,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 146,
+          "line": 145,
           "column": 11
         }
       ]
@@ -3355,8 +3376,13 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 103,
-          "column": 176
+          "line": 243,
+          "column": 100
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 254,
+          "column": 84
         },
         {
           "file": "shared/ui/ConfirmDialog.tsx",
@@ -3424,20 +3450,6 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 157,
           "column": 52
-        }
-      ]
-    },
-    "2e0eaea97df4338a": {
-      "source": "数据库文件已超过 {threshold}，其中大部分是对话内容与内容块（为前缀缓存保留，这里的清理不删它们）；清理只让文件不再继续变大。",
-      "kind": "template",
-      "placeholders": [
-        "threshold"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 91,
-          "column": 11
         }
       ]
     },
@@ -3588,7 +3600,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 437,
+          "line": 439,
           "column": 68
         }
       ]
@@ -3612,7 +3624,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 509,
+          "line": 511,
           "column": 28
         }
       ]
@@ -3624,7 +3636,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 523,
+          "line": 525,
           "column": 81
         }
       ]
@@ -3648,12 +3660,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 389,
+          "line": 391,
           "column": 32
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 389,
+          "line": 391,
           "column": 56
         }
       ]
@@ -3680,8 +3692,20 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 697,
+          "line": 696,
           "column": 133
+        }
+      ]
+    },
+    "309d746e8b7fbb3a": {
+      "source": "数据库文件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 141,
+          "column": 18
         }
       ]
     },
@@ -4008,7 +4032,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 599,
+          "line": 598,
           "column": 160
         }
       ]
@@ -4296,7 +4320,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 168,
+          "line": 167,
           "column": 15
         }
       ]
@@ -4459,15 +4483,22 @@
         }
       ]
     },
-    "382f2e3419a02fef": {
-      "source": "仅清理详细记录",
-      "kind": "text",
-      "placeholders": [],
+    "3834c75396cbcb01": {
+      "source": "{files} 个文件 · 位于文件系统，不占用数据库文件",
+      "kind": "template",
+      "placeholders": [
+        "files"
+      ],
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 105,
-          "column": 90
+          "line": 196,
+          "column": 19
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 207,
+          "column": 74
         }
       ]
     },
@@ -4678,18 +4709,6 @@
         }
       ]
     },
-    "3a3f595df70ec8ff": {
-      "source": "清理存储空间",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 73,
-          "column": 131
-        }
-      ]
-    },
     "3a5040b68abf75f9": {
       "source": "全选",
       "kind": "text",
@@ -4697,7 +4716,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 337,
+          "line": 339,
           "column": 106
         },
         {
@@ -5005,12 +5024,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 681,
+          "line": 680,
           "column": 165
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 684,
+          "line": 683,
           "column": 186
         }
       ]
@@ -5070,7 +5089,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 457,
+          "line": 459,
           "column": 82
         }
       ]
@@ -5137,7 +5156,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 86,
+          "line": 230,
           "column": 13
         }
       ]
@@ -5170,18 +5189,6 @@
           "file": "features/settings/pendingUpdate.ts",
           "line": 89,
           "column": 19
-        }
-      ]
-    },
-    "40a08e7cf320ae07": {
-      "source": "确定要清理详细记录吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 103,
-          "column": 133
         }
       ]
     },
@@ -5292,7 +5299,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 235,
+          "line": 234,
           "column": 11
         }
       ]
@@ -5555,7 +5562,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 637,
+          "line": 636,
           "column": 40
         },
         {
@@ -5674,7 +5681,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 618,
+          "line": 617,
           "column": 20
         }
       ]
@@ -5714,6 +5721,18 @@
           "file": "features/settings/UpdateCard.tsx",
           "line": 101,
           "column": 39
+        }
+      ]
+    },
+    "47593f0bd68f0cde": {
+      "source": "抓取缓存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 194,
+          "column": 18
         }
       ]
     },
@@ -5846,6 +5865,22 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 75,
           "column": 70
+        }
+      ]
+    },
+    "491e42e030ccaeef": {
+      "source": "{messages} 条消息 · {blobs} 个内容块；服务端副本闲置 {days} 天后自动回收",
+      "kind": "template",
+      "placeholders": [
+        "messages",
+        "blobs",
+        "days"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 113,
+          "column": 7
         }
       ]
     },
@@ -5997,6 +6032,18 @@
         }
       ]
     },
+    "4a3ac2215f652742": {
+      "source": "文件系统（独立于数据库）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 192,
+          "column": 54
+        }
+      ]
+    },
     "4a746a07e74dc2f4": {
       "source": "Devin 网关还没有开始监听：先启用并保存网关，再重启软件，然后回到这里写入设置。",
       "kind": "text",
@@ -6040,7 +6087,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 614,
+          "line": 613,
           "column": 50
         }
       ]
@@ -6064,7 +6111,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 582,
+          "line": 581,
           "column": 57
         }
       ]
@@ -6194,7 +6241,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 134,
+          "line": 133,
           "column": 16
         }
       ]
@@ -6215,6 +6262,23 @@
           "file": "shell/AppLayout.tsx",
           "line": 167,
           "column": 27
+        }
+      ]
+    },
+    "4c42ff136567893e": {
+      "source": "清空调用历史",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 132,
+          "column": 7
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 179,
+          "column": 207
         }
       ]
     },
@@ -6261,7 +6325,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 102,
+          "line": 101,
           "column": 14
         }
       ]
@@ -6273,12 +6337,12 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 506,
+          "line": 508,
           "column": 30
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 525,
+          "line": 527,
           "column": 42
         }
       ]
@@ -6329,7 +6393,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 167,
+          "line": 166,
           "column": 15
         }
       ]
@@ -6481,7 +6545,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 599,
+          "line": 598,
           "column": 432
         }
       ]
@@ -6493,7 +6557,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 163,
+          "line": 162,
           "column": 11
         }
       ]
@@ -6784,7 +6848,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 690,
+          "line": 689,
           "column": 14
         }
       ]
@@ -7059,7 +7123,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 582,
+          "line": 581,
           "column": 35
         }
       ]
@@ -7083,7 +7147,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 543,
+          "line": 542,
           "column": 92
         }
       ]
@@ -7208,7 +7272,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 489,
+          "line": 491,
           "column": 21
         }
       ]
@@ -7270,7 +7334,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 214,
+          "line": 213,
           "column": 9
         }
       ]
@@ -7383,7 +7447,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 230,
+          "line": 229,
           "column": 11
         }
       ]
@@ -7433,12 +7497,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 593,
+          "line": 592,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 593,
+          "line": 592,
           "column": 84
         }
       ]
@@ -7515,7 +7579,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 301,
+          "line": 303,
           "column": 102
         }
       ]
@@ -7553,7 +7617,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 600,
+          "line": 599,
           "column": 83
         }
       ]
@@ -7590,21 +7654,6 @@
         }
       ]
     },
-    "607d657c7e063e57": {
-      "source": "只删除抓取结果缓存文件（{size} / {files} 个文件），调用记录、统计和配置都不受影响。",
-      "kind": "template",
-      "placeholders": [
-        "size",
-        "files"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 109,
-          "column": 15
-        }
-      ]
-    },
     "609219a8b8352106": {
       "source": "一般保持默认即可。",
       "kind": "text",
@@ -7612,7 +7661,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 566,
+          "line": 565,
           "column": 60
         }
       ]
@@ -7653,12 +7702,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 577,
+          "line": 576,
           "column": 151
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 600,
+          "line": 599,
           "column": 218
         }
       ]
@@ -7753,18 +7802,6 @@
         }
       ]
     },
-    "627403f95b64d493": {
-      "source": "清理进度读取失败，稍后自动重试。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 46,
-          "column": 45
-        }
-      ]
-    },
     "62945125d8b0efec": {
       "source": "插件运行时已经就绪。已安装的插件及其账号、模型会显示在这里。",
       "kind": "text",
@@ -7789,12 +7826,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 124,
+          "line": 123,
           "column": 15
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 136,
+          "line": 135,
           "column": 13
         },
         {
@@ -7872,22 +7909,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 966,
+          "line": 995,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1065,
+          "line": 1094,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1090,
+          "line": 1119,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1242,
+          "line": 1271,
           "column": 29
         }
       ]
@@ -7949,6 +7986,20 @@
           "file": "features/claude/claudeConnectionView.ts",
           "line": 158,
           "column": 59
+        }
+      ]
+    },
+    "63d3ce35038ed3e3": {
+      "source": "将重写 SQLite 文件，预计归还 {size} 空闲页；有效数据、对话和配置都会保留。",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 256,
+          "column": 17
         }
       ]
     },
@@ -8026,7 +8077,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 330,
+          "line": 332,
           "column": 12
         }
       ]
@@ -8038,7 +8089,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1493,
+          "line": 1522,
           "column": 43
         }
       ]
@@ -8210,7 +8261,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 630,
+          "line": 629,
           "column": 14
         }
       ]
@@ -8234,7 +8285,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 118,
+          "line": 117,
           "column": 11
         },
         {
@@ -8245,6 +8296,21 @@
         {
           "file": "features/settings/DiagnosticsCard.tsx",
           "line": 54,
+          "column": 15
+        }
+      ]
+    },
+    "67593dfed679d62e": {
+      "source": "只删除抓取结果缓存文件（{size} / {files} 个文件），调用记录、对话和配置都不受影响。",
+      "kind": "template",
+      "placeholders": [
+        "size",
+        "files"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 248,
           "column": 15
         }
       ]
@@ -8285,7 +8351,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 599,
+          "line": 598,
           "column": 420
         }
       ]
@@ -8345,6 +8411,20 @@
         }
       ]
     },
+    "69d9809ca809944e": {
+      "source": "将删除请求、响应和追踪附件，约 {size}。调用摘要、统计指标、对话消息和配置都会保留；数据库文件不会因此立刻变小。",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 249,
+          "column": 15
+        }
+      ]
+    },
     "6a70df148928fdfe": {
       "source": "还没登录 ChatGPT",
       "kind": "text",
@@ -8391,7 +8471,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 703,
+          "line": 702,
           "column": 35
         },
         {
@@ -8406,13 +8486,8 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 70,
-          "column": 70
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 78,
-          "column": 80
+          "line": 142,
+          "column": 76
         },
         {
           "file": "features/settings/UpdateCard.tsx",
@@ -8426,22 +8501,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 974,
+          "line": 1003,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1065,
+          "line": 1094,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1090,
+          "line": 1119,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1242,
+          "line": 1271,
           "column": 41
         }
       ]
@@ -8629,6 +8704,18 @@
         }
       ]
     },
+    "6d14288c58d3357a": {
+      "source": "确定清空调用历史吗？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 127,
+          "column": 7
+        }
+      ]
+    },
     "6d1876364ac6457d": {
       "source": "代理方式",
       "kind": "text",
@@ -8718,12 +8805,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 152,
+          "line": 151,
           "column": 17
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 201,
+          "line": 200,
           "column": 15
         }
       ]
@@ -8771,7 +8858,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 566,
+          "line": 565,
           "column": 37
         }
       ]
@@ -8898,7 +8985,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 125,
+          "line": 124,
           "column": 15
         }
       ]
@@ -8944,7 +9031,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 98,
+          "line": 97,
           "column": 22
         }
       ]
@@ -9131,7 +9218,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 674,
+          "line": 673,
           "column": 27
         }
       ]
@@ -9162,6 +9249,18 @@
         }
       ]
     },
+    "788c9d6fa56736c9": {
+      "source": "对话消息与内容块",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 188,
+          "column": 18
+        }
+      ]
+    },
     "788db1cfec2a3db5": {
       "source": "主题",
       "kind": "text",
@@ -9181,7 +9280,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 173,
+          "line": 172,
           "column": 14
         }
       ]
@@ -9217,7 +9316,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 233,
+          "line": 232,
           "column": 13
         }
       ]
@@ -9229,7 +9328,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1488,
+          "line": 1517,
           "column": 43
         }
       ]
@@ -9326,18 +9425,6 @@
         }
       ]
     },
-    "7ba2d6728fe2531b": {
-      "source": "确认清理",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 103,
-          "column": 199
-        }
-      ]
-    },
     "7c10d97162c96dbd": {
       "source": "正在验证插件运行时",
       "kind": "text",
@@ -9427,6 +9514,20 @@
         }
       ]
     },
+    "7d474fd4c46bdd11": {
+      "source": "可清理的观测数据约 {size}。清理详细记录或清空调用历史只影响调用记录，不删对话。",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 167,
+          "column": 13
+        }
+      ]
+    },
     "7d5dac38bd21bd34": {
       "source": "网关地址（Gateway base URL）",
       "kind": "text",
@@ -9446,7 +9547,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 696,
+          "line": 695,
           "column": 89
         }
       ]
@@ -9528,7 +9629,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 680,
+          "line": 679,
           "column": 27
         }
       ]
@@ -9576,7 +9677,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 221,
+          "line": 220,
           "column": 13
         },
         {
@@ -9649,7 +9750,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 429,
+          "line": 431,
           "column": 13
         }
       ]
@@ -9675,6 +9776,18 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 113,
           "column": 19
+        }
+      ]
+    },
+    "806e899eabdc31a4": {
+      "source": "正在压缩数据库并归还空闲页；请保持应用运行，完成后界面会自动刷新。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 220,
+          "column": 10
         }
       ]
     },
@@ -9709,7 +9822,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 918,
+          "line": 947,
           "column": 11
         },
         {
@@ -9726,7 +9839,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 343,
+          "line": 345,
           "column": 38
         }
       ]
@@ -9767,20 +9880,6 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 150,
           "column": 34
-        }
-      ]
-    },
-    "8236bd14985d821f": {
-      "source": "服务端的对话副本闲置 {days} 天后自动回收；对话本身保存在客户端，继续使用旧对话时会按需取回。",
-      "kind": "template",
-      "placeholders": [
-        "days"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 93,
-          "column": 67
         }
       ]
     },
@@ -10122,7 +10221,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 148,
+          "line": 147,
           "column": 13
         }
       ]
@@ -10170,7 +10269,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 303,
+          "line": 305,
           "column": 33
         }
       ]
@@ -10196,6 +10295,20 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 52,
           "column": 17
+        }
+      ]
+    },
+    "87ae2f00d88ec2f5": {
+      "source": "有效数据 {size}",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 158,
+          "column": 18
         }
       ]
     },
@@ -10328,7 +10441,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 407,
+          "line": 409,
           "column": 110
         },
         {
@@ -10350,7 +10463,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 544,
+          "line": 543,
           "column": 80
         }
       ]
@@ -10362,8 +10475,25 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 550,
+          "line": 549,
           "column": 72
+        }
+      ]
+    },
+    "8b6cea211dc856e1": {
+      "source": "清理详细记录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 135,
+          "column": 9
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 185,
+          "column": 179
         }
       ]
     },
@@ -10391,6 +10521,20 @@
         }
       ]
     },
+    "8ba420e27ad7d55e": {
+      "source": "这 {size} 是数据删除后留下的空闲页，不是仍在使用的数据；清理不会让文件更小，压缩数据库才会归还磁盘。",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 166,
+          "column": 13
+        }
+      ]
+    },
     "8bc36d6fff21c01d": {
       "source": "服务端没有返回新令牌",
       "kind": "text",
@@ -10398,7 +10542,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1436,
+          "line": 1465,
           "column": 23
         }
       ]
@@ -10412,6 +10556,20 @@
           "file": "features/claude/ClaudeSettingsPage.tsx",
           "line": 188,
           "column": 14
+        }
+      ]
+    },
+    "8c6d07771c359d37": {
+      "source": "{files} 个文件 · 插件运行时、已安装插件和账号数据；在插件页管理",
+      "kind": "template",
+      "placeholders": [
+        "files"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 212,
+          "column": 19
         }
       ]
     },
@@ -10676,7 +10834,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 532,
           "column": 20
         }
       ]
@@ -10732,20 +10890,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 291,
+          "line": 293,
           "column": 13
-        }
-      ]
-    },
-    "92156a483d4ba248": {
-      "source": "仅删除请求、响应和追踪附件等详细内容，保留调用汇总、统计指标和配置。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 110,
-          "column": 15
         }
       ]
     },
@@ -10901,7 +11047,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 687,
+          "line": 686,
           "column": 55
         }
       ]
@@ -10913,7 +11059,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 541,
+          "line": 540,
           "column": 50
         }
       ]
@@ -11084,7 +11230,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 303,
+          "line": 305,
           "column": 20
         }
       ]
@@ -11154,6 +11300,18 @@
         }
       ]
     },
+    "967f9cb1b742f6e0": {
+      "source": "正在清理抓取缓存…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 229,
+          "column": 15
+        }
+      ]
+    },
     "97a5a925e6b7b75f": {
       "source": "先选择一个默认模型，再保存并启用 Devin 网关。",
       "kind": "text",
@@ -11197,7 +11355,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 680,
+          "line": 679,
           "column": 52
         }
       ]
@@ -11209,7 +11367,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 508,
+          "line": 510,
           "column": 25
         }
       ]
@@ -11249,6 +11407,18 @@
           "file": "features/claude/ClaudeCliTab.tsx",
           "line": 149,
           "column": 17
+        }
+      ]
+    },
+    "98af11cc690bb838": {
+      "source": "调用摘要与用量",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 173,
+          "column": 18
         }
       ]
     },
@@ -11297,7 +11467,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 577,
+          "line": 576,
           "column": 77
         }
       ]
@@ -11309,7 +11479,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 537,
+          "line": 536,
           "column": 52
         }
       ]
@@ -11345,12 +11515,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 537,
+          "line": 536,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 538,
+          "line": 537,
           "column": 51
         }
       ]
@@ -11390,7 +11560,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 453,
+          "line": 455,
           "column": 111
         }
       ]
@@ -11414,7 +11584,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 931,
+          "line": 960,
           "column": 11
         }
       ]
@@ -11438,7 +11608,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 673,
+          "line": 672,
           "column": 27
         }
       ]
@@ -11452,6 +11622,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 172,
           "column": 69
+        }
+      ]
+    },
+    "9b6f3d3ae6b57ff3": {
+      "source": "压缩已排队，正在等待当前 Agent 请求结束；不会打断正在进行的调用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 217,
+          "column": 10
         }
       ]
     },
@@ -11527,7 +11709,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 674,
+          "line": 673,
           "column": 49
         }
       ]
@@ -11565,6 +11747,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 187,
           "column": 62
+        }
+      ]
+    },
+    "9c48c19e9eb3a138": {
+      "source": "确定清除抓取缓存吗？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 129,
+          "column": 9
         }
       ]
     },
@@ -11669,7 +11863,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 195,
+          "line": 194,
           "column": 14
         },
         {
@@ -11706,6 +11900,18 @@
           "file": "shell/commandPaletteCommands.ts",
           "line": 43,
           "column": 49
+        }
+      ]
+    },
+    "9da17d93cb537455": {
+      "source": "压缩数据库？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 254,
+          "column": 46
         }
       ]
     },
@@ -11795,7 +12001,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 568,
+          "line": 567,
           "column": 49
         }
       ]
@@ -11962,7 +12168,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 532,
+          "line": 531,
           "column": 14
         }
       ]
@@ -12044,6 +12250,18 @@
         }
       ]
     },
+    "a2835a66b44d74ca": {
+      "source": "清理详细记录只删这部分；调用摘要、用量和对话都会保留",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 184,
+          "column": 19
+        }
+      ]
+    },
     "a3030bf8f16dc63c": {
       "source": "保存",
       "kind": "text",
@@ -12076,7 +12294,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 695,
+          "line": 694,
           "column": 172
         },
         {
@@ -12185,7 +12403,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 97,
+          "line": 96,
           "column": 11
         }
       ]
@@ -12240,6 +12458,18 @@
           "file": "features/claude/ClaudeConflictList.tsx",
           "line": 26,
           "column": 16
+        }
+      ]
+    },
+    "a4ca4e9d5e10d921": {
+      "source": "SQLite 删除数据后只把页留作复用，不会立刻缩小文件。压缩会重写整个数据库，只在没有活跃 Agent 请求时执行；完成后后续清理会小步归还空闲页。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 239,
+          "column": 10
         }
       ]
     },
@@ -12315,6 +12545,18 @@
         }
       ]
     },
+    "a64659e2aa8e3485": {
+      "source": "确定清理详细记录吗？",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 130,
+          "column": 9
+        }
+      ]
+    },
     "a66c2f331f655073": {
       "source": "显示最新 {loaded} 条（共 {total} 条），每 2 秒刷新",
       "kind": "template",
@@ -12353,7 +12595,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 650,
+          "line": 649,
           "column": 64
         }
       ]
@@ -12587,7 +12829,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 572,
           "column": 78
         }
       ]
@@ -12599,7 +12841,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 658,
+          "line": 657,
           "column": 35
         }
       ]
@@ -12640,20 +12882,6 @@
         }
       ]
     },
-    "a94014a61965742f": {
-      "source": "大工具结果与压缩历史：{size}（随会话一起回收）",
-      "kind": "template",
-      "placeholders": [
-        "size"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 98,
-          "column": 11
-        }
-      ]
-    },
     "a98585871c5313ff": {
       "source": "显示名称",
       "kind": "text",
@@ -12663,6 +12891,18 @@
           "file": "features/models/CursorModelEditor.tsx",
           "line": 169,
           "column": 25
+        }
+      ]
+    },
+    "a985a967b91d60ec": {
+      "source": "数据库内部明细（估算，不与文件大小相加）",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 171,
+          "column": 54
         }
       ]
     },
@@ -12685,6 +12925,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 136,
           "column": 222
+        }
+      ]
+    },
+    "a9a10332496bb15c": {
+      "source": "请求、响应正文与追踪附件",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 182,
+          "column": 18
         }
       ]
     },
@@ -12745,7 +12997,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 606,
+          "line": 605,
           "column": 58
         }
       ]
@@ -12786,7 +13038,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 338,
+          "line": 340,
           "column": 107
         },
         {
@@ -12817,6 +13069,18 @@
           "file": "features/settings/AppLifecycleSettingsCard.tsx",
           "line": 68,
           "column": 25
+        }
+      ]
+    },
+    "ac1cf895a0f8ec17": {
+      "source": "完成后会启用增量页回收，以后清理数据时会在空闲维护窗口小步归还。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 258,
+          "column": 58
         }
       ]
     },
@@ -12851,7 +13115,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 631,
+          "line": 630,
           "column": 20
         }
       ]
@@ -12993,6 +13257,18 @@
         }
       ]
     },
+    "ae79d0ed73774db7": {
+      "source": "压缩数据库",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 149,
+          "column": 12
+        }
+      ]
+    },
     "aecb952b1e6cce36": {
       "source": "关闭后隐藏 Dock 栏图标，仍可通过菜单栏图标打开应用。",
       "kind": "text",
@@ -13022,7 +13298,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 436,
+          "line": 438,
           "column": 84
         },
         {
@@ -13046,7 +13322,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 648,
+          "line": 647,
           "column": 38
         }
       ]
@@ -13082,7 +13358,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 203,
+          "line": 202,
           "column": 15
         }
       ]
@@ -13106,7 +13382,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 575,
+          "line": 574,
           "column": 31
         },
         {
@@ -13125,7 +13401,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 469,
+          "line": 471,
           "column": 84
         }
       ]
@@ -13210,7 +13486,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 635,
+          "line": 634,
           "column": 38
         }
       ]
@@ -13282,7 +13558,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 200,
+          "line": 199,
           "column": 15
         }
       ]
@@ -13296,7 +13572,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 652,
+          "line": 651,
           "column": 51
         }
       ]
@@ -13315,6 +13591,32 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 74,
           "column": 31
+        }
+      ]
+    },
+    "b1310f558df048c3": {
+      "source": "保留 {days} 天",
+      "kind": "template",
+      "placeholders": [
+        "days"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 207,
+          "column": 22
+        }
+      ]
+    },
+    "b141929b4e20fad7": {
+      "source": "开始压缩",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 254,
+          "column": 107
         }
       ]
     },
@@ -13626,7 +13928,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 154,
+          "line": 153,
           "column": 19
         }
       ]
@@ -13698,18 +14000,6 @@
         }
       ]
     },
-    "b67e408132f4dbd7": {
-      "source": "确定要清理全部统计数据吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 103,
-          "column": 69
-        }
-      ]
-    },
     "b683e437d2a41ef6": {
       "source": "Cursor 设置分区",
       "kind": "text",
@@ -13731,6 +14021,21 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 495,
           "column": 9
+        }
+      ]
+    },
+    "b7044bbc1831aa29": {
+      "source": "有效数据 {used} · 可回收空闲页 {free}",
+      "kind": "template",
+      "placeholders": [
+        "used",
+        "free"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 143,
+          "column": 31
         }
       ]
     },
@@ -13820,7 +14125,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 165,
+          "line": 164,
           "column": 13
         }
       ]
@@ -13889,8 +14194,8 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 101,
-          "column": 164
+          "line": 236,
+          "column": 11
         },
         {
           "file": "shell/AppErrorBoundary.tsx",
@@ -14050,7 +14355,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 520,
+          "line": 522,
           "column": 81
         }
       ]
@@ -14156,7 +14461,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 596,
           "column": 60
         }
       ]
@@ -14187,6 +14492,18 @@
           "file": "features/claude/ClaudeConflictList.tsx",
           "line": 35,
           "column": 15
+        }
+      ]
+    },
+    "bc07dae1cf8cc342": {
+      "source": "上次压缩未完成。请检查可用磁盘空间；应用日志里有具体原因，处理后可以重试。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 223,
+          "column": 10
         }
       ]
     },
@@ -14225,7 +14542,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 177,
+          "line": 176,
           "column": 13
         }
       ]
@@ -14249,7 +14566,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1504,
+          "line": 1533,
           "column": 43
         }
       ]
@@ -14349,6 +14666,21 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 76,
           "column": 29
+        }
+      ]
+    },
+    "bd61db764ad1db84": {
+      "source": "{calls} 次调用 · {traces} 条追踪；清空后费用和用量历史会消失",
+      "kind": "template",
+      "placeholders": [
+        "calls",
+        "traces"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 175,
+          "column": 19
         }
       ]
     },
@@ -14618,6 +14950,18 @@
         }
       ]
     },
+    "c046c97c189cbacf": {
+      "source": "大工具结果与压缩历史",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 200,
+          "column": 18
+        }
+      ]
+    },
     "c0b3fbff51ccc40b": {
       "source": "完成",
       "kind": "text",
@@ -14661,7 +15005,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 548,
+          "line": 547,
           "column": 117
         }
       ]
@@ -14673,7 +15017,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 175,
+          "line": 174,
           "column": 11
         }
       ]
@@ -14728,7 +15072,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 639,
+          "line": 638,
           "column": 125
         }
       ]
@@ -14740,7 +15084,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 646,
+          "line": 645,
           "column": 21
         }
       ]
@@ -14766,7 +15110,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 232,
+          "line": 231,
           "column": 13
         }
       ]
@@ -14872,7 +15216,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 671,
+          "line": 670,
           "column": 27
         }
       ]
@@ -14966,7 +15310,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 667,
+          "line": 666,
           "column": 44
         }
       ]
@@ -15014,7 +15358,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 565,
+          "line": 564,
           "column": 62
         }
       ]
@@ -15050,7 +15394,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 402,
+          "line": 404,
           "column": 66
         }
       ]
@@ -15090,6 +15434,20 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 126,
           "column": 13
+        }
+      ]
+    },
+    "c785ec5cc7d6e5db": {
+      "source": "约 {size}",
+      "kind": "template",
+      "placeholders": [
+        "size"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 174,
+          "column": 18
         }
       ]
     },
@@ -15281,7 +15639,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 405,
+          "line": 407,
           "column": 102
         },
         {
@@ -15344,7 +15702,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 346,
+          "line": 348,
           "column": 37
         }
       ]
@@ -15568,7 +15926,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 651,
+          "line": 650,
           "column": 32
         }
       ]
@@ -15652,18 +16010,6 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 140,
           "column": 6
-        }
-      ]
-    },
-    "cfcacba69b8b8432": {
-      "source": "仅清除抓取缓存",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 105,
-          "column": 175
         }
       ]
     },
@@ -15767,18 +16113,6 @@
           "file": "features/claude/ClaudeGatewayCard.tsx",
           "line": 183,
           "column": 10
-        }
-      ]
-    },
-    "d1a3d72618d1ed27": {
-      "source": "所有调用汇总、详细内容和追踪记录都会被删除。模型配置、CA 和应用设置不会受到影响，此操作无法撤销。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 107,
-          "column": 13
         }
       ]
     },
@@ -15938,7 +16272,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 547,
+          "line": 546,
           "column": 60
         }
       ]
@@ -15972,8 +16306,23 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 662,
+          "line": 661,
           "column": 20
+        }
+      ]
+    },
+    "d40aaec9854a4b4b": {
+      "source": "{messages} 条消息 · {blobs} 个内容块",
+      "kind": "template",
+      "placeholders": [
+        "messages",
+        "blobs"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 118,
+          "column": 7
         }
       ]
     },
@@ -16042,7 +16391,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 297,
+          "line": 299,
           "column": 32
         }
       ]
@@ -16211,12 +16560,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 575,
+          "line": 574,
           "column": 41
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 661,
+          "line": 660,
           "column": 14
         },
         {
@@ -16307,22 +16656,8 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 356,
+          "line": 358,
           "column": 22
-        }
-      ]
-    },
-    "d8a620d2f245b0fc": {
-      "source": "抓取缓存 · {files} 个文件（与库内占用分开统计）",
-      "kind": "template",
-      "placeholders": [
-        "files"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 79,
-          "column": 31
         }
       ]
     },
@@ -16408,7 +16743,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 180,
+          "line": 179,
           "column": 13
         }
       ]
@@ -16435,7 +16770,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 705,
+          "line": 704,
           "column": 13
         }
       ]
@@ -16509,6 +16844,20 @@
           "file": "features/home/HomePage.tsx",
           "line": 446,
           "column": 25
+        }
+      ]
+    },
+    "daab5efec37b97fa": {
+      "source": "有效数据占数据库文件 {percent}%",
+      "kind": "template",
+      "placeholders": [
+        "percent"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 154,
+          "column": 69
         }
       ]
     },
@@ -16666,7 +17015,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 565,
+          "line": 564,
           "column": 37
         }
       ]
@@ -16772,6 +17121,18 @@
         }
       ]
     },
+    "dd83b70c63ec0862": {
+      "source": "存储进度读取失败，稍后自动重试。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 59,
+          "column": 26
+        }
+      ]
+    },
     "dd97a379e8be2ddf": {
       "source": "打开后 Claude Code 才能通过这个网关。",
       "kind": "text",
@@ -16839,7 +17200,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 497,
+          "line": 499,
           "column": 11
         }
       ]
@@ -17010,7 +17371,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 678,
+          "line": 677,
           "column": 35
         }
       ]
@@ -17034,7 +17395,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 204,
+          "line": 203,
           "column": 15
         }
       ]
@@ -17192,7 +17553,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 179,
+          "line": 178,
           "column": 15
         }
       ]
@@ -17228,7 +17589,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 683,
+          "line": 682,
           "column": 50
         }
       ]
@@ -17302,7 +17663,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 574,
+          "line": 573,
           "column": 100
         }
       ]
@@ -17531,7 +17892,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 297,
+          "line": 299,
           "column": 43
         }
       ]
@@ -17758,7 +18119,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 462,
+          "line": 464,
           "column": 100
         }
       ]
@@ -17818,7 +18179,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 683,
+          "line": 682,
           "column": 27
         }
       ]
@@ -17883,7 +18244,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 541,
+          "line": 540,
           "column": 23
         }
       ]
@@ -17971,7 +18332,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 651,
+          "line": 650,
           "column": 101
         }
       ]
@@ -18040,7 +18401,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 137,
+          "line": 136,
           "column": 13
         }
       ]
@@ -18159,7 +18520,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 468,
+          "line": 470,
           "column": 84
         }
       ]
@@ -18171,7 +18532,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 100,
+          "line": 99,
           "column": 16
         }
       ]
@@ -18487,7 +18848,7 @@
       "refs": [
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 346,
+          "line": 348,
           "column": 69
         }
       ]
@@ -18692,18 +19053,6 @@
         }
       ]
     },
-    "f81cd1aaaeb39659": {
-      "source": "确定要清除抓取缓存吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 103,
-          "column": 114
-        }
-      ]
-    },
     "f85537d1fd2ef6f6": {
       "source": "自定义概览筛选",
       "kind": "text",
@@ -18762,7 +19111,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 218,
+          "line": 217,
           "column": 13
         },
         {
@@ -18826,7 +19175,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 599,
+          "line": 598,
           "column": 210
         }
       ]
@@ -18874,7 +19223,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 633,
+          "line": 632,
           "column": 34
         }
       ]
@@ -18915,7 +19264,7 @@
         },
         {
           "file": "features/plugins/PluginResourcePanels.tsx",
-          "line": 334,
+          "line": 336,
           "column": 18
         }
       ]
@@ -18968,22 +19317,22 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 120,
+          "line": 119,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 220,
+          "line": 219,
           "column": 13
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 236,
+          "line": 235,
           "column": 36
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 639,
+          "line": 638,
           "column": 113
         },
         {
@@ -19017,6 +19366,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 37,
           "column": 11
+        }
+      ]
+    },
+    "fc08fa2609792795": {
+      "source": "运行日志",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 205,
+          "column": 18
         }
       ]
     },
@@ -19177,7 +19538,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 651,
+          "line": 650,
           "column": 90
         }
       ]
@@ -19284,18 +19645,6 @@
         }
       ]
     },
-    "fec7210590309465": {
-      "source": "清理全部统计数据",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 105,
-          "column": 129
-        }
-      ]
-    },
     "fefad77ed2628dfb": {
       "source": "Agent、Chat、Plan 和本地子代理",
       "kind": "text",
@@ -19345,7 +19694,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 695,
+          "line": 694,
           "column": 160
         },
         {
@@ -19389,7 +19738,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 586,
+          "line": 585,
           "column": 26
         }
       ]

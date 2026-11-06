@@ -119,6 +119,70 @@
 .empty { display: grid; justify-items: start; gap: var(--oa-space-3); padding: var(--oa-card-padding); }
 /* 阈值提示：比设置项正文弱一级，读起来是"解释"而不是"报错"。 */
 .storageHint { margin: 0; padding: 0 var(--oa-card-padding) var(--oa-card-padding); color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.storageSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-5);
+  padding: var(--oa-card-padding);
+  > div { min-width: 0; display: grid; gap: 4px; }
+  span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+  strong { font-size: 26px; font-weight: type.$font-weight-medium; font-variant-numeric: tabular-nums; }
+  small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+}
+.storageMeter {
+  height: 7px;
+  margin: 0 var(--oa-card-padding);
+  overflow: hidden;
+  background: var(--oa-border);
+  border-radius: 999px;
+  > span { display: block; height: 100%; background: var(--oa-accent); border-radius: inherit; }
+}
+.storageLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--oa-space-3);
+  padding: 6px var(--oa-card-padding) 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+.storageBreakdown { display: grid; margin-top: var(--oa-space-2); border-top: 1px solid var(--oa-border); }
+.storageSectionLabel {
+  padding: 10px var(--oa-card-padding) 6px;
+  border-bottom: 1px solid var(--oa-border);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  font-weight: type.$font-weight-medium;
+}
+.storageItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-5);
+  padding: 12px var(--oa-card-padding);
+  border-bottom: 1px solid var(--oa-border);
+  &:last-child { border-bottom: 0; }
+}
+.storageItemText {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  strong { font-size: type.$font-size-base; font-weight: type.$font-weight-medium; }
+  small { max-width: 680px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+}
+.storageItemValue {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  > span { color: var(--vscode-descriptionForeground); font-family: var(--oa-number-font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+}
+.storageStatus {
+  margin: 0;
+  padding: 0 var(--oa-card-padding) var(--oa-space-3);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
 
 @media (max-width: 1000px) {
   .category { padding-inline: 8px; }

@@ -209,20 +209,36 @@ let compactionSettings: CompactionSettings = {
   retention_percent: null,
   max_retained_tokens: null,
 };
-// 演示数据：数据库文件比可清理的观测数据大得多，正好演示两种"大"的区别；抓取缓存再单列一个
-// 较小的数字，演示它与库内占用是分开统计、分开清理的。
+// 演示数据：数据库文件大，但大头是已删除数据留下的空闲页；有效数据、调用明细、对话内容、
+// 抓取缓存与大工具结果各自单列，正好演示每项该用哪个动作。
 // `conversation_retention_days` 与真实服务端的回收常量一致（见 server/src/store/retention.rs）。
 let storage: StatisticsStorage = {
-  bytes: 26_004_480,
   database_bytes: 1_212_334_080,
+  database_used_bytes: 139_580_416,
+  database_free_bytes: 1_072_753_664,
+  wal_bytes: 4_235_392,
+  call_record_bytes: 39_014_400,
+  call_detail_bytes: 2_004_480,
+  observability_bytes: 41_018_880,
+  conversation_bytes: 44_040_192,
+  message_count: 922,
+  blob_count: 183,
   // 落盘的大工具结果与压缩历史：与库内观测数据分开报，按服务端的 7 天保留期惰性清理。
   artifact_bytes: 41_943_040,
   artifact_retention_days: 7,
   call_count: calls.length,
   trace_count: calls.length,
-  conversation_retention_days: 3,
+  conversation_retention_days: 1,
   web_cache_bytes: 8_912_896,
   web_cache_files: 412,
+  log_bytes: 154_397_136,
+  log_files: 43,
+  plugin_bytes: 99_792_345,
+  plugin_files: 81,
+  incremental_vacuum_enabled: false,
+  compaction_requested: false,
+  compacting: false,
+  compaction_failed: false,
 };
 
 export function installDemoApi() {
@@ -237,7 +253,7 @@ export function installDemoApi() {
     const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
     const body = await readBody(input, init);
 
-    if (path === "/app-info") return json({ version: "1.6.13", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok" });
+    if (path === "/app-info") return json({ version: "1.7.3", executable_path: "D:\\haxsd-byok\\haxsd-byok-desktop.exe", data_dir: "C:\\Users\\demo\\.haxsd-byok" });
     if (path === "/models" && method === "GET") return json(models);
     if (path === "/models" && method === "POST") return json(models);
     if (path === "/models/order") return json(models);
@@ -483,11 +499,39 @@ export function installDemoApi() {
       const scope = (body as { scope?: string } | null)?.scope ?? "details";
       // 清理不会缩小数据库文件（SQLite 复用释放页），演示里也照这个事实来。抓取缓存是文件系统
       // 里的东西，只有 web_cache 作用域清它——两者分开，与真实服务端一致。
-      storage = scope === "all"
-        ? { ...storage, bytes: 0, call_count: 0, trace_count: 0 }
-        : scope === "web_cache"
-          ? { ...storage, web_cache_bytes: 0, web_cache_files: 0 }
-          : { ...storage, bytes: 0 };
+      if (scope === "web_cache") {
+        storage = { ...storage, web_cache_bytes: 0, web_cache_files: 0 };
+      } else {
+        const released = scope === "all" ? storage.observability_bytes : storage.call_detail_bytes;
+        storage = scope === "all"
+          ? {
+            ...storage,
+            call_record_bytes: 0,
+            call_detail_bytes: 0,
+            observability_bytes: 0,
+            call_count: 0,
+            trace_count: 0,
+            database_used_bytes: storage.database_used_bytes - released,
+            database_free_bytes: storage.database_free_bytes + released,
+          }
+          : {
+            ...storage,
+            call_detail_bytes: 0,
+            observability_bytes: storage.call_record_bytes,
+            database_used_bytes: storage.database_used_bytes - released,
+            database_free_bytes: storage.database_free_bytes + released,
+          };
+      }
+      return json(storage);
+    }
+    if (path === "/settings/storage/compact" && method === "POST") {
+      storage = {
+        ...storage,
+        database_bytes: storage.database_used_bytes,
+        database_free_bytes: 0,
+        incremental_vacuum_enabled: true,
+        compaction_failed: false,
+      };
       return json(storage);
     }
     if (path === "/settings/proxy" && method === "GET") return json(proxySettings);

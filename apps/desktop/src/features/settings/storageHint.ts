@@ -3,16 +3,15 @@ import type { ClearProgress, StatisticsStorage, StatisticsStorageScope } from ".
 /**
  * 「存储管理」这张卡的两句提示都由数字决定，所以判定单独放这里，便于测试。
  *
- * 关键事实：这张卡的清理只删**观测数据**（调用明细、请求/响应正文、追踪附件），
- * 数据库文件的大头通常是对话内容与内容块（为前缀缓存保留，清理不碰），而且 SQLite
- * 只会复用释放页、文件不会因此变小。所以两种提示必须分开说，不能合成一句
- * "磁盘占用大，点这里清理"——那会让用户以为点一下能腾出 1 GB。
+ * 关键事实：SQLite 的 DELETE 只把页放回 freelist，文件不会因此变小；真正缩小必须压缩。
+ * 同时，可清理的观测数据和对话内容也不是一回事。两类提示必须分别指向对应动作，不能
+ * 合成一句"磁盘占用大，点这里清理"。
  */
 
 /** 观测数据超过这个量就值得清理一次。 */
 export const CLEANUP_HINT_BYTES = 256 * 1024 * 1024;
-/** 数据库文件超过这个量就值得解释一句它为什么大、清理能做什么。 */
-export const DATABASE_HINT_BYTES = 1024 * 1024 * 1024;
+/** 空闲页超过这个量就值得建议压缩；几十 MB 的波动通常下次写入会自己复用。 */
+export const RECLAIM_HINT_BYTES = 128 * 1024 * 1024;
 
 /**
  * 日志文件的保留天数，与服务端 `diagnostics.rs` 的 `LOG_RETENTION` 一致。
@@ -21,17 +20,19 @@ export const DATABASE_HINT_BYTES = 1024 * 1024 * 1024;
  */
 export const LOG_RETENTION_DAYS = 7;
 
-export type StorageHint = "clean-observability" | "conversation-data" | null;
+export type StorageHint = "reclaim-space" | "clean-observability" | null;
 
-export function storageHint(storage: Pick<StatisticsStorage, "bytes" | "database_bytes">): StorageHint {
-  if (storage.bytes >= CLEANUP_HINT_BYTES) return "clean-observability";
-  if (storage.database_bytes >= DATABASE_HINT_BYTES) return "conversation-data";
+export function storageHint(
+  storage: Pick<StatisticsStorage, "observability_bytes" | "database_free_bytes">,
+): StorageHint {
+  if (storage.database_free_bytes >= RECLAIM_HINT_BYTES) return "reclaim-space";
+  if (storage.observability_bytes >= CLEANUP_HINT_BYTES) return "clean-observability";
   return null;
 }
 
 /** 把阈值写成界面上的说法，避免提示与实际判定不一致。 */
 export function storageHintThreshold(hint: Exclude<StorageHint, null>): number {
-  return hint === "clean-observability" ? CLEANUP_HINT_BYTES : DATABASE_HINT_BYTES;
+  return hint === "reclaim-space" ? RECLAIM_HINT_BYTES : CLEANUP_HINT_BYTES;
 }
 
 /**
@@ -46,7 +47,8 @@ export function retentionDays(value: number | undefined | null): number {
 }
 
 /** 字节数的界面写法：1024 进制，最多一位小数。 */
-export function formatBytes(value: number): string {
+export function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "0 B";
   if (value < 1024) return `${value} B`;
   const index = Math.min(3, Math.floor(Math.log(value) / Math.log(1024)));
   return `${(value / 1024 ** index).toFixed(1)} ${["B", "KB", "MB", "GB"][index]}`;

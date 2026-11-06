@@ -421,32 +421,61 @@ export interface ClearProgress {
 }
 
 export interface StatisticsStorage {
-  /** 可清理的观测数据（调用行、请求/响应正文、追踪附件）的估算大小。 */
-  bytes: number;
-  /** 数据库文件的当前大小：清理不会让它变小，界面要同时说清这两件事。 */
+  /** 数据库文件的当前分配大小：清理不会让它变小。 */
   database_bytes: number;
+  /** 文件里仍装着有效数据与索引的页。 */
+  database_used_bytes: number;
+  /** 删除后留在 SQLite freelist 中、等待复用或压缩归还的页。 */
+  database_free_bytes: number;
+  /** SQLite 的 `-wal` 独立文件；正常由 checkpoint 自动截断。 */
+  wal_bytes: number;
+  /** `llm_calls` 摘要与轨迹索引的估算大小；清空调用历史会删除。 */
+  call_record_bytes: number;
+  /** 请求/响应正文与追踪附件的估算大小；清理详细记录只删这一部分。 */
+  call_detail_bytes: number;
+  /** 清空调用历史会回收的估算总量。 */
+  observability_bytes: number;
+  call_count: number;
+  trace_count: number;
+  /** 对话消息正文与内容块正文的估算大小；清理统计不碰它们。 */
+  conversation_bytes: number;
+  message_count: number;
+  /** 内容块数量。 */
+  blob_count: number;
   /**
    * 落盘的大工具结果与压缩历史（`<数据目录>/tool-results`、`compaction-history`）的合计大小。
    *
-   * 与 `bytes` 分开：这两块不归"清理统计"管，服务端在写入路径上按保留期惰性清理。
+   * 与库内统计分开：这两块不归"清理统计"管，服务端按引用与保留期清理。
    */
   artifact_bytes: number;
   /** 上面那两个落盘目录的保留天数（服务端的清理常量，只读）。 */
   artifact_retention_days: number;
-  call_count: number;
-  trace_count: number;
   /** 服务端对话副本的闲置回收窗口（天）：只读，来自服务端的回收常量。 */
   conversation_retention_days: number;
   /**
    * 抓取结果缓存（`<数据目录>/cache/web`）的当前占用。
    *
-   * 它不在数据库里，服务端刻意与 `bytes` 分开报：界面也必须分行显示，把两个数字合并会让
+   * 它不在数据库里，服务端刻意与库内统计分开报：界面也必须分行显示，把两个数字合并会让
    * "清理之后数据库文件没变小"更难解释。只有 `web_cache` 作用域会清它。
    */
   web_cache_bytes: number;
   web_cache_files: number;
+  /** 滚动日志目录的占用与文件数；不是数据库的一部分。 */
+  log_bytes: number;
+  log_files: number;
+  /** 插件目录（运行时、已安装插件、账号数据）的递归占用；不是数据库的一部分。 */
+  plugin_bytes: number;
+  plugin_files: number;
+  /** 是否已启用增量 `auto_vacuum`；既有库第一次启用需要一次整库压缩。 */
+  incremental_vacuum_enabled: boolean;
   /** 有后台清理在跑时是它此刻的进度；清理是后台分批跑的，界面据此显示"正在清理"并轮询。 */
   clearing?: ClearProgress | null;
+  /** 压缩已经排队，正在等待活跃 Agent 请求结束。 */
+  compaction_requested: boolean;
+  /** 整库压缩正在执行。 */
+  compacting: boolean;
+  /** 上一次压缩失败；界面应提示检查磁盘空间/日志。 */
+  compaction_failed: boolean;
 }
 
 /**
@@ -1532,6 +1561,8 @@ export const api = {
   setPorts: (settings: PortSettings) => request<PortSettings>("/settings/ports", { method: "PUT", body: JSON.stringify(settings) }),
   statisticsStorage: () => request<StatisticsStorage>("/settings/storage/statistics"),
   clearStatisticsStorage: (scope: StatisticsStorageScope) => request<StatisticsStorage>("/settings/storage/statistics", { method: "DELETE", body: JSON.stringify({ scope }) }),
+  /** 请求整库压缩；服务端只在没有活跃 Agent 请求时执行。 */
+  compactStatisticsStorage: () => request<StatisticsStorage>("/settings/storage/compact", { method: "POST" }),
   proxySettings: () => request<ProxySettings>("/settings/proxy"),
   setProxySettings: (settings: ProxySettingsInput) => request<ProxySettings>("/settings/proxy", { method: "PUT", body: JSON.stringify(settings) }),
   outboundStatus: () => request<OutboundStatus>("/settings/outbound"),
