@@ -61,12 +61,16 @@ jobs:
           package_lock_version=$(node -p "require('./apps/desktop/package-lock.json').version")
           package_lock_root_version=$(node -p "require('./apps/desktop/package-lock.json').packages[''].version")
           cargo_lock_version=$(sed -n '/^name = "haxsd-byok-desktop"$/,/^version = / { s/^version = "\([^"]*\)"/\1/p; }' Cargo.lock | head -n 1)
+          demo_version=$(sed -n 's/.*return json({ version: "\([^"]*\)".*/\1/p' apps/desktop/src/demo/api.ts | head -n 1)
           test "${version}" = "${package_version}"
           test "${version}" = "${cargo_version}"
           test "${version}" = "${package_lock_version}"
           test "${version}" = "${package_lock_root_version}"
           test -n "${cargo_lock_version}"
           test "${version}" = "${cargo_lock_version}"
+          # 演示模式的版本号是第四处手写来源；漏改会让演示站停在旧版本。
+          test -n "${demo_version}"
+          test "${version}" = "${demo_version}"
           if [[ "${GITHUB_REF_TYPE}" = "tag" ]]; then
             test "${GITHUB_REF_NAME}" = "haxsd-byok-v${version}"
             git fetch origin main:refs/remotes/origin/main
