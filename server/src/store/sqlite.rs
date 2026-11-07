@@ -49,6 +49,7 @@ impl Store {
         } else {
             SqlitePoolOptions::new()
                 .max_connections(1)
+                .after_release(|connection, _| Box::pin(connection_is_reusable(connection)))
                 .connect_with(options)
                 .await?
         };
@@ -145,6 +146,44 @@ mod tests {
             );
         }
         let transaction = store.pool().begin_with("BEGIN IMMEDIATE").await.unwrap();
+        transaction.rollback().await.unwrap();
+    }
+
+    /// 维护池是独立的一条连接：同样的「事务未结束」守卫必须挂上。
+    ///
+    /// 清理/压缩全走维护池，一旦这条连接带着失败事务回池，之后每次
+    /// `BEGIN IMMEDIATE` 都会报 non-zero transaction depth，直到进程重启——而池里
+    /// 没有第二条连接可换。主池的回归用例覆盖不到这里，所以单独钉一条。
+    #[tokio::test]
+    async fn the_maintenance_pool_never_hands_back_a_stuck_connection() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+
+        {
+            let mut connection = store.maintenance_pool.acquire().await.unwrap();
+            sqlx::sqlite::SqliteTransactionManager::begin(&mut connection, None)
+                .await
+                .unwrap();
+            assert!(connection.is_in_transaction());
+            // 不 commit/rollback，直接丢弃：模拟失败事务留下的连接。
+        }
+
+        let connection = store.maintenance_pool.acquire().await.unwrap();
+        assert!(
+            !connection.is_in_transaction(),
+            "维护池交出了仍然停在事务里的连接"
+        );
+        drop(connection);
+        let transaction = store
+            .maintenance_pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .unwrap();
         transaction.rollback().await.unwrap();
     }
 

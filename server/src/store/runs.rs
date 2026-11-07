@@ -11,6 +11,14 @@ use super::{now_ms, Store};
 /// 上一次进程留下的中间态：崩溃与强杀都来不及收尾，清算时写上这句说明原因。
 pub(crate) const INTERRUPTED_BY_PROCESS_EXIT: &str = "interrupted by process exit";
 
+/// 时钟跳变（休眠恢复/NTP 回拨）兜底窗口。
+///
+/// 启动清算的主判据是 `created_at_ms < process_started_at_ms`。时钟回拨后，上一个进程
+/// 留下的行时间戳会落在这个时刻之后（甚至明显在未来），主判据就会漏掉它们；因此凡是
+/// 时间戳比当前时刻还超前一个宽限窗口的 running 行，也按「上一个进程的残留」清算。
+/// 24 小时足够覆盖常见的休眠/NTP 跳变，又不会误伤本进程刚创建的运行。
+const CLOCK_SKEW_ALLOWANCE_MS: i64 = 24 * 60 * 60 * 1000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunStatus {
     Running,
@@ -428,20 +436,23 @@ impl Store {
         sqlx::query(
             "UPDATE conversations SET active_run_id = NULL
              WHERE active_run_id IN (
-                 SELECT run_id FROM runs WHERE status = 'running' AND created_at_ms < ?
+                 SELECT run_id FROM runs
+                 WHERE status = 'running' AND (created_at_ms < ? OR created_at_ms > ?)
              )",
         )
         .bind(process_started_at_ms)
+        .bind(process_started_at_ms + CLOCK_SKEW_ALLOWANCE_MS)
         .execute(&mut *tx)
         .await?;
         let runs = sqlx::query(
             "UPDATE runs SET status = 'failed', failure_category = 'interrupted',
              failure_summary = ?, updated_at_ms = ?
-             WHERE status = 'running' AND created_at_ms < ?",
+             WHERE status = 'running' AND (created_at_ms < ? OR created_at_ms > ?)",
         )
         .bind(INTERRUPTED_BY_PROCESS_EXIT)
         .bind(now)
         .bind(process_started_at_ms)
+        .bind(process_started_at_ms + CLOCK_SKEW_ALLOWANCE_MS)
         .execute(&mut *tx)
         .await?
         .rows_affected();
@@ -449,26 +460,42 @@ impl Store {
             "UPDATE llm_calls SET status = 'error', finished_at_ms = ?,
              duration_ms = MAX(0, ? - created_at_ms), error_kind = 'interrupted',
              error_message = ?
-             WHERE status = 'running' AND created_at_ms < ?",
+             WHERE status = 'running' AND (created_at_ms < ? OR created_at_ms > ?)",
         )
         .bind(now)
         .bind(now)
         .bind(INTERRUPTED_BY_PROCESS_EXIT)
         .bind(process_started_at_ms)
+        .bind(process_started_at_ms + CLOCK_SKEW_ALLOWANCE_MS)
         .execute(&mut *tx)
         .await?
         .rows_affected();
         let traces = sqlx::query(
             "UPDATE cursor_run_traces SET status = 'error', finished_at_ms = ?,
              error_message = ?
-             WHERE status = 'running' AND received_at_ms < ?",
+             WHERE status = 'running' AND (received_at_ms < ? OR received_at_ms > ?)",
         )
         .bind(now)
         .bind(INTERRUPTED_BY_PROCESS_EXIT)
         .bind(process_started_at_ms)
+        .bind(process_started_at_ms + CLOCK_SKEW_ALLOWANCE_MS)
         .execute(&mut *tx)
         .await?
         .rows_affected();
+        // 与墙上时钟无关的兜底：`active_run_id` 指向的 run 不存在、或已经不是 running
+        // （任务 panic/abort 漏掉 finish_run，或上面的时钟判据漏掉）时，该会话永远进不了
+        // 过期集合，存储会永久泄漏、列表永久显示「进行中」。启动清算时本进程还没有任何
+        // run，所以这里清掉的只可能是残留。
+        sqlx::query(
+            "UPDATE conversations SET active_run_id = NULL
+             WHERE active_run_id IS NOT NULL
+               AND NOT EXISTS (
+                   SELECT 1 FROM runs
+                   WHERE runs.run_id = conversations.active_run_id AND runs.status = 'running'
+               )",
+        )
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
         let interrupted = runs + calls + traces;
         if interrupted > 0 {
@@ -912,6 +939,71 @@ mod tests {
         assert_eq!(deferring, 0, "清算后回收不再被遗留的 running 挡住");
     }
 
+    /// 时钟回拨（休眠恢复/NTP）后，上一进程留下的行时间戳会落在「启动时刻之后」，
+    /// 主判据 `created_at_ms < started` 漏掉它们。超出宽限窗口的未来时间戳必须按残留清算。
+    #[tokio::test]
+    async fn interrupts_running_rows_created_after_a_clock_rollback() {
+        let (_dir, store) = fixture().await;
+        let started_at_ms = crate::store::now_ms();
+        crashed_run(
+            &store,
+            "future",
+            started_at_ms + CLOCK_SKEW_ALLOWANCE_MS + 60_000,
+        )
+        .await;
+
+        let interrupted = store
+            .reconcile_interrupted_runs(started_at_ms)
+            .await
+            .unwrap();
+
+        assert_eq!(interrupted, 3, "未来时间戳的残留也要清算");
+        let status: (String, String) =
+            sqlx::query_as("SELECT status, failure_category FROM runs WHERE run_id = 'future-run'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(status.0, "failed");
+        assert_eq!(status.1, "interrupted");
+        let active: Option<String> = sqlx::query_scalar(
+            "SELECT active_run_id FROM conversations WHERE conversation_id = 'future-conversation'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(active, None, "清算后会话必须可回收");
+    }
+
+    /// 与时钟无关的兜底：`active_run_id` 指向的 run 不存在或已终态时，启动清算要解开它，
+    /// 否则会话永远进不了过期集合、存储永久泄漏。
+    #[tokio::test]
+    async fn clears_a_dangling_active_run_id() {
+        let (_dir, store) = fixture().await;
+        let conversation = crate::model::ConversationId("dangling-conversation".into());
+        store.ensure_conversation(&conversation).await.unwrap();
+        sqlx::query(
+            "UPDATE conversations SET active_run_id = 'missing-run'
+             WHERE conversation_id = 'dangling-conversation'",
+        )
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        let interrupted = store
+            .reconcile_interrupted_runs(crate::store::now_ms())
+            .await
+            .unwrap();
+
+        assert_eq!(interrupted, 0);
+        let active: Option<String> = sqlx::query_scalar(
+            "SELECT active_run_id FROM conversations WHERE conversation_id = 'dangling-conversation'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(active, None, "悬挂的 active_run_id 必须被解开");
+    }
+
     /// 本进程启动后创建的 running 行（含正在跑的长会话）不是遗留，一行都不能碰。
     #[tokio::test]
     async fn leaves_running_rows_created_after_the_process_started() {
@@ -948,9 +1040,11 @@ mod tests {
         assert_eq!(active.as_deref(), Some("live-run"));
     }
 
-    /// 没有遗留时什么都不改：终态行、别人的 `active_run_id` 都保持原样。
+    /// 与时钟无关的兜底也覆盖「active_run_id 指向已终态 run」：终态行本身不动
+    /// （状态/updated_at 保持原样），但会话的 active_run_id 必须解开，否则该会话
+    /// 永远进不了过期集合。
     #[tokio::test]
-    async fn does_nothing_when_there_is_nothing_to_reconcile() {
+    async fn clears_an_active_run_id_pointing_at_a_terminal_run() {
         let (_dir, store) = fixture().await;
         let conversation = crate::model::ConversationId("settled-conversation".into());
         let checkpoint = store.ensure_conversation(&conversation).await.unwrap();
@@ -985,14 +1079,15 @@ mod tests {
         .unwrap();
         assert_eq!(
             conversation_state,
-            (Some(String::from("settled-run")), Some(1))
+            (None, Some(1)),
+            "指向终态 run 的 active_run_id 是悬挂钉，必须解开"
         );
         let run: (String, Option<i64>) =
             sqlx::query_as("SELECT status, updated_at_ms FROM runs WHERE run_id = 'settled-run'")
                 .fetch_one(store.pool())
                 .await
                 .unwrap();
-        assert_eq!(run, (String::from("completed"), Some(1)));
+        assert_eq!(run, (String::from("completed"), Some(1)), "终态行本身不动");
     }
 
     /// 一次查完整批的语义与逐条查一致：每个父工具调用取最新的一条**终态**子 run。
