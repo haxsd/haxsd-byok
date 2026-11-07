@@ -3,6 +3,7 @@ import deepseekIcon from "../assets/provider-icons/deepseek.svg";
 import huoshanIcon from "../assets/provider-icons/huoshan.png";
 import kimiIcon from "../assets/provider-icons/kimi.svg";
 import minimaxIcon from "../assets/provider-icons/minimax.svg";
+import opencodeIcon from "../assets/provider-icons/opencode.svg";
 import zhipuIcon from "../assets/provider-icons/zhipu.svg";
 import { defaultCustomHeaders } from "./modelDefaults";
 
@@ -122,6 +123,31 @@ export const modelPresets: ModelPreset[] = [
     models: [
       entry("MiniMax-M3", "MiniMax M3", 1000000, 65536),
       entry("MiniMax-M2.7", "MiniMax M2.7", 205000, 32768),
+    ],
+  },
+  {
+    key: "opencode",
+    name: () => "OpenCode Zen",
+    icon: opencodeIcon,
+    keyHint: () => "opencode.ai/console → API Keys (pay-as-you-go; free models included)",
+    endpoints: {
+      anthropic: anthropic("https://opencode.ai/inference/anthropic"),
+      openai: openaiChat("https://opencode.ai/inference/openai"),
+    },
+    models: [
+      entry("claude-sonnet-4-5", "Claude Sonnet 4.5", 200000, 64000),
+      entry("claude-opus-4-5", "Claude Opus 4.5", 200000, 32000),
+      entry("gpt-5.6-sol", "GPT 5.6 Sol", null, null),
+      entry("gpt-5.3-codex", "GPT 5.3 Codex", null, null),
+      entry("gpt-5", "GPT 5", null, null),
+      entry("gemini-3-flash", "Gemini 3 Flash", null, null),
+      entry("grok-4.7", "Grok 4.7", null, null),
+      entry("kimi-k2.7-code", "Kimi K2.7 Code", null, null),
+      entry("glm-5.3", "GLM 5.3", null, null),
+      entry("minimax-m3", "MiniMax M3", null, null),
+      entry("deepseek-v4-pro", "DeepSeek V4 Pro", null, null),
+      entry("qwen3.8-max", "Qwen3.8 Max", null, null),
+      entry("big-pickle", "Big Pickle (free)", null, null),
     ],
   },
 ];
