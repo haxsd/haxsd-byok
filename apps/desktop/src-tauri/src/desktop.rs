@@ -37,6 +37,28 @@ const EXIT_CLEANUP_ARG: &str = "--cleanup-after-exit";
 /// setup 失败时的退出码。不是 0：脚本与系统事件日志要能看出这次启动没成功。
 const SETUP_FAILURE_EXIT_CODE: i32 = 1;
 
+/// `RunEvent::ExitRequested` 的三种来源。
+enum ExitRequest {
+    /// 关闭窗口（`code = None`）：进程与网关留在托盘。
+    KeepAlive,
+    /// 应用内更新重启（`tauri::RESTART_EXIT_CODE`）：Tauri 随后 `process::restart`。
+    Restart,
+    /// 托盘「退出」或应用自己 `app.exit(code)`：走完整收尾后带码结束。
+    Shutdown(i32),
+}
+
+/// 把退出请求分类成三条互斥路径。
+///
+/// 关键：`RESTART_EXIT_CODE` **不能**走普通退出分支——`prevent_exit` 对它无效，异步收尾
+/// 会在 `process::restart` 之前被砍断，`--cleanup-after-exit` 助手还会把重启当强杀。
+fn classify_exit_request(code: Option<i32>) -> ExitRequest {
+    match code {
+        None => ExitRequest::KeepAlive,
+        Some(tauri::RESTART_EXIT_CODE) => ExitRequest::Restart,
+        Some(code) => ExitRequest::Shutdown(code),
+    }
+}
+
 /// setup 的错误类型：与 tauri `SetupHook` 的签名一致。
 type SetupError = Box<dyn Error>;
 
@@ -469,14 +491,27 @@ pub fn run() -> ExitCode {
 
     app.run(|app, event| match event {
         // code 为 None 是窗口被非关闭按钮路径销毁时的兜底：托盘与转发服务继续运行。
-        // code 为 Some 时是显式退出请求。
-        RunEvent::ExitRequested { code, api, .. } => match code {
-            None => {
+        // code 为 RESTART_EXIT_CODE 是应用内更新重启；其余 Some 是显式退出请求。
+        RunEvent::ExitRequested { code, api, .. } => match classify_exit_request(code) {
+            ExitRequest::KeepAlive => {
                 // 关窗不是退出：进程与本地网关留在托盘里（Cursor 的接管依赖网关在线）。
                 tracing::info!("all windows closed; exit prevented, the gateway stays in the tray");
                 api.prevent_exit();
             }
-            Some(code) => {
+            ExitRequest::Restart => {
+                // 应用内更新（`tauri::RESTART_EXIT_CODE`）随后会 `process::restart`；Tauri 的
+                // `prevent_exit` 对重启是空操作，不能指望异步收尾跑完。重启前同步写下优雅
+                // 退出标记并落日志：`--cleanup-after-exit` 助手看到标记就不会把重启当强杀，
+                // 也就不会撤回 Cursor 代理/Devin 补丁或与新实例抢实例锁。服务端不在这里
+                // 停：新实例要接管同一批端口，而旧进程在重启时立即退出（与更新前的行为一致）。
+                tracing::info!(
+                    "restart requested by the updater; keeping user files for the next instance"
+                );
+                let runtime = app.state::<DesktopRuntime>();
+                cursor_server::local_app::mark_graceful_exit();
+                runtime.log_flush.flush();
+            }
+            ExitRequest::Shutdown(code) => {
                 // 真正退出只来自托盘菜单「退出」或应用自己调 exit；记下是哪一种，
                 // 用户报"自己退了/没退"时要能从日志回答。
                 tracing::info!(code, "explicit exit requested; shutting down the gateway");
@@ -788,5 +823,31 @@ mod tests {
             EXIT_CLEANUP_ARG
         ));
         assert!(has_argument([OsString::from(AUTOSTART_ARG)], AUTOSTART_ARG));
+    }
+
+    /// 应用内更新用的是 `i32::MAX` 退出码：它必须走「重启」分支，不能被当成普通退出
+    /// （`prevent_exit` 对重启无效，异步收尾会在 `process::restart` 之前被砍断）。
+    #[test]
+    fn restart_exit_code_is_classified_as_restart() {
+        assert!(matches!(
+            classify_exit_request(None),
+            ExitRequest::KeepAlive
+        ));
+        assert!(matches!(
+            classify_exit_request(Some(tauri::RESTART_EXIT_CODE)),
+            ExitRequest::Restart
+        ));
+        assert!(matches!(
+            classify_exit_request(Some(0)),
+            ExitRequest::Shutdown(0)
+        ));
+        assert!(matches!(
+            classify_exit_request(Some(1)),
+            ExitRequest::Shutdown(1)
+        ));
+        assert!(matches!(
+            classify_exit_request(Some(tauri::RESTART_EXIT_CODE - 1)),
+            ExitRequest::Shutdown(_)
+        ));
     }
 }

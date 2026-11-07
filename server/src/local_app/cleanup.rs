@@ -18,7 +18,7 @@ const GRACEFUL_EXIT_FILE: &str = "graceful-exit.json";
 /// 收尾助手只能看到实例锁被释放，无法区分正常退出与强杀。没有这个标记时，用户从托盘
 /// 正常退出也会被助手当成强杀，Devin 的配置和扩展补丁被自动还原——下一次启动用户还得
 /// 重新应用。强杀时没人写标记，助手照旧兜底。
-pub(crate) fn mark_graceful_exit() {
+pub fn mark_graceful_exit() {
     let Ok(directory) = crate::config::managed_data_dir() else {
         return;
     };
