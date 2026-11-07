@@ -212,16 +212,20 @@ impl CursorRelay {
         }
         let locally_routed = should_route_locally(original.path(), *self.tab_mode.read());
         if is_cursor_host(original.host().unwrap_or_default()) && locally_routed {
-            // 本机入口只服务 Cursor 客户端本身：匿名调用不进后端（判据与后果见
-            // `local_app::local_entry_caller`）。
-            let Some(caller) = super::local_entry_caller(request.headers()) else {
-                tracing::warn!(
-                    path = original.path(),
-                    "rejected an anonymous request to a locally served Cursor route"
-                );
-                return unauthorized_response().into();
-            };
-            tracing::debug!(path = original.path(), ?caller, "local Cursor route");
+            // CORS 预检（OPTIONS）按协议不带 Authorization：放行并由本地路由回答预检，
+            // 否则 Cursor 的账号/计费面板会先被 401 打断。
+            if request.method() != Method::OPTIONS {
+                // 本机入口只服务 Cursor 客户端本身：匿名调用不进后端（判据与后果见
+                // `local_app::local_entry_caller`）。
+                let Some(caller) = super::local_entry_caller(request.headers()) else {
+                    tracing::warn!(
+                        path = original.path(),
+                        "rejected an anonymous request to a locally served Cursor route"
+                    );
+                    return unauthorized_response().into();
+                };
+                tracing::debug!(path = original.path(), ?caller, "local Cursor route");
+            }
             if let Ok(value) = original.to_string().parse() {
                 request.headers_mut().insert(UPSTREAM_URL_HEADER, value);
             }
@@ -375,6 +379,37 @@ mod tests {
             builder = builder.header(hudsucker::hyper::header::AUTHORIZATION, value);
         }
         builder.body(Body::empty()).unwrap()
+    }
+
+    fn cursor_options_request(path: &str) -> Request<Body> {
+        Request::builder()
+            .method(Method::OPTIONS)
+            .uri(format!("https://api2.cursor.sh{path}"))
+            .header(hudsucker::hyper::header::ORIGIN, "vscode-file://vscode-app")
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// CORS 预检不带 Authorization：本地路由要放行到后端回答预检，而不是就地 401。
+    #[test]
+    fn a_cors_preflight_to_a_local_route_is_forwarded() {
+        let forwarded = cursor_relay(TabMode::Direct).route(cursor_options_request(
+            "/aiserver.v1.AiService/AvailableModels",
+        ));
+        let RequestOrResponse::Request(request) = forwarded else {
+            panic!("预检不能被就地拒绝");
+        };
+        assert_eq!(
+            request
+                .uri()
+                .authority()
+                .map(|authority| authority.as_str()),
+            Some("127.0.0.1:3000")
+        );
+        assert!(
+            request.headers().contains_key(UPSTREAM_URL_HEADER),
+            "本机路由仍要带上原始上游地址"
+        );
     }
 
     /// 本机入口只服务 Cursor 客户端：匿名调用被就地拒绝，不进后端。

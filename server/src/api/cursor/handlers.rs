@@ -171,6 +171,8 @@ fn router_with_proxy(
         .layer(axum::middleware::from_fn(
             entry::require_local_cursor_caller,
         ))
+        // CORS 预检要在身份判据之前回答（OPTIONS 按协议没有 Authorization）。
+        .layer(axum::middleware::from_fn(super::local_cors))
         .with_state(registry)
         .merge(web_cache)
 }
@@ -219,11 +221,20 @@ async fn run_sse_handler(
             run_sse::stream(&registry, &request.request_id).await
         }
         crate::cursor::transport::TransportRoute::Upstream(generation) => {
-            let response = proxy::forward(
+            let response = match proxy::forward(
                 Extension(proxy),
                 Request::from_parts(parts, Body::from(body)),
             )
-            .await?;
+            .await
+            {
+                Ok(response) => response,
+                Err(error) => {
+                    // 转发失败也必须释放 upstream 标记，否则该 request_id 最长 30 分钟内
+                    // 一直占着"官方上游"路由，阻塞存储回收与其他轮次。
+                    registry.finish_upstream(request.request_id.clone(), generation);
+                    return Err(error);
+                }
+            };
             Ok(run_sse::upstream(
                 registry,
                 request.request_id,
@@ -694,6 +705,59 @@ mod tests {
             released.is_ok(),
             "转发失败之后路由不许继续钉在官方上游（标记必须被还回去）"
         );
+    }
+
+    /// RunSSE 的上游分支与 BidiAppend 对称：转发失败也要释放 upstream 标记，否则该
+    /// request_id 最长 30 分钟一直占着"官方上游"，阻塞存储回收与后续轮次。
+    #[tokio::test]
+    async fn a_failed_run_sse_forward_releases_the_route_mark() {
+        let (_directory, registry) = test_registry().await;
+        let store = registry.store().clone();
+        store
+            .set_proxy_settings(ProxySettingsInput {
+                mode: ProxyMode::Custom,
+                address: dropping_proxy().await,
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let proxy = CursorProxy::cursor(NetworkClients::new(store));
+        let request_id = "run-sse-upstream-failure";
+        let _generation = registry.mark_upstream(request_id).await;
+        assert!(registry.upstream(request_id).await);
+
+        let body = connect::encode_message(&agent::BidiRequestId {
+            request_id: request_id.into(),
+        })
+        .unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/agent.v1.AgentService/RunSSE")
+            .header(
+                UPSTREAM_URL_HEADER,
+                "https://api2.cursor.sh/agent.v1.AgentService/RunSSE",
+            )
+            .header(header::CONTENT_TYPE, "application/proto")
+            .body(Body::from(body))
+            .unwrap();
+
+        let error = run_sse_handler(State(registry.clone()), Extension(proxy), request)
+            .await
+            .expect_err("官方上游连不上时 RunSSE 必须失败");
+        assert!(!error.to_string().is_empty(), "{error}");
+
+        let released = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if !registry.upstream(request_id).await {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        assert!(released.is_ok(), "RunSSE 转发失败后标记必须被还回去");
     }
 
     /// 没有模型的 append（心跳、工具结果、子代理通知）不读模式：`cursor_mode` 只用来回答

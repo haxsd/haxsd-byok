@@ -24,7 +24,11 @@ use crate::api::cursor::proxy::UPSTREAM_URL_HEADER;
 
 /// 经本地代理进来的请求必须出示调用方身份。
 pub(super) async fn require_local_cursor_caller(request: Request, next: Next) -> Response {
-    if proxied_entry(&request) && crate::local_app::local_entry_caller(request.headers()).is_none()
+    // CORS 预检（OPTIONS）按协议不带 Authorization，身份判据不适用于它；预检由
+    // `super::local_cors` 在更外层直接回答，这里兜底放行。
+    if request.method() != axum::http::Method::OPTIONS
+        && proxied_entry(&request)
+        && crate::local_app::local_entry_caller(request.headers()).is_none()
     {
         tracing::warn!(
             path = request.uri().path(),
@@ -92,6 +96,25 @@ mod tests {
                 .unwrap();
             assert_eq!(accepted.status(), StatusCode::OK, "{authorization}");
         }
+    }
+
+    /// CORS 预检（OPTIONS）按协议没有 Authorization：身份判据不适用于它，交给外层 CORS
+    /// 中间件回答；这里断言不会被 401。
+    #[tokio::test]
+    async fn a_cors_preflight_is_exempt_from_the_caller_identity() {
+        let mut builder = Request::builder()
+            .method("OPTIONS")
+            .uri("/aiserver.v1.AiService/AvailableModels")
+            .header(axum::http::header::ORIGIN, "vscode-file://vscode-app");
+        builder = builder.header(
+            UPSTREAM_URL_HEADER,
+            "https://api2.cursor.sh/aiserver.v1.AiService/AvailableModels",
+        );
+        let response = app()
+            .oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_ne!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     /// 不是从代理进来的请求不受影响：健康探测、web 缓存目录与协议级集成测试直接打这些路由，

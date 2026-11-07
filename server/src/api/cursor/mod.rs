@@ -51,6 +51,71 @@ pub(crate) fn body_too_large_response(limit: usize) -> Response<Body> {
     (StatusCode::PAYLOAD_TOO_LARGE, body_too_large_body(limit)).into_response()
 }
 
+/// 本地 Cursor 路由的 CORS 处理。
+///
+/// Cursor 渲染进程（origin 形如 `vscode-file://vscode-app`）会对账号/控制面路由发 CORS
+/// 请求；**预检 OPTIONS 天然没有 Authorization**，不能套用「调用方身份」判据（那会把
+/// 预检打成 401，浏览器随后把所有实际请求标成网络错误）。这里在身份中间件之前直接回答
+/// 预检，并给实际响应补上回显 Origin 的 CORS 头。
+///
+/// 只服务本地回环入口，回显 Origin 不构成跨站面；真正的身份判据仍由
+/// `entry::require_local_cursor_caller` 处理非 OPTIONS 请求。
+pub(crate) async fn local_cors(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    fn header(request: &axum::extract::Request, name: &str) -> Option<String> {
+        request
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    }
+
+    let origin = header(&request, "origin");
+    let requested_headers = header(&request, "access-control-request-headers");
+    let preflight = request.method() == axum::http::Method::OPTIONS;
+    let mut response = if preflight {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        response
+    } else {
+        next.run(request).await
+    };
+    let Some(origin) = origin else {
+        return response;
+    };
+    let Ok(origin) = axum::http::HeaderValue::from_str(&origin) else {
+        return response;
+    };
+    let headers = response.headers_mut();
+    headers.insert(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    headers.insert(
+        axum::http::header::VARY,
+        axum::http::HeaderValue::from_static("origin"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+        axum::http::HeaderValue::from_static("true"),
+    );
+    if preflight {
+        headers.insert(
+            axum::http::header::ACCESS_CONTROL_ALLOW_METHODS,
+            axum::http::HeaderValue::from_static("GET, POST, OPTIONS"),
+        );
+        if let Some(requested_headers) = requested_headers {
+            if let Ok(value) = axum::http::HeaderValue::from_str(&requested_headers) {
+                headers.insert(axum::http::header::ACCESS_CONTROL_ALLOW_HEADERS, value);
+            }
+        }
+        headers.insert(
+            axum::http::header::ACCESS_CONTROL_MAX_AGE,
+            axum::http::HeaderValue::from_static("600"),
+        );
+    }
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -73,6 +138,77 @@ mod tests {
     #[test]
     fn the_request_body_limit_stays_at_64_mib() {
         assert_eq!(MAX_REQUEST_BODY, 64 * 1024 * 1024);
+    }
+
+    /// CORS 预检（OPTIONS）没有 Authorization，必须在身份判据之前被回答；否则 Cursor 的
+    /// 账号/计费面板会先被 401 打断。实际请求仍要过身份判据。
+    #[tokio::test]
+    async fn cors_preflight_is_answered_before_the_caller_identity_check() {
+        use axum::{body::Body, http::StatusCode, routing::post, Router};
+        use tower::ServiceExt as _;
+
+        let app = Router::new()
+            .route(
+                "/aiserver.v1.AiService/AvailableModels",
+                post(|| async { "ok" }),
+            )
+            .layer(axum::middleware::from_fn(
+                super::entry::require_local_cursor_caller,
+            ))
+            .layer(axum::middleware::from_fn(local_cors));
+
+        let build = |method: axum::http::Method, authorization: Option<&str>| {
+            let mut builder = axum::http::Request::builder()
+                .method(method)
+                .uri("/aiserver.v1.AiService/AvailableModels")
+                .header("origin", "vscode-file://vscode-app")
+                .header(
+                    super::proxy::UPSTREAM_URL_HEADER,
+                    "https://api2.cursor.sh/aiserver.v1.AiService/AvailableModels",
+                );
+            if let Some(value) = authorization {
+                builder = builder.header("authorization", value);
+            }
+            builder.body(Body::empty()).unwrap()
+        };
+
+        let preflight = app
+            .clone()
+            .oneshot(build(axum::http::Method::OPTIONS, None))
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            preflight
+                .headers()
+                .get(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .and_then(|value| value.to_str().ok()),
+            Some("vscode-file://vscode-app")
+        );
+
+        let denied = app
+            .clone()
+            .oneshot(build(axum::http::Method::POST, None))
+            .await
+            .unwrap();
+        assert_eq!(
+            denied.status(),
+            StatusCode::UNAUTHORIZED,
+            "非 OPTIONS 的匿名请求仍必须被拒"
+        );
+
+        let accepted = app
+            .clone()
+            .oneshot(build(axum::http::Method::POST, Some("Bearer token")))
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+        assert!(
+            accepted
+                .headers()
+                .contains_key(axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            "实际响应也要带 CORS 头，浏览器才读得到"
+        );
     }
 
     /// 上限之内的正文原样收下(边界包含:正好等于上限也要通过)。
