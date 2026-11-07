@@ -18,6 +18,15 @@ const AGENT_RETRIES_GATE: &str = "nal_agent_retries";
 /// 不再走本地代理接管的 `RunSSE` + `BidiAppend`。本地 token 拿不到上游门禁，客户端按
 /// 默认值（关）走 HTTP；登录官方账号后上游门禁可能为开，聊天就绕过本机网关（issue #8）。
 const AGENT_WEBSOCKET_GATE: &str = "nal_websocket_client";
+/// Agent Host 总开关。打开后 Cursor 不再用 `RunSSE` 的“服务端跑 Agent 循环”链路，而是
+/// 换成客户端本地循环（`agent_host_local_loop`，模型调用走 `InferenceService/RunInference`）
+/// 或新的 host 传输。这两条链路本机网关都没有实现：前者要另写一套推理协议，后者要接管
+/// WebSocket。网关只实现了 legacy `RunSSE` + `BidiAppend`，所以必须让客户端回到 legacy——
+/// 官方的 `AgentRunRequest` 与 `RunInferenceClientMessage` 是两种消息，混在一起只会整轮 400。
+const CURSOR_AGENT_HOST_GATE: &str = "cursor_agent_host";
+/// 即使 Agent Host 因其他途径（例如 private inference token）被打开，也强制它用
+/// “host 传输 + 服务端循环”而不是本地循环；本地循环的 `RunInference` 同样没有实现。
+const AGENT_HOST_LOCAL_LOOP_GATE: &str = "agent_host_local_loop";
 const LOCAL_RULE: &str = "local_enabled";
 
 #[derive(Clone, PartialEq, Message)]
@@ -100,10 +109,13 @@ fn local_response() -> Result<Response<Body>> {
     Ok(response)
 }
 
-/// 本地网关需要的门禁取值：打开 agent 重试，关掉 Agent Run 的 WebSocket 传输。
+/// 本地网关需要的门禁取值：打开 agent 重试，关掉 Agent Run 的 WebSocket 传输，
+/// 关掉 Agent Host（总开关与本地循环）让客户端留在网关实现了的 legacy `RunSSE` 链路。
 fn apply_gate_overrides(config: &mut Value) -> Result<()> {
     set_gate(config, AGENT_RETRIES_GATE, true)?;
-    set_gate(config, AGENT_WEBSOCKET_GATE, false)
+    set_gate(config, AGENT_WEBSOCKET_GATE, false)?;
+    set_gate(config, CURSOR_AGENT_HOST_GATE, false)?;
+    set_gate(config, AGENT_HOST_LOCAL_LOOP_GATE, false)
 }
 
 fn set_gate(config: &mut Value, name: &str, value: bool) -> Result<()> {
@@ -209,6 +221,16 @@ mod tests {
 
             assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false), "{hash}");
             assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true), "{hash}");
+            assert_eq!(
+                gate(&config, CURSOR_AGENT_HOST_GATE),
+                &json!(false),
+                "{hash}"
+            );
+            assert_eq!(
+                gate(&config, AGENT_HOST_LOCAL_LOOP_GATE),
+                &json!(false),
+                "{hash}"
+            );
         }
     }
 
@@ -247,6 +269,8 @@ mod tests {
         let config: Value = serde_json::from_str(&message.config).unwrap();
         assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
         assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
+        assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
+        assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
         assert_eq!(
             config["feature_gates"][&unrelated],
             json!({"name": &unrelated, "value": true})
@@ -263,5 +287,7 @@ mod tests {
         let config: Value = serde_json::from_str(&message.config).unwrap();
         assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
         assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
+        assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
+        assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
     }
 }
