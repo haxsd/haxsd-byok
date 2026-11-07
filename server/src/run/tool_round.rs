@@ -88,11 +88,29 @@ pub(super) async fn execute(
     let mut pending_insertions = insertions;
     let mut break_messages = None;
     let deadline = tokio::time::Instant::now() + TOOL_ROUND_TIMEOUT;
+    // 工具结果由客户端回传，链路卡住时这里会静默等到 30 分钟超时。每 30 秒留一条
+    // "还在等谁"的日志：出问题时能立刻从应用日志看出是哪个工具没有回报，而不是只能
+    // 等超时后再猜。
+    let mut wait_notice = tokio::time::interval(Duration::from_secs(30));
+    wait_notice.tick().await;
     let timed_out = loop {
         let command = tokio::select! {
             biased;
             _ = cancellation.cancelled() => return Err(RunOutcome::Cancelled),
             _ = tokio::time::sleep_until(deadline) => break true,
+            _ = wait_notice.tick() => {
+                let outstanding = calls
+                    .iter()
+                    .filter(|call| !completed_call_ids.contains(&call.call_id))
+                    .map(|call| call.name.as_str())
+                    .collect::<Vec<_>>();
+                tracing::warn!(
+                    round_id = %round_id,
+                    outstanding = ?outstanding,
+                    "tool round is still waiting for tool results"
+                );
+                continue;
+            }
             command = client.commands.recv() => command,
         };
         let Some(command) = command else {

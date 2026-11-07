@@ -246,7 +246,13 @@ async fn bidi_handler(
         Err(response) => return Ok(*response),
     };
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
-    let decoded = bidi::decode(&request)?;
+    let decoded = match bidi::decode_any(&request)? {
+        bidi::BidiAppendPayload::Agent(decoded) => decoded,
+        bidi::BidiAppendPayload::Inference(decoded) => {
+            return handle_inference_append(&registry, Extension(proxy), parts, body, decoded)
+                .await;
+        }
+    };
     let action = decoded.action_kind();
     if !decoded.is_routine() {
         // 后台任务完成、取消、计划、总结这类低频动作必须留痕：子代理唤醒链路里
@@ -295,16 +301,16 @@ async fn bidi_handler(
                 body.clone(),
                 trace_outcome(trace_metadata, false, "missing_transport", None),
             );
-            // 这条路径上没有模型、也没有已知 transport。以前它只留一句协议错误，
-            // 说不出被拒的是什么动作——而"子代理完成通知"恰好可能长这个样子。
+            // 没有模型、也没有已知 transport：这通常是取消/重启之后才到的迟到结果
+            // （工具结果、KV 确认、心跳）。回 400 会让客户端的 append 循环收到
+            // non-retryable 错误、中断后续回传，整轮就永远等不到工具结果；这些字节对
+            // 服务端没有副作用，幂等收下（200）比报错安全。
             tracing::warn!(
                 request_id = decoded.request_id,
                 action,
-                "rejecting an append with neither a model nor a known transport"
+                "ignoring an append with neither a model nor a known transport"
             );
-            return Err(crate::Error::Protocol(format!(
-                "first BidiAppend message must select a model (action: {action})"
-            )));
+            return Ok(empty_proto_response());
         }
     };
     if first_model.is_some() {
@@ -386,13 +392,58 @@ async fn bidi_handler(
             return Err(error);
         }
     }
-    let mut response = Response::new(axum::body::Body::empty());
+    Ok(empty_proto_response())
+}
+
+/// append 已收下但不需要回正文时的统一响应（Connect unary 的空消息）。
+fn empty_proto_response() -> Response<Body> {
+    let mut response = Response::new(Body::empty());
     *response.status_mut() = StatusCode::OK;
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/proto"),
     );
-    Ok(response)
+    response
+}
+
+/// 处理新推理流（`InferenceService/RunInference`）的 append。
+///
+/// - 本地模型：网关还没有实现本地推理桥，返回一条能看懂原因的协议错误（前端会显示这句），
+///   而不是让它落回 legacy 解码器后变成一句 `invalid wire type`；
+/// - 官方模型：原样透传给上游。`InferenceService/RunInferenceSSE` 不在本地路由表里，
+///   代理会自动转发，所以这条流在官方后端是完整可用的。
+async fn handle_inference_append(
+    registry: &TransportRegistry,
+    proxy: Extension<CursorProxy>,
+    parts: axum::http::request::Parts,
+    body: Bytes,
+    append: bidi::InferenceAppend,
+) -> Result<Response<Body>> {
+    let kind = append.message.kind();
+    let model_id = append.message.model_id().map(str::to_owned);
+    let conversation_id = append.message.conversation_id().map(str::to_owned);
+    let local = match model_id.as_deref() {
+        Some(model) => is_local_model(registry, model).await?,
+        None => false,
+    };
+    tracing::warn!(
+        request_id = append.request_id,
+        seqno = append.seqno,
+        kind,
+        model_id = model_id.as_deref().unwrap_or(""),
+        conversation_id = conversation_id.as_deref().unwrap_or(""),
+        local,
+        "BidiAppend belongs to InferenceService/RunInference (the new agent runtime)"
+    );
+    if local {
+        return Err(crate::Error::Protocol(format!(
+            "the client used the InferenceService/RunInference runtime for local model '{}'; \
+             this gateway only implements the legacy Agent RunSSE stream. Restart Cursor so it \
+             re-reads the feature gates, or select a model backed by the legacy runtime.",
+            model_id.as_deref().unwrap_or("unknown")
+        )));
+    }
+    proxy::forward(proxy, Request::from_parts(parts, Body::from(body))).await
 }
 
 /// 这个模型 ID 是不是由我们回答的（模型库里的模型，或插件模型）。

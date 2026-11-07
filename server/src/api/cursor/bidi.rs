@@ -5,7 +5,7 @@ use crate::{
     cursor::{
         conversation::TransportCommand,
         protocol::{
-            events,
+            events, inference,
             proto::{agent::v1 as agent, aiserver::v1 as ai},
         },
         transport::{TransportParent, TransportRegistry},
@@ -17,6 +17,20 @@ pub struct DecodedAppend {
     pub request_id: String,
     pub seqno: i64,
     pub message: agent::AgentClientMessage,
+}
+
+/// Cursor 3.29+ 在 `agent_host_local_loop` 运行时下用 `InferenceService/RunInference`
+/// 调模型；它和 legacy Agent 流共用 `BidiService/BidiAppend`，消息类型也不同。
+pub struct InferenceAppend {
+    pub request_id: String,
+    pub seqno: i64,
+    pub message: inference::RunInferenceClientMessage,
+}
+
+/// 一条 append 属于哪条 bidi 流。服务端必须先分辨类型，再决定本地处理还是透传上游。
+pub enum BidiAppendPayload {
+    Agent(DecodedAppend),
+    Inference(InferenceAppend),
 }
 
 impl DecodedAppend {
@@ -195,30 +209,99 @@ fn history_image_count(history: &agent::ConversationHistory) -> usize {
         .sum()
 }
 
-pub fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
+/// 一条 append 里承载的消息字节。
+///
+/// `data_binary` 与 `data` 承载同一份消息：Cursor 客户端取 `message.toBinary()` 的字节，
+/// 按开关要么直接放进 `data_binary`，要么 hex 进 `data`（见 cursor-always-local 的
+/// BidiTransport）。两条都要接，否则新版客户端一上来就 400。
+fn append_payload(request: &ai::BidiAppendRequest) -> Result<Vec<u8>> {
+    if !request.data_binary.is_empty() {
+        Ok(request.data_binary.clone())
+    } else if !request.data.is_empty() {
+        hex::decode(&request.data)
+            .map_err(|error| Error::Protocol(format!("invalid BidiAppend hex: {error}")))
+    } else {
+        Err(Error::Protocol(
+            "BidiAppend contains no client message".into(),
+        ))
+    }
+}
+
+fn append_identity(request: &ai::BidiAppendRequest) -> Result<(&str, i64)> {
     let request_id = request
         .request_id
         .as_ref()
         .map(|id| id.request_id.as_str())
         .filter(|id| !id.is_empty())
         .ok_or_else(|| Error::Protocol("BidiAppend request_id is required".into()))?;
-    // `data_binary` 与 `data` 承载同一条 AgentClientMessage：Cursor 客户端取
-    // `message.toBinary()` 的字节，按开关要么直接放进 `data_binary`，要么 hex 进 `data`
-    // （见 cursor-always-local 的 BidiTransport）。两条都要接，否则新版客户端一上来就 400。
-    let payload = if !request.data_binary.is_empty() {
-        request.data_binary.clone()
-    } else if !request.data.is_empty() {
-        hex::decode(&request.data)
-            .map_err(|error| Error::Protocol(format!("invalid BidiAppend hex: {error}")))?
-    } else {
-        return Err(Error::Protocol(
-            "BidiAppend contains no AgentClientMessage".into(),
-        ));
+    Ok((request_id, request.append_seqno))
+}
+
+/// 先按 legacy `AgentClientMessage` 解，失败再按新推理消息解。
+///
+/// 这两种消息共用 `BidiService/BidiAppend`：只按 legacy 解会把新推理流打成每轮 400，
+/// 只按新推理解又会破坏本地 Agent 接管。都解不了时留下可诊断的现场（长度、hex 前缀、
+/// ASCII 预览），不再只回一句 `invalid wire type`。
+pub fn decode_any(request: &ai::BidiAppendRequest) -> Result<BidiAppendPayload> {
+    let (request_id, seqno) = append_identity(request)?;
+    let payload = append_payload(request)?;
+    let agent_error = match agent::AgentClientMessage::decode(payload.as_slice()) {
+        Ok(message) => {
+            return Ok(BidiAppendPayload::Agent(DecodedAppend {
+                request_id: request_id.into(),
+                seqno,
+                message,
+            }))
+        }
+        Err(error) => error,
     };
-    Ok(DecodedAppend {
-        request_id: request_id.into(),
-        seqno: request.append_seqno,
-        message: agent::AgentClientMessage::decode(payload.as_slice())?,
+    match inference::RunInferenceClientMessage::decode(payload.as_slice()) {
+        Ok(message) if message.message.is_some() => {
+            return Ok(BidiAppendPayload::Inference(InferenceAppend {
+                request_id: request_id.into(),
+                seqno,
+                message,
+            }))
+        }
+        Ok(_) => tracing::warn!(
+            request_id,
+            seqno,
+            payload_len = payload.len(),
+            "BidiAppend payload decoded as an empty RunInferenceClientMessage"
+        ),
+        Err(inference_error) => {
+            tracing::warn!(
+                request_id,
+                seqno,
+                payload_len = payload.len(),
+                payload_hex = %hex::encode(&payload[..payload.len().min(64)]),
+                payload_ascii = %ascii_preview(&payload[..payload.len().min(64)]),
+                agent_error = %agent_error,
+                inference_error = %inference_error,
+                "BidiAppend payload is neither an AgentClientMessage nor a RunInferenceClientMessage"
+            );
+        }
+    }
+    Err(agent_error.into())
+}
+
+fn ascii_preview(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| match byte {
+            b' '..=b'~' => *byte as char,
+            _ => '.',
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
+    decode_any(request).and_then(|payload| match payload {
+        BidiAppendPayload::Agent(decoded) => Ok(decoded),
+        BidiAppendPayload::Inference(_) => {
+            Err(Error::Protocol("expected a legacy Agent append".into()))
+        }
     })
 }
 
@@ -297,5 +380,42 @@ mod tests {
     #[test]
     fn an_empty_append_is_still_rejected() {
         assert!(decode(&request("", Vec::new())).is_err());
+    }
+
+    /// 新推理流的首帧（Cursor 3.29.9 managed-local 运行时）不能被当成 legacy Agent：
+    /// 服务端要能识别出流类型、模型与会话，才能决定透传上游还是给出明确诊断。
+    #[test]
+    fn an_inference_append_is_recognized_alongside_the_legacy_stream() {
+        let message = inference::RunInferenceClientMessage {
+            message: Some(
+                inference::run_inference_client_message::Message::RunRequest(
+                    inference::RunInferenceRunRequest {
+                        conversation_id: "7768f256-d6d8-4f75-b521-5c2779fafdf6".into(),
+                        requested_model: Some(inference::InferenceRequestedModel {
+                            model_id: "7d3487855fe8cb56".into(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ),
+            ),
+        };
+        let request = request("", message.encode_to_vec());
+
+        let BidiAppendPayload::Inference(decoded) = decode_any(&request).unwrap() else {
+            panic!("inference append must not decode as a legacy Agent append");
+        };
+        assert_eq!(decoded.message.kind(), "run_request");
+        assert_eq!(decoded.message.model_id(), Some("7d3487855fe8cb56"));
+        assert_eq!(
+            decoded.message.conversation_id(),
+            Some("7768f256-d6d8-4f75-b521-5c2779fafdf6")
+        );
+    }
+
+    /// 两种消息都解不了时必须报错（并留下诊断日志），不能把垃圾字节当合法 append 收下。
+    #[test]
+    fn an_unrecognized_append_fails_both_decoders() {
+        assert!(decode_any(&request("", vec![0xFF; 16])).is_err());
     }
 }
