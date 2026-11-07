@@ -28,9 +28,12 @@ pub struct InferenceAppend {
 }
 
 /// 一条 append 属于哪条 bidi 流。服务端必须先分辨类型，再决定本地处理还是透传上游。
+///
+/// legacy 变体走 Box：`AgentClientMessage` 里的 conversation_state 很大（单条数 KB），
+/// 直接塞进 enum 会让每次返回都搬运 7KB+，也会让 clippy 报 `large_enum_variant`。
 pub enum BidiAppendPayload {
-    Agent(DecodedAppend),
-    Inference(InferenceAppend),
+    Agent(Box<DecodedAppend>),
+    Inference(Box<InferenceAppend>),
 }
 
 impl DecodedAppend {
@@ -247,21 +250,21 @@ pub fn decode_any(request: &ai::BidiAppendRequest) -> Result<BidiAppendPayload> 
     let payload = append_payload(request)?;
     let agent_error = match agent::AgentClientMessage::decode(payload.as_slice()) {
         Ok(message) => {
-            return Ok(BidiAppendPayload::Agent(DecodedAppend {
+            return Ok(BidiAppendPayload::Agent(Box::new(DecodedAppend {
                 request_id: request_id.into(),
                 seqno,
                 message,
-            }))
+            })))
         }
         Err(error) => error,
     };
     match inference::RunInferenceClientMessage::decode(payload.as_slice()) {
         Ok(message) if message.message.is_some() => {
-            return Ok(BidiAppendPayload::Inference(InferenceAppend {
+            return Ok(BidiAppendPayload::Inference(Box::new(InferenceAppend {
                 request_id: request_id.into(),
                 seqno,
                 message,
-            }))
+            })))
         }
         Ok(_) => tracing::warn!(
             request_id,
@@ -299,7 +302,7 @@ fn ascii_preview(bytes: &[u8]) -> String {
 #[cfg(test)]
 fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
     decode_any(request).and_then(|payload| match payload {
-        BidiAppendPayload::Agent(decoded) => Ok(decoded),
+        BidiAppendPayload::Agent(decoded) => Ok(*decoded),
         BidiAppendPayload::Inference(_) => {
             Err(Error::Protocol("expected a legacy Agent append".into()))
         }

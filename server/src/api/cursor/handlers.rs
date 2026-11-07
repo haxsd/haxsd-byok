@@ -247,9 +247,9 @@ async fn bidi_handler(
     };
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
     let decoded = match bidi::decode_any(&request)? {
-        bidi::BidiAppendPayload::Agent(decoded) => decoded,
+        bidi::BidiAppendPayload::Agent(decoded) => *decoded,
         bidi::BidiAppendPayload::Inference(decoded) => {
-            return handle_inference_append(&registry, Extension(proxy), parts, body, decoded)
+            return handle_inference_append(&registry, Extension(proxy), parts, body, *decoded)
                 .await;
         }
     };

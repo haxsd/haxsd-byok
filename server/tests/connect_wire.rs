@@ -136,6 +136,6 @@ async fn bidi_append_gzip_body_is_decompressed_before_protobuf_decode() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let body = to_bytes(response.into_body(), 4096).await.unwrap();
     let text = std::str::from_utf8(&body).unwrap();
-    assert!(text.contains("BidiAppend contains no AgentClientMessage"));
+    assert!(text.contains("BidiAppend contains no client message"));
     assert!(!text.contains("protobuf decode error"));
 }
