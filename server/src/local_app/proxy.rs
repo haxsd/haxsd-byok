@@ -3,7 +3,10 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use hudsucker::{
     certificate_authority::RcgenAuthority,
-    hyper::{Request, Response, StatusCode, Uri},
+    hyper::{
+        header::{CONNECTION, CONTENT_TYPE},
+        Method, Request, Response, StatusCode, Uri,
+    },
     rustls::crypto::aws_lc_rs,
     Body, HttpContext, HttpHandler, Proxy, RequestOrResponse,
 };
@@ -193,6 +196,20 @@ impl CursorRelay {
     /// 驱动（`HttpContext` 是 `#[non_exhaustive]`，外部构造不出来）。
     fn route(&mut self, mut request: Request<Body>) -> RequestOrResponse {
         let original = request.uri().clone();
+        if is_cursor_host(original.host().unwrap_or_default())
+            && request.method() == Method::GET
+            && original.path() == AGENT_RUN_WEBSOCKET_PATH
+        {
+            // Cursor 3.29+ 的 Agent Run 在门禁打开时改走 wss://api2.cursor.sh/agent/v1/run，
+            // 这条连接不经过本地模型路由。BootstrapStatsig 的门禁补丁依赖客户端缓存和
+            // agent-host 的独立 gate 集合，实测登录官方账号后仍可能被放行；在代理入口直接
+            // 拒绝 Upgrade，让 transport 回退到 RunSSE/BidiAppend。
+            tracing::debug!(
+                path = original.path(),
+                "rejecting Agent Run WebSocket; using RunSSE"
+            );
+            return agent_run_websocket_disabled().into();
+        }
         let locally_routed = should_route_locally(original.path(), *self.tab_mode.read());
         if is_cursor_host(original.host().unwrap_or_default()) && locally_routed {
             // 本机入口只服务 Cursor 客户端本身：匿名调用不进后端（判据与后果见
@@ -220,19 +237,29 @@ impl CursorRelay {
     }
 }
 
-/// 匿名调用本机入口时的答复：说清这个入口只服务 Cursor 客户端。
+/// Anonymous requests to the local entry point get a response that explains the entry point only
+/// serves the Cursor client.
 fn unauthorized_response() -> Response<Body> {
     Response::builder()
         .status(StatusCode::UNAUTHORIZED)
-        .header(
-            hudsucker::hyper::header::CONTENT_TYPE,
-            "text/plain; charset=utf-8",
-        )
+        .header(CONTENT_TYPE, "text/plain; charset=utf-8")
         .body(Body::from(
             "the local BYOK gateway only serves the Cursor client; this request carries no caller \
              identity\n",
         ))
         .expect("the static unauthorized response is well formed")
+}
+
+/// Reject the Agent Run WebSocket upgrade so the client falls back to `RunSSE`.
+fn agent_run_websocket_disabled() -> Response<Body> {
+    Response::builder()
+        .status(StatusCode::NOT_IMPLEMENTED)
+        .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(CONNECTION, "close")
+        .body(Body::from(
+            "Agent Run WebSocket is disabled by the local BYOK gateway; use RunSSE.\n",
+        ))
+        .expect("the static WebSocket rejection is well formed")
 }
 
 impl HttpHandler for CursorRelay {
@@ -268,6 +295,8 @@ pub fn is_cursor_host(host: &str) -> bool {
     let host = host.trim_end_matches('.').to_ascii_lowercase();
     matches!(host.as_str(), "api2.cursor.sh" | "api3.cursor.sh") || host.ends_with(".cursor.sh")
 }
+
+const AGENT_RUN_WEBSOCKET_PATH: &str = "/agent/v1/run";
 
 fn is_local_path(path: &str) -> bool {
     matches!(
@@ -436,6 +465,28 @@ mod tests {
         assert!(proxy.stop().await);
         assert!(!proxy.running());
         assert_eq!(proxy.port(), None);
+    }
+
+    #[test]
+    fn agent_run_websocket_upgrade_is_rejected_before_forwarding() {
+        let mut relay = CursorRelay {
+            backend: "127.0.0.1:1".parse().unwrap(),
+            tab_mode: Arc::new(RwLock::new(TabMode::Direct)),
+        };
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("https://api2.cursor.sh/agent/v1/run")
+            .header("upgrade", "websocket")
+            .body(Body::empty())
+            .unwrap();
+        match relay.route(request) {
+            RequestOrResponse::Response(response) => {
+                assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+            }
+            RequestOrResponse::Request(_) => {
+                panic!("Agent Run WebSocket must not be forwarded upstream")
+            }
+        }
     }
 
     #[test]
