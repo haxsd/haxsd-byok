@@ -130,7 +130,7 @@ pub async fn add(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let message: KnowledgeBaseAddRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
@@ -210,7 +210,7 @@ pub async fn list(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let message: KnowledgeBaseListRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
@@ -271,7 +271,7 @@ pub async fn update(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let message: KnowledgeBaseUpdateRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
@@ -330,7 +330,7 @@ pub async fn remove(
 ) -> Result<Response<Body>> {
     let (parts, body) = match buffered(request).await {
         Ok(buffered) => buffered,
-        Err(response) => return Ok(response),
+        Err(response) => return Ok(*response),
     };
     let message: KnowledgeBaseRemoveRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
@@ -365,18 +365,20 @@ pub async fn remove(
 
 async fn buffered(
     request: Request<Body>,
-) -> std::result::Result<(axum::http::request::Parts, Bytes), Response<Body>> {
+) -> std::result::Result<(axum::http::request::Parts, Bytes), Box<Response<Body>>> {
     let (parts, body) = request.into_parts();
     match crate::api::cursor::read_request_body(body, crate::api::cursor::MAX_REQUEST_BODY).await {
         Ok(body) => Ok((parts, body)),
-        Err(StatusCode::PAYLOAD_TOO_LARGE) => Err(crate::api::cursor::body_too_large_response(
-            crate::api::cursor::MAX_REQUEST_BODY,
+        Err(StatusCode::PAYLOAD_TOO_LARGE) => Err(Box::new(
+            crate::api::cursor::body_too_large_response(crate::api::cursor::MAX_REQUEST_BODY),
         )),
-        Err(_) => Err(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(Body::from("cannot read request body"))
-            .expect("the static response is well formed")),
+        Err(_) => Err(Box::new(
+            Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .body(Body::from("cannot read request body"))
+                .expect("the static response is well formed"),
+        )),
     }
 }
 
