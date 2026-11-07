@@ -60,6 +60,10 @@ impl PluginDefinitionLoader {
                 include_str!("sdk/protocol/openai_responses.ts"),
             ),
             (
+                &sdk_dir.join("protocol/chat_wire.ts"),
+                include_str!("sdk/protocol/chat_wire.ts"),
+            ),
+            (
                 &sdk_dir.join("protocol/openai_chat.ts"),
                 include_str!("sdk/protocol/openai_chat.ts"),
             ),
@@ -213,6 +217,52 @@ mod tests {
         );
         assert_eq!(descriptor.resources[0].add[0].method_type, "oauth2.0");
         assert!(descriptor.resources[0].import.is_some());
+    }
+
+    /// 部署到用户目录的 SDK 必须自带每个相对 import 的目标模块。
+    ///
+    /// 1.7.3 的回归：`openai_chat.ts` 新增了 `./chat_wire.ts` 的 import，但部署清单没加
+    /// 这个文件；已有安装的运行时目录里因此缺模块，antigravity/claude-code/grok 三个
+    /// 插件在定义求值阶段全部被跳过，界面只剩 Codex。这里按部署后的目录实际内容
+    /// 解析相对 import，缺任何目标文件都会失败。
+    #[test]
+    fn every_deployed_sdk_module_resolves_its_relative_imports() {
+        let directory = tempfile::tempdir().unwrap();
+        PluginDefinitionLoader::for_test(directory.path()).unwrap();
+        let sdk = directory.path().join(".plugin-sdk");
+        let mut queue = Vec::new();
+        for root in [sdk.clone(), sdk.join("protocol")] {
+            for entry in std::fs::read_dir(root).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().and_then(|value| value.to_str()) == Some("ts") {
+                    queue.push(path);
+                }
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(path) = queue.pop() {
+            if !seen.insert(path.clone()) {
+                continue;
+            }
+            assert!(
+                path.is_file(),
+                "SDK 模块被 import 但未部署：{}",
+                path.display()
+            );
+            let source = std::fs::read_to_string(&path).unwrap();
+            for line in source.lines() {
+                let Some(rest) = line.split("from \"").nth(1) else {
+                    continue;
+                };
+                let Some(target) = rest.split('"').next() else {
+                    continue;
+                };
+                if !target.starts_with("./") {
+                    continue;
+                }
+                queue.push(path.parent().unwrap().join(&target[2..]));
+            }
+        }
     }
 
     /// 真的起一次 Deno 求值内置插件的定义（worker 的握手往返）。
