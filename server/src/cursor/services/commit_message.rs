@@ -12,7 +12,7 @@ use std::{
 };
 
 use axum::{
-    body::{to_bytes, Body},
+    body::Body,
     extract::{Extension, State},
     http::{header, HeaderValue, Request, Response, StatusCode},
 };
@@ -74,9 +74,18 @@ async fn generate_local(
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok());
     tracing::info!(?connect_timeout_ms, "write git commit message received");
-    let body = to_bytes(body, usize::MAX)
-        .await
-        .map_err(|error| Error::Protocol(format!("cannot read request body: {error}")))?;
+    let body =
+        match crate::api::cursor::read_request_body(body, crate::api::cursor::MAX_REQUEST_BODY)
+            .await
+        {
+            Ok(body) => body,
+            Err(StatusCode::PAYLOAD_TOO_LARGE) => {
+                return Ok(crate::api::cursor::body_too_large_response(
+                    crate::api::cursor::MAX_REQUEST_BODY,
+                ))
+            }
+            Err(_) => return Err(Error::Protocol("cannot read request body".into())),
+        };
     let request: ai::WriteGitCommitMessageRequest = connect::decode_unary(&body)?;
     let diffs = truncate_diffs(&request.diffs, DIFF_TOTAL_LIMIT, DIFF_SINGLE_LIMIT);
     if diffs.is_empty() {

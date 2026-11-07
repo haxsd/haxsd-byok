@@ -8,9 +8,9 @@ mod sync;
 use std::sync::Arc;
 
 use axum::{
-    body::{to_bytes, Body, Bytes},
+    body::{Body, Bytes},
     extract::Extension,
-    http::{header, Request, Response},
+    http::{header, Request, Response, StatusCode},
 };
 use prost::Message;
 
@@ -128,7 +128,10 @@ pub async fn add(
     Extension(service): Extension<KnowledgeService>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let (parts, body) = buffered(request).await?;
+    let (parts, body) = match buffered(request).await {
+        Ok(buffered) => buffered,
+        Err(response) => return Ok(response),
+    };
     let message: KnowledgeBaseAddRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
     let store = &service.inner.store;
@@ -205,7 +208,10 @@ pub async fn list(
     Extension(service): Extension<KnowledgeService>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let (parts, body) = buffered(request).await?;
+    let (parts, body) = match buffered(request).await {
+        Ok(buffered) => buffered,
+        Err(response) => return Ok(response),
+    };
     let message: KnowledgeBaseListRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
     let store = &service.inner.store;
@@ -263,7 +269,10 @@ pub async fn update(
     Extension(service): Extension<KnowledgeService>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let (parts, body) = buffered(request).await?;
+    let (parts, body) = match buffered(request).await {
+        Ok(buffered) => buffered,
+        Err(response) => return Ok(response),
+    };
     let message: KnowledgeBaseUpdateRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
     let store = &service.inner.store;
@@ -319,7 +328,10 @@ pub async fn remove(
     Extension(service): Extension<KnowledgeService>,
     request: Request<Body>,
 ) -> Result<Response<Body>> {
-    let (parts, body) = buffered(request).await?;
+    let (parts, body) = match buffered(request).await {
+        Ok(buffered) => buffered,
+        Err(response) => return Ok(response),
+    };
     let message: KnowledgeBaseRemoveRequest = connect::decode_unary(&body)?;
     let _guard = service.inner.lock.lock().await;
     let store = &service.inner.store;
@@ -351,12 +363,21 @@ pub async fn remove(
     proto(KnowledgeBaseRemoveResponse { success: true })
 }
 
-async fn buffered(request: Request<Body>) -> Result<(axum::http::request::Parts, Bytes)> {
+async fn buffered(
+    request: Request<Body>,
+) -> std::result::Result<(axum::http::request::Parts, Bytes), Response<Body>> {
     let (parts, body) = request.into_parts();
-    let body = to_bytes(body, usize::MAX)
-        .await
-        .map_err(|error| crate::Error::Protocol(format!("cannot read request body: {error}")))?;
-    Ok((parts, body))
+    match crate::api::cursor::read_request_body(body, crate::api::cursor::MAX_REQUEST_BODY).await {
+        Ok(body) => Ok((parts, body)),
+        Err(StatusCode::PAYLOAD_TOO_LARGE) => Err(crate::api::cursor::body_too_large_response(
+            crate::api::cursor::MAX_REQUEST_BODY,
+        )),
+        Err(_) => Err(Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Body::from("cannot read request body"))
+            .expect("the static response is well formed")),
+    }
 }
 
 fn now() -> String {

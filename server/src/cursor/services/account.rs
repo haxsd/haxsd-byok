@@ -1,8 +1,8 @@
 //! Implements Cursor account information services.
 use axum::{
-    body::{to_bytes, Body},
+    body::Body,
     extract::Extension,
-    http::{header, HeaderValue, Request, Response},
+    http::{header, HeaderValue, Request, Response, StatusCode},
 };
 use prost::Message;
 use serde_json::Value;
@@ -359,7 +359,9 @@ async fn local_or_confirmed_free_or_forward(
     if local_app::request_uses_local_cursor_token(request.headers())
         || free_entitlements.is_confirmed_free(request.headers())
     {
-        consume_body(request).await?;
+        if let Some(response) = consume_body(request).await? {
+            return Ok(response);
+        }
         return local();
     }
     proxy::forward(Extension(upstream), request).await
@@ -371,17 +373,27 @@ async fn local_or_forward(
     local: impl FnOnce() -> Result<Response<Body>>,
 ) -> Result<Response<Body>> {
     if local_app::request_uses_local_cursor_token(request.headers()) {
-        consume_body(request).await?;
+        if let Some(response) = consume_body(request).await? {
+            return Ok(response);
+        }
         return local();
     }
     proxy::forward(Extension(upstream), request).await
 }
 
-async fn consume_body(request: Request<Body>) -> Result<()> {
-    to_bytes(request.into_body(), usize::MAX)
-        .await
-        .map_err(|error| crate::Error::Protocol(format!("cannot read request body: {error}")))?;
-    Ok(())
+async fn consume_body(request: Request<Body>) -> Result<Option<Response<Body>>> {
+    match crate::api::cursor::read_request_body(
+        request.into_body(),
+        crate::api::cursor::MAX_REQUEST_BODY,
+    )
+    .await
+    {
+        Ok(_) => Ok(None),
+        Err(StatusCode::PAYLOAD_TOO_LARGE) => Ok(Some(
+            crate::api::cursor::body_too_large_response(crate::api::cursor::MAX_REQUEST_BODY),
+        )),
+        Err(_) => Err(crate::Error::Protocol("cannot read request body".into())),
+    }
 }
 
 fn proto(message: impl Message) -> Result<Response<Body>> {
@@ -443,7 +455,7 @@ mod tests {
             Ok::<_, std::convert::Infallible>(Bytes::from_static(b"request"))
         }));
 
-        consume_body(Request::new(body)).await.unwrap();
+        assert!(consume_body(Request::new(body)).await.unwrap().is_none());
 
         assert!(polled.load(Ordering::SeqCst));
     }

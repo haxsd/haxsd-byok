@@ -1,8 +1,8 @@
 //! Routes Cursor metadata calls according to the supplied authentication token.
 use axum::{
-    body::{to_bytes, Body},
+    body::Body,
     extract::{Extension, Request},
-    http::{header, HeaderValue, Response},
+    http::{header, HeaderValue, Response, StatusCode},
 };
 use prost::Message;
 
@@ -55,17 +55,27 @@ async fn route<M: Message>(
 ) -> Result<Response<Body>> {
     let local = local_app::request_uses_local_cursor_token(request.headers());
     if local {
-        consume_body(request).await?;
+        if let Some(response) = consume_body(request).await? {
+            return Ok(response);
+        }
         return Ok(proto(mock));
     }
     proxy::forward(Extension(proxy.clone()), request).await
 }
 
-async fn consume_body(request: Request<Body>) -> Result<()> {
-    to_bytes(request.into_body(), usize::MAX)
-        .await
-        .map_err(|error| crate::Error::Protocol(format!("cannot read request body: {error}")))?;
-    Ok(())
+async fn consume_body(request: Request<Body>) -> Result<Option<Response<Body>>> {
+    match crate::api::cursor::read_request_body(
+        request.into_body(),
+        crate::api::cursor::MAX_REQUEST_BODY,
+    )
+    .await
+    {
+        Ok(_) => Ok(None),
+        Err(StatusCode::PAYLOAD_TOO_LARGE) => Ok(Some(
+            crate::api::cursor::body_too_large_response(crate::api::cursor::MAX_REQUEST_BODY),
+        )),
+        Err(_) => Err(crate::Error::Protocol("cannot read request body".into())),
+    }
 }
 
 fn proto(message: impl Message) -> Response<Body> {
@@ -104,9 +114,22 @@ mod tests {
             Ok::<_, std::convert::Infallible>(Bytes::from_static(b"request"))
         }));
 
-        consume_body(Request::new(body)).await.unwrap();
+        assert!(consume_body(Request::new(body)).await.unwrap().is_none());
 
         assert!(polled.load(Ordering::SeqCst));
+    }
+
+    /// 本地路由读 body 必须有 64 MiB 上界：超出时立刻返回 413，不能把整段读进内存。
+    #[tokio::test]
+    async fn an_oversized_local_request_body_gets_413() {
+        let body = Body::from_stream(stream::repeat_with(|| {
+            Ok::<_, std::io::Error>(Bytes::from(vec![b'x'; 1024 * 1024]))
+        }));
+        let response = consume_body(Request::new(body))
+            .await
+            .unwrap()
+            .expect("oversized body must be rejected");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]
