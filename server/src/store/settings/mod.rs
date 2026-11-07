@@ -1,4 +1,4 @@
-﻿//! Persists application settings.
+//! Persists application settings.
 
 mod commit;
 mod compaction;
