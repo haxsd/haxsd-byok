@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use axum::{
     body::{to_bytes, Body},
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::{header, header::CONTENT_TYPE, HeaderValue, Method, Request, Response, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -28,6 +28,14 @@ use tower_http::{
     services::ServeDir,
 };
 use url::{Host, Url};
+
+/// 管理面请求体上限。
+///
+/// axum 对 `Json` extractor 的默认上限是 2 MiB，而插件批量导入前端允许单次 32 MiB
+/// （`MAX_IMPORT_TOTAL_BYTES`，按 20 个文件分批）。不放宽时 3–8 MiB 的合法导出会得到
+/// 英文的 413；放宽到 33 MiB（32 MiB 文件预算 + JSON 结构开销）。其它管理路由的
+/// 请求体都远小于这个值，统一上限不会放宽攻击面：管理面只服务本机来源。
+const MAX_CONTROL_BODY_BYTES: usize = 33 * 1024 * 1024;
 
 use crate::devin::gateway::DevinListening;
 
@@ -291,6 +299,7 @@ pub fn api_router(service: ControlService) -> Router {
             post(devin_config::host_restore),
         )
         .with_state(service)
+        .layer(DefaultBodyLimit::max(MAX_CONTROL_BODY_BYTES))
         .layer(desktop_cors())
         .layer(middleware::from_fn(reject_cross_site))
 }
@@ -409,6 +418,7 @@ fn local_origin(origin: &HeaderValue) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Json;
     use futures_util::StreamExt;
     use tower::ServiceExt;
 
@@ -705,5 +715,47 @@ mod tests {
         ] {
             assert!(!local_origin(&origin(rejected)), "{rejected} 应当拒绝");
         }
+    }
+
+    /// 插件导入的合法请求体可以大于 axum `Json` 的 2 MiB 默认上限；33 MiB 以上仍拒绝。
+    #[tokio::test]
+    async fn plugin_import_bodies_use_the_import_budget() {
+        fn router() -> Router {
+            Router::new()
+                .route(
+                    "/import",
+                    post(|Json(value): Json<serde_json::Value>| async move { value.to_string() }),
+                )
+                .layer(DefaultBodyLimit::max(MAX_CONTROL_BODY_BYTES))
+        }
+
+        let accepted = router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/import")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "files": [{ "content": "x".repeat(3 * 1024 * 1024) }] })
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+
+        let refused = router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/import")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(vec![b'x'; MAX_CONTROL_BODY_BYTES + 1]))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
