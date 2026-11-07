@@ -400,7 +400,11 @@ fn failure(
 ) -> Box<ModelCycleFailure> {
     let retryable = match &failure {
         RunFailure::Protocol(_) => true,
-        RunFailure::Provider(message) if is_rejected_request(message) => false,
+        RunFailure::Provider(message)
+            if is_rejected_request(message) || is_gateway_timeout(message) =>
+        {
+            false
+        }
         RunFailure::Provider(_) => true,
         // 长度上限只由 `terminal_failure` 构造；真走到这里也不该重试：重试拿到的是
         // 同一份 prompt，只会把同一个截断再演一遍。
@@ -430,6 +434,16 @@ fn is_rejected_request(message: &str) -> bool {
             && token.bytes().all(|byte| byte.is_ascii_digit())
             && !matches!(token, "408" | "425" | "429")
     })
+}
+
+/// 网关自己的超时（请求总超时 / 流空闲超时）不能按普通上游失败重试。
+///
+/// 重试拿的是同一份请求，每次都要重新等满超时（请求 1h、流空闲 30min），`MAX_MODEL_RETRIES`
+/// 次会把一次上游卡顿放大成 4–9 小时的静默（用户只能手动停止）。这类失败应当直接报给
+/// 用户；上游 HTTP 408/425 仍是可重试的瞬时失败，不在此列。
+fn is_gateway_timeout(message: &str) -> bool {
+    message.contains("provider stream idle timeout")
+        || message.contains("provider request timed out")
 }
 
 fn terminal_failure(
@@ -547,6 +561,31 @@ mod tests {
             None,
         );
         assert!(timeout.retryable);
+    }
+
+    #[test]
+    fn gateway_timeouts_are_not_retried() {
+        // 30 分钟流空闲超时 / 1 小时请求超时若按普通失败重试 8 次，会把一次卡顿放大成
+        // 数小时静默；它们必须直接结束本轮并报错。上游 HTTP 408 仍是可重试的。
+        for message in [
+            "provider stream idle timeout: no events received for 1800 seconds (30 minutes)",
+            "provider request timed out after 3600 seconds (60 minutes)",
+        ] {
+            let failure = failure(
+                RunFailure::Provider(message.into()),
+                String::new(),
+                String::new(),
+                None,
+            );
+            assert!(!failure.retryable, "{message}");
+        }
+        let upstream_408 = failure(
+            RunFailure::Provider("Anthropic 408 Request Timeout".into()),
+            String::new(),
+            String::new(),
+            None,
+        );
+        assert!(upstream_408.retryable, "上游 408 仍按瞬时失败重试");
     }
 
     #[test]
