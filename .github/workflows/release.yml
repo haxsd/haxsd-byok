@@ -43,6 +43,10 @@ jobs:
             echo "Only ${REPOSITORY_OWNER} may publish a release" >&2
             exit 1
           fi
+      # 构建必须信任提交里的锁文件：过期锁在 runner 上会被静默改写，发布出去的依赖图
+      # 就与提交的 Cargo.lock 不一致。先在 prepare 用 --locked 解析一次，失败早停。
+      - name: Verify the workspace lockfile is usable with --locked
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
       # 版本号必须处处一致，且标签名必须是 haxsd-byok-v<版本号>；
       # 手动触发时跳过标签校验，只校验各处版本号一致。
@@ -81,6 +85,29 @@ jobs:
             echo "Manual run: skipping tag checks for version ${version}"
           fi
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      # 发布前要求该提交的 CI 已经通过：历史上 1.7.4 的 tag 落在 CI 失败的提交上仍然
+      # 发布了。tag 触发时等待已有 CI 结论（最多 15 分钟）；手动触发只构建不发布，
+      # 不要求 CI。
+      - name: Require a green CI run for the release commit
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            json=$(gh run list --repo "${GITHUB_REPOSITORY}" --workflow CI --commit "${GITHUB_SHA}" --limit 1 --json status,conclusion 2>/dev/null || echo '[]')
+            status=$(printf '%s' "${json}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s)[0];process.stdout.write(r?r.status+' '+(r.conclusion||''):'missing ')})")
+            echo "CI for ${GITHUB_SHA}: ${status}"
+            case "${status}" in
+              "completed success") exit 0 ;;
+              "queued "*|"in_progress "*|"requested "*|"waiting "*|"pending "*) sleep 30 ;;
+              "completed "*) echo "CI for the release commit did not succeed; refusing to publish" >&2; exit 1 ;;
+              *) echo "no CI run found for the release commit; refusing to publish" >&2; exit 1 ;;
+            esac
+          done
+          echo "timed out waiting for CI to finish" >&2
+          exit 1
 
       - name: Check whether this version is already published
         id: release
@@ -116,7 +143,7 @@ jobs:
         include:
           - platform: windows-x86_64
             os: windows-latest
-            args: "--bundles nsis"
+            args: "--bundles nsis -- --locked"
             target: ""
 
     runs-on: ${{ matrix.os }}
@@ -250,6 +277,25 @@ jobs:
           echo "${assets}" | grep -qE '^.*-setup\.exe$'
           echo "${assets}" | grep -qE '\.exe\.sig$'
           echo "${assets}" | grep -qx 'latest.json'
+      # 签名必须能用应用内嵌的公钥验过：密钥轮换或误配时这一步失败，版本停在草稿状态，
+      # 而不是发布一个所有客户端都装不上的更新。工具在 tools/verify-updater-signature。
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify updater signatures before publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="haxsd-byok-v${VERSION}"
+          rm -rf verify && mkdir -p verify
+          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern '*-setup.exe' --pattern '*.sig' --pattern 'latest.json' \
+            --dir verify --clobber
+          cargo run --locked -q -p verify-updater-signature -- \
+            --config apps/desktop/src-tauri/tauri.conf.json \
+            --manifest verify/latest.json \
+            --assets-dir verify \
+            --expected-version "${VERSION}"
 
       # 显式 --repo 不依赖工作树：这一步失败会让版本停在草稿状态，不能靠"gh 能从
       # checkout 推断仓库"这种隐式前提（本任务只是为了跑上面的共享脚本才 checkout）。

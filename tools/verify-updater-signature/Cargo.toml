@@ -1,0 +1,10 @@
+[package]
+name = "verify-updater-signature"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Verifies Tauri updater signatures against the configured public key before a release is published."
+
+[dependencies]
+minisign-verify = "0.2.5"
+serde_json = "1"
