@@ -25,7 +25,7 @@
 | 客户端 | 接管方式 | 说明 |
 |---|---|---|
 | Cursor | 官方 / 本地 / 混合模型来源 + 本机代理与本地 CA | 只用自配模型选本地，官方模型同时可用选混合；本地模式不在模型库的模型会被明确拒绝，不会静默走官方。本地/混合模式下长会话的上下文压缩（自动与手动摘要）由本应用网关执行，官方模式仍由 Cursor 自己压缩 |
-| Devin | 可选本机网关 + 默认模型与模型映射 | 按端点结构识别的接入补丁与备份恢复；支持自定义安装目录 |
+| Devin | 可选本机网关 + 自选模型与模型映射 | 自选模型直接出现在 Devin 原生选择器；保留官方目录；按端点设置结构识别的补丁，带备份恢复与自定义安装目录 |
 | Codex（ChatGPT 客户端） | 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；支持 Responses / Chat Completions / Anthropic；只改 `config.toml` 受管字段，撤销即恢复 |
 | Claude Code CLI | 本机 Anthropic 网关（`/v1/messages`）+ 写入 `~/.claude/settings.json` 的 `env` | 已有 Anthropic API Key、Bedrock/Vertex/Foundry、`apiKeyHelper` 或受管配置时不覆盖 |
 | Claude Desktop | 本机 Anthropic 网关 + `%LOCALAPPDATA%\Claude-3p\configLibrary` 下的 profile | 组织策略托管时只读，只给手工配置引导 |
@@ -49,8 +49,8 @@
 
 1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的安装包并安装。
 2. 在「模型」页添加地址、API Key 与模型 ID，选择协议，用「测试」确认可用。
-3. **用 Cursor**：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。**开启本地或混合模式会结束正在运行的 Cursor，先保存工作**；之后切换模式也需要重启 Cursor。
-4. **用 Devin**：选择默认模型、设置模型映射、启用网关并保存；不在默认位置时在「高级」里填写安装目录。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
+3. **用 Cursor**：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。**进出官方模式会结束正在运行的 Cursor，先保存工作并手动重新打开**；本地与混合模式之间切换不需要重启。
+4. **用 Devin**：添加自选模型（直接出现在原生选择器）或映射已有 Devin 模型，再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
 5. **用 Codex**：在「Codex」页选择模型、启用网关并保存，点「应用到 Codex」，然后重新打开客户端或新建会话；详见 [Codex 接入](./docs/codex-go-live.md)。
 6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，再按客户端应用接管：CLI 应用后重新打开 Claude Code；**Desktop 需先完全退出（含托盘），应用后再启动**。
 
@@ -60,7 +60,7 @@
 
 ## 数据、隐私与安全
 
-- API Key、设置与调用记录只保存在本机数据库 `%USERPROFILE%\.haxsd-byok-devin-v3`；模型请求只发往你配置的服务商。官方模式不写配置，也不产生调用记录。
+- API Key、设置与调用记录保存在本机数据库 `%USERPROFILE%\.haxsd-byok-devin-v3`；自配模型请求发往你配置的服务商，官方模型与账号相关请求仍发往对应官方服务。Cursor 官方模式不写 Cursor 接管配置，也不记录其官方模型调用。
 - 本地 CA 私钥只在本机，用于 Cursor 本地代理。备份按敏感文件保管，不要把 API Key、CA 私钥或整个数据库发给别人或上传到 Issue。
 
 ## 合规

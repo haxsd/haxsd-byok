@@ -25,7 +25,7 @@
 | Client | How it is taken over | Notes |
 |---|---|---|
 | Cursor | Official / local / mixed model sources + local proxy and local CA | Use local to route everything to your models, mixed to keep official models available too; local mode refuses models not in your library instead of silently going official. In local/mixed mode, long-session context compression (automatic and manual summaries) is done by this app's gateway; official mode is still compressed by Cursor |
-| Devin | Optional local gateway + default model and model mappings | Version-locked compatibility patch for Devin 3.11.216 with backup/restore; custom installation directories are supported |
+| Devin | Optional local gateway + custom models and model mappings | Custom models appear in Devin’s native picker alongside its official catalog; structure-detected endpoint-settings patch with backup/restore and custom installation directories |
 | Codex (ChatGPT client) | Local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced, over Responses / Chat Completions / Anthropic; rewrites only managed fields in `config.toml` and restores them on undo |
 | Claude Code CLI | Local Anthropic gateway (`/v1/messages`) + writes the `env` block of `~/.claude/settings.json` | Will not overwrite an existing Anthropic API key, Bedrock/Vertex/Foundry setup, `apiKeyHelper` or managed settings |
 | Claude Desktop | Local Anthropic gateway + a profile under `%LOCALAPPDATA%\Claude-3p\configLibrary` | Read-only with manual guidance when managed by an organisation policy |
@@ -49,8 +49,8 @@ Takeover changes only model requests that can be controlled locally. Sign-in, pl
 
 1. Download the installer whose name contains `x64-setup.exe` from [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) and install it.
 2. On the **Models** page, add the base URL, API key and model ID, pick the protocol, and use **Test** to confirm it works.
-3. **For Cursor**: initialize the local CA and trust it, then pick the model source on the **Cursor** page. **Enabling local or mixed mode stops a running Cursor, so save your work first**; switching modes later also restarts Cursor.
-4. **For Devin**: choose a default model, set up model mappings, enable the gateway and save; for a custom install location, enter it under Advanced. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to write the integration settings and verify a request.
+3. **For Cursor**: initialize and trust the local CA, then pick the model source on the **Cursor** page. **Entering or leaving official mode stops a running Cursor: save your work and reopen it manually**; switching between local and mixed does not require a restart.
+4. **For Devin**: add custom models to the native picker or map existing Devin models, then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to apply the integration and verify a request.
 5. **For Codex**: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
 6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply per client: reopen Claude Code after applying for the CLI; **quit Claude Desktop completely (including the tray) before applying, then start it again**.
 
@@ -60,7 +60,7 @@ Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs
 
 ## Data, privacy and security
 
-- API keys, settings and call records stay only in the local database at `%USERPROFILE%\.haxsd-byok-devin-v3`; model requests go only to the providers you configure. Official mode writes nothing and records nothing.
+- API keys, settings and call records are stored in the local database at `%USERPROFILE%\.haxsd-byok-devin-v3`; custom-model requests go to your configured providers, while official-model and account requests still go to the corresponding official services. Cursor official mode writes no Cursor takeover configuration and records no official Cursor model calls.
 - The local CA private key stays on this machine and is used for the Cursor local proxy. Treat backups as sensitive; never share API keys, the CA private key or the full database, or upload them to an issue.
 
 ## Compliance

@@ -18,17 +18,18 @@ release channel or data directory.
   not copy the reference router's commercial license or JWT behavior.
 - Devin model UID to model-hash bindings, persisted in the existing settings
   store. API keys remain in the existing model records.
-- Optional candidate routes per binding and a binding kind that marks a Devin
-  UID as a context-compression binding.
+- Optional, manually selected candidate routes per binding. Custom models
+  appear directly in Devin’s native picker, including supported parameter variants;
+  the official model catalog is preserved.
 - The existing provider router and Devin tool definitions are reused. Devin
   remains responsible for executing its tools; this product supplies model
   inference and forwards model events.
-- A version-locked compatibility patch for Devin `3.11.216` `extension.js`.
+- A structure-detected compatibility patch for Devin `extension.js`.
   Packaged Devin only reads `codeium.apiServerUrl` and
   `codeium.inferenceApiServerUrl` when its development extension is installed,
   so the patch removes exactly that one gate. It embeds no URL, creates
   SHA-256-verified backups of both the extension and settings file, replaces
-  atomically, and refuses every unknown or partially patched bundle.
+  atomically, and refuses missing, ambiguous or inconsistent endpoint-settings gates.
 
 ## Ports and setup
 
@@ -66,11 +67,11 @@ files, patches the extension first, writes the two settings second, and rolls th
 extension back if either write fails. A successful action shows both the settings
 and extension patch as applied.
 
-The patch supports only the extension hash published in the source constant for
-Devin `3.11.216`. A client update, another router's modification, or a partial
-patch fails closed. The receipt-backed “恢复设置” action restores either side
-independently and refuses to overwrite a file changed after this application
-wrote it.
+The patch identifies exactly one endpoint-settings gate using its code structure
+and surrounding settings anchors; it is not pinned to a version or prepublished
+extension hash. Missing or ambiguous structures fail closed. SHA-256 verifies
+backups and restore receipts, and restore refuses files changed after this
+application wrote them.
 
 This patch changes where an already signed-in Devin client sends its model
 requests. It does not create an account, bypass a login, or change the plan
@@ -78,61 +79,31 @@ returned by Devin's official service. The ordinary Devin account still uses its
 official session; the local gateway only answers the model methods this product
 owns.
 
-## Model routes and compression bindings
+## Native models and routes
 
-Each binding still owns one Devin model UID and one legacy primary model hash.
-Two optional fields extend it without breaking old settings rows:
+Choose “添加自选模型” to add a model-library entry to Devin’s native picker under
+its library name, or “添加 Devin 模型” to map an existing Devin model UID. Custom
+entries use reserved `haxsd-byok:` identities and expose supported parameter
+variants. The gateway appends them to official catalog and user-status responses;
+official model requests without a local mapping continue upstream. Login,
+account plans and quota remain controlled by Devin.
 
-| Field | Meaning |
-| --- | --- |
-| `kind` | `standard` (default) or `context_compression` |
-| `routes` | Candidate routes; each has `route_id`, `model_hash`, `label`, `enabled` |
-| `active_route_id` | The candidate route that currently serves the UID |
+Each binding selects a model hash and may have candidate `routes` plus an
+`active_route_id`. Without an active route it uses the primary model; selecting
+a route is manual, and provider failure never silently switches to another route.
+Route IDs must be nonempty and unique within a binding, model hashes must be
+nonempty, and an active route must exist and be enabled. `default_model_uid` must select an enabled
+binding before the gateway can be enabled. Catalog reads do not rewrite bindings.
+The former `kind` / `context_compression` binding setting has been removed.
 
-Resolution rules:
+Native model directory, assignment and session state are handled by the gateway;
+non-owned methods and official model requests are forwarded upstream. Local
+routing uses the selected model’s existing provider adapter; Devin still executes
+its own tools.
 
-- A binding with no routes keeps using its legacy `model_hash`, so settings
-  written by earlier builds load unchanged and are never rewritten.
-- A binding with routes uses the enabled route named by `active_route_id`. If
-  that route is missing, disabled, or has an empty hash, the legacy primary hash
-  is used instead.
-- `AssignModel` still issues its token for the Devin model UID, not for a route
-  ID, and the catalog still exposes exactly one Devin UID per binding. It is
-  answered locally together with `GetChatMessage` and `GetCliModelConfigs`;
-  every other method is forwarded to the Devin service untouched.
-- `kind` is control-plane metadata only. A context-compression binding is an
-  ordinary Devin UID mapping at runtime, but it is single-line: it must not
-  define candidate routes, and switching a binding to compression clears them.
-  That keeps compression configuration independent from ordinary routes.
-
-Validation rejects empty route IDs, duplicate route IDs, empty route hashes, and
-an `active_route_id` that does not exist or is disabled. It also rejects
-candidate routes on a context-compression binding. `default_model_uid` must
-name an enabled standard binding; saving an enabled gateway also requires one.
-Catalog generation and settings reload never rewrite bindings, so the active
-route, route order, route labels, and disabled candidates survive a save or a
-catalog refresh.
-
-The Devin settings page shows the legacy primary hash as a synthetic `primary`
-route until the binding is edited. Adding the first candidate keeps the primary
-model in use and leaves the active route unset, so adding a route never silently
-switches the model Devin is already using. Route selection is manual: switching
-the active route is an explicit user action.
-
-The default model is also explicit. `default_model_uid` selects which Devin-side
-mapping is marked default in the catalog and which UID the Cascade/CLI
-default-override field names. Without it, no model is marked default and the
-page asks the user to choose one instead of promoting the first enabled binding.
-
-Deliberately out of scope in this phase:
-
-- no automatic retry with another candidate route after a provider failure, and
-- no official Devin account routing or upstream catalog fetching.
-
-A streamed provider failure may already have emitted tokens or tool calls, so
-automatic fallback needs a verified Devin request lifecycle and a separate
-idempotency policy. Official routing needs real black-box Devin captures before
-any wire field is invented.
+Normal application exit preserves the Devin integration files but stops the
+listeners. Restart haxsd byok before using local models again; explicitly restore
+the Devin settings to stop using this integration.
 
 ## Verified behavior
 
@@ -223,11 +194,11 @@ where the model request goes.
 
 ## Intentional limits
 
-The current integration discovers the local client and patches one exact
-extension version; it does not support remote installs, SSH, or arbitrary host
-versions. It also does not copy the reference application's commercial
-authorization, SQLite mutation, or proprietary status-extension behavior.
-Unknown extension hashes fail closed.
+The current integration discovers the local client and patches only a uniquely
+recognized endpoint-settings gate; it does not support remote installs or SSH,
+and does not guarantee compatibility with arbitrary client builds. It does not
+copy the reference application’s commercial authorization or mutate Devin’s
+SQLite data. Missing or ambiguous endpoint-settings structures fail closed.
 
 This is intentional: the Devin adapter is a separate opt-in path, and the
 Cursor listener/harness continues to run independently when Devin is disabled
