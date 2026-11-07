@@ -2,6 +2,7 @@
 
 pub mod connect;
 pub mod events;
+pub mod guard;
 pub mod inference;
 pub mod json_stream;
 pub mod proto;

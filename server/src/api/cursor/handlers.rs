@@ -436,6 +436,11 @@ async fn handle_inference_append(
         "BidiAppend belongs to InferenceService/RunInference (the new agent runtime)"
     );
     if local {
+        crate::cursor::protocol::guard::record_runtime_mismatch(
+            "inference_local_model",
+            model_id.as_deref(),
+            conversation_id.as_deref(),
+        );
         return Err(crate::Error::Protocol(format!(
             "the client used the InferenceService/RunInference runtime for local model '{}'; \
              this gateway only implements the legacy Agent RunSSE stream. Restart Cursor so it \

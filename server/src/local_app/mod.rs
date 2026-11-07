@@ -125,6 +125,9 @@ pub struct CursorHarnessStatus {
     pub account: CursorAccount,
     /// 官方模型目录最近一次抓取的成败。本地模式不用官方目录，界面可以不显示。
     pub catalog: CatalogHealth,
+    /// 客户端最近一次用了网关尚未实现的运行时/协议（例如 Agent Host 本地循环）。
+    /// 非空时说明客户端可能还在用旧门禁缓存，界面可提示“完全重启 Cursor”。
+    pub runtime_mismatch: Option<crate::cursor::protocol::guard::RuntimeMismatch>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -289,6 +292,7 @@ impl CursorHarness {
             ca_install_command: self.inner.ca.install_command(),
             account: account::account_state().await,
             catalog: self.inner.catalog.snapshot(),
+            runtime_mismatch: crate::cursor::protocol::guard::runtime_mismatch(),
         })
     }
 

@@ -27,6 +27,11 @@ const CURSOR_AGENT_HOST_GATE: &str = "cursor_agent_host";
 /// 即使 Agent Host 因其他途径（例如 private inference token）被打开，也强制它用
 /// “host 传输 + 服务端循环”而不是本地循环；本地循环的 `RunInference` 同样没有实现。
 const AGENT_HOST_LOCAL_LOOP_GATE: &str = "agent_host_local_loop";
+/// `InferenceService/RunInference` 的 WebSocket 传输开关。它与 Agent Run 共用
+/// `/agent/v1/run`，但用的是**另一个** Statsig 门禁；只关 `nal_websocket_client`
+/// 时客户端仍会为推理流尝试 WS，失败后再回退 HTTP——多一次失败与网络告警，也是
+/// 2026-11-07 夜里 WS 错误日志刷屏的来源。网关只实现 HTTP 回退，所以一并关掉。
+const RUN_INFERENCE_WEBSOCKET_GATE: &str = "run_inference_websocket_client";
 const LOCAL_RULE: &str = "local_enabled";
 
 #[derive(Clone, PartialEq, Message)]
@@ -114,6 +119,7 @@ fn local_response() -> Result<Response<Body>> {
 fn apply_gate_overrides(config: &mut Value) -> Result<()> {
     set_gate(config, AGENT_RETRIES_GATE, true)?;
     set_gate(config, AGENT_WEBSOCKET_GATE, false)?;
+    set_gate(config, RUN_INFERENCE_WEBSOCKET_GATE, false)?;
     set_gate(config, CURSOR_AGENT_HOST_GATE, false)?;
     set_gate(config, AGENT_HOST_LOCAL_LOOP_GATE, false)
 }
@@ -231,6 +237,11 @@ mod tests {
                 &json!(false),
                 "{hash}"
             );
+            assert_eq!(
+                gate(&config, RUN_INFERENCE_WEBSOCKET_GATE),
+                &json!(false),
+                "{hash}"
+            );
         }
     }
 
@@ -271,6 +282,7 @@ mod tests {
         assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
         assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
         assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
+        assert_eq!(gate(&config, RUN_INFERENCE_WEBSOCKET_GATE), &json!(false));
         assert_eq!(
             config["feature_gates"][&unrelated],
             json!({"name": &unrelated, "value": true})
@@ -289,5 +301,6 @@ mod tests {
         assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
         assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));
         assert_eq!(gate(&config, AGENT_HOST_LOCAL_LOOP_GATE), &json!(false));
+        assert_eq!(gate(&config, RUN_INFERENCE_WEBSOCKET_GATE), &json!(false));
     }
 }

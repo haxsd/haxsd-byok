@@ -280,6 +280,7 @@ pub fn decode_any(request: &ai::BidiAppendRequest) -> Result<BidiAppendPayload> 
                 inference_error = %inference_error,
                 "BidiAppend payload is neither an AgentClientMessage nor a RunInferenceClientMessage"
             );
+            crate::cursor::protocol::guard::record_runtime_mismatch("unknown_append", None, None);
         }
     }
     Err(agent_error.into())

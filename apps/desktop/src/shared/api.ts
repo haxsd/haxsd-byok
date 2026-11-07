@@ -129,6 +129,14 @@ export interface CursorHarnessStatus {
   ca_install_command: string | null;
   account: CursorAccount;
   catalog: CatalogHealth;
+  /** 客户端最近一次用了网关还没实现的运行时/协议；非空时提示用户完全重启 Cursor。 */
+  runtime_mismatch?: {
+    kind: "inference_local_model" | "unknown_append" | string;
+    model_id: string | null;
+    conversation_id: string | null;
+    detected_at_ms: number;
+    count: number;
+  } | null;
 }
 
 export interface PortSettings {
