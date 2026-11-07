@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DevinHostStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
-import { FormField, SecretTextInput, TextInput } from "../../shared/ui/FormControls";
+import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
 import { Combobox } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
@@ -33,7 +33,6 @@ import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
   enabled: false,
-  auth_token: "",
   api_port: 43_110,
   inference_port: 43_111,
   local_api_port: 43_112,
@@ -658,14 +657,11 @@ export function DevinSettingsPage() {
     </TitledCard>
     <TitledCard
       title={t("高级")}
-      description={t("通常不用改；端口、凭据、Devin 文件路径和安装目录都在这里。")}
+      description={t("通常不用改；端口、Devin 文件路径和安装目录都在这里。")}
       collapsible
       storageKey="devin-advanced"
     >
       <div className={styles.fields}>
-        <FormField label={t("控制令牌")} hint={t("可选；填了之后，Devin 的请求要带同一个令牌（请求头 x-devin-router-token，或 Authorization: Bearer）。")}>
-          <SecretTextInput value={settings.auth_token} onChange={(event) => update("auth_token", event.target.value)} placeholder={t("留空表示仅依赖本机回环访问")} />
-        </FormField>
         {/* 端口是整数：空值或非数字交给服务端拒绝（它会说不清是哪种错），超范围的在这里夹住。 */}
         <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portInputValue(event.target.value))} /></FormField>
         <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portInputValue(event.target.value))} /></FormField>

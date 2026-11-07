@@ -47,7 +47,6 @@ use super::{
 };
 
 const TOKEN_HEADER: &str = "x-devin-router-token";
-
 /// The three loopback ports a running gateway holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct DevinBoundPorts {
@@ -287,13 +286,6 @@ async fn handle_request(
             StatusCode::SERVICE_UNAVAILABLE,
             "failed_precondition",
             "Devin gateway is disabled",
-        );
-    }
-    if !authorized(&parts.headers, &settings.auth_token) {
-        return connect_error_response(
-            StatusCode::UNAUTHORIZED,
-            "unauthenticated",
-            "invalid Devin gateway token",
         );
     }
 
@@ -676,21 +668,6 @@ fn model_lookup_hash(binding: &DevinModelBinding) -> &str {
     binding.effective_model_hash()
 }
 
-fn authorized(headers: &HeaderMap, configured: &str) -> bool {
-    if configured.is_empty() {
-        return true;
-    }
-    headers
-        .get(TOKEN_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value == configured)
-        || headers
-            .get(header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .is_some_and(|value| value == configured)
-}
-
 /// Forwards `GetUserStatus` and appends reserved local models to the official
 /// picker. Any unexpected upstream shape is returned unchanged, so login,
 /// plan, quota and unknown account fields keep working.
@@ -895,11 +872,8 @@ async fn forward_upstream(
         Ok(bytes) => bytes,
         Err(error) => return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, error.to_string()),
     };
-    // 本地网关凭据绝不能跟着透传请求离开本机：`x-devin-router-token` 是我们自己的头，
-    // 而客户端也可能把同一个令牌放进 `Authorization: Bearer`（`authorized()` 两种都收）。
-    // 其余头部保持原样转发——登录/账号/遥测请求会带上游需要、而我们不知道的头。
-    let local_bearer = format!("Bearer {}", settings.auth_token);
-    let local_token_configured = !settings.auth_token.is_empty();
+    // 本地网关的 `x-devin-router-token` 头不能跟着透传请求离开本机；其余头部保持原样
+    // 转发——登录/账号/遥测请求会带上游需要、而我们不知道的头。
     // 重建一次就够：重试仍失败说明不是出网路由的问题，照旧上报。
     let send = |client: &reqwest::Client| {
         let mut outgoing = client.request(method.clone(), &target);
@@ -908,12 +882,6 @@ async fn forward_upstream(
                 name.as_str(),
                 "host" | "connection" | "content-length" | "transfer-encoding"
             ) || name.as_str() == TOKEN_HEADER
-            {
-                continue;
-            }
-            if local_token_configured
-                && name == header::AUTHORIZATION
-                && value.as_bytes() == local_bearer.as_bytes()
             {
                 continue;
             }
@@ -1078,18 +1046,6 @@ fn stream_error(error: impl std::fmt::Display) -> Bytes {
 mod tests {
     use super::*;
     use crate::devin::{DevinModelBinding, DevinRoute};
-
-    #[test]
-    fn token_auth_accepts_header_or_bearer_token() {
-        let mut headers = HeaderMap::new();
-        headers.insert(TOKEN_HEADER, "secret".parse().unwrap());
-        assert!(authorized(&headers, "secret"));
-        headers.remove(TOKEN_HEADER);
-        headers.insert(header::AUTHORIZATION, "Bearer secret".parse().unwrap());
-        assert!(authorized(&headers, "secret"));
-        assert!(!authorized(&HeaderMap::new(), "secret"));
-        assert!(authorized(&HeaderMap::new(), ""));
-    }
 
     #[test]
     fn error_frame_is_bounded_by_the_same_wire_limit() {
@@ -2034,9 +1990,8 @@ mod tests {
         assert_eq!(seen[0].1, "login-body|Bearer account-token");
     }
 
-    /// 本地网关令牌是"只在本机使用"的凭据：透传到厂商上游的请求既不能带
-    /// `x-devin-router-token`，也不能把 `Authorization: Bearer <本地令牌>` 复制过去，
-    /// 而其余头部（上游登录/账号流程要用的）必须照旧转发。
+    /// 客户端可能自带的 `x-devin-router-token` 头不能跟着透传请求离开本机；其余头部
+    /// （上游登录/账号流程要用的）必须照旧转发。
     #[tokio::test]
     async fn the_local_gateway_token_never_reaches_upstream() {
         use axum::body::to_bytes as read_body;
@@ -2081,7 +2036,6 @@ mod tests {
         store
             .set_devin_settings(DevinSettings {
                 enabled: true,
-                auth_token: "local-secret".into(),
                 upstream_api_url: format!("http://127.0.0.1:{upstream_port}"),
                 ..DevinSettings::default()
             })
@@ -2130,10 +2084,7 @@ mod tests {
         assert!(!seen.is_empty(), "上游必须收到这次透传");
         for (name, value) in &seen {
             assert_ne!(name, TOKEN_HEADER, "本地令牌头被转发到上游");
-            assert!(
-                !(name == "authorization" && value.contains("local-secret")),
-                "本地令牌经 Authorization 泄漏到上游"
-            );
+            let _ = value;
         }
         assert!(
             seen.iter().any(|(name, _)| name == "x-windsurf-client"),

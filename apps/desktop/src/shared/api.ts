@@ -171,7 +171,6 @@ export interface DevinModelBinding {
 
 export interface DevinSettings {
   enabled: boolean;
-  auth_token: string;
   api_port: number;
   inference_port: number;
   local_api_port: number;

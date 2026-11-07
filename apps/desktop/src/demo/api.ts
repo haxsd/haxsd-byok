@@ -158,7 +158,6 @@ function claudeStatus(): ClaudeStatus {
 
 let devinSettings: DevinSettings = {
   enabled: false,
-  auth_token: "",
   api_port: 43_110,
   inference_port: 43_111,
   local_api_port: 43_112,

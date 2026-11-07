@@ -19,8 +19,6 @@ pub const DEFAULT_DEVIN_UPSTREAM_API_URL: &str = "https://server.codeium.com";
 pub struct DevinSettings {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
-    pub auth_token: String,
     #[serde(default = "default_api_port")]
     pub api_port: u16,
     #[serde(default = "default_inference_port")]
@@ -42,7 +40,6 @@ impl Default for DevinSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            auth_token: String::new(),
             api_port: DEFAULT_DEVIN_API_PORT,
             inference_port: DEFAULT_DEVIN_INFERENCE_PORT,
             local_api_port: DEFAULT_DEVIN_LOCAL_API_PORT,
@@ -125,7 +122,6 @@ impl DevinSettings {
     /// trims for its emptiness checks; storing the raw value made a pasted UID
     /// pass validation and then never match an incoming Devin request.
     pub fn normalized(mut self) -> Self {
-        self.auth_token = self.auth_token.trim().to_owned();
         self.upstream_api_url = self.upstream_api_url.trim().to_owned();
         self.default_model_uid = self
             .default_model_uid
@@ -605,7 +601,6 @@ mod tests {
             ..DevinModelBinding::new("", "")
         };
         let settings = DevinSettings {
-            auth_token: "  token  ".into(),
             upstream_api_url: "  https://server.codeium.com  ".into(),
             default_model_uid: Some("  devin-model  ".into()),
             bindings: vec![binding],
@@ -613,7 +608,6 @@ mod tests {
         }
         .normalized();
 
-        assert_eq!(settings.auth_token, "token");
         assert_eq!(settings.upstream_api_url, "https://server.codeium.com");
         assert_eq!(settings.default_model_uid.as_deref(), Some("devin-model"));
         let binding = settings.binding("devin-model").unwrap();
