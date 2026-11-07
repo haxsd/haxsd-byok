@@ -1,6 +1,6 @@
 {
   "name": "haxsd-byok-desktop",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "description": "haxsd byok desktop management application",
   "type": "module",
   "engines": {
