@@ -197,6 +197,9 @@ mod tests {
     /// 否则 Agent Run 走 WebSocket 绕过本机网关（issue #8）。三种 key 哈希都要覆盖。
     #[test]
     fn upstream_websocket_gate_is_forced_off_for_every_hash() {
+        // Cursor 3.29.9 客户端 Statsig 查门禁：`e[name] ?? e[djb2(name)]`，djb2 为
+        // `(t<<5)-t+charCode` 取 32 位后 `String(t>>>0)`；这是它对该名字算出的值。
+        assert_eq!(djb2(AGENT_WEBSOCKET_GATE), "579159465");
         for hash in ["none", "djb2", "sha256"] {
             let mut config = json!({"hash_used": hash, "feature_gates": {}});
             let key = statsig_key(&config, AGENT_WEBSOCKET_GATE);
@@ -209,26 +212,45 @@ mod tests {
         }
     }
 
-    /// 走完整的上游补丁路径（Connect 帧 + protobuf）也一样。
-    #[test]
-    fn patched_upstream_bootstrap_disables_the_agent_websocket() {
+    /// 实际调用 `patch_upstream`：Connect 帧进、帧出，WebSocket 门禁被关，无关门禁原样保留。
+    #[tokio::test]
+    async fn patch_upstream_disables_the_agent_websocket_and_keeps_other_gates() {
+        let unrelated = djb2("some_unrelated_gate");
         let config = json!({
             "hash_used": "djb2",
-            "feature_gates": { djb2(AGENT_WEBSOCKET_GATE): {"value": true} }
+            "feature_gates": {
+                djb2(AGENT_WEBSOCKET_GATE): {"value": true},
+                &unrelated: {"name": &unrelated, "value": true}
+            }
         });
-        let message = BootstrapStatsigResponse {
-            config: config.to_string(),
-            generated_at_ms: 1,
+        let upstream = proxy::BufferedResponse {
+            status: StatusCode::OK,
+            headers: axum::http::HeaderMap::new(),
+            body: encode_unary(
+                &BootstrapStatsigResponse {
+                    config: config.to_string(),
+                    generated_at_ms: 7,
+                },
+                true,
+            ),
         };
-        let framed = encode_unary(&message, true);
-        let (was_framed, payload) = unary_payload(&framed).unwrap();
-        assert!(was_framed);
-        let mut decoded = BootstrapStatsigResponse::decode(payload).unwrap();
-        let mut config: Value = serde_json::from_str(&decoded.config).unwrap();
-        apply_gate_overrides(&mut config).unwrap();
-        decoded.config = config.to_string();
-        let config: Value = serde_json::from_str(&decoded.config).unwrap();
+
+        let response = patch_upstream(upstream).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let (framed, payload) = unary_payload(&body).unwrap();
+        assert!(framed, "上游是 Connect 帧，补丁后也必须是帧");
+        let message = BootstrapStatsigResponse::decode(payload).unwrap();
+        assert_eq!(message.generated_at_ms, 7);
+        let config: Value = serde_json::from_str(&message.config).unwrap();
         assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
+        assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
+        assert_eq!(
+            config["feature_gates"][&unrelated],
+            json!({"name": &unrelated, "value": true})
+        );
     }
 
     #[tokio::test]
