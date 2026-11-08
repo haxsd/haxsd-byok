@@ -115,6 +115,9 @@ pub fn to_invocation(
     mut request: DevinChatRequest,
     binding: &DevinModelBinding,
     model: &ModelConfig,
+    // 压缩轮会继承会话开始时的模型选择，而绑定可能已经换了 active route：
+    // 这时 model 是按会话选择查出来的，不能再用绑定当前的 hash 去校验。
+    allow_binding_drift: bool,
 ) -> Result<crate::model::ModelInvocation> {
     let requested = request.requested_model.trim();
     let selected = if requested == binding.model_uid.trim() {
@@ -142,7 +145,7 @@ pub fn to_invocation(
         }
     }
     let model_hash = binding.effective_model_hash();
-    if model_hash != model.model_hash {
+    if !allow_binding_drift && model_hash != model.model_hash {
         return Err(Error::Config(format!(
             "the model bound to Devin model {} is no longer in the model library; \
              re-select it on the Devin page",
@@ -554,7 +557,7 @@ mod tests {
         };
         let model = model_config("0123abcd");
 
-        let invocation = to_invocation(request, &binding, &model).unwrap();
+        let invocation = to_invocation(request, &binding, &model, false).unwrap();
 
         assert_eq!(invocation.request.model.model_id, "0123abcd");
         assert_eq!(
@@ -579,8 +582,8 @@ mod tests {
             &serialize_fields(&[Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK")]).unwrap(),
         )
         .unwrap();
-        let first = to_invocation(anonymous_request.clone(), &binding, &model).unwrap();
-        let second = to_invocation(anonymous_request, &binding, &model).unwrap();
+        let first = to_invocation(anonymous_request.clone(), &binding, &model, false).unwrap();
+        let second = to_invocation(anonymous_request, &binding, &model, false).unwrap();
         assert_ne!(first.call_id, second.call_id);
     }
 
@@ -598,7 +601,7 @@ mod tests {
         };
         let model = model_config("0123abcd");
 
-        let named = to_invocation(request.clone(), &binding, &model).unwrap();
+        let named = to_invocation(request.clone(), &binding, &model, false).unwrap();
         assert!(
             named
                 .call_id
@@ -608,7 +611,7 @@ mod tests {
         );
         // 同一次执行重发（客户端重试、断线续跑）：run 还是同一个，但每次请求都必须
         // 是独立的一行调用记录，否则第二次 start_llm_call 直接撞主键。
-        let resent = to_invocation(request, &binding, &model).unwrap();
+        let resent = to_invocation(request, &binding, &model, false).unwrap();
         assert_eq!(resent.run_id, named.run_id);
         assert_eq!(resent.conversation_id, named.conversation_id);
         assert_ne!(
@@ -618,7 +621,7 @@ mod tests {
         let mut ids = std::collections::HashSet::new();
         let source = parse_chat_request(&fixture()).unwrap();
         for _ in 0..32 {
-            let invocation = to_invocation(source.clone(), &binding, &model).unwrap();
+            let invocation = to_invocation(source.clone(), &binding, &model, false).unwrap();
             assert!(ids.insert(invocation.call_id), "call_id 必须每次请求唯一");
         }
 
@@ -626,7 +629,7 @@ mod tests {
             &serialize_fields(&[Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK")]).unwrap(),
         )
         .unwrap();
-        let anonymous = to_invocation(anonymous, &binding, &model).unwrap();
+        let anonymous = to_invocation(anonymous, &binding, &model, false).unwrap();
         assert!(anonymous.call_id.starts_with(DEVIN_CALL_ID_PREFIX));
         assert!(anonymous.conversation_id.starts_with(DEVIN_CALL_ID_PREFIX));
     }
@@ -702,17 +705,42 @@ mod tests {
             ..DevinModelBinding::new("", "")
         };
 
-        let invocation =
-            to_invocation(request.clone(), &binding, &model_config("active-hash")).unwrap();
+        let invocation = to_invocation(
+            request.clone(),
+            &binding,
+            &model_config("active-hash"),
+            false,
+        )
+        .unwrap();
         assert_eq!(invocation.request.model.model_id, "active-hash");
         assert_eq!(binding.model_uid, "MODEL_CLAUDE_4_SONNET_BYOK");
         assert_eq!(binding.model_hash, "legacy-hash");
-        assert!(to_invocation(request.clone(), &binding, &model_config("legacy-hash")).is_err());
+        assert!(to_invocation(
+            request.clone(),
+            &binding,
+            &model_config("legacy-hash"),
+            false
+        )
+        .is_err());
 
         let legacy = DevinModelBinding::new("MODEL_CLAUDE_4_SONNET_BYOK", "legacy-hash");
         let legacy_invocation =
-            to_invocation(request, &legacy, &model_config("legacy-hash")).unwrap();
+            to_invocation(request, &legacy, &model_config("legacy-hash"), false).unwrap();
         assert_eq!(legacy_invocation.request.model.model_id, "legacy-hash");
+
+        // B-03：压缩轮继承会话模型时，绑定 active route 可能已经换掉；只要模型是按会话
+        // 选择取出来的，就允许绑定 hash 漂移（调用方随后会用会话模型覆盖 request.model）。
+        let inherited_request = parse_chat_request(&fixture()).unwrap();
+        assert!(
+            to_invocation(
+                inherited_request,
+                &legacy,
+                &model_config("legacy-hash"),
+                true
+            )
+            .is_ok(),
+            "inherited compaction must tolerate a changed binding route"
+        );
     }
 
     /// Devin 不声明用量时走**共享**估算（`model::estimate_context_tokens`），不再有自己的
@@ -760,7 +788,7 @@ mod tests {
         let mut configured = model_config("hash-a");
         configured.context_window_tokens = Some(500_000);
         configured.reasoning_effort = Some("max".into());
-        let invocation = to_invocation(request.clone(), &binding, &configured).unwrap();
+        let invocation = to_invocation(request.clone(), &binding, &configured, false).unwrap();
         assert_eq!(
             invocation.request.model.reasoning.effort.as_deref(),
             Some("low")
@@ -782,7 +810,7 @@ mod tests {
         request.requested_model = "haxsd-byok:model-a~max~1000000".into();
         // 配置改过之后旧变体名不再出现在列表里：它仍然指同一个绑定模型，按当前
         // 配置继续，而不是把整轮拒掉。
-        let drifted = to_invocation(request.clone(), &binding, &configured).unwrap();
+        let drifted = to_invocation(request.clone(), &binding, &configured, false).unwrap();
         assert_eq!(
             drifted.request.model.reasoning.effort.as_deref(),
             Some("high")
@@ -790,7 +818,7 @@ mod tests {
         assert_eq!(drifted.request.model.context_window_tokens, Some(256_000));
         // 真正不属于这个绑定的 UID 仍然拒绝。
         request.requested_model = "haxsd-byok:model-b~low~128000".into();
-        assert!(to_invocation(request, &binding, &configured).is_err());
+        assert!(to_invocation(request, &binding, &configured, false).is_err());
     }
 
     #[test]
@@ -802,7 +830,7 @@ mod tests {
         configured.model_type = ModelType::Anthropic;
         configured.reasoning_effort = Some("max".into());
         configured.anthropic_thinking_effort = Some("low".into());
-        let invocation = to_invocation(request, &binding, &configured).unwrap();
+        let invocation = to_invocation(request, &binding, &configured, false).unwrap();
         assert_eq!(
             invocation.request.model.reasoning.effort.as_deref(),
             Some("low")
@@ -872,7 +900,7 @@ mod tests {
 
         let mut anthropic_model = model_config("0123abcd");
         anthropic_model.model_type = ModelType::Anthropic;
-        let anthropic = to_invocation(request.clone(), &binding, &anthropic_model).unwrap();
+        let anthropic = to_invocation(request.clone(), &binding, &anthropic_model, false).unwrap();
         let ProjectedContent::Assistant { replay_state, .. } =
             &anthropic.request.history[1].content
         else {
@@ -880,7 +908,7 @@ mod tests {
         };
         assert_eq!(replay_state.as_ref().unwrap().provider_kind, "anthropic");
 
-        let openai = to_invocation(request, &binding, &model_config("0123abcd")).unwrap();
+        let openai = to_invocation(request, &binding, &model_config("0123abcd"), false).unwrap();
         let ProjectedContent::Assistant { replay_state, .. } = &openai.request.history[1].content
         else {
             panic!("assistant message must stay an assistant message");

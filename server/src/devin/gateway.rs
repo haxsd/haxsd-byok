@@ -408,10 +408,13 @@ async fn handle_request(
     };
     let is_compaction = method == "GetChatMessage"
         && super::request::string_field(&fields, 21).is_ok_and(|uid| uid == "compactor");
+    eprintln!("B03: method={method} is_compaction={is_compaction} session={session_id:?}");
     let inherited = if is_compaction {
         match state.store.devin_session_model(&session_id).await {
             Ok(Some(selection)) => Some(selection),
-            Ok(None) => return forward_upstream(&state, &settings, parts, Body::from(body)).await,
+            Ok(None) => {
+                return forward_upstream(&state, &settings, parts, Body::from(body)).await;
+            }
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
@@ -573,7 +576,7 @@ async fn handle_request(
             return protocol_error(
                 StatusCode::BAD_REQUEST,
                 format!("Devin model is not assigned: {}", request.requested_model),
-            )
+            );
         }
     };
     let model_hash = inherited
@@ -597,7 +600,7 @@ async fn handle_request(
     let provider_type = model.provider_type();
     let fallback_input_tokens = request.context_tokens;
     let selected_uid = request.requested_model.clone();
-    let mut invocation = match to_invocation(request, &binding, &model) {
+    let mut invocation = match to_invocation(request, &binding, &model, inherited.is_some()) {
         Ok(invocation) => invocation,
         Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
     };
@@ -1394,6 +1397,34 @@ mod tests {
                 Some("low")
             );
         }
+        // B-03：绑定 active route 变更后，既有会话的压缩轮仍要成功——压缩继承的是会话
+        // 开始时的模型选择，不是绑定当前的 hash；旧实现会按绑定 hash 校验并整轮 400。
+        let mut settings = restored.store.devin_settings().await.unwrap();
+        let terra_hash = settings
+            .bindings
+            .iter()
+            .find(|binding| binding.model_uid == "haxsd-byok:terra")
+            .expect("terra binding")
+            .model_hash
+            .clone();
+        for binding in &mut settings.bindings {
+            if binding.model_uid == "haxsd-byok:sol" {
+                binding.model_hash = terra_hash.clone();
+            }
+        }
+        restored.store.set_devin_settings(settings).await.unwrap();
+        let response = router
+            .clone()
+            .oneshot(native_request("compactor", "session-sol", "changed-route"))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "changing the binding route must not fail an existing session's compaction"
+        );
+        assert_eq!(captured.lock().len(), 7);
+
         for (uid, session) in [
             ("official-sol", "session-sol"),
             ("compactor", "session-sol"),
@@ -1410,7 +1441,7 @@ mod tests {
                 "official-response"
             );
         }
-        assert_eq!(captured.lock().len(), 6);
+        assert_eq!(captured.lock().len(), 7);
         assert_eq!(upstream_bodies.lock().len(), 4);
     }
 
