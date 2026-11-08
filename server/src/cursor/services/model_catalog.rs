@@ -747,6 +747,7 @@ fn model_variants(
     variants
 }
 
+#[allow(clippy::too_many_arguments)]
 fn model_variant(
     name: &str,
     display_name: &str,

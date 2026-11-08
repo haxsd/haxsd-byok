@@ -6,15 +6,11 @@ mod fixtures;
 
 use std::sync::Arc;
 
-use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine};
 use cursor_server::{
     cursor::prompting::{PromptAssets, PromptCompiler},
-    cursor::protocol::{
-        connect,
-        proto::{agent::v1 as pb, aiserver::v1 as ai},
-    },
+    cursor::protocol::{connect, proto::agent::v1 as pb},
     cursor::{TransportCommand, TransportParent, TransportRegistry},
-    model::{MessageContent, Role},
+    model::MessageContent,
     provider::{FinishReason, ModelEvent},
     Error,
 };

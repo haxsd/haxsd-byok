@@ -126,7 +126,12 @@ pub(super) async fn execute(
                 // 客户端补发/重复上报时不能再提交。store 只认本轮调用，遇到这种 call_id
                 // 会报 `unknown tool result call_id`，工具轮失败不经过重试，整轮 run 会被判死；
                 // 模型轮里的同类迟到结果本来就是忽略的，这里保持一致。
-                if already_accounted(&call_id, accounted) {
+                //
+                // 但 call_id 只在轮内有效：客户端会跨轮复用同一个 id（见 interrupt 用例
+                // `a_later_round_may_reuse_an_interrupted_call_id`）。属于本轮 `calls` 的
+                // 结果必须接收，否则这一轮永远等不到结果。
+                let belongs_to_round = calls.iter().any(|call| call.call_id == call_id);
+                if !belongs_to_round && already_accounted(&call_id, accounted) {
                     tracing::debug!(
                         round_id = %round_id,
                         call_id,
