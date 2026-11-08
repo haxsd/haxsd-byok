@@ -7,6 +7,7 @@ mod process;
 mod proxy;
 mod settings;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{net::SocketAddr, sync::Arc};
 
 use parking_lot::RwLock;
@@ -148,6 +149,8 @@ struct Inner {
     tab_mode: Arc<RwLock<TabMode>>,
     proxy: Mutex<ProxyRuntime>,
     catalog: CatalogHealthTracker,
+    /// 退出流程已经开始：状态刷新不得再把接管补回来（见 `disable`）。
+    shutting_down: AtomicBool,
     /// 接管与撤回的顶层互斥。
     ///
     /// `status()` 的补齐与 `set_mode()` 的切换都会改用户机器上的配置与账号；两条路径
@@ -169,6 +172,7 @@ impl CursorHarness {
                 tab_mode: Arc::new(RwLock::new(TabMode::default())),
                 proxy: Mutex::new(ProxyRuntime::default()),
                 catalog: CatalogHealthTracker::default(),
+                shutting_down: AtomicBool::new(false),
                 transition: Mutex::new(()),
             }),
         })
@@ -232,23 +236,35 @@ impl CursorHarness {
             // 或在用户手工删掉证书后继续谎报已就绪。
             let ca = self.inner.ca.state()?;
             let backend_ready = self.inner.backend_addr.read().is_some();
-            match status_convergence(mode, &ca, backend_ready, manages_settings()) {
-                Convergence::Nothing => {}
-                Convergence::Withdraw => {
-                    // 不接管的模式：账号必须清（客户端带着假 Token 直连官方，每个请求都会
-                    // 被拒），我们写的配置也必须撤——留着它 Cursor 下次启动仍然走本机代理，
-                    // 而界面显示"官方"。这里无条件收敛，把并发切换、上一次撤回失败留下的
-                    // 不一致在下一次刷新里抹平；`clear_proxy_settings` 自己按标记认领，别人
-                    // 写的配置一根手指都不碰。
-                    clear_injected_account().await?;
-                    settings::clear_proxy_settings()?;
-                }
-                Convergence::TakeOver => {
-                    // 读状态只能把配置补齐，**不许结束进程**：这个方法每几秒被前端调用
-                    // 一次，而结束进程是不可逆的（未保存的编辑会丢）。谁在什么时候可以杀
-                    // Cursor，见 apply_takeover 的说明。
-                    self.apply_takeover(mode, TakeoverRequest::STATUS_REFRESH)
-                        .await?;
+            // 退出流程开始后不再收敛：`disable()` 撤掉的配置不能被排队中的刷新补回来，
+            // 否则进程退出时 Cursor 会指向一个已经没人监听的代理（而优雅退出标记会让
+            // 收尾助手拒绝兜底）。
+            if convergence_allowed(
+                manages_settings(),
+                self.inner.shutting_down.load(Ordering::Acquire),
+            ) {
+                match status_convergence(mode, &ca, backend_ready, manages_settings()) {
+                    Convergence::Nothing => {}
+                    Convergence::Withdraw => {
+                        // 不接管的模式：账号必须清（客户端带着假 Token 直连官方，每个请求都会
+                        // 被拒），我们写的配置也必须撤——留着它 Cursor 下次启动仍然走本机代理，
+                        // 而界面显示"官方"。这里无条件收敛，把并发切换、上一次撤回失败留下的
+                        // 不一致在下一次刷新里抹平；`clear_proxy_settings` 自己按标记认领，别人
+                        // 写的配置一根手指都不碰。
+                        clear_injected_account().await?;
+                        settings::clear_proxy_settings()?;
+                        // 官方模式不该留着一个仍在 MITM 用户流量的代理：`enter_official` 中途
+                        // 失败或上一次撤回没停干净时，下一次刷新必须把它停掉，否则端口被占、
+                        // 状态永久 Degraded，用户只能重启应用。
+                        self.inner.proxy.lock().await.stop().await;
+                    }
+                    Convergence::TakeOver => {
+                        // 读状态只能把配置补齐，**不许结束进程**：这个方法每几秒被前端调用
+                        // 一次，而结束进程是不可逆的（未保存的编辑会丢）。谁在什么时候可以杀
+                        // Cursor，见 apply_takeover 的说明。
+                        self.apply_takeover(mode, TakeoverRequest::STATUS_REFRESH)
+                            .await?;
+                    }
                 }
             }
             let foreign_configuration = settings::proxy_configuration_is_foreign()?;
@@ -435,6 +451,9 @@ impl CursorHarness {
         }
         if let Err(error) = apply_cursor_configuration(&url, mode, request).await {
             self.inner.proxy.lock().await.stop().await;
+            // `apply_cursor_configuration` 先注入账号再写配置：写配置失败时账号已经写进
+            // 客户端库，必须按逆序回滚，否则留下"假账号 + 没有代理"。
+            let _ = clear_injected_account().await;
             return Err(error);
         }
         Ok(())
@@ -447,6 +466,10 @@ impl CursorHarness {
     /// 的那串 Token 直连厂商——每个请求都会被拒，用户看到的是"登录着但什么都不通"。
     /// 撤干净之后客户端要么用他自己的账号，要么回到登录界面，两种都是能继续用的状态。
     pub async fn disable(&self) -> Result<()> {
+        // 先置位再拿锁：已经排在 `transition` 锁上的 `status()` 拿到锁时会看到这个标记，
+        // 不再把刚撤掉的接管补回来。置位后即使本次 disable 失败，状态刷新也不再重启代理
+        // ——退出路径上"宁可不接管"才是安全的一侧。
+        self.inner.shutting_down.store(true, Ordering::Release);
         // 与读状态的补齐互斥：退出时撤掉的东西不能被一次并发刷新又补回来。
         let _transition = self.inner.transition.lock().await;
         if manages_settings() {
@@ -475,6 +498,15 @@ fn reject_isolated_integration() -> Result<()> {
 /// 的用户目录，所以整条接管/撤回路径必须跳过——不然测试会去改开发者自己的 Cursor。
 fn manages_settings() -> bool {
     std::env::var_os("HAXSD_BYOK_DATA_DIR").is_none()
+}
+
+/// 读状态时是否允许收敛。
+///
+/// 隔离数据目录下不碰真实用户文件；退出流程开始后也不允许——`disable()` 已经撤掉的
+/// 接管不能被一次并发刷新补回来（否则 Cursor 下次启动指向死端口，而优雅退出标记让
+/// 收尾助手拒绝兜底）。
+fn convergence_allowed(manages_settings: bool, shutting_down: bool) -> bool {
+    manages_settings && !shutting_down
 }
 
 /// 读状态时该做的收敛动作。
@@ -644,6 +676,14 @@ mod tests {
         assert!(TakeoverRequest::user_choice(true).account_failure_is_fatal);
     }
 
+    /// 退出流程开始后，状态刷新不许再收敛：`disable()` 撤掉的接管不能被并发刷新补回来。
+    #[test]
+    fn convergence_stops_once_shutdown_started() {
+        assert!(convergence_allowed(true, false));
+        assert!(!convergence_allowed(true, true));
+        assert!(!convergence_allowed(false, false));
+        assert!(!convergence_allowed(false, true));
+    }
     /// 读状态的收敛方向：接管模式补齐、其它模式撤回、隔离目录不动。
     ///
     /// 撤回那一支是 F4 的自愈面：并发切换或上一次撤回失败会留下"库里是官方、文件里还

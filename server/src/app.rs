@@ -267,9 +267,18 @@ impl App {
                     Ok(())
                 },
                 () = shutdown.cancelled() => {
-                    clean_up_user_files(&codex_gateway, &harness, &claude_gateway, &store).await;
-                    // 正常退出：告诉收尾助手这次不用兜底还原 Devin 接管。
-                    crate::local_app::mark_graceful_exit();
+                    let clean =
+                        clean_up_user_files(&codex_gateway, &harness, &claude_gateway, &store)
+                            .await;
+                    // 只有收尾全部成功才写优雅标记：写早了收尾助手会拒绝兜底，失败留下的
+                    // 代理配置/账号就没人撤了。
+                    if clean {
+                        crate::local_app::mark_graceful_exit();
+                    } else {
+                        tracing::warn!(
+                            "shutdown cleanup was incomplete; leaving it to the exit helper"
+                        );
+                    }
                     codex_cleaned = true;
                     registry.shutdown().await;
                     drain_server(&mut server, DRAIN_BUDGET).await?;
@@ -305,20 +314,25 @@ impl App {
 /// 没人监听的端口"。
 ///
 /// 每一步失败只记日志：进程已经要结束了，这里没有第二次机会，能收多少收多少。
+/// 返回值表示"全部成功"，决定要不要写优雅退出标记（见 `run` 的 shutdown 分支）。
 async fn clean_up_user_files(
     codex_gateway: &CodexGateway,
     harness: &CursorHarness,
     claude_gateway: &ClaudeGateway,
     store: &Store,
-) {
+) -> bool {
+    let mut clean = true;
     if let Err(error) = codex_gateway.shutdown().await {
+        clean = false;
         tracing::warn!(%error, "Codex gateway cleanup failed");
     }
     // 必须在 `claude_gateway.shutdown()` 之前：撤销时还要读网关的当前状态判断是否 stale。
     crate::control::claude::shutdown_cleanup(claude_gateway.clone(), store.clone()).await;
     if let Err(error) = harness.disable().await {
+        clean = false;
         tracing::warn!(%error, "failed to disable Cursor harness during shutdown");
     }
+    clean
 }
 
 /// 等主服务把活跃连接排干，超时就强制关闭。
