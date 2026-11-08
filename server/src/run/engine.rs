@@ -1053,14 +1053,12 @@ impl RunEngine {
                                     "message": message,
                                 }),
                             );
-                            // 口径（2026-10-16 裁定，按默认口径落地）：`max_tokens` 截断
-                            // **不丢文本**。已经流给客户端的半段回答要落成 assistant 消息：
-                            // 用户看到的就是它，服务端历史也要与之一致——否则下一轮模型
-                            // 看到的是一轮"什么都没发生"，而用户明明看见了半截回答。
-                            // 落库之后仍按失败收尾（客户端据此知道这轮被截断了）。
-                            if matches!(cycle_failure.failure, RunFailure::Truncated(_))
-                                && !cycle_failure.partial_text.trim().is_empty()
-                            {
+                            // 口径（2026-10-16 裁定，按默认口径落地）：已经流给客户端的
+                            // 半段回答**不丢**。`max_tokens` 截断、流中断等任何不能重试的
+                            // 失败都把这半段落成 assistant 消息：用户已经看到它，服务端历史
+                            // 也要与之一致——否则下一轮模型看到的是一轮"什么都没发生"。
+                            // 落库之后仍按失败收尾（客户端据此知道这轮没有正常结束）。
+                            if !cycle_failure.partial_text.trim().is_empty() {
                                 if let Err(outcome) = self
                                     .persist_truncated_assistant(
                                         prepared,
@@ -1495,7 +1493,7 @@ impl RunEngine {
     /// 口径（按默认口径落地）：截断不丢文本。已经流给客户端的半段回答要进服务端历史，
     /// 下一轮模型看到的就是用户看到的那一段；提交用 `FinalTurn`——这条消息正是刚生成的
     /// assistant（`checkpoint::worker::build_final` 把最后一条当新消息），与正常收尾同形。
-    /// 提交完成后调用方仍按 `Failed(Truncated)` 收尾：客户端要能看出这一轮是被截断的，
+    /// 提交完成后调用方仍按失败收尾：客户端要能看出这一轮没有正常结束，
     /// 而不是正常结束。
     async fn persist_truncated_assistant(
         &self,
@@ -1535,7 +1533,7 @@ impl RunEngine {
             conversation_id = %prepared.conversation_id,
             provider_call_index,
             characters = cycle_failure.partial_text.chars().count(),
-            "persisted the truncated assistant message before ending the run"
+            "persisted the partial assistant message before ending the run"
         );
         let (barrier, ready) = CommitBarrier::before_continue();
         emit(

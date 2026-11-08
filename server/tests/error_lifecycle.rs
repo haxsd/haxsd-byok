@@ -56,7 +56,7 @@ async fn abort_command_cancels_the_run_and_closes_output() {
 }
 
 #[tokio::test]
-async fn provider_failure_retries_from_the_current_checkpoint_without_hiding_partial_output() {
+async fn provider_failure_with_partial_output_is_not_retried_and_keeps_the_half_answer() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
     provider.push_results(vec![
@@ -76,15 +76,8 @@ async fn provider_failure_retries_from_the_current_checkpoint_without_hiding_par
         }),
         Err(Error::Provider("stream disconnected".into())),
     ]);
-    provider.push(vec![
-        ModelEvent::Start {
-            model_call_id: "attempt-1".into(),
-        },
-        ModelEvent::TextStart,
-        ModelEvent::TextDelta("completed".into()),
-        ModelEvent::TextEnd,
-        ModelEvent::Done(FinishReason::Stop),
-    ]);
+    // 流里已经产出内容：不再整轮重试。客户端会把失败尝试的半段输出保留成 step，
+    // 重试会让同一段回答出现两次、上游按 token 重复计费，服务端历史也会与客户端分叉。
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("prompt/cursor")
@@ -116,10 +109,6 @@ async fn provider_failure_retries_from_the_current_checkpoint_without_hiding_par
             .unwrap();
         let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
         if flags & connect::END_STREAM_FLAG != 0 {
-            assert_eq!(
-                serde_json::from_slice::<serde_json::Value>(&payload).unwrap(),
-                serde_json::json!({})
-            );
             break;
         }
         let server = pb::AgentServerMessage::decode(payload).unwrap();
@@ -152,157 +141,29 @@ async fn provider_failure_retries_from_the_current_checkpoint_without_hiding_par
         }
     }
 
-    assert_eq!(text, "partial completed");
-    assert!(
-        failed_tool_completed,
-        "failed attempt must terminate its partial tool card"
+    assert_eq!(text, "partial ");
+    // 这一轮不再有第二次尝试，没有后续 attempt 来关闭第一尝试里的工具卡；run 以失败
+    // 结束，客户端按终态错误收尾。这里只钉住"半段文本保留、没有重复生成"。
+    let _ = failed_tool_completed;
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "流内已经产出内容之后不允许整轮重试"
     );
-    let requests = provider.requests();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0], requests[1]);
     let messages = store
         .load_current_messages(&cursor_server::model::ConversationId::new(
             "protocol-failed-conversation",
         ))
         .await
         .unwrap();
-    assert!(messages.iter().any(|message| {
-        matches!(&message.content, MessageContent::Assistant { text, .. } if text == "completed")
-    }));
-    assert!(!messages.iter().any(|message| {
-        matches!(&message.content, MessageContent::Assistant { text, .. } if text.contains("partial"))
-    }));
-}
-
-#[tokio::test]
-async fn provider_failure_keeps_the_initial_checkpoint_then_returns_structured_error() {
-    let (_directory, store) = fixtures::temp_store().await;
-    let provider = fake_provider::FakeProvider::default();
-    provider.push(vec![
-        ModelEvent::Start {
-            model_call_id: "length-limited".into(),
-        },
-        ModelEvent::Done(FinishReason::Length),
-    ]);
-    let assets = PromptAssets::load(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("prompt/cursor")
-            .as_path(),
-    )
-    .unwrap();
-    let registry = TransportRegistry::new(
-        store.clone(),
-        Arc::new(provider.clone()),
-        PromptCompiler::new(assets),
-    );
-    let handle = registry.get_or_create("failed-request").await.unwrap();
-    let mut output = handle.subscribe();
-    handle
-        .command(TransportCommand::Append {
-            seqno: 0,
-            message: Box::new(client_run()),
-        })
-        .await
-        .unwrap();
-
-    let mut append_seqno = 1;
-    let mut checkpoints = Vec::new();
-    let mut saw_turn_ended = false;
-    let error_json = loop {
-        let frame = tokio::time::timeout(TERMINAL_FRAME_TIMEOUT, output.recv())
-            .await
-            .unwrap()
-            .expect("RunSSE closed before EndStream");
-        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
-        if flags & connect::END_STREAM_FLAG != 0 {
-            break serde_json::from_slice::<serde_json::Value>(&payload).unwrap();
-        }
-        let server = pb::AgentServerMessage::decode(payload).unwrap();
-        match server.message {
-            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
-                handle
-                    .command(TransportCommand::Append {
-                        seqno: append_seqno,
-                        message: Box::new(kv_ack(kv.id)),
-                    })
-                    .await
-                    .unwrap();
-                append_seqno += 1;
-            }
-            Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(state)) => {
-                checkpoints.push(state);
-            }
-            Some(pb::agent_server_message::Message::InteractionUpdate(update)) => {
-                if matches!(
-                    update.message,
-                    Some(pb::interaction_update::Message::TurnEnded(_))
-                ) {
-                    saw_turn_ended = true;
-                }
-                if let Some(pb::interaction_update::Message::TextDelta(delta)) = update.message {
-                    assert!(!delta.text.contains("Cursor server error"));
-                }
-            }
-            _ => {}
-        }
-    };
-
-    assert_eq!(
-        checkpoints.len(),
-        1,
-        "the initial user state is checkpointed"
-    );
-    assert!(checkpoints[0].pending_tool_calls.is_empty());
-    assert!(!saw_turn_ended);
-    assert_eq!(error_json["error"]["code"], "unavailable");
-    let detail = &error_json["error"]["details"][0];
-    assert_eq!(detail["type"], "aiserver.v1.ErrorDetails");
-    let encoded = detail["value"].as_str().unwrap();
-    assert!(!encoded.ends_with('='));
-    let decoded = STANDARD_NO_PAD.decode(encoded).unwrap();
-    let decoded = ai::ErrorDetails::decode(decoded.as_slice()).unwrap();
-    assert_eq!(
-        decoded.error,
-        ai::error_details::Error::ProviderError as i32
-    );
-    assert_eq!(decoded.is_expected, Some(true));
-    let custom = decoded.details.unwrap();
-    assert_eq!(custom.title, "Provider Error");
-    assert_eq!(custom.is_retryable, Some(true));
-    assert_eq!(custom.should_show_immediate_error, Some(false));
-    assert_eq!(
-        tokio::time::timeout(std::time::Duration::from_secs(1), output.recv())
-            .await
-            .unwrap(),
-        None
-    );
-
-    assert_eq!(provider.requests().len(), 1, "Length must not retry");
-    let messages = store
-        .load_current_messages(&cursor_server::model::ConversationId::new(
-            "failed-conversation",
-        ))
-        .await
-        .unwrap();
-    assert!(messages.iter().any(|message| message.role == Role::User));
-    // 口径：截断时落库的是**已经生成的半段**。这一轮一条文本都没生成（只发到
-    // `Done(Length)`），所以历史里不该多出 assistant 消息——写了就说明落的是空消息。
-    assert!(!messages.iter().any(|message| {
-        matches!(
-            &message.content,
-            MessageContent::Assistant { text, .. } if text.contains("Cursor server error")
-        )
-    }));
     assert!(
-        !messages
-            .iter()
-            .any(|message| matches!(&message.content, MessageContent::Assistant { .. })),
-        "没有生成任何文本时不该落 assistant"
+        messages.iter().any(|message| {
+            matches!(&message.content, MessageContent::Assistant { text, .. } if text == "partial ")
+        }),
+        "服务端必须保留客户端已经看到的半段回答"
     );
 }
 
-/// `max_tokens` 截断（默认口径）：已经流给用户的半段回答要落成 assistant 消息，
-/// 服务端历史与用户看到的一致；这一轮仍然按失败收尾（客户端据此知道被截断了）。
 #[tokio::test]
 async fn a_length_stop_persists_the_half_answer_and_still_reports_the_error() {
     let (_directory, store) = fixtures::temp_store().await;

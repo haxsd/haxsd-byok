@@ -19,6 +19,13 @@ pub(super) fn should_retry(failure: &ModelCycleFailure, retries: u32) -> bool {
     if !failure.retryable {
         return false;
     }
+    // 流里已经产出过内容就不能整轮重试：这些 delta 已经发给客户端，客户端会把失败尝试
+    // 的输出保留成 assistant step（`cursor/checkpoint/steps.rs`）。重试会让同一段回答出现
+    // 两次、上游按 token 重复计费，而服务端历史又没有第一次的半段——两侧视图分叉。
+    // 交给"保留半段 + 失败收尾"（engine 会把这半段落库）。
+    if !failure.partial_text.is_empty() || !failure.partial_reasoning.is_empty() {
+        return false;
+    }
     if matches!(failure.failure, RunFailure::Protocol(_)) {
         return retries < MAX_PROTOCOL_RETRIES;
     }
@@ -64,6 +71,19 @@ mod tests {
     #[test]
     fn terminal_failures_never_retry() {
         assert!(!should_retry(&failure(false), 0));
+    }
+
+    /// 已经流给客户端的半段回答不能整轮重试：客户端会保留失败尝试的输出，重试会让同一段
+    /// 回答出现两次并重复计费。
+    #[test]
+    fn streamed_partial_output_is_never_retried() {
+        let mut streamed = failure(true);
+        streamed.partial_text = "half an answer".into();
+        assert!(!should_retry(&streamed, 0));
+
+        let mut reasoning = failure(true);
+        reasoning.partial_reasoning = "thinking about it".into();
+        assert!(!should_retry(&reasoning, 0));
     }
 
     /// 协议违规只给一次机会：同一个违规重试八次只是把错误推迟四十秒。
