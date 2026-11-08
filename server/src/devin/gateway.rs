@@ -17,6 +17,7 @@ use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
     http::{header, Method, Response, StatusCode},
+    middleware::{self, Next},
     response::IntoResponse,
     routing::{any, get},
     Router,
@@ -247,7 +248,59 @@ impl DevinGateway {
             .route("/health", get(health))
             .fallback(any(handle_request))
             .with_state(state.clone())
+            // 只服务本机客户端：浏览器跨站页面能用"简单请求"（表单 POST、无预检）触发
+            // AssignModel / GetChatMessage，必须在进 handler 前按 Origin 拒绝。
+            .layer(middleware::from_fn(reject_cross_site_request))
     }
+}
+
+/// Devin 网关的来源准入（见 `router` 上的说明）。
+async fn reject_cross_site_request(request: Request<Body>, next: Next) -> Response<Body> {
+    if cross_site_request(request.headers()) {
+        tracing::warn!(
+            path = request.uri().path(),
+            "rejected a cross-site request to the Devin gateway"
+        );
+        return plain_error(
+            StatusCode::FORBIDDEN,
+            "cross-site requests are not served by the Devin gateway",
+        );
+    }
+    next.run(request).await
+}
+
+fn cross_site_request(headers: &axum::http::HeaderMap) -> bool {
+    if headers
+        .get("sec-fetch-site")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("cross-site"))
+    {
+        return true;
+    }
+    let Some(origin) = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
+        // 本机 Electron/CLI 的请求不带 Origin；放行。
+        return false;
+    };
+    !is_local_origin(origin)
+}
+
+/// 允许的页面来源：Tauri/VS Code 的 webview 自有来源与任何回环地址。
+fn is_local_origin(origin: &str) -> bool {
+    let origin = origin.trim();
+    if matches!(origin, "tauri://localhost" | "http://tauri.localhost") {
+        return true;
+    }
+    let Some(rest) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = authority
+        .rsplit_once(':')
+        .map_or(authority, |(host, _)| host);
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
 }
 
 async fn bind(port: u16) -> Result<TcpListener> {
@@ -1443,6 +1496,84 @@ mod tests {
         }
         assert_eq!(captured.lock().len(), 7);
         assert_eq!(upstream_bodies.lock().len(), 4);
+    }
+
+    fn headers_with_origin(origin: &str) -> axum::http::HeaderMap {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(header::ORIGIN, origin.parse().unwrap());
+        headers
+    }
+
+    /// 浏览器跨站页面（Origin/second-fetch-site）必须被拒；本机回环与 Tauri 来源放行。
+    #[test]
+    fn cross_site_requests_are_rejected_and_loopback_origins_allowed() {
+        assert!(cross_site_request(&headers_with_origin(
+            "https://evil.example"
+        )));
+        assert!(cross_site_request(&headers_with_origin("null")));
+        assert!(cross_site_request(&headers_with_origin(
+            "http://192.168.1.10"
+        )));
+        for allowed in [
+            "http://127.0.0.1:44110",
+            "http://localhost:44110",
+            "http://[::1]:44110",
+            "tauri://localhost",
+            "http://tauri.localhost",
+        ] {
+            assert!(
+                !cross_site_request(&headers_with_origin(allowed)),
+                "{allowed} 是本机来源"
+            );
+        }
+        // 本机 Electron/CLI 请求不带 Origin。
+        assert!(!cross_site_request(&axum::http::HeaderMap::new()));
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("sec-fetch-site", "cross-site".parse().unwrap());
+        assert!(cross_site_request(&headers));
+    }
+
+    /// 这道准入挂在 router 层：handler 之前的请求就被拦下。
+    #[tokio::test]
+    async fn the_gateway_refuses_cross_site_requests_at_the_router_level() {
+        use tower::ServiceExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("cross-site.db").display()
+        ))
+        .await
+        .unwrap();
+        let clients = NetworkClients::new(store.clone());
+        let state = GatewayState {
+            store,
+            provider: Arc::new(IdleProvider),
+            assignments: Arc::new(AssignmentSessions::new()),
+            clients,
+        };
+        let router = DevinGateway::router(&state);
+        let request = |origin: Option<&str>| {
+            let mut builder = Request::builder()
+                .method(Method::POST)
+                .uri("/exa.api_server_pb.ApiServerService/GetUserStatus");
+            if let Some(origin) = origin {
+                builder = builder.header(header::ORIGIN, origin);
+            }
+            builder.body(Body::from("")).unwrap()
+        };
+        let denied = router
+            .clone()
+            .oneshot(request(Some("https://evil.example")))
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+        let allowed = router
+            .clone()
+            .oneshot(request(Some("http://127.0.0.1:44110")))
+            .await
+            .unwrap();
+        assert_ne!(allowed.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
