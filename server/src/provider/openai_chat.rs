@@ -108,18 +108,52 @@ impl Provider for OpenAiChatProvider {
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
-            let Some(response) = upstream::send(
-                &UpstreamCall {
-                    label: "OpenAI Chat",
-                    model: &request.model.model_id,
-                    url: &config.request_url,
-                },
-                &outbound,
-                |client| client.post(&config.request_url)
-                    .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
-                &cancellation,
-                recorder.as_ref(),
-            ).await? else { return };
+            let response = {
+                let mut response = None;
+                for attempt in 0..2 {
+                    let sent = upstream::send(
+                        &UpstreamCall {
+                            label: "OpenAI Chat",
+                            model: &request.model.model_id,
+                            url: &config.request_url,
+                        },
+                        &outbound,
+                        |client| client.post(&config.request_url)
+                            .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
+                        &cancellation,
+                        recorder.as_ref(),
+                    ).await;
+                    match sent {
+                        Ok(Some(response_value)) => {
+                            response = Some(response_value);
+                            break;
+                        }
+                        Ok(None) => return,
+                        Err(error) => {
+                            // 某些 OpenAI 兼容上游（如 GLM）只接受 low/high/max；Cursor 目录里的
+                            // medium 变体会被 400 拒绝并在正文列可用值。只在这种正文明确列出
+                            // 合法强度时改成合法值重发一次，其它 400 原样返回。
+                            if attempt == 0 && adjust_unsupported_effort(&mut body, &error.to_string()) {
+                                let effort = body
+                                    .get("reasoning_effort")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or_default();
+                                tracing::warn!(
+                                    model = %request.model.model_id,
+                                    %effort,
+                                    "upstream rejected the requested reasoning effort; retrying with a supported value"
+                                );
+                                if let Some(recorder) = &recorder {
+                                    recorder.request(request_headers.clone(), &body).await?;
+                                }
+                                continue;
+                            }
+                            Err::<(), _>(error)?;
+                        }
+                    }
+                }
+                response.ok_or_else(|| Error::Provider("OpenAI Chat request was not sent".into()))?
+            };
             yield ModelEvent::Start { model_call_id: call_id };
             let chunk_recorder = recorder.clone();
             let chunks = response.bytes_stream()
@@ -235,6 +269,43 @@ impl Provider for OpenAiChatProvider {
     }
 }
 
+/// 把上游拒绝的 `reasoning_effort` 改成错误正文里列出的合法值。
+///
+/// 只在正文明确提到思考/effort 并列出候选值时生效（GLM 的
+/// "该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"），返回是否改动。
+fn adjust_unsupported_effort(body: &mut Value, message: &str) -> bool {
+    let Some(current) = body.get("reasoning_effort").and_then(Value::as_str) else {
+        return false;
+    };
+    let current = current.to_owned();
+    let lower = message.to_ascii_lowercase();
+    let relevant = lower.contains("reasoning_effort")
+        || lower.contains("thinking")
+        || message.contains("思考");
+    if !relevant {
+        return false;
+    }
+    let mut allowed = Vec::new();
+    for candidate in ["low", "medium", "high", "max", "xhigh"] {
+        if lower.contains(candidate) {
+            allowed.push(candidate);
+        }
+    }
+    if allowed.is_empty() {
+        return false;
+    }
+    // 优先 high：它是各家常接受的"中等偏上"强度，也是 Cursor Medium 的最近邻。
+    let next = if allowed.contains(&"high") {
+        "high"
+    } else {
+        allowed[0]
+    };
+    if next == current {
+        return false;
+    }
+    body["reasoning_effort"] = json!(next);
+    true
+}
 fn apply_model(
     body: &mut Value,
     model: &crate::model::ModelSpec,
@@ -942,5 +1013,21 @@ mod tests {
             r#"{"todos":[{"content":"x","status":"pending"}]}"#
         );
         serde_json::from_str::<Value>(&tools[&0].arguments).expect("嵌套参数拼出来必须是合法 JSON");
+    }
+    /// GLM 只接受 low/high/max；Cursor 的 Medium 变体要能自动降级而不是整轮 400。
+    #[test]
+    fn an_unsupported_reasoning_effort_is_mapped_to_a_supported_one_once() {
+        let mut body = json!({"model": "glm-5.3-flash", "reasoning_effort": "medium"});
+        let message = "OpenAI Chat 400 Bad Request: {\"error\":{\"code\":\"1210\",\"message\":\"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。\"}}";
+        assert!(adjust_unsupported_effort(&mut body, message));
+        assert_eq!(body["reasoning_effort"], "high");
+
+        // 与思考无关的 400 不改请求。
+        let mut untouched = json!({"reasoning_effort": "medium"});
+        assert!(!adjust_unsupported_effort(
+            &mut untouched,
+            "OpenAI Chat 400 Bad Request: invalid api key"
+        ));
+        assert_eq!(untouched["reasoning_effort"], "medium");
     }
 }
