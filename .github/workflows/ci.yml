@@ -143,6 +143,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 插件版本门禁要对比 base 与 HEAD 的树，浅克隆只有 HEAD。
+          fetch-depth: 0
 
       # 许可门禁只读 `cargo metadata`，不构建、不跑测试。
       - uses: dtolnay/rust-toolchain@stable
@@ -156,6 +159,13 @@ jobs:
       # 用例挂了就拦住改动。
       - name: Run the release script tests
         run: node --test .github/scripts/*.test.mjs
+
+      # 内置插件改内容必须升 plugin.json version（2026-10 事故：内容变了版本没变，
+      # 客户端与接管层无法区分两个构建）。
+      - name: Require a version bump when a built-in plugin changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node .github/scripts/check-builtin-plugin-versions.mjs --base "${BASE_SHA}"
 
       # 依赖与许可没有门禁时，混进一个 GPL/未知许可的依赖不会有任何提示。这里对 Rust
       # （全平台 `cargo metadata`）与前端（`package-lock.json`）各判一次：声明的许可
