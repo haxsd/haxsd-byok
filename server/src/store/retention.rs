@@ -1,4 +1,4 @@
-﻿//! Expires inactive runtime state while preserving lifetime usage statistics.
+//! Expires inactive runtime state while preserving lifetime usage statistics.
 use super::{BlobId, Store};
 use crate::{Error, Result};
 use std::collections::HashSet;
@@ -69,6 +69,15 @@ const RETAINED_TRACE_ROWS: i64 = 1_000;
 /// 轨迹上要 420 ms，所以上限取 8192——积压能在一小时量级的运行时间里排空，而多出来
 /// 的开销远小于既有的那一段。
 const MAX_PRUNED_TRACES_PER_PASS: i64 = 8_192;
+
+/// `llm_calls` 摘要行保留上限。
+///
+/// 明细行与 3 天窗口绑定，摘要行过去没有上限：本机真实库 65,613 行约占 56 MB
+/// （主库 28%），而调用列表一页最多 200 条、服务端上限 500 条——更久远的摘要没有
+/// 任何界面入口。保留最近 20 万行（按当前用量是数年）并在超出时按最老优先删除。
+const RETAINED_LLM_CALLS: i64 = 200_000;
+/// 每轮回收最多删多少行摘要（与轨迹摘要同一量级的限量理由）。
+const MAX_PRUNED_LLM_CALLS_PER_PASS: i64 = 4_096;
 
 impl Store {
     pub(crate) async fn retain_conversation_blobs(
@@ -201,6 +210,8 @@ impl Store {
         // 载荷被回收之后，轨迹摘要行只剩计数器，而调用列表只覆盖最近 200 条：这些
         // 行按最老优先、每轮限量删除，把表压回 `RETAINED_TRACE_ROWS` 条以内。
         let pruned_traces = Self::prune_expired_trace_summaries(&mut tx, cutoff).await?;
+        // 摘要行没有时间窗口（统计是用户资产），只按总量上限收最老的。
+        let pruned_llm_calls = Self::prune_overflow_llm_calls(&mut tx, RETAINED_LLM_CALLS).await?;
         let mut references = 0_u64;
         let mut orphans = 0_u64;
         // 到期候选：过了无根窗口、既不是会话根、也没有被追踪工件引用的 blob。只有这些
@@ -281,6 +292,7 @@ impl Store {
         if orphans > 0
             || references > 0
             || pruned_traces > 0
+            || pruned_llm_calls > 0
             || expired > 0
             || pruned_compactions > 0
         {
@@ -289,6 +301,7 @@ impl Store {
                 deleted_blobs = orphans,
                 deleted_references = references,
                 deleted_traces = pruned_traces,
+                deleted_llm_calls = pruned_llm_calls,
                 deleted_compactions = pruned_compactions,
                 recycled_conversations = expired,
                 "storage retention pass completed"
@@ -375,6 +388,34 @@ impl Store {
         .bind(RETAINED_TRACE_ROWS)
         .bind(RETAINED_TRACE_ROWS)
         .bind(MAX_PRUNED_TRACES_PER_PASS)
+        .execute(&mut **tx)
+        .await?
+        .rows_affected())
+    }
+
+    /// `llm_calls` 超过总量上限时按最老优先删除，每轮限量；子表（请求/响应块）由外键
+    /// `ON DELETE CASCADE` 一起收走。
+    async fn prune_overflow_llm_calls(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        retained: i64,
+    ) -> Result<u64> {
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM llm_calls")
+            .fetch_one(&mut **tx)
+            .await?;
+        let overflow = total - retained;
+        if overflow <= 0 {
+            return Ok(0);
+        }
+        let limit = overflow.min(MAX_PRUNED_LLM_CALLS_PER_PASS);
+        Ok(sqlx::query(
+            "DELETE FROM llm_calls WHERE call_id IN (
+                 SELECT call_id FROM llm_calls
+                 WHERE status != 'running'
+                 ORDER BY created_at_ms ASC
+                 LIMIT ?
+             )",
+        )
+        .bind(limit)
         .execute(&mut **tx)
         .await?
         .rows_affected())
@@ -942,6 +983,60 @@ mod tests {
 
     /// 终态、明细已被回收的轨迹摘要行只增不减，长期使用后这张表没有上限。
     /// 每轮按最老优先限量回收，并始终保留最近 `RETAINED_TRACE_ROWS` 条。
+    /// D-02：`llm_calls` 摘要超过总量上限时按最老优先删除，明细随外键级联。
+    #[tokio::test]
+    async fn llm_call_summaries_are_capped_and_oldest_go_first() {
+        let (_dir, store) = fixture().await;
+        for (n, created_at) in [
+            ("c0", 10_i64),
+            ("c1", 20),
+            ("c2", 30),
+            ("c3", 40),
+            ("c4", 50),
+        ] {
+            sqlx::query(
+                "INSERT INTO llm_calls(call_id, run_id, conversation_id, provider_call_index,
+                 provider_type, provider_url, request_type, request_url, model_id, display_name,
+                 status, created_at_ms, message_count, tool_count, detailed)
+                 VALUES (?, 'run', 'conv', 0, 'openai', 'url', 'chat', 'url', 'model',
+                 'name', 'completed', ?, 1, 0, 1)",
+            )
+            .bind(n)
+            .bind(created_at)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        }
+        // 明细跟着摘要走：cascade 生效后不应留下悬空行。
+        sqlx::query("INSERT INTO llm_call_requests VALUES ('c0', '{}', '{}', 2)")
+            .execute(store.pool())
+            .await
+            .unwrap();
+
+        let mut tx = store.pool().begin().await.unwrap();
+        let deleted = Store::prune_overflow_llm_calls(&mut tx, 3).await.unwrap();
+        tx.commit().await.unwrap();
+
+        assert_eq!(deleted, 2, "overflow of two rows is removed in one batch");
+        let remaining: Vec<String> =
+            sqlx::query_scalar("SELECT call_id FROM llm_calls ORDER BY created_at_ms ASC")
+                .fetch_all(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(
+            remaining,
+            vec!["c2", "c3", "c4"],
+            "oldest summaries go first"
+        );
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM llm_call_requests")
+                .fetch_one(store.pool())
+                .await
+                .unwrap(),
+            0,
+            "detail rows must cascade with the summary"
+        );
+    }
     #[tokio::test]
     async fn expired_trace_summaries_are_pruned_in_bounded_batches_keeping_the_newest() {
         let (_dir, store) = fixture().await;
