@@ -240,14 +240,41 @@ fn append_identity(request: &ai::BidiAppendRequest) -> Result<(&str, i64)> {
     Ok((request_id, request.append_seqno))
 }
 
+/// append 的 request_id（校验与 `decode_any` 相同）。
+///
+/// 调用方要在解码前决定"这条流该按哪种协议优先"，所以身份解析必须能单独做。
+pub fn request_id_of(request: &ai::BidiAppendRequest) -> Result<&str> {
+    append_identity(request).map(|(request_id, _)| request_id)
+}
+
 /// 先按 legacy `AgentClientMessage` 解，失败再按新推理消息解。
 ///
 /// 这两种消息共用 `BidiService/BidiAppend`：只按 legacy 解会把新推理流打成每轮 400，
 /// 只按新推理解又会破坏本地 Agent 接管。都解不了时留下可诊断的现场（长度、hex 前缀、
 /// ASCII 预览），不再只回一句 `invalid wire type`。
-pub fn decode_any(request: &ai::BidiAppendRequest) -> Result<BidiAppendPayload> {
+///
+/// `prefer_inference`：该 request_id 已经确认走新推理协议时，先按新协议解。新协议里
+/// 心跳/取消/结束这类控制帧很短，legacy 解码器也能"成功"解成另一种消息并静默吞掉
+/// （A-02），所以首帧之后必须按流类型解码，不能再靠"legacy 先试"。
+pub fn decode_any(
+    request: &ai::BidiAppendRequest,
+    prefer_inference: bool,
+) -> Result<BidiAppendPayload> {
     let (request_id, seqno) = append_identity(request)?;
     let payload = append_payload(request)?;
+    if prefer_inference {
+        match inference::RunInferenceClientMessage::decode(payload.as_slice()) {
+            Ok(message) if message.message.is_some() => {
+                return Ok(BidiAppendPayload::Inference(Box::new(InferenceAppend {
+                    request_id: request_id.into(),
+                    seqno,
+                    message,
+                })))
+            }
+            Ok(_) => {}
+            Err(_) => {}
+        }
+    }
     let agent_error = match agent::AgentClientMessage::decode(payload.as_slice()) {
         Ok(message) => {
             return Ok(BidiAppendPayload::Agent(Box::new(DecodedAppend {
@@ -301,7 +328,7 @@ fn ascii_preview(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 fn decode(request: &ai::BidiAppendRequest) -> Result<DecodedAppend> {
-    decode_any(request).and_then(|payload| match payload {
+    decode_any(request, false).and_then(|payload| match payload {
         BidiAppendPayload::Agent(decoded) => Ok(*decoded),
         BidiAppendPayload::Inference(_) => {
             Err(Error::Protocol("expected a legacy Agent append".into()))
@@ -406,7 +433,7 @@ mod tests {
         };
         let request = request("", message.encode_to_vec());
 
-        let BidiAppendPayload::Inference(decoded) = decode_any(&request).unwrap() else {
+        let BidiAppendPayload::Inference(decoded) = decode_any(&request, false).unwrap() else {
             panic!("inference append must not decode as a legacy Agent append");
         };
         assert_eq!(decoded.message.kind(), "run_request");
@@ -417,9 +444,33 @@ mod tests {
         );
     }
 
+    /// 首帧确认过新协议之后，后续控制帧必须按新协议解码。
+    ///
+    /// 新协议心跳 `[2a,00]` 在 legacy 解码器里会"成功"解成 `ExecClientControlMessage`
+    /// 并被静默吞掉——这正是 A-02 的根因；有流类型提示时不能被 legacy 抢走。
+    #[test]
+    fn a_control_frame_follows_the_stream_protocol_after_the_first_inference_append() {
+        let heartbeat = inference::RunInferenceClientMessage {
+            message: Some(
+                inference::run_inference_client_message::Message::ClientHeartbeat(
+                    inference::ClientHeartbeat::default(),
+                ),
+            ),
+        };
+        let request = request("", heartbeat.encode_to_vec());
+        assert!(matches!(
+            decode_any(&request, true).unwrap(),
+            BidiAppendPayload::Inference(_)
+        ));
+        // 没有提示时 legacy 会先解成功：证明"只靠试探解码"确实分不干净。
+        assert!(matches!(
+            decode_any(&request, false).unwrap(),
+            BidiAppendPayload::Agent(_)
+        ));
+    }
     /// 两种消息都解不了时必须报错（并留下诊断日志），不能把垃圾字节当合法 append 收下。
     #[test]
     fn an_unrecognized_append_fails_both_decoders() {
-        assert!(decode_any(&request("", vec![0xFF; 16])).is_err());
+        assert!(decode_any(&request("", vec![0xFF; 16]), false).is_err());
     }
 }

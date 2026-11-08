@@ -1,7 +1,7 @@
 //! Maps request IDs to active transport handles.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -48,6 +48,9 @@ struct RegistryInner {
     local: Mutex<HashMap<String, LocalTransport>>,
     next_local_generation: AtomicU64,
     upstream: Mutex<HashMap<String, UpstreamMark>>,
+    /// 已确认走 `InferenceService/RunInference` 的 request_id：后续 append 先按新协议
+    /// 解，避免控制帧被 legacy 解码器误判后静默吞掉。
+    inference_protocol: Mutex<HashSet<String>>,
     route_changed: Notify,
     store: Store,
     traces: CursorTraceService,
@@ -170,6 +173,7 @@ impl TransportRegistry {
                 local: Mutex::new(HashMap::new()),
                 next_local_generation: AtomicU64::new(1),
                 upstream: Mutex::new(HashMap::new()),
+                inference_protocol: Mutex::new(HashSet::new()),
                 route_changed: Notify::new(),
                 traces: CursorTraceService::new(store.clone()),
                 conversations: ConversationRegistry::with_background_wait(
@@ -234,6 +238,27 @@ impl TransportRegistry {
 
     pub fn conversations(&self) -> &ConversationRegistry {
         &self.inner.conversations
+    }
+
+    /// 记下"这个 request_id 已经确认走新推理协议"。
+    ///
+    /// 新协议的 append 里只有首帧 `run_request` 足够大、能靠解码区分；后续心跳/取消/
+    /// 结束帧字节很短，legacy 解码器也能"成功"解成别的消息并静默吞掉（A-02）。首帧
+    /// 一旦确认为 `RunInferenceClientMessage`，同一条流的后续 append 就先按新协议解。
+    pub(crate) async fn mark_inference_protocol(&self, request_id: &str) {
+        self.inner
+            .inference_protocol
+            .lock()
+            .await
+            .insert(request_id.to_owned());
+    }
+
+    pub(crate) async fn prefers_inference_protocol(&self, request_id: &str) -> bool {
+        self.inner
+            .inference_protocol
+            .lock()
+            .await
+            .contains(request_id)
     }
 
     pub async fn get_or_create(&self, request_id: &str) -> Result<TransportHandle> {

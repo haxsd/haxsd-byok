@@ -257,9 +257,16 @@ async fn bidi_handler(
         Err(response) => return Ok(*response),
     };
     let request: ai::BidiAppendRequest = connect::decode_unary(&body)?;
-    let decoded = match bidi::decode_any(&request)? {
+    let prefer_inference = match bidi::request_id_of(&request) {
+        Ok(request_id) => registry.prefers_inference_protocol(request_id).await,
+        Err(_) => false,
+    };
+    let decoded = match bidi::decode_any(&request, prefer_inference)? {
         bidi::BidiAppendPayload::Agent(decoded) => *decoded,
         bidi::BidiAppendPayload::Inference(decoded) => {
+            // 首帧已经证明这条流走新协议：后续心跳/取消/结束帧不能再让 legacy 解码器
+            // 抢走（否则会被静默吞掉）。
+            registry.mark_inference_protocol(&decoded.request_id).await;
             return handle_inference_append(&registry, Extension(proxy), parts, body, *decoded)
                 .await;
         }
@@ -458,6 +465,27 @@ async fn handle_inference_append(
              re-reads the feature gates, or select a model backed by the legacy runtime.",
             model_id.as_deref().unwrap_or("unknown")
         )));
+    }
+    // 本地模式不允许官方模型：与 legacy 分支同一条口径。以前这里无条件透传，Local 模式下
+    // 客户端手里的旧目录如果把官方模型送进来，会悄悄花掉官方额度。
+    if let Some(model) = model_id.as_deref() {
+        if !registry
+            .store()
+            .cursor_mode()
+            .await?
+            .includes_official_models()
+        {
+            crate::cursor::protocol::guard::record_runtime_mismatch(
+                "inference_official_model_in_local_mode",
+                Some(model),
+                conversation_id.as_deref(),
+            );
+            return Err(crate::Error::Protocol(format!(
+                "model {model} is not in the model library; local mode answers only configured \
+                 models. Reload the Cursor window to refresh the model list, or switch to mixed \
+                 mode to use official models."
+            )));
+        }
     }
     proxy::forward(proxy, Request::from_parts(parts, Body::from(body))).await
 }
