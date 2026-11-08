@@ -430,6 +430,11 @@ fn chat_body(
                 }
             },
             "reasoning" => {
+                // 上一轮工具已经拿到结果、又出现新的 reasoning：客户端开始下一轮了，
+                // 必须先收束上一轮；否则多轮"只调工具"的回合会被折叠成一条 assistant。
+                if !turn.results.is_empty() {
+                    flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
+                }
                 if let Some(text) = chat_reasoning_text(item, owner)? {
                     pending_reasoning = Some(match pending_reasoning.take() {
                         Some(previous) => format!("{previous}\n\n{text}"),
@@ -438,6 +443,9 @@ fn chat_body(
                 }
             }
             "function_call" | "custom_tool_call" => {
+                if !turn.results.is_empty() {
+                    flush_chat(&mut messages, &mut turn, &mut pending_reasoning)?;
+                }
                 if let Some(reasoning) = item
                     .get("reasoning_content")
                     .and_then(Value::as_str)
@@ -698,8 +706,18 @@ fn anthropic_body(
                     )))
                 }
             },
-            "reasoning" => pending_thinking.extend(anthropic_thinking_blocks(item, owner)?),
+            "reasoning" => {
+                // 与 Chat 同一条口径：上一轮工具结果之后的新 reasoning 属于新一轮，
+                // 先把上一轮收束成独立的 assistant/tool 组。
+                if !turn.results.is_empty() {
+                    flush_anthropic(&mut messages, &mut turn, &mut pending_thinking)?;
+                }
+                pending_thinking.extend(anthropic_thinking_blocks(item, owner)?);
+            }
             "function_call" | "custom_tool_call" => {
+                if !turn.results.is_empty() {
+                    flush_anthropic(&mut messages, &mut turn, &mut pending_thinking)?;
+                }
                 let call = history_call(item, tools, item_type(item))?;
                 turn.calls.push(call);
             }

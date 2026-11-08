@@ -218,6 +218,54 @@ fn custom_tool_becomes_object_function_with_string_input() {
         .contains("patch"));
 }
 
+/// B-07：两轮顺序工具循环不能被折叠成单个 assistant 回合。
+///
+/// Codex 历史里连续"只调工具"的回合没有 assistant message 分隔；转换器必须在
+/// "已有结果、又出现新的 function_call/reasoning"时先把上一轮收束。
+#[test]
+fn sequential_tool_rounds_stay_separate_for_chat_and_anthropic() {
+    let source = json!({
+        "model": "vendor-model",
+        "input": [
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "start"}]},
+            {"type": "function_call", "call_id": "a", "name": "shell", "arguments": "{\"cmd\":\"one\"}"},
+            {"type": "function_call_output", "call_id": "a", "output": "one"},
+            {"type": "function_call", "call_id": "b", "name": "shell", "arguments": "{\"cmd\":\"two\"}"},
+            {"type": "function_call_output", "call_id": "b", "output": "two"},
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "finish"}]}
+        ],
+        "tools": [{"type": "function", "name": "shell", "parameters": {"type": "object", "properties": {}}}]
+    });
+    let mapped = chat(source.clone());
+    let messages = mapped.body["messages"].as_array().expect("chat messages");
+    let chat_tool_turns = messages
+        .iter()
+        .filter(|message| message["role"] == "assistant" && message.get("tool_calls").is_some())
+        .count();
+    assert_eq!(
+        chat_tool_turns, 2,
+        "each tool round must be its own assistant turn"
+    );
+
+    let mapped = anthropic(source);
+    let messages = mapped.body["messages"]
+        .as_array()
+        .expect("anthropic messages");
+    let anthropic_tool_turns = messages
+        .iter()
+        .filter(|message| {
+            message["role"] == "assistant"
+                && message["content"]
+                    .as_array()
+                    .is_some_and(|blocks| blocks.iter().any(|block| block["type"] == "tool_use"))
+        })
+        .count();
+    assert_eq!(
+        anthropic_tool_turns, 2,
+        "each tool round must be its own assistant message"
+    );
+}
+
 #[test]
 fn function_tools_keep_their_declared_name_and_schema() {
     let mapped = chat(json!({
