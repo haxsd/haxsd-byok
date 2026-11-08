@@ -122,6 +122,18 @@ pub(super) async fn execute(
                 if completed_call_ids.contains(&call_id) {
                     continue;
                 }
+                // 更早轮次已经收过尾的调用（30 分钟超时补的 interrupted，或前一轮已提交）：
+                // 客户端补发/重复上报时不能再提交。store 只认本轮调用，遇到这种 call_id
+                // 会报 `unknown tool result call_id`，工具轮失败不经过重试，整轮 run 会被判死；
+                // 模型轮里的同类迟到结果本来就是忽略的，这里保持一致。
+                if already_accounted(&call_id, accounted) {
+                    tracing::debug!(
+                        round_id = %round_id,
+                        call_id,
+                        "ignoring a tool result the run already accounted for"
+                    );
+                    continue;
+                }
                 let committed = store
                     .commit_tool_result(
                         &prepared.conversation_id,
@@ -313,4 +325,26 @@ fn failed(error: crate::Error) -> RunOutcome {
 
 fn client_failure() -> RunOutcome {
     RunOutcome::Failed(RunFailure::Client("client event channel closed".into()))
+}
+
+/// 这个结果是否属于**更早轮次**：`accounted` 在轮次之间共享，本轮正常提交的结果也会
+/// 进集合（`completed_call_ids` 已先挡住同轮重复），所以这里命中的只可能是迟到结果。
+fn already_accounted(call_id: &str, accounted: &HashSet<String>) -> bool {
+    accounted.contains(call_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 回归(C-03)：上一轮（含 30 分钟超时补成的 interrupted）已收尾的 call_id 不能
+    /// 再提交给本轮——store 会报未知 call_id 并把整轮判死。
+    #[test]
+    fn results_already_accounted_by_an_earlier_round_are_ignored() {
+        let mut accounted = HashSet::new();
+        accounted.insert("call-1".to_owned());
+        assert!(already_accounted("call-1", &accounted));
+        assert!(!already_accounted("call-2", &accounted));
+        assert!(!already_accounted("call-1", &HashSet::new()));
+    }
 }

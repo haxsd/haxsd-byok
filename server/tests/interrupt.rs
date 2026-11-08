@@ -1121,6 +1121,83 @@ async fn a_later_round_may_reuse_an_interrupted_call_id() {
     );
 }
 
+/// 回归(C-03):上一轮已经收过尾的 call_id 被客户端补发到下一轮工具轮时,应当忽略。
+///
+/// 30 分钟工具轮超时会补一条 interrupted 结果（run/tool_round.rs 的收尾路径），注释明确
+/// 预期客户端之后仍会把真正的结果送上来；如果它落在**下一轮**工具轮里，旧实现会让
+/// store 报 `unknown tool result call_id`，工具轮失败不经过重试，整轮 run 被判死。
+#[tokio::test]
+async fn a_late_tool_result_from_an_earlier_round_is_ignored() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(tool_response("call-1", "Read", "{\"path\":\"/tmp/a\"}"));
+    provider.push(tool_response("call-2", "Read", "{\"path\":\"/tmp/b\"}"));
+    provider.push(text_response("done"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("late-result-request").await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "late-result-request",
+                "late-result-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    let first_exec = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(read_success(first_exec)),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    // 第二轮工具轮开始后，补发上一轮的结果：必须忽略，而不是把本轮判死。
+    let second_exec = wait_for_exec(&handle, &mut output, &mut append_seqno, "Read").await;
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(read_success(first_exec)),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(read_success(second_exec)),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    drain_successfully(&handle, &mut output, &mut append_seqno).await;
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "迟到的旧结果不能让工具轮失败;本轮结果仍要触发下一次模型调用"
+    );
+}
+
 #[tokio::test]
 async fn injected_user_context_detaches_subagents_without_cancelling_them() {
     let (_directory, store) = fixtures::temp_store().await;
