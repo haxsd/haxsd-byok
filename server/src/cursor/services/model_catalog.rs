@@ -229,20 +229,42 @@ const EFFORTS: [(&str, &str); 5] = [
     ("xhigh", "Extra High"),
     ("max", "Max"),
 ];
+/// 未配置窗口时的默认上下文档位（与历史行为一致）。
 const DEFAULT_CONTEXT: &str = "200k";
+
+/// 默认档位：模型配置了窗口就用窗口（匹配到标准名称则用标准名称），否则 200K。
+///
+/// 以前无论模型窗口多大默认都是 200K：32K/128K 模型的压缩阈值高于上游窗口，
+/// 请求会被上游以超长拒绝。默认值与选项都必须从模型配置来。
+fn default_context(context_window_tokens: Option<u64>) -> String {
+    let Some(tokens) = context_window_tokens else {
+        return DEFAULT_CONTEXT.to_owned();
+    };
+    CONTEXTS
+        .iter()
+        .find(|(value, _)| parse_token_count(value) == Some(tokens))
+        .map_or_else(|| tokens.to_string(), |(value, _)| (*value).to_owned())
+}
 
 fn context_options(context_window_tokens: Option<u64>) -> Vec<(String, String)> {
     let mut contexts = CONTEXTS
-        .into_iter()
-        .map(|(value, display_name)| (value.to_owned(), display_name.to_owned()))
+        .iter()
+        .filter(|(value, _)| {
+            context_window_tokens.is_none_or(|tokens| {
+                parse_token_count(value).is_none_or(|standard| standard <= tokens)
+            })
+        })
+        .map(|(value, display_name)| ((*value).to_owned(), (*display_name).to_owned()))
         .collect::<Vec<_>>();
     if let Some(tokens) = context_window_tokens {
-        let value = tokens.to_string();
         let duplicate = contexts
             .iter()
             .any(|(existing, _)| parse_token_count(existing) == Some(tokens));
         if !duplicate {
-            contexts.push((value, format!("{} (Custom)", format_token_count(tokens))));
+            contexts.push((
+                tokens.to_string(),
+                format!("{} (Custom)", format_token_count(tokens)),
+            ));
         }
     }
     contexts
@@ -556,12 +578,14 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
 
 fn available_model(model: &ModelConfig) -> AvailableModel {
     let contexts = context_options(model.context_window_tokens);
+    let default_context = default_context(model.context_window_tokens);
     let tooltip = model_tooltip(model);
     let variants = model_variants(
         &model.model_hash,
         &model.display_name,
         &tooltip,
         &contexts,
+        &default_context,
         true,
     );
     let legacy_slugs = variants
@@ -688,6 +712,7 @@ fn model_variants(
     display_name: &str,
     tooltip: &TooltipData,
     contexts: &[(String, String)],
+    default_context: &str,
     thinking: bool,
 ) -> Vec<ModelVariant> {
     // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
@@ -712,6 +737,7 @@ fn model_variants(
                     tooltip,
                     context,
                     context_name,
+                    default_context,
                     *effort,
                     fast,
                 ));
@@ -727,11 +753,12 @@ fn model_variant(
     tooltip: &TooltipData,
     context: &str,
     context_name: &str,
+    default_context: &str,
     effort: Option<(&str, &str)>,
     fast: bool,
 ) -> ModelVariant {
     let mut suffix = Vec::with_capacity(3);
-    if context != DEFAULT_CONTEXT {
+    if context != default_context {
         suffix.push(context_name);
     }
     if let Some((_, effort_name)) = effort {
@@ -749,7 +776,7 @@ fn model_variant(
         )
     };
     let is_default =
-        context == DEFAULT_CONTEXT && !fast && effort.is_none_or(|(effort, _)| effort == "high");
+        context == default_context && !fast && effort.is_none_or(|(effort, _)| effort == "high");
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -800,7 +827,14 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
     };
     // Effort 与上下文档位由宿主统一提供,与内置模型一致;插件不再声明这两项。
     let contexts = context_options(None);
-    let variants = model_variants(&model.id, &model.display_name, &tooltip, &contexts, true);
+    let variants = model_variants(
+        &model.id,
+        &model.display_name,
+        &tooltip,
+        &contexts,
+        DEFAULT_CONTEXT,
+        true,
+    );
     let legacy_slugs = variants
         .iter()
         .filter_map(|variant| variant.legacy_slug.clone())
@@ -1002,5 +1036,30 @@ mod tests {
             !forwards_default_model(CursorMode::Mixed, &[], &plugin_models),
             "插件模型也算本地模型"
         );
+    }
+    /// F-03：默认上下文档位跟随模型配置的窗口，选项也不能超过窗口。
+    #[test]
+    fn context_defaults_and_options_follow_the_configured_window() {
+        assert_eq!(default_context(None), "200k");
+        assert_eq!(default_context(Some(500_000)), "500k");
+        assert_eq!(default_context(Some(131_072)), "131072");
+
+        let small: Vec<String> = context_options(Some(131_072))
+            .into_iter()
+            .map(|(value, _)| value)
+            .collect();
+        assert_eq!(
+            small,
+            vec!["131072"],
+            "small-window models must not offer 200K+"
+        );
+
+        let middle: Vec<String> = context_options(Some(500_000))
+            .into_iter()
+            .map(|(value, _)| value)
+            .collect();
+        assert_eq!(middle, vec!["200k", "356k", "500k"]);
+
+        assert_eq!(context_options(None).len(), CONTEXTS.len());
     }
 }
