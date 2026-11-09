@@ -55,6 +55,36 @@ impl OpenAiChatProvider {
     }
 }
 
+/// Anthropic 形状的客户端 `tool_choice` / `temperature` 映射到 Chat Completions。
+///
+/// 开了推理时不发 `temperature`：OpenAI 的推理模型对它直接 400。
+fn apply_client_options(body: &mut serde_json::Value, client: &crate::model::ClientRequestOptions) {
+    if body.get("tools").is_some() {
+        if let Some(choice) = &client.tool_choice {
+            let mapped = match choice["type"].as_str() {
+                Some("auto") => Some(json!("auto")),
+                Some("any") => Some(json!("required")),
+                Some("none") => Some(json!("none")),
+                Some("tool") => choice["name"]
+                    .as_str()
+                    .map(|name| json!({"type": "function", "function": {"name": name}})),
+                _ => None,
+            };
+            if let Some(mapped) = mapped {
+                body["tool_choice"] = mapped;
+            }
+            if choice["disable_parallel_tool_use"].as_bool() == Some(true) {
+                body["parallel_tool_calls"] = json!(false);
+            }
+        }
+    }
+    if body.get("reasoning_effort").is_none() {
+        if let Some(temperature) = client.temperature {
+            body["temperature"] = json!(temperature);
+        }
+    }
+}
+
 impl Provider for OpenAiChatProvider {
     fn stream(
         &self,
@@ -102,6 +132,7 @@ impl Provider for OpenAiChatProvider {
                     .collect::<Vec<_>>());
             }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
+            apply_client_options(&mut body, &request.model.client);
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);

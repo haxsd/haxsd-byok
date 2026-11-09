@@ -112,6 +112,7 @@ async fn build(
     let requested = object.get("model").and_then(Value::as_str).unwrap_or("");
     let model = models::resolve(store, settings, requested).await?;
     let (history, leading_system) = history(object.get("messages"), clients, fetch_images).await?;
+    let prompt_instructions_tail = leading_system.clone();
     // 对话开头的 system 消息属于顶层 system：它们比 `system` 参数晚出现，接在后面
     // 保持时间顺序。
     let mut instructions = system_text(object.get("system"))?;
@@ -136,6 +137,14 @@ async fn build(
     }
     spec.stop_sequences = stop_sequences;
     apply_thinking(object.get("thinking"), &mut spec)?;
+    apply_client_options(object, &mut spec)?;
+    if let Some(mut blocks) = cached_system_blocks(object.get("system")) {
+        // 对话开头的 system 消息照旧接在顶层 system 之后（不带断点）。
+        for text in leading_system_texts(&prompt_instructions_tail) {
+            blocks.push(json!({"type": "text", "text": text}));
+        }
+        spec.client.anthropic_system_blocks = Some(blocks);
+    }
 
     let call_id = format!("claude-{}", Uuid::new_v4());
     let conversation_id = object
@@ -166,6 +175,111 @@ async fn build(
         requested.to_owned()
     };
     Ok((invocation, echoed))
+}
+
+fn leading_system_texts(texts: &[String]) -> impl Iterator<Item = &String> {
+    texts.iter().filter(|text| !text.is_empty())
+}
+
+/// 客户端自己在 `system` 里放了缓存断点时，原样保留它的文本块。
+///
+/// 拼成一个字符串会丢掉这些断点（以及 1h ttl 之类的设置），Anthropic 上游只能按我们
+/// 自己放的断点缓存，粒度更粗。没有断点时返回 `None`，走原来的拼接路径。
+fn cached_system_blocks(value: Option<&Value>) -> Option<Vec<Value>> {
+    let blocks = value?.as_array()?;
+    if !blocks.iter().any(|block| {
+        block
+            .get("cache_control")
+            .is_some_and(|value| !value.is_null())
+    }) {
+        return None;
+    }
+    let kept: Vec<Value> = blocks
+        .iter()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .filter(|block| {
+            block
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|text| !text.is_empty())
+        })
+        .map(|block| {
+            let mut kept = json!({"type": "text", "text": block["text"].clone()});
+            if let Some(cache) = block.get("cache_control").filter(|value| !value.is_null()) {
+                kept["cache_control"] = cache.clone();
+            }
+            kept
+        })
+        .collect();
+    (!kept.is_empty()).then_some(kept)
+}
+
+/// 客户端请求级参数：`tool_choice`、`temperature`、`output_config.effort`。
+///
+/// effort 只在客户端给了时覆盖；没给时 `ModelConfig::configure` 仍按模型库配置补。
+fn apply_client_options(
+    object: &serde_json::Map<String, Value>,
+    spec: &mut ModelSpec,
+) -> Result<(), ApiError> {
+    if let Some(choice) = object.get("tool_choice").filter(|value| !value.is_null()) {
+        match choice.get("type").and_then(Value::as_str) {
+            Some("auto" | "any" | "none") => {}
+            Some("tool") if choice.get("name").and_then(Value::as_str).is_some() => {}
+            _ => return Err(ApiError::invalid("unsupported tool_choice")),
+        }
+        spec.client.tool_choice = Some(choice.clone());
+    }
+    if let Some(value) = object.get("temperature").filter(|value| !value.is_null()) {
+        let temperature = value
+            .as_f64()
+            .ok_or_else(|| ApiError::invalid("temperature must be a number"))?;
+        spec.client.temperature = Some(temperature);
+    }
+    if let Some(effort) = object
+        .get("output_config")
+        .and_then(|config| config.get("effort"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty())
+    {
+        spec.reasoning.effort = Some(effort.to_owned());
+    }
+    Ok(())
+}
+
+/// `document` 块（PDF 等）在共享请求格式里还没有对应的内容类型。
+///
+/// 纯文本来源原样转成文本；其它来源换成一段明确的说明，而不是像以前那样静默丢弃——
+/// 模型至少知道这里有一份它看不到的文档，可以换用别的方式读取。
+fn document_text(block: &Value) -> String {
+    let title = block
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let source = block.get("source");
+    let kind = source
+        .and_then(|source| source.get("type"))
+        .and_then(Value::as_str);
+    if kind == Some("text") {
+        if let Some(data) = source
+            .and_then(|source| source.get("data"))
+            .and_then(Value::as_str)
+        {
+            return match title {
+                Some(title) => format!("[document: {title}]\n{data}"),
+                None => data.to_owned(),
+            };
+        }
+    }
+    let media = source
+        .and_then(|source| source.get("media_type"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown type");
+    format!(
+        "[document omitted{}: {media} content cannot be forwarded through this model gateway; read the file with a text-based tool instead]",
+        title.map(|title| format!(" \"{title}\"")).unwrap_or_default()
+    )
 }
 
 fn system_text(value: Option<&Value>) -> Result<String, ApiError> {
@@ -418,6 +532,9 @@ async fn user_message(
                 }
             }
             Some("image") => parts.push(image_part(block, clients, fetch_images).await?),
+            Some("document") => parts.push(ContentPart::Text {
+                text: document_text(block),
+            }),
             Some("tool_result") => {
                 flush_parts(index, sequence, &mut parts, history);
                 sequence += 1;
@@ -582,6 +699,14 @@ async fn tool_result_message(
                     }
                     Some("image") => {
                         provider_parts.push(image_part(part, clients, fetch_images).await?)
+                    }
+                    Some("document") => {
+                        let value = document_text(part);
+                        if !text.is_empty() {
+                            text.push('\n');
+                        }
+                        text.push_str(&value);
+                        provider_parts.push(ContentPart::Text { text: value });
                     }
                     Some(_) | None => {}
                 }
@@ -1466,6 +1591,53 @@ mod tests {
 
     fn clients(store: &Store) -> NetworkClients {
         NetworkClients::new(store.clone())
+    }
+
+    #[tokio::test]
+    async fn client_cache_blocks_tool_choice_temperature_and_effort_are_kept() {
+        let (_directory, store, settings) = fixture().await;
+        let body = json!({
+            "model": "claude-sonnet-4-5",
+            "max_tokens": 4_096,
+            "system": [
+                {"type": "text", "text": "static", "cache_control": {"type": "ephemeral", "ttl": "1h"}},
+                {"type": "text", "text": "dynamic"}
+            ],
+            "tool_choice": {"type": "tool", "name": "Bash"},
+            "temperature": 0.2,
+            "output_config": {"effort": "low"},
+            "tools": [{"name": "Bash", "input_schema": {"type": "object"}}],
+            "messages": [{"role": "user", "content": "hello"}],
+        });
+        let prepared = prepare(&store, &settings, &body, &clients(&store))
+            .await
+            .unwrap();
+        let model = &prepared.invocation.request.model;
+        let blocks = model.client.anthropic_system_blocks.as_ref().unwrap();
+        assert_eq!(blocks[0]["cache_control"]["ttl"], "1h");
+        assert!(blocks[1].get("cache_control").is_none());
+        assert_eq!(model.client.tool_choice.as_ref().unwrap()["name"], "Bash");
+        assert_eq!(model.client.temperature, Some(0.2));
+        assert_eq!(model.reasoning.effort.as_deref(), Some("low"));
+        // 拼接后的 instructions 仍然在，异协议上游照旧使用它。
+        assert_eq!(
+            prepared.invocation.request.prompt.instructions,
+            "static\ndynamic"
+        );
+    }
+
+    #[test]
+    fn document_blocks_become_text_instead_of_disappearing() {
+        let text = document_text(&json!({
+            "type": "document", "title": "notes",
+            "source": {"type": "text", "media_type": "text/plain", "data": "body"}
+        }));
+        assert_eq!(text, "[document: notes]\nbody");
+        let pdf = document_text(&json!({
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBERi0="}
+        }));
+        assert!(pdf.starts_with("[document omitted") && pdf.contains("application/pdf"));
     }
 
     #[tokio::test]

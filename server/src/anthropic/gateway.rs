@@ -326,6 +326,7 @@ async fn messages_handler(
     let active = ActiveRequest {
         gateway: gateway.clone(),
     };
+    let anthropic_beta = client_anthropic_beta(request.headers());
     let body = match read_body(request).await {
         Ok(body) => body,
         Err(error) => return error.into_response(),
@@ -348,6 +349,8 @@ async fn messages_handler(
         Ok(prepared) => prepared,
         Err(error) => return error.into_response(),
     };
+    let mut prepared = prepared;
+    prepared.invocation.request.model.client.anthropic_beta = anthropic_beta;
     let cancellation = gateway
         .inner
         .runtime
@@ -623,6 +626,23 @@ async fn read_body(request: Request<Body>) -> Result<Value, ApiError> {
         .map_err(|error| ApiError::invalid(format!("request body is not valid JSON: {error}")))
 }
 
+/// 客户端的 `anthropic-beta` 头，去掉只对官方账号登录有意义的 `oauth-*` 项。
+///
+/// 这些 beta（interleaved thinking、细粒度工具流式等）决定上游能不能按客户端预期
+/// 工作；以前网关一律不转发。是否真正发出去由 Anthropic 适配器决定（只发给 Anthropic
+/// 协议上游）。
+fn client_anthropic_beta(headers: &HeaderMap) -> Option<String> {
+    let betas: Vec<&str> = headers
+        .get_all("anthropic-beta")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+        .filter(|beta| !beta.is_empty() && !beta.starts_with("oauth-"))
+        .collect();
+    (!betas.is_empty()).then(|| betas.join(","))
+}
+
 fn authorized(headers: &HeaderMap, expected: &str) -> bool {
     if expected.is_empty() {
         return false;
@@ -659,6 +679,26 @@ fn token_matches(candidate: &str, expected: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_betas_are_forwarded_without_oauth_entries() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            "anthropic-beta",
+            "oauth-2025-04-20, interleaved-thinking-2025-05-14"
+                .parse()
+                .unwrap(),
+        );
+        headers.append(
+            "anthropic-beta",
+            "fine-grained-tool-streaming-2025-05-14".parse().unwrap(),
+        );
+        assert_eq!(
+            client_anthropic_beta(&headers).as_deref(),
+            Some("interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14")
+        );
+        assert_eq!(client_anthropic_beta(&HeaderMap::new()), None);
+    }
     use crate::{
         anthropic::ClaudeSettings,
         model::{ModelConfigInput, ModelType},

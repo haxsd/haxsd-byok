@@ -61,8 +61,20 @@ impl Provider for AnthropicProvider {
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
             let mut messages = anthropic_messages(&request.history)?;
-            mark_cache_breakpoint(&mut messages);
-            let system = if request.prompt.instructions.is_empty() {
+            // 客户端自己放了 system 断点时原样使用；Anthropic 一次请求最多 4 个断点，
+            // 先保证末条消息的断点（增量缓存最关键），再给工具表。
+            let client_system = request.model.client.anthropic_system_blocks.clone();
+            let client_breakpoints = client_system.as_ref().map_or(0, |blocks| {
+                blocks.iter().filter(|block| block.get("cache_control").is_some()).count()
+            });
+            let budget = 4_usize.saturating_sub(client_breakpoints);
+            if client_system.is_none() || budget >= 1 {
+                mark_cache_breakpoint(&mut messages);
+            }
+            let mark_tools = client_system.is_none() || budget >= 2;
+            let system = if let Some(blocks) = client_system {
+                Value::Array(blocks)
+            } else if request.prompt.instructions.is_empty() {
                 Value::String(String::new())
             } else {
                 json!([{
@@ -82,7 +94,7 @@ impl Provider for AnthropicProvider {
                     let mut value = json!({
                         "name": tool.name, "description": tool.description, "input_schema": tool.parameters
                     });
-                    if index + 1 == tool_count {
+                    if mark_tools && index + 1 == tool_count {
                         value["cache_control"] = json!({"type": "ephemeral"});
                     }
                     value
@@ -92,11 +104,14 @@ impl Provider for AnthropicProvider {
                 body["stop_sequences"] = json!(request.model.stop_sequences);
             }
             apply_model(&mut body, &request.model, max_tokens)?;
+            apply_client_options(&mut body, &request.model.client);
             merge_extra_params(&mut body, &request.model.extra_params)?;
-            let request_headers = recorded_headers(
-                &config,
-                &[("content-type", "application/json"), ("anthropic-version", "2023-06-01")],
-            );
+            let beta = request.model.client.anthropic_beta.clone();
+            let mut static_headers = vec![("content-type", "application/json"), ("anthropic-version", "2023-06-01")];
+            if let Some(beta) = beta.as_deref() {
+                static_headers.push(("anthropic-beta", beta));
+            }
+            let request_headers = recorded_headers(&config, &static_headers);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
@@ -106,7 +121,9 @@ impl Provider for AnthropicProvider {
                 upstream::JsonRequest { body: &mut body, effort: effort_fallback::EffortField::Anthropic, timeout: config.request_timeout },
                 |client, body| client.post(&config.request_url)
                     .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
-                    .headers(config.custom_headers.clone()).json(body),
+                    .headers(beta_header(beta.as_deref()))
+                    .headers(config.custom_headers.clone())
+                    .json(body),
                 &cancellation,
                 recorder.as_ref(),
             ).await? else { return };
@@ -368,6 +385,41 @@ fn resolve_max_output_tokens(model: &crate::model::ModelSpec, route_max: Option<
         .max_output_tokens
         .or(route_max)
         .unwrap_or(DEFAULT_MAX_OUTPUT_TOKENS)
+}
+
+fn beta_header(beta: Option<&str>) -> reqwest::header::HeaderMap {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(value) = beta.and_then(|beta| reqwest::header::HeaderValue::from_str(beta).ok()) {
+        headers.insert("anthropic-beta", value);
+    }
+    headers
+}
+
+/// 客户端给的 `tool_choice` / `temperature`。
+///
+/// 强制工具调用（`any` / `tool`）与 thinking 互斥，`temperature` 也只能在不开 thinking 时
+/// 发：上游对这两种组合都直接 400。所以 thinking 已开时强制选择降级成 `auto`、温度不发。
+fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOptions) {
+    let thinking = body.get("thinking").is_some();
+    if body.get("tools").is_some() {
+        if let Some(choice) = &client.tool_choice {
+            let mut choice = choice.clone();
+            let forced = matches!(choice["type"].as_str(), Some("any" | "tool"));
+            if forced && thinking {
+                let parallel = choice.get("disable_parallel_tool_use").cloned();
+                choice = json!({"type": "auto"});
+                if let Some(parallel) = parallel {
+                    choice["disable_parallel_tool_use"] = parallel;
+                }
+            }
+            body["tool_choice"] = choice;
+        }
+    }
+    if !thinking {
+        if let Some(temperature) = client.temperature {
+            body["temperature"] = json!(temperature);
+        }
+    }
 }
 
 fn apply_model(body: &mut Value, model: &crate::model::ModelSpec, max_tokens: u64) -> Result<()> {
@@ -633,6 +685,27 @@ fn anthropic_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forced_tool_choice_falls_back_to_auto_when_thinking_is_on_and_temperature_is_dropped() {
+        let client = crate::model::ClientRequestOptions {
+            tool_choice: Some(json!({"type": "any", "disable_parallel_tool_use": true})),
+            temperature: Some(0.3),
+            ..Default::default()
+        };
+        let mut thinking = json!({"tools": [], "thinking": {"type": "adaptive"}});
+        apply_client_options(&mut thinking, &client);
+        assert_eq!(
+            thinking["tool_choice"],
+            json!({"type": "auto", "disable_parallel_tool_use": true})
+        );
+        assert!(thinking.get("temperature").is_none());
+
+        let mut plain = json!({"tools": []});
+        apply_client_options(&mut plain, &client);
+        assert_eq!(plain["tool_choice"]["type"], "any");
+        assert_eq!(plain["temperature"], 0.3);
+    }
     use crate::model::{ModelSpec, ReasoningSpec, ToolResultContent};
     use crate::provider::testing;
 
