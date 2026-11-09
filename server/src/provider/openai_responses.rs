@@ -81,6 +81,7 @@ impl Provider for OpenAiResponsesProvider {
                 body["tools"] = responses_tools(&request.prompt.tools);
             }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
+            apply_client_options(&mut body, &request.model.client);
             merge_extra_params(&mut body, &request.model.extra_params)?;
             apply_openai_prompt_cache_key(&mut body, &conversation_id, &config.request_url)?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
@@ -361,6 +362,34 @@ fn update_response_tool(
         events.push(ModelEvent::ToolCallEnd { index });
     }
     Ok(events)
+}
+
+/// Translate explicit Claude request options to the Responses wire format.
+fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOptions) {
+    if body.get("tools").is_some() {
+        if let Some(choice) = &client.tool_choice {
+            let mapped = match choice["type"].as_str() {
+                Some("auto") => Some(json!("auto")),
+                Some("any") => Some(json!("required")),
+                Some("none") => Some(json!("none")),
+                Some("tool") => choice["name"]
+                    .as_str()
+                    .map(|name| json!({"type":"function", "name":name})),
+                _ => None,
+            };
+            if let Some(mapped) = mapped {
+                body["tool_choice"] = mapped;
+            }
+            if choice["disable_parallel_tool_use"].as_bool() == Some(true) {
+                body["parallel_tool_calls"] = json!(false);
+            }
+        }
+    }
+    if body.get("reasoning").is_none() {
+        if let Some(temperature) = client.temperature {
+            body["temperature"] = json!(temperature);
+        }
+    }
 }
 
 fn apply_model(

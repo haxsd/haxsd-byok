@@ -150,7 +150,7 @@ where
     }
 }
 
-/// A JSON model request. Only the protocol's effort field may change between rejected attempts.
+/// A JSON model request. Rejected efforts and an explicitly unsupported cache key may be adjusted.
 pub(crate) struct JsonRequest<'a> {
     pub body: &'a mut serde_json::Value,
     pub effort: crate::provider::effort_fallback::EffortField,
@@ -198,13 +198,29 @@ where
                     },
                 };
                 let message = String::from_utf8_lossy(&body);
-                if let Some(change) = efforts.adjust(request.body, status, &message) {
+                let cache_rejected = request.body.get("prompt_cache_key").is_some()
+                    && rejects_prompt_cache_key(status, &message);
+                let change = if cache_rejected {
+                    request
+                        .body
+                        .as_object_mut()
+                        .expect("JSON request object")
+                        .remove("prompt_cache_key");
+                    tracing::warn!(model = call.model, status,
+                        "upstream does not support prompt_cache_key; retrying without that optional field");
+                    None
+                } else {
+                    efforts.adjust(request.body, status, &message)
+                };
+                if let Some(change) = &change {
                     tracing::warn!(
                         model = call.model, status,
                         rejected = %crate::error::redact(&change.rejected),
                         adjusted = change.adjusted.unwrap_or("provider default"),
                         "upstream rejected the requested reasoning effort; trying the next candidate"
                     );
+                }
+                if cache_rejected || change.is_some() {
                     if let Some(recorder) = recorder {
                         if let Err(error) = recorder
                             .adjusted_request(request.body, request.effort.value(request.body))
@@ -231,6 +247,39 @@ where
             }
         }
     }
+}
+
+/// Remove this optional routing field only when the upstream explicitly rejects it.
+fn rejects_prompt_cache_key(status: u16, body: &str) -> bool {
+    if !matches!(status, 400 | 422) {
+        return false;
+    }
+    let parsed = serde_json::from_str::<serde_json::Value>(body).ok();
+    let error = parsed
+        .as_ref()
+        .map(|value| value.get("error").unwrap_or(value));
+    let param = error
+        .and_then(|error| error.get("param"))
+        .and_then(serde_json::Value::as_str);
+    if param.is_some_and(|param| param != "prompt_cache_key") {
+        return false;
+    }
+    let message = error
+        .map(|error| error.get("message").unwrap_or(error))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(body)
+        .to_ascii_lowercase();
+    (param == Some("prompt_cache_key") || message.contains("prompt_cache_key"))
+        && [
+            "unknown",
+            "unrecognized",
+            "unsupported",
+            "not supported",
+            "unexpected",
+            "extra inputs are not permitted",
+        ]
+        .iter()
+        .any(|word| message.contains(word))
 }
 
 /// 错误正文的读取上限。这段文字只是给人看的,却会同时进日志、`llm_calls` 的错误字段和
@@ -368,6 +417,38 @@ mod tests {
         provider::{FinishReason, ModelEvent, OpenAiChatProvider, Provider, ProviderStream},
         store::{ProxyMode, ProxySettingsInput, Store},
     };
+
+    #[test]
+    fn cache_key_rejection_requires_the_exact_field_and_a_client_error() {
+        for status in [400, 422] {
+            assert!(rejects_prompt_cache_key(
+                status,
+                r#"{"error":{"param":"prompt_cache_key","message":"Unknown parameter"}}"#
+            ));
+            assert!(rejects_prompt_cache_key(
+                status,
+                "Unrecognized request argument supplied: prompt_cache_key"
+            ));
+            assert!(!rejects_prompt_cache_key(
+                status,
+                r#"{"error":{"param":"messages","message":"Unknown prompt_cache_key in message text"}}"#
+            ));
+            assert!(!rejects_prompt_cache_key(
+                status,
+                r#"{"error":{"message":"Invalid request"}}"#
+            ));
+            assert!(!rejects_prompt_cache_key(
+                status,
+                r#"{"error":{"param":"reasoning.effort","message":"Unsupported reasoning effort"}}"#
+            ));
+        }
+        for status in [401, 403, 429, 500, 502] {
+            assert!(!rejects_prompt_cache_key(
+                status,
+                "Unsupported prompt_cache_key"
+            ));
+        }
+    }
 
     // Keep network-only fixtures small while exercising the production JSON send loop.
     async fn send<F>(
