@@ -908,7 +908,7 @@ impl RunEngine {
                         let provider_refusal = matches!(
                             &cycle_failure.failure,
                             RunFailure::Provider(message)
-                                if super::compaction::is_context_overflow(message)
+                                if super::compaction::is_context_overflow(message.message())
                         );
                         let usage_exhausted =
                             matches!(&cycle_failure.failure, RunFailure::Provider(_))
@@ -2064,7 +2064,7 @@ impl RunEngine {
                         let overflow = matches!(
                             &failure.failure,
                             RunFailure::Provider(message)
-                                if super::compaction::is_context_overflow(message)
+                                if super::compaction::is_context_overflow(message.message())
                         );
                         let retryable = failure.retryable || overflow;
                         Err((
@@ -2343,11 +2343,10 @@ fn late_tool_result(result: &crate::model::ToolResult, accounted: &HashSet<Strin
 
 fn failure_message(failure: &RunFailure) -> String {
     match failure {
-        RunFailure::Protocol(message)
-        | RunFailure::Provider(message)
-        | RunFailure::Truncated(message)
-        | RunFailure::Store(message)
-        | RunFailure::Client(message) => message.clone(),
+        // runs.failure_summary 是桌面端"查看详情"读的那一份：保留稳定码，
+        // 文本主体仍是原来的完整原因。
+        RunFailure::Provider(failure) => format!("{}: {}", failure.code(), failure.message()),
+        _ => failure.message().to_owned(),
     }
 }
 
@@ -2397,7 +2396,7 @@ fn learn_provider_window(
     let RunFailure::Provider(message) = failure else {
         return;
     };
-    let Some(limit) = super::compaction::provider_context_limit(message) else {
+    let Some(limit) = super::compaction::provider_context_limit(message.message()) else {
         return;
     };
     if compaction_run.model.context_window_tokens == Some(limit) {

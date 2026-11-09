@@ -1034,10 +1034,12 @@ async fn a_persistent_gateway_failure_names_the_upstream_and_the_retry_count() {
     let output: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await.unwrap())
             .unwrap();
-    // 界面要能一眼看出这是来源网关的、试过几次的失败。
-    assert_eq!(
-        output["error"]["message"],
-        "upstream HTTP 502 Bad Gateway (after 2 retries): gateway is down"
+    let message = output["error"]["message"].as_str().unwrap();
+    assert!(message.contains("BYOK-UPSTREAM_HTTP"));
+    assert!(message.contains("Codex Responses returned HTTP 502"));
+    assert!(
+        !message.contains("gateway is down"),
+        "upstream prose belongs in diagnostics"
     );
     assert_eq!(attempts.load(Ordering::SeqCst), 3, "首次 + 两次重试");
     let calls = store.llm_calls(10).await.unwrap();
@@ -1045,8 +1047,10 @@ async fn a_persistent_gateway_failure_names_the_upstream_and_the_retry_count() {
     assert_eq!(calls[0].status, "error");
     assert_eq!(calls[0].http_status, Some(502));
     let recorded = calls[0].error_message.clone().unwrap_or_default();
+    assert!(message.contains(&calls[0].call_id));
+    assert_eq!(calls[0].error_kind.as_deref(), Some("BYOK-UPSTREAM_HTTP"));
     assert!(
-        recorded.contains("upstream HTTP 502 Bad Gateway (after 2 retries): gateway is down"),
+        recorded.contains("502 Bad Gateway") && recorded.contains("gateway is down"),
         "unexpected recorded error: {recorded}"
     );
     task.abort();
@@ -1433,7 +1437,11 @@ async fn a_vendor_that_rejects_an_unknown_thinking_level_still_serves_the_turn()
     assert_eq!(seen.len(), 3);
     assert!(seen[0].get("reasoning").is_none(), "{}", seen[0]);
     assert_eq!(seen[1]["reasoning"]["effort"], "low");
-    assert_eq!(seen[2]["reasoning"]["effort"], "high");
+    assert!(
+        seen[2].get("reasoning").is_none(),
+        "explicit off must not use the configured default: {}",
+        seen[2]
+    );
     assert_eq!(store.llm_calls(10).await.unwrap().len(), 3);
     drop(seen);
     task.abort();

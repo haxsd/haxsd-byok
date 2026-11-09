@@ -992,7 +992,11 @@ mod tests {
             }),
             Ok(ModelEvent::TextStart),
             Ok(ModelEvent::TextDelta("partial".into())),
-            Err(Error::Provider("Anthropic 529 Overloaded: busy".into())),
+            Err(Error::UpstreamRejected {
+                label: "Anthropic".into(),
+                status: 529,
+                body: "busy".into(),
+            }),
         ])
         .await;
         use tower::ServiceExt;

@@ -181,8 +181,7 @@ impl ApiError {
         }
     }
 
-    /// 把共享层的错误折成 Anthropic 的错误。上游状态码只存在于适配器写好的文案里
-    /// （`Anthropic 429 Too Many Requests: …`），按它恢复可重试性。
+    /// 把共享层的结构化错误折成 Anthropic 状态与可重试性。
     pub fn from_error(error: &Error) -> Self {
         if matches!(error, Error::Cancelled) {
             return Self {
@@ -218,42 +217,44 @@ impl ApiError {
                 retry_after: None,
             };
         }
-        if let Error::Http(source) = error {
-            if source.is_timeout() {
-                return Self {
-                    status: StatusCode::GATEWAY_TIMEOUT,
-                    kind: "api_error",
-                    message: error.to_string(),
-                    should_retry: true,
-                    retry_after: None,
-                };
-            }
+        if matches!(error, Error::Timeout(_))
+            || matches!(error, Error::Http(source) if source.is_timeout())
+        {
+            return Self {
+                status: StatusCode::GATEWAY_TIMEOUT,
+                kind: "api_error",
+                message: error.to_string(),
+                should_retry: true,
+                retry_after: None,
+            };
         }
         let message = error.to_string();
-        for (code, kind, retry) in [
-            (400_u16, "invalid_request_error", false),
-            (401, "authentication_error", false),
-            (403, "permission_error", false),
-            (404, "not_found_error", false),
-            (413, "request_too_large", false),
-            (429, "rate_limit_error", true),
-            (500, "api_error", true),
-            (502, "api_error", true),
-            (503, "api_error", true),
-            (504, "api_error", true),
-            (529, "overloaded_error", true),
-        ] {
-            if message.contains(&format!(" {code} ")) {
-                return Self {
-                    status: StatusCode::from_u16(code).unwrap_or(StatusCode::BAD_GATEWAY),
-                    kind,
-                    message,
-                    should_retry: retry,
-                    retry_after: None,
-                };
-            }
+        if let Some(status) = error
+            .upstream_status()
+            .and_then(|status| StatusCode::from_u16(status).ok())
+        {
+            let kind = match status.as_u16() {
+                401 => "authentication_error",
+                403 => "permission_error",
+                404 => "not_found_error",
+                413 => "request_too_large",
+                429 => "rate_limit_error",
+                529 => "overloaded_error",
+                _ if status.is_client_error() => "invalid_request_error",
+                _ => "api_error",
+            };
+            return Self {
+                status,
+                kind,
+                message,
+                should_retry: status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error(),
+                retry_after: None,
+            };
         }
-        let retryable = matches!(error, Error::Provider(_) | Error::Http(_));
+        let retryable = matches!(
+            error,
+            Error::Provider(_) | Error::Http(_) | Error::Network(_)
+        );
         Self {
             status: StatusCode::BAD_GATEWAY,
             kind: "api_error",
@@ -336,28 +337,31 @@ mod tests {
     }
 
     #[test]
-    fn upstream_status_is_recovered_from_the_provider_message() {
-        let overloaded =
-            ApiError::from_error(&Error::Provider("Anthropic 529 Overloaded: busy".into()));
-        assert_eq!(overloaded.status, StatusCode::from_u16(529).unwrap());
-        assert_eq!(overloaded.kind, "overloaded_error");
-        assert!(overloaded.should_retry);
-
-        let rate = ApiError::from_error(&Error::Provider(
-            "Anthropic 429 Too Many Requests: slow down".into(),
+    fn structured_upstream_status_and_transport_failures_keep_their_protocol_meaning() {
+        for (status, kind, retry) in [
+            (529, "overloaded_error", true),
+            (429, "rate_limit_error", true),
+            (401, "authentication_error", false),
+            (422, "invalid_request_error", false),
+        ] {
+            let report = ApiError::from_error(&Error::UpstreamRejected {
+                label: "Anthropic".into(),
+                status,
+                body: "fixture rejection".into(),
+            });
+            assert_eq!(report.status.as_u16(), status);
+            assert_eq!(report.kind, kind);
+            assert_eq!(report.should_retry, retry);
+        }
+        let timeout = ApiError::from_error(&Error::Timeout("fixture deadline".into()));
+        assert_eq!(timeout.status, StatusCode::GATEWAY_TIMEOUT);
+        assert!(timeout.should_retry);
+        let network = ApiError::from_error(&Error::Network("fixture connection".into()));
+        assert_eq!(network.status, StatusCode::BAD_GATEWAY);
+        assert!(network.should_retry);
+        let opaque = ApiError::from_error(&Error::Provider(
+            "upstream text mentions 401 Unauthorized: not an HTTP status".into(),
         ));
-        assert_eq!(rate.status, StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(rate.kind, "rate_limit_error");
-        assert!(rate.should_retry);
-
-        let auth = ApiError::from_error(&Error::Provider(
-            "Anthropic 401 Unauthorized: bad key".into(),
-        ));
-        assert_eq!(auth.status, StatusCode::UNAUTHORIZED);
-        assert!(!auth.should_retry);
-
-        let unknown = ApiError::from_error(&Error::Provider("connection reset".into()));
-        assert_eq!(unknown.status, StatusCode::BAD_GATEWAY);
-        assert!(unknown.should_retry);
+        assert_eq!(opaque.status, StatusCode::BAD_GATEWAY);
     }
 }

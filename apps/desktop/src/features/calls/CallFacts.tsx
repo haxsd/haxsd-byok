@@ -1,8 +1,11 @@
-import type { LlmCall } from "../../shared/api";
+import { useEffect, useState } from "react";
+import { api, type LlmCall } from "../../shared/api";
+import { Button } from "../../shared/ui/Button";
 import { callClientLabel } from "../../shared/utils/callStatus";
 import { useAppStore } from "../../shared/store/appStore";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
+import { copyErrorDiagnostic, sanitizeDiagnosticText } from "./errorDiagnostics";
 import styles from "./CallFacts.module.scss";
 
 /**
@@ -58,16 +61,74 @@ export function CallFacts({ call }: { call: LlmCall }) {
     ["Fast", call.fast === null ? "-" : call.fast ? t("是") : t("否")],
     [t("详细记录"), call.detailed ? t("是") : t("否")],
   ] : [];
+  // 旧记录可能只有状态没有 error_kind/error_message；错误块仍要给出定位编号。
+  const hasError = Boolean(call.error_kind?.trim() || call.error_message?.trim() || call.status === "failed" || call.status === "error");
   return <div className={styles.facts}>
     {identity.length > 0 && <FactGroup title={t("标识")} rows={identity} />}
     <FactGroup title={t("耗时与结果")} rows={timing} />
     <FactGroup title={t("Token（合计 {tokens}）", { tokens: formatCompactInteger(tokens) })} rows={usage} />
     {context.length > 0 && <FactGroup title={t("请求与上游")} rows={context} />}
-    {call.error_message && <div className={styles.errorGroup}>
-      <span className={styles.factTitle}>{call.error_kind ?? t("错误")}</span>
-      <p>{call.error_message}</p>
-      {!developerMode && call.provider_url && <p>{t("上游地址：{url}", { url: call.provider_url })}</p>}
-    </div>}
+    {hasError && <ErrorDiagnostic call={call} developerMode={developerMode} />}
+  </div>;
+}
+
+/**
+ * 错误块：稳定错误码、完整定位编号和脱敏后的原因。
+ *
+ * 普通模式以前只能看到原始 kind 和一段原因，拿不到可以贴在问题里的编号。复制动作
+ * 只带固定字段（不发请求体/响应/聊天），并在浏览器打开的详情页里走 navigator.clipboard。
+ */
+function ErrorDiagnostic({ call, developerMode }: { call: LlmCall; developerMode: boolean }) {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const [copyError, setCopyError] = useState("");
+
+  // 版本来自 /api/app-info（桌面壳启动时写入）。取不到就保持 unknown，不阻断复制。
+  useEffect(() => {
+    let cancelled = false;
+    void api.appInfo()
+      .then((info) => { if (!cancelled) setAppVersion(info.version); })
+      .catch(() => { /* 版本只是诊断字段；失败时仍复制其余现场。 */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const code = call.error_kind?.trim() || t("未知");
+  const reason = sanitizeDiagnosticText(call.error_message);
+  const httpStatus = typeof call.http_status === "number" && Number.isFinite(call.http_status) && call.http_status > 0
+    ? String(call.http_status)
+    : null;
+
+  const copy = async () => {
+    setCopyState("copying");
+    setCopyError("");
+    const result = await copyErrorDiagnostic(call, appVersion, api.copyCursorText);
+    if (result.ok) {
+      setCopyState("copied");
+    } else {
+      setCopyError(result.reason);
+      setCopyState("failed");
+    }
+  };
+
+  return <div className={styles.errorGroup}>
+    <span className={styles.factTitle}>{t("错误")}</span>
+    <dl className={styles.errorFacts}>
+      <div><dt>{t("错误码")}</dt><dd><code>{code}</code></dd></div>
+      <div><dt>{t("定位编号")}</dt><dd><code>{call.call_id || "-"}</code></dd></div>
+      {httpStatus && <div><dt>HTTP</dt><dd>{httpStatus}</dd></div>}
+    </dl>
+    {reason && <p className={styles.errorReason}>{reason}</p>}
+    {!developerMode && call.provider_url && <p className={styles.errorUpstream}>
+      {t("上游地址：{url}", { url: sanitizeDiagnosticText(call.provider_url) })}
+    </p>}
+    <div className={styles.errorActions}>
+      <Button size="small" disabled={copyState === "copying"} onClick={() => void copy()}>
+        {copyState === "copied" ? t("已复制") : t("复制错误诊断")}
+      </Button>
+      {copyState === "failed" && <small role="alert" className={styles.copyFailure}>
+        {t("复制失败：{reason}", { reason: copyError || t("未知") })}
+      </small>}
+    </div>
   </div>;
 }
 

@@ -1,12 +1,12 @@
 //! Codex 请求出网与观测；原生 Responses 不经过共享消息投影。
 use super::{
     bridge::{translate_request_owned, BridgeStream, UpstreamFormat},
-    gateway::{protocol_error, ActiveRequest},
+    gateway::{protocol_failure, ActiveRequest},
 };
 use crate::{
     model::{CallClient, ModelConfig, NewLlmCall, ProviderType, Usage},
     network::{NetworkClients, OutboundClient},
-    provider::{CallRecorder, FinishReason, ModelEvent},
+    provider::{effort_fallback, CallRecorder, FinishReason, ModelEvent},
     store::Store,
     upstream, Error, Result,
 };
@@ -20,56 +20,6 @@ use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 use std::time::Duration;
-
-/// 请求生命周期守卫：Body 被丢弃（客户端断开）时补一条终态记录。
-///
-/// 出网**之前**的失败（请求记录、自定义头校验、出网客户端构造）没有别的记录点，
-/// 以前一律被它记成 `cancelled`——观测里看到的"用户取消"其实是配置错误，真实原因
-/// 无处可查。这类失败要先 `fail()` 把原因交给它，guard 才会写成 `failed`。
-struct RecordingGuard {
-    recorder: CallRecorder,
-    failure: std::sync::Mutex<Option<String>>,
-}
-impl RecordingGuard {
-    fn new(recorder: CallRecorder) -> Self {
-        Self {
-            recorder,
-            failure: std::sync::Mutex::new(None),
-        }
-    }
-
-    /// 出网前的失败：记下原因，drop 时按 `failed` 收尾而不是 `cancelled`。
-    fn fail(&self, error: &Error) {
-        *self
-            .failure
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner()) = Some(error.to_string());
-    }
-}
-impl Drop for RecordingGuard {
-    fn drop(&mut self) {
-        if self.recorder.is_finished() {
-            return;
-        }
-        let recorder = self.recorder.clone();
-        let failure = self
-            .failure
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .take();
-        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
-            runtime.spawn(async move {
-                let recorded = match failure {
-                    Some(message) => recorder.failed(&Error::Provider(message)).await,
-                    None => recorder.cancelled().await,
-                };
-                if let Err(error) = recorded {
-                    tracing::warn!(%error, "Codex terminal record failed");
-                }
-            });
-        }
-    }
-}
 
 /// 自定义头：整表先校验，重试会把同一个请求原样重放，头部构造就不能留在每次尝试里。
 /// 无效的头值因此变成发请求之前的配置错误，而不是发送阶段才暴露的传输层错误。
@@ -123,16 +73,19 @@ pub(super) async fn respond(
     context: RequestContext,
     active: ActiveRequest,
 ) -> Response {
-    match prepare(store, clients, context, active).await {
+    let reference = format!("codex:{}", uuid::Uuid::new_v4());
+    match prepare(store, clients, context, active, reference.clone()).await {
         Ok(response) => response,
-        Err(error) => protocol_error(
-            if matches!(error, Error::Protocol(_) | Error::Config(_)) {
+        Err(error) => {
+            let status = if matches!(error, Error::Protocol(_) | Error::Config(_)) {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::BAD_GATEWAY
-            },
-            error.to_string(),
-        ),
+            };
+            let error = error.conversation(&reference);
+            tracing::warn!(reference, error = %error.diagnostic_message(), "Codex model request failed");
+            protocol_failure(status, &error, None)
+        }
     }
 }
 
@@ -141,6 +94,7 @@ async fn prepare(
     clients: NetworkClients,
     context: RequestContext,
     active: ActiveRequest,
+    call_id: String,
 ) -> Result<Response> {
     let RequestContext {
         model,
@@ -246,7 +200,6 @@ async fn prepare(
         body["stream"] = json!(true);
     }
     let url = model.request_url()?;
-    let call_id = format!("codex:{}", uuid::Uuid::new_v4());
     let recorder = CallRecorder::start(
         store,
         NewLlmCall {
@@ -283,41 +236,37 @@ async fn prepare(
         },
     )
     .await?;
-    let guard = RecordingGuard::new(recorder.clone());
-    if let Err(error) = recorder
-        .request(json!({"content-type":"application/json"}), &body)
-        .await
-    {
-        guard.fail(&error);
-        return Err(error);
-    }
-    let custom_headers = match custom_headers(&model) {
-        Ok(headers) => headers,
-        Err(error) => {
-            guard.fail(&error);
-            return Err(error);
-        }
+    let guard = recorder.cancel_on_drop();
+    record_result(
+        recorder
+            .request(json!({"content-type":"application/json"}), &body)
+            .await,
+        &recorder,
+    )
+    .await?;
+    let custom_headers = record_result(custom_headers(&model), &recorder).await?;
+    let outbound =
+        record_result(OutboundClient::provider(clients, timeout).await, &recorder).await?;
+    let effort_field = match provider_type {
+        ProviderType::OpenAiChat => effort_fallback::EffortField::Chat,
+        ProviderType::OpenAiResponses => effort_fallback::EffortField::Responses,
+        // The budget-based Anthropic bridge sends no effort string, so adaptation stays inactive.
+        ProviderType::Anthropic | ProviderType::Plugin => effort_fallback::EffortField::Anthropic,
     };
-    let outbound = match OutboundClient::provider(clients, timeout).await {
-        Ok(outbound) => outbound,
-        Err(error) => {
-            guard.fail(&error);
-            return Err(error);
-        }
-    };
-    let upstream_call = upstream::UpstreamCall {
-        label: "Codex Responses",
-        model: &model.model_id,
-        url: &url,
-    };
-    let upstream = match upstream::attempt(
-        &upstream_call,
+    let sent = upstream::send_json(
+        &upstream::UpstreamCall {
+            label: "Codex Responses",
+            model: &model.model_id,
+            url: &url,
+        },
         &outbound,
-        |client| {
-            let request = client
-                .post(&url)
-                .json(&body)
-                .headers(custom_headers.clone());
+        upstream::JsonRequest {
+            body: &mut body,
+            effort: effort_field,
+            timeout,
+        },
+        |client, body| {
+            let request = client.post(&url).json(body).headers(custom_headers.clone());
             if provider_type == ProviderType::Anthropic {
                 request
                     .header("x-api-key", model.api_key.as_str())
@@ -329,37 +278,24 @@ async fn prepare(
         &cancellation,
         Some(&recorder),
     )
-    .await?
-    {
-        upstream::Attempt::Response(response) => response,
-        upstream::Attempt::Rejected { response, retries } => {
-            let status = response.status();
-            let bytes = record_result(
-                read_body(
-                    response,
-                    ERROR_BODY_IDLE,
-                    &cancellation,
-                    BodyLimit::Truncate(ERROR_BODY_LIMIT),
-                )
-                .await,
-                &recorder,
-            )
-            .await?;
-            let text = String::from_utf8_lossy(&bytes).replace(&model.api_key, "[REDACTED]");
-            // 前缀沿用既有的 `upstream HTTP`：界面按它认出"上游网关返回了非成功状态"，
-            // 次数注记则是这次新增的信息。
-            let message =
-                upstream::rejected_message("upstream HTTP", status, retries, text.as_bytes());
-            recorder.failed(&Error::Provider(message.clone())).await?;
-            return Ok(protocol_error(status, message));
-        }
-        upstream::Attempt::Cancelled => {
+    .await;
+    let upstream = match sent {
+        Ok(Some(response)) => response,
+        Ok(None) => {
             recorder.cancelled().await?;
             return Err(Error::Cancelled);
         }
-        upstream::Attempt::Failed { error, retries } => {
-            let error = upstream::send_failure("Codex Responses", error, retries);
-            recorder.failed(&error).await?;
+        Err(error) => {
+            let error = error.conversation(&recorder.call_id());
+            if let Err(record_error) = recorder.failed(&error).await {
+                tracing::warn!(%record_error, "failed to record the model error");
+            }
+            if let Some(status) = error
+                .upstream_status()
+                .and_then(|status| StatusCode::from_u16(status).ok())
+            {
+                return Ok(protocol_failure(status, &error, None));
+            }
             return Err(error);
         }
     };
@@ -377,23 +313,21 @@ async fn prepare(
             return Err(error);
         }
         let bytes = record_result(
-            read_body(
-                upstream,
-                idle,
-                &cancellation,
-                BodyLimit::Refuse(SUCCESS_BODY_LIMIT),
-            )
-            .await,
+            read_body(upstream, idle, &cancellation, SUCCESS_BODY_LIMIT).await,
             &recorder,
         )
         .await?;
         recorder.response_chunk(&bytes).await?;
-        let value: Value = record_result(
-            serde_json::from_slice(&bytes).map_err(Error::from),
+        let mut value: Value = record_result(
+            serde_json::from_slice(&bytes).map_err(|error| {
+                Error::Provider(format!("invalid JSON in upstream response: {error}"))
+            }),
             &recorder,
         )
         .await?;
-        record_response(&recorder, &value, provider_type).await?;
+        if !normalize_failure_event(&mut value, &recorder, &model.api_key).await {
+            record_response(&recorder, &value, provider_type).await?;
+        }
         drop(active);
         drop(guard);
         return Ok(Json(value).into_response());
@@ -429,7 +363,7 @@ async fn prepare(
             };
             let next = match waited {
                 Ok(next) => next,
-                Err(_) => { let error = Error::Provider("Codex upstream stream idle timeout".into()); recorder.failed(&error).await?; Err(error)?; unreachable!(); }
+                Err(_) => { let error = Error::Timeout("Codex upstream stream idle timeout".into()); recorder.failed(&error).await?; Err(error)?; unreachable!(); }
             };
             let Some(event) = next else { break; };
             let event = match event {
@@ -437,19 +371,19 @@ async fn prepare(
                 Err(error) => { let error = Error::Provider(format!("Codex upstream SSE error: {error}")); recorder.failed(&error).await?; Err(error)?; unreachable!(); }
             };
             if event.data == "[DONE]" { break; }
-            let mut value: Value = serde_json::from_str(&event.data)?;
-            if value["type"] == "error" || value["type"] == "response.failed" || value.get("error").is_some_and(|error| !error.is_null()) {
-                redact_value(&mut value, &model.api_key);
-            }
+            let mut value: Value = serde_json::from_str(&event.data)
+                .map_err(|error| Error::Provider(format!("invalid JSON in upstream event: {error}")))?;
+            let failed_event = normalize_failure_event(&mut value, &recorder, &model.api_key).await;
             let raw = format!("event: {}\ndata: {}\n\n", event.event, value);
             recorder.response_chunk(raw.as_bytes()).await?;
             let generated = if let Some(bridge) = &mut bridge { bridge.push(&value)? } else { vec![value] };
             for value in generated {
-                record_event(&recorder, &value).await?;
+                if !failed_event { record_event(&recorder, &value).await?; }
                 if let Some(response) = terminal_response(&value) {
-                    record_response(&recorder, response, provider_type).await?;
+                    if !failed_event { record_response(&recorder, response, provider_type).await?; }
                     terminal = true;
                 }
+                if failed_event { terminal = true; }
                 yield sse_bytes(&value);
             }
             if terminal { break; }
@@ -489,8 +423,14 @@ async fn prepare(
                         yield Ok::<_, std::convert::Infallible>(bytes);
                     },
                     Err(error) => {
-                        if let Err(record_error) = recorder_on_error.failed(&error).await { tracing::warn!(%record_error, "Codex failure record failed"); }
-                        yield Ok(sse_bytes(&json!({"type":"response.failed", "sequence_number":sequence, "response":{"id":failed_id,"object":"response","status":"failed","error":{"message":error.to_string(),"code":"upstream_error"},"output":[]}})));
+                        let error: Error = error;
+                        let error = error.conversation(&recorder_on_error.call_id());
+                        if error.code() == crate::error::code::CANCELLED {
+                            let _ = recorder_on_error.cancelled().await;
+                        } else if let Err(record_error) = recorder_on_error.failed(&error).await {
+                            tracing::warn!(error = %record_error.diagnostic_message(), "Codex failure record failed");
+                        }
+                        yield Ok(sse_bytes(&json!({"type":"response.failed", "sequence_number":sequence, "response":{"id":failed_id,"object":"response","status":"failed","error":{"message":error.public_message(),"code":"upstream_error"},"output":[]}})));
                         break;
                     }
                 }
@@ -532,8 +472,8 @@ async fn prepare(
 }
 
 /// Codex 把它界面里的“思考强度”原样发过来，其中 `none` 之类的值上游不一定接受
-/// （例如只认 low…max 的模型会直接 400）。模型自己配了强度就以模型为准，否则沿用
-/// 客户端的值；只有上游不认识的占位值才摘掉，而不是把注定被拒的字段转出去。
+/// （例如只认 low…max 的模型会直接 400）。客户端明确选择优先，未指定才用模型默认值；
+/// 显式关闭保持关闭，不得被模型默认强度重新开启。
 fn normalize_reasoning(source: &mut Value, configured: Option<&str>) -> Result<()> {
     let requested = source
         .pointer("/reasoning/effort")
@@ -541,11 +481,11 @@ fn normalize_reasoning(source: &mut Value, configured: Option<&str>) -> Result<(
         .map(str::trim)
         .unwrap_or_default()
         .to_owned();
-    let effective = configured
-        .map(str::trim)
-        .filter(|effort| !effort.is_empty())
-        .unwrap_or(&requested)
-        .to_owned();
+    let effective = if source.pointer("/reasoning/effort").is_some() {
+        requested
+    } else {
+        configured.map(str::trim).unwrap_or_default().to_owned()
+    };
     let object = source
         .as_object_mut()
         .ok_or_else(|| Error::Protocol("Codex request must be an object".into()))?;
@@ -580,6 +520,54 @@ fn normalize_reasoning(source: &mut Value, configured: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// Keep the provider's response identity and envelope, but replace externally controlled error text.
+async fn normalize_failure_event(value: &mut Value, recorder: &CallRecorder, secret: &str) -> bool {
+    let failed = matches!(
+        value.get("type").and_then(Value::as_str),
+        Some("error" | "response.failed")
+    ) || value.get("error").is_some_and(|error| !error.is_null())
+        || value.get("status").and_then(Value::as_str) == Some("failed")
+        || value.pointer("/response/status").and_then(Value::as_str) == Some("failed");
+    if !failed {
+        return false;
+    }
+    redact_value(value, secret);
+    let detail = value
+        .pointer("/response/error")
+        .or_else(|| value.get("error"))
+        .cloned()
+        .unwrap_or_else(|| json!({"message":value.get("message"),"code":value.get("code")}));
+    let error = Error::Provider(format!("upstream stream rejected the request: {detail}"))
+        .conversation(&recorder.call_id());
+    if let Err(record_error) = recorder.failed(&error).await {
+        tracing::warn!(error = %record_error.diagnostic_message(), "failed to record the upstream event error");
+    }
+    let summary = error.public_message();
+    let mut report = json!({"code":"upstream_error","message":summary});
+    // Preserve protocol error categories, never externally supplied prose in those fields.
+    for field in ["code", "type"] {
+        if let Some(text) = detail.get(field).and_then(Value::as_str).filter(|text| {
+            text.len() <= 64
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        }) {
+            report[field] = json!(text);
+        }
+    }
+    if let Some(response) = value.get_mut("response").filter(|value| value.is_object()) {
+        response["error"] = report;
+    } else if value.get("error").is_some()
+        || value.get("status").and_then(Value::as_str) == Some("failed")
+    {
+        value["error"] = report;
+    }
+    if value.get("message").is_some() || value["type"] == "error" {
+        value["message"] = json!(summary);
+    }
+    true
+}
+
 fn redact_value(value: &mut Value, secret: &str) {
     if secret.is_empty() {
         return;
@@ -594,70 +582,47 @@ fn redact_value(value: &mut Value, secret: &str) {
     }
 }
 
-/// 正文体积上限：成功路径超限直接失败（完整正文是解析的前提）；错误路径只留前缀，
-/// 因为那段文本会进错误消息——客户端弹窗与 `llm_calls.error_message`——而一个能回
-/// 几十 MB 正文的上游不该把这么多字节同时塞进弹窗和数据库。
+/// Success bodies must be complete to parse; rejected bodies are bounded in the shared sender.
 const SUCCESS_BODY_LIMIT: usize = 64 * 1024 * 1024;
-const ERROR_BODY_LIMIT: usize = 4 * 1024;
 
-/// 错误正文只是诊断信息：不能拿流式调用的空闲上限（默认 30 分钟）去等一个慢滴的
-/// 上游，否则一次 5xx 能把请求和网关的 active 计数一起拖住。
-const ERROR_BODY_IDLE: Duration = Duration::from_secs(10);
-
-enum BodyLimit {
-    Refuse(usize),
-    Truncate(usize),
-}
-
-/// 把一块正文并入 `body`，返回是否该停止读取。
-///
-/// 截断只发生在错误路径：那段文本进的是错误消息（客户端弹窗 + `llm_calls.error_message`），
-/// 超出上限的部分对诊断没有价值。成功路径超限必须失败——调用方要完整正文才能解析。
-fn take_chunk(body: &mut Vec<u8>, chunk: &[u8], limit: &BodyLimit) -> Result<bool> {
-    let total = body.len().saturating_add(chunk.len());
-    match limit {
-        BodyLimit::Refuse(max) if total > *max => Err(Error::Provider(
+fn take_chunk(body: &mut Vec<u8>, chunk: &[u8], limit: usize) -> Result<()> {
+    if body.len().saturating_add(chunk.len()) > limit {
+        return Err(Error::Provider(
             "Codex upstream response body exceeds size limit".into(),
-        )),
-        BodyLimit::Truncate(max) if total > *max => {
-            body.extend_from_slice(&chunk[..max.saturating_sub(body.len())]);
-            body.extend_from_slice(b"...[truncated]");
-            Ok(true)
-        }
-        _ => {
-            body.extend_from_slice(chunk);
-            Ok(false)
-        }
+        ));
     }
+    body.extend_from_slice(chunk);
+    Ok(())
 }
 
 async fn read_body(
     mut response: reqwest::Response,
     idle: Duration,
     cancellation: &tokio_util::sync::CancellationToken,
-    limit: BodyLimit,
+    limit: usize,
 ) -> Result<Vec<u8>> {
     let mut body = Vec::new();
     loop {
         let chunk = tokio::select! {
             _=cancellation.cancelled()=>return Err(Error::Cancelled),
-            result=tokio::time::timeout(idle,response.chunk())=>result.map_err(|_|Error::Provider("Codex upstream response body idle timeout".into()))??,
+            result=tokio::time::timeout(idle,response.chunk())=>result.map_err(|_|Error::Timeout("Codex upstream response body idle timeout".into()))??,
         };
         let Some(chunk) = chunk else {
             break;
         };
-        if take_chunk(&mut body, &chunk, &limit)? {
-            break;
-        }
+        take_chunk(&mut body, &chunk, limit)?;
     }
     Ok(body)
 }
 async fn record_result<T>(result: Result<T>, recorder: &CallRecorder) -> Result<T> {
     if let Err(error) = &result {
-        if matches!(error, Error::Cancelled) {
-            recorder.cancelled().await?;
+        let recorded = if matches!(error, Error::Cancelled) {
+            recorder.cancelled().await
         } else {
-            recorder.failed(error).await?;
+            recorder.failed(error).await
+        };
+        if let Err(record_error) = recorded {
+            tracing::warn!(error = %record_error.diagnostic_message(), "failed to record the original Codex error");
         }
     }
     result
@@ -813,12 +778,12 @@ mod tests {
         assert_eq!(source["reasoning"], json!({"summary": "auto"}));
     }
 
-    /// 模型自己配了强度就以模型为准，客户端值只作为缺省。
+    /// 显式客户端强度优先，只有未指定才使用模型默认值。
     #[test]
-    fn the_configured_effort_wins_over_the_client_value() {
+    fn the_client_effort_wins_over_the_configured_default() {
         let mut source = json!({"reasoning": {"effort": "low"}});
         normalize_reasoning(&mut source, Some(" high ")).unwrap();
-        assert_eq!(source["reasoning"]["effort"], "high");
+        assert_eq!(source["reasoning"]["effort"], "low");
         let mut source = json!({"input": "go"});
         normalize_reasoning(&mut source, Some("high")).unwrap();
         assert_eq!(source["reasoning"]["effort"], "high");
@@ -841,23 +806,12 @@ mod tests {
         assert!(normalize_reasoning(&mut source, Some("high")).is_err());
     }
 
-    /// 错误正文按上限截断并留标记；成功路径超限仍然直接失败。
     #[test]
-    fn error_bodies_are_truncated_instead_of_refused() {
+    fn oversized_success_bodies_are_refused_not_silently_truncated() {
         let mut body = b"1234".to_vec();
-        assert!(take_chunk(&mut body, b"5678", &BodyLimit::Truncate(4)).unwrap());
-        assert_eq!(body, b"1234...[truncated]");
-
-        let mut body = b"1234".to_vec();
-        assert!(take_chunk(&mut body, b"56", &BodyLimit::Truncate(5)).unwrap());
-        assert_eq!(body, b"12345...[truncated]");
-
-        let mut body = Vec::new();
-        assert!(!take_chunk(&mut body, b"1234", &BodyLimit::Truncate(4)).unwrap());
-        assert_eq!(body, b"1234", "刚好到上限不算超限");
-
-        let mut body = b"1234".to_vec();
-        assert!(take_chunk(&mut body, b"5678", &BodyLimit::Refuse(4)).is_err());
-        assert_eq!(body, b"1234", "拒绝时不该动已有内容");
+        assert!(take_chunk(&mut body, b"56", 5).is_err());
+        assert_eq!(body, b"1234");
+        take_chunk(&mut body, b"5", 5).unwrap();
+        assert_eq!(body, b"12345");
     }
 }

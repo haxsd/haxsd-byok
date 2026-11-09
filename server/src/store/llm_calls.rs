@@ -151,7 +151,9 @@ impl Store {
         let _write = self.writes.lock().await;
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         if let Some(body_json) = &body_json {
-            sqlx::query("INSERT INTO llm_call_requests(call_id, headers_json, body_json, byte_count) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM llm_calls WHERE call_id = ?)")
+            // 换挡重发会在同一条调用上再记一次实际请求：detailed 模式下这里必须覆盖
+            // 上一份正文，而不是撞 `llm_call_requests` 的主键。
+            sqlx::query("INSERT INTO llm_call_requests(call_id, headers_json, body_json, byte_count) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM llm_calls WHERE call_id = ?) ON CONFLICT(call_id) DO UPDATE SET headers_json = excluded.headers_json, body_json = excluded.body_json, byte_count = excluded.byte_count")
                 .bind(call_id)
                 .bind(headers_json)
                 .bind(body_json)
@@ -166,6 +168,22 @@ impl Store {
             .execute(&mut *transaction)
             .await?;
         transaction.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn record_llm_effective_effort(
+        &self,
+        call_id: &str,
+        effort: Option<&str>,
+    ) -> Result<()> {
+        let _write = self.writes.lock().await;
+        sqlx::query(
+            "UPDATE llm_calls SET reasoning_effort = ? WHERE call_id = ? AND status = 'running'",
+        )
+        .bind(effort)
+        .bind(call_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -839,7 +857,105 @@ mod tests {
             "the newest row is a summary call; the anchor must stay on the chat turn"
         );
     }
-    /// 迁移 0023 给历史行留的默认值必须成立：不写 purpose 的插入按 "chat" 落库。
+    /// 详细模式下同一条调用可能记录多次实际请求（换挡重发）：第二次必须覆盖第一次，
+    /// 而不是撞 `llm_call_requests` 的主键把整轮调用变成失败。
+    #[tokio::test]
+    async fn a_detailed_request_can_be_replaced_on_the_same_call() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        let call = new_call("adjusted-request-call");
+        store.start_llm_call(&call).await.unwrap();
+        let headers = serde_json::json!({"authorization": "[redacted]", "x-test": "1"});
+
+        store
+            .record_llm_request(
+                "adjusted-request-call",
+                &headers,
+                &serde_json::json!({"reasoning_effort": "xhigh"}),
+                true,
+            )
+            .await
+            .unwrap();
+        let second = serde_json::json!({"reasoning_effort": "high", "messages": []});
+        store
+            .record_llm_request("adjusted-request-call", &headers, &second, true)
+            .await
+            .unwrap();
+
+        let (headers_json, body_json, byte_count): (String, String, i64) = sqlx::query_as(
+            "SELECT headers_json, body_json, byte_count FROM llm_call_requests WHERE call_id = ?",
+        )
+        .bind("adjusted-request-call")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body_json).unwrap(),
+            second,
+            "第二次请求必须覆盖第一次的正文"
+        );
+        assert_eq!(
+            byte_count,
+            serde_json::to_string(&second).unwrap().len() as i64
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&headers_json).unwrap(),
+            headers,
+            "请求头沿用第一次真正发送的那一份"
+        );
+        let rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM llm_call_requests WHERE call_id = ?")
+                .bind("adjusted-request-call")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(rows, 1, "一条调用只保留一份实际请求");
+    }
+
+    /// 换挡后生效强度写回既有列，界面/诊断看到的是实际发出的值。
+    #[tokio::test]
+    async fn the_effective_effort_is_updated_in_place() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .start_llm_call(&new_call("effort-call"))
+            .await
+            .unwrap();
+
+        store
+            .record_llm_effective_effort("effort-call", Some("high"))
+            .await
+            .unwrap();
+        let effort: Option<String> =
+            sqlx::query_scalar("SELECT reasoning_effort FROM llm_calls WHERE call_id = ?")
+                .bind("effort-call")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(effort.as_deref(), Some("high"));
+
+        store
+            .record_llm_effective_effort("effort-call", None)
+            .await
+            .unwrap();
+        let effort: Option<String> =
+            sqlx::query_scalar("SELECT reasoning_effort FROM llm_calls WHERE call_id = ?")
+                .bind("effort-call")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(effort, None, "去掉 effort 字段时实际值是空");
+    }
     #[tokio::test]
     async fn a_row_inserted_without_a_purpose_defaults_to_chat() {
         let directory = tempfile::tempdir().unwrap();

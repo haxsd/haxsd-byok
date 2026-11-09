@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    map_sse_error, merge_extra_params, provider_event_error,
+    effort_fallback, map_sse_error, merge_extra_params, provider_event_error,
     recorder::recorded_headers,
     wire::anthropic::{anthropic_stop, thinking_budget, AnthropicStop},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
@@ -100,17 +100,13 @@ impl Provider for AnthropicProvider {
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
-            let Some(response) = upstream::send(
-                &UpstreamCall {
-                    label: "Anthropic",
-                    model: &request.model.model_id,
-                    url: &config.request_url,
-                },
+            let Some(response) = upstream::send_json(
+                &UpstreamCall { label: "Anthropic", model: &request.model.model_id, url: &config.request_url },
                 &outbound,
-                |client| client.post(&config.request_url)
+                upstream::JsonRequest { body: &mut body, effort: effort_fallback::EffortField::Anthropic, timeout: config.request_timeout },
+                |client, body| client.post(&config.request_url)
                     .header("x-api-key", &config.api_key).header("anthropic-version", "2023-06-01")
-                    .headers(config.custom_headers.clone())
-                    .json(&body),
+                    .headers(config.custom_headers.clone()).json(body),
                 &cancellation,
                 recorder.as_ref(),
             ).await? else { return };

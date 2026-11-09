@@ -161,6 +161,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn explicit_cursor_efforts_reach_the_invocation_unchanged() {
+        for effort in ["low", "medium", "high", "xhigh", "max", "custom-effort"] {
+            let request = pb::AgentRunRequest {
+                requested_model: Some(pb::RequestedModel {
+                    model_id: "fixture-model".into(),
+                    parameters: vec![pb::requested_model::ModelParameterValue {
+                        id: "effort".into(),
+                        value: effort.into(),
+                    }],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let model = requested_model(&request).unwrap();
+            assert_eq!(model.reasoning.enabled, Some(true));
+            assert_eq!(model.reasoning.effort.as_deref(), Some(effort));
+        }
+    }
+
+    #[test]
     fn ignores_unknown_cursor_model_parameters() {
         let requested = pb::RequestedModel {
             model_id: "test-model".into(),

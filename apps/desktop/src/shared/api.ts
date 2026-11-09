@@ -1526,9 +1526,17 @@ export const api = {
     await invoke("open_cursor_ca_install_terminal");
   },
   copyCursorText: async (text: string) => {
-    if (!packagedDesktop) throw new Error(t("请在桌面应用中复制到系统剪贴板"));
-    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
-    await writeText(text);
+    if (packagedDesktop) {
+      const { writeText } = await import("@tauri-apps/plugin-clipboard-manager");
+      await writeText(text);
+      return;
+    }
+    // 详情页也可能在系统浏览器里打开；那里没有 Tauri，只能走浏览器剪贴板。
+    const clipboard = globalThis.navigator?.clipboard;
+    if (typeof clipboard?.writeText !== "function") {
+      throw new Error(t("当前环境不支持写入剪贴板"));
+    }
+    await clipboard.writeText(text);
   },
   /**
    * 打开日志目录（`<数据目录>\logs`）。

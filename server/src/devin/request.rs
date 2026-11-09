@@ -822,6 +822,23 @@ mod tests {
     }
 
     #[test]
+    fn native_explicit_efforts_are_not_replaced_by_the_model_default() {
+        let binding = DevinModelBinding::new("haxsd-byok:model-a", "hash-a");
+        let mut configured = model_config("hash-a");
+        configured.context_window_tokens = Some(500_000);
+        configured.reasoning_effort = Some("high".into());
+        for effort in ["low", "medium", "high", "xhigh", "max"] {
+            let mut request = parse_chat_request(&fixture()).unwrap();
+            request.requested_model = format!("haxsd-byok:model-a~{effort}~128000");
+            let invocation = to_invocation(request, &binding, &configured, false).unwrap();
+            assert_eq!(
+                invocation.request.model.reasoning.effort.as_deref(),
+                Some(effort)
+            );
+        }
+    }
+
+    #[test]
     fn native_default_uses_the_configured_provider_effort() {
         let mut request = parse_chat_request(&fixture()).unwrap();
         request.requested_model = "haxsd-byok:model-a".into();

@@ -1017,8 +1017,8 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 67,
-          "column": 62
+          "line": 114,
+          "column": 41
         },
         {
           "file": "shared/utils/callStatus.ts",
@@ -1087,12 +1087,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 58,
+          "line": 61,
           "column": 62
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 59,
+          "line": 62,
           "column": 42
         }
       ]
@@ -1598,8 +1598,8 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 69,
-          "column": 51
+          "line": 122,
+          "column": 8
         }
       ]
     },
@@ -2353,7 +2353,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 47,
+          "line": 50,
           "column": 6
         }
       ]
@@ -3436,7 +3436,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 59,
+          "line": 62,
           "column": 6
         }
       ]
@@ -3624,7 +3624,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 62,
+          "line": 67,
           "column": 47
         }
       ]
@@ -4856,7 +4856,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 45,
+          "line": 48,
           "column": 6
         }
       ]
@@ -5355,12 +5355,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 37,
+          "line": 40,
           "column": 6
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 42,
+          "line": 45,
           "column": 6
         }
       ]
@@ -6092,6 +6092,20 @@
         }
       ]
     },
+    "4ac7e38f612ed27c": {
+      "source": "复制失败：{reason}",
+      "kind": "template",
+      "placeholders": [
+        "reason"
+      ],
+      "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 129,
+          "column": 10
+        }
+      ]
+    },
     "4aca6a31090fe2b8": {
       "source": "初始化中…",
       "kind": "text",
@@ -6299,6 +6313,16 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 95,
+          "column": 43
+        },
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 129,
+          "column": 52
+        },
         {
           "file": "features/devin/devinConnectionView.ts",
           "line": 101,
@@ -7605,7 +7629,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 48,
+          "line": 51,
           "column": 6
         },
         {
@@ -7773,7 +7797,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 55,
+          "line": 58,
           "column": 6
         }
       ]
@@ -8058,18 +8082,6 @@
         }
       ]
     },
-    "6478a5f1218c484e": {
-      "source": "请在桌面应用中复制到系统剪贴板",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shared/api.ts",
-          "line": 1529,
-          "column": 43
-        }
-      ]
-    },
     "64b57fc91f15040a": {
       "source": "内部调用",
       "kind": "text",
@@ -8213,7 +8225,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 56,
+          "line": 59,
           "column": 6
         }
       ]
@@ -8735,6 +8747,18 @@
           "file": "features/models/CursorModelCards.tsx",
           "line": 192,
           "column": 55
+        }
+      ]
+    },
+    "6db5bf54fffe1489": {
+      "source": "当前环境不支持写入剪贴板",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "shared/api.ts",
+          "line": 1537,
+          "column": 23
         }
       ]
     },
@@ -10685,6 +10709,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 126,
+          "column": 35
+        },
+        {
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 130,
           "column": 19
@@ -11429,7 +11458,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 49,
+          "line": 52,
           "column": 6
         }
       ]
@@ -11723,7 +11752,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 57,
+          "line": 60,
           "column": 6
         },
         {
@@ -11771,6 +11800,18 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 83,
           "column": 79
+        }
+      ]
+    },
+    "9c7ff3321e0a46b9": {
+      "source": "错误码",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 116,
+          "column": 17
         }
       ]
     },
@@ -12118,7 +12159,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 46,
+          "line": 49,
           "column": 6
         }
       ]
@@ -12345,6 +12386,18 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 43,
           "column": 11
+        }
+      ]
+    },
+    "a3612b9a05674338": {
+      "source": "定位编号",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 117,
+          "column": 17
         }
       ]
     },
@@ -13156,7 +13209,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 50,
+          "line": 53,
           "column": 27
         }
       ]
@@ -13835,7 +13888,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 53,
+          "line": 56,
           "column": 6
         }
       ]
@@ -13942,12 +13995,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 58,
+          "line": 61,
           "column": 53
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 59,
+          "line": 62,
           "column": 33
         }
       ]
@@ -14355,7 +14408,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 63,
+          "line": 68,
           "column": 23
         }
       ]
@@ -14554,7 +14607,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1540,
+          "line": 1548,
           "column": 43
         }
       ]
@@ -17003,12 +17056,12 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 33,
+          "line": 36,
           "column": 6
         },
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 41,
+          "line": 44,
           "column": 6
         },
         {
@@ -17311,7 +17364,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 65,
+          "line": 70,
           "column": 46
         }
       ]
@@ -17445,7 +17498,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 28,
+          "line": 31,
           "column": 6
         }
       ]
@@ -17665,6 +17718,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 191,
           "column": 23
+        }
+      ]
+    },
+    "e3eb207663d85940": {
+      "source": "复制错误诊断",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/calls/CallFacts.tsx",
+          "line": 126,
+          "column": 46
         }
       ]
     },
@@ -18196,7 +18261,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 54,
+          "line": 57,
           "column": 6
         }
       ]
@@ -18324,7 +18389,7 @@
       "refs": [
         {
           "file": "features/calls/CallFacts.tsx",
-          "line": 64,
+          "line": 69,
           "column": 23
         }
       ]

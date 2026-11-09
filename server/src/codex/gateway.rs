@@ -559,6 +559,28 @@ pub(super) fn protocol_error(status: StatusCode, message: impl Into<String>) -> 
         .into_response()
 }
 
+/// 对话失败的外壳：协议结构不变，message 换成稳定码 + 安全摘要 + 定位编号。
+///
+/// `codex/upstream.rs` 在拿到调用编号后调用它；没有编号的前置失败传 `None`，
+/// 文案里会明确标 unknown，不伪造编号。
+pub(super) fn protocol_failure(
+    status: StatusCode,
+    error: &Error,
+    reference: Option<&str>,
+) -> Response {
+    let message = match reference {
+        Some(reference) => error.public_message_with_reference(reference),
+        None => error.public_message(),
+    };
+    tracing::warn!(
+        code = error.code(),
+        status = ?error.upstream_status(),
+        detail = %error.diagnostic_message(),
+        "Codex request failed; the client receives the stable code and summary only"
+    );
+    protocol_error(status, message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -754,5 +776,24 @@ mod tests {
             Some(token.as_str())
         );
         assert_eq!(gateway.token().await.unwrap(), token);
+    }
+
+    /// 对话失败只换协议外壳里的 message：稳定码 + 安全摘要 + 调用编号，上游正文不出现。
+    #[tokio::test]
+    async fn protocol_failures_report_a_stable_code_and_reference() {
+        let error = Error::UpstreamRejected {
+            label: "upstream HTTP".into(),
+            status: 502,
+            body: "gateway said no sk-codex-secret".into(),
+        };
+        let response = protocol_failure(StatusCode::BAD_GATEWAY, &error, Some("codex:call-1"));
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let message = value["error"]["message"].as_str().unwrap();
+        assert!(message.contains("BYOK-UPSTREAM_HTTP"), "{message}");
+        assert!(message.contains("codex:call-1"), "{message}");
+        assert!(!message.contains("sk-codex-secret"), "{message}");
+        assert!(!message.contains("gateway said no"), "{message}");
+        assert_eq!(value["error"]["type"], "invalid_request_error");
     }
 }

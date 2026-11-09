@@ -268,6 +268,77 @@ async fn a_length_stop_persists_the_half_answer_and_still_reports_the_error() {
 }
 
 #[tokio::test]
+async fn cursor_provider_failures_share_the_stable_code_and_reference() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_results(vec![
+        Ok(ModelEvent::Start {
+            model_call_id: "failure-call".into(),
+        }),
+        Err(Error::UpstreamRejected {
+            label: "OpenAI Chat".into(),
+            status: 400,
+            body: "invalid api key sk-live-secret-999".into(),
+        }),
+    ]);
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry.get_or_create("stable-code-request").await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run()),
+        })
+        .await
+        .unwrap();
+
+    let mut seqno = 1;
+    let terminal = loop {
+        let frame = tokio::time::timeout(TERMINAL_FRAME_TIMEOUT, output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            break serde_json::from_slice::<serde_json::Value>(&payload).unwrap();
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+            handle
+                .command(TransportCommand::Append {
+                    seqno,
+                    message: Box::new(kv_ack(kv.id)),
+                })
+                .await
+                .unwrap();
+            seqno += 1;
+        }
+    };
+
+    assert_eq!(terminal["error"]["code"], "unavailable");
+    let message = terminal["error"]["message"].as_str().unwrap();
+    assert!(message.contains("BYOK-UPSTREAM_HTTP"), "{message}");
+    assert!(message.contains("ref stable-code-request"), "{message}");
+    assert!(!message.contains("sk-live-secret-999"), "{message}");
+    assert!(!message.contains("invalid api key"), "{message}");
+    assert_eq!(
+        provider.requests().len(),
+        1,
+        "400 是确定性拒绝，不应把同一份请求重试八次"
+    );
+}
+
+#[tokio::test]
 async fn unknown_tool_response_id_is_ignored_and_the_run_continues() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();

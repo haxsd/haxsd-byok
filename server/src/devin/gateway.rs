@@ -675,6 +675,8 @@ async fn handle_request(
     }
     let model_uid = binding.model_uid.clone();
     let cancellation = CancellationToken::new();
+    let stream_cancellation = cancellation.clone();
+    let reference = session_id.clone();
     let mut provider_stream = state.provider.stream(invocation, cancellation.clone());
     let mut response_state = ResponseState::new("devin-response", provider_type);
     response_state.set_fallback_input_tokens(fallback_input_tokens);
@@ -690,7 +692,7 @@ async fn handle_request(
                             }
                         }
                         Err(error) => {
-                            yield Ok::<Bytes, std::io::Error>(stream_error(error));
+                            yield Ok::<Bytes, std::io::Error>(stream_failure(&error, &reference));
                             return;
                         }
                     }
@@ -701,18 +703,25 @@ async fn handle_request(
                                     yield Ok::<Bytes, std::io::Error>(Bytes::from(frame));
                                 }
                             }
-                            Err(error) => yield Ok::<Bytes, std::io::Error>(stream_error(error)),
+                            Err(error) => {
+                                yield Ok::<Bytes, std::io::Error>(stream_failure(&error, &reference))
+                            }
                         }
                         return;
                     }
                 }
                 Err(error) => {
-                    yield Ok::<Bytes, std::io::Error>(stream_error(error));
+                    yield Ok::<Bytes, std::io::Error>(stream_failure(&error, &reference));
                     return;
                 }
             }
         }
-        yield Ok::<Bytes, std::io::Error>(stream_error("provider stream ended without Done"));
+        let error = if stream_cancellation.is_cancelled() {
+            Error::Cancelled
+        } else {
+            Error::Provider("provider stream ended without Done".into())
+        };
+        yield Ok::<Bytes, std::io::Error>(stream_failure(&error, &reference));
     };
     streaming_response(stream, cancellation)
 }
@@ -1098,6 +1107,23 @@ fn stream_error(error: impl std::fmt::Display) -> Bytes {
     })))
 }
 
+/// 模型流失败：沿用 Devin 的 Connect 框架，但共享稳定码/安全文案与定位编号。
+///
+/// Connect 的 code 仍是客户端认识的协议枚举（canceled / invalid_argument /
+/// unavailable / internal），BYOK 稳定码写在 message 里，不替换协议枚举。
+fn stream_failure(error: &Error, reference: &str) -> Bytes {
+    let code = match error.code() {
+        crate::error::code::CANCELLED => "canceled",
+        crate::error::code::REQUEST => "invalid_argument",
+        crate::error::code::INTERNAL => "internal",
+        _ => "unavailable",
+    };
+    Bytes::from(wire::end_frame(Some(ConnectError {
+        code: code.into(),
+        message: error.public_message_with_reference(reference),
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1108,6 +1134,37 @@ mod tests {
         let frame = stream_error("provider failed");
         assert!(frame.len() < MAX_BODY_SIZE);
         assert_eq!(frame[0], 2);
+    }
+
+    /// 模型流失败沿用 Connect 框架：协议 code 仍是客户端认识的枚举，BYOK 稳定码与
+    /// 定位编号放在 message 里，上游正文不出现。
+    #[test]
+    fn provider_failures_use_connect_unavailable_and_safe_text() {
+        let error = Error::UpstreamRejected {
+            label: "OpenAI Chat".into(),
+            status: 400,
+            body: "invalid api key sk-devin-secret".into(),
+        };
+        let frame = stream_failure(&error, "devin-session-1");
+        let payload: serde_json::Value = serde_json::from_slice(&frame[5..]).unwrap();
+        assert_eq!(payload["error"]["code"], "unavailable");
+        let message = payload["error"]["message"].as_str().unwrap();
+        assert!(message.contains("BYOK-UPSTREAM_HTTP"), "{message}");
+        assert!(message.contains("devin-session-1"), "{message}");
+        assert!(!message.contains("sk-devin-secret"), "{message}");
+        assert!(!message.contains("invalid api key"), "{message}");
+    }
+
+    /// 取消仍然是取消，不冒充内部失败。
+    #[test]
+    fn cancellation_keeps_the_connect_canceled_code() {
+        let frame = stream_failure(&Error::Cancelled, "devin-session-2");
+        let payload: serde_json::Value = serde_json::from_slice(&frame[5..]).unwrap();
+        assert_eq!(payload["error"]["code"], "canceled");
+        assert!(payload["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("BYOK-CANCELLED"));
     }
 
     #[test]

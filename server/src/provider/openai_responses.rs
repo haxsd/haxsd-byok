@@ -16,8 +16,9 @@ use crate::{
 };
 
 use super::{
-    apply_openai_prompt_cache_key, map_sse_error, merge_extra_params, provider_event_error,
-    recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
+    apply_openai_prompt_cache_key, effort_fallback, map_sse_error, merge_extra_params,
+    provider_event_error, recorder::recorded_headers, CallRecorder, FinishReason, ModelEvent,
+    Provider, ProviderStream,
 };
 use crate::upstream::{self, UpstreamCall};
 
@@ -86,15 +87,12 @@ impl Provider for OpenAiResponsesProvider {
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
             }
-            let Some(response) = upstream::send(
-                &UpstreamCall {
-                    label: "OpenAI Responses",
-                    model: &request.model.model_id,
-                    url: &config.request_url,
-                },
+            let Some(response) = upstream::send_json(
+                &UpstreamCall { label: "OpenAI Responses", model: &request.model.model_id, url: &config.request_url },
                 &outbound,
-                |client| client.post(&config.request_url)
-                    .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(&body),
+                upstream::JsonRequest { body: &mut body, effort: effort_fallback::EffortField::Responses, timeout: config.request_timeout },
+                |client, body| client.post(&config.request_url)
+                    .bearer_auth(&config.api_key).headers(config.custom_headers.clone()).json(body),
                 &cancellation,
                 recorder.as_ref(),
             ).await? else { return };

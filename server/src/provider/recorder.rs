@@ -41,7 +41,7 @@ pub struct CallRecorder {
     inner: Arc<Inner>,
 }
 
-pub(super) struct CancelOnDrop {
+pub(crate) struct CancelOnDrop {
     recorder: CallRecorder,
 }
 
@@ -82,6 +82,8 @@ struct AttemptState {
     chunks: ChunkBuffer,
     first_text_recorded: AtomicBool,
     first_valid_response_recorded: AtomicBool,
+    /// 最近一次实际发送的请求头：换挡重发要沿用同一份头（鉴权、自定义头都不变）。
+    headers: Option<serde_json::Value>,
 }
 
 impl AttemptState {
@@ -93,6 +95,7 @@ impl AttemptState {
             chunks: ChunkBuffer::default(),
             first_text_recorded: AtomicBool::new(false),
             first_valid_response_recorded: AtomicBool::new(false),
+            headers: None,
         }
     }
 }
@@ -133,7 +136,7 @@ impl CallRecorder {
         self.inner.finished.load(Ordering::Acquire)
     }
 
-    pub(super) fn cancel_on_drop(&self) -> CancelOnDrop {
+    pub(crate) fn cancel_on_drop(&self) -> CancelOnDrop {
         CancelOnDrop {
             recorder: self.clone(),
         }
@@ -144,12 +147,44 @@ impl CallRecorder {
         headers: serde_json::Value,
         body: &serde_json::Value,
     ) -> Result<()> {
-        let attempt = self.inner.attempt.lock().await;
+        let mut attempt = self.inner.attempt.lock().await;
+        // 无论 detailed 开关如何都缓存头：换挡重发时调用方只给新正文，头必须沿用
+        // 第一次真正发送的那一份（鉴权头、自定义头、内容类型都在里面）。
+        attempt.headers = Some(headers.clone());
         self.inner
             .store
             .record_llm_request(&attempt.call_id, &headers, body, self.inner.detailed)
             .await?;
         Ok(())
+    }
+
+    /// 换挡重发前更新"实际请求"：正文换成真正发出的那一份，并同步生效强度。
+    ///
+    /// 头沿用第一次真正发送的那一份；`record_llm_request` 是 UPSERT，detailed 模式下
+    /// 第二次记录会覆盖第一次而不是撞主键。非 detailed 模式只更新字节数。
+    pub(crate) async fn adjusted_request(
+        &self,
+        body: &serde_json::Value,
+        effort: Option<&str>,
+    ) -> Result<()> {
+        let (call_id, headers) = {
+            let attempt = self.inner.attempt.lock().await;
+            (
+                attempt.call_id.clone(),
+                attempt
+                    .headers
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!({})),
+            )
+        };
+        self.inner
+            .store
+            .record_llm_request(&call_id, &headers, body, self.inner.detailed)
+            .await?;
+        self.inner
+            .store
+            .record_llm_effective_effort(&call_id, effort)
+            .await
     }
 
     pub async fn response_headers(&self, status: u16) -> Result<()> {
@@ -269,11 +304,22 @@ impl CallRecorder {
     }
 
     pub async fn failed(&self, error: &crate::Error) -> Result<()> {
+        // 观测里的失败分类必须是稳定码，诊断文本脱敏且限长：这一段会长期留在
+        // `llm_calls.error_message`，也是桌面端"复制诊断"的来源之一。
+        let call_id = self.call_id();
+        tracing::warn!(
+            call_id = %call_id,
+            error_code = error.code(),
+            status = ?error.upstream_status(),
+            app_version = crate::diagnostics::app_version().unwrap_or("unknown"),
+            detail = %error.diagnostic_message(),
+            "LLM call failed"
+        );
         self.finish(
             "error",
             None,
-            Some(error_kind(error)),
-            Some(&error.to_string()),
+            Some(error.code()),
+            Some(&error.diagnostic_message()),
         )
         .await
     }
@@ -342,7 +388,7 @@ impl CallRecorder {
         Ok(())
     }
 
-    fn call_id(&self) -> String {
+    pub(crate) fn call_id(&self) -> String {
         self.inner
             .attempt
             .try_lock()
@@ -360,15 +406,6 @@ fn finish_reason(reason: FinishReason) -> &'static str {
         FinishReason::Stop => "stop",
         FinishReason::Length => "length",
         FinishReason::ToolUse => "tool_use",
-    }
-}
-
-fn error_kind(error: &crate::Error) -> &'static str {
-    match error {
-        crate::Error::Provider(_) | crate::Error::Http(_) => "provider",
-        crate::Error::Cancelled => "cancelled",
-        crate::Error::Database(_) | crate::Error::Store(_) => "store",
-        _ => "internal",
     }
 }
 
@@ -461,5 +498,127 @@ mod tests {
             );
             tokio::task::yield_now().await;
         }
+    }
+
+    async fn recorder_with_store(
+        call_id: &str,
+        detailed: bool,
+    ) -> (tempfile::TempDir, Store, CallRecorder) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("test.db").display()
+        ))
+        .await
+        .unwrap();
+        store.set_detailed_logging(detailed).await.unwrap();
+        let model = store
+            .create_model(&ModelConfigInput {
+                sort_order: 0,
+                display_name: "Test Model".into(),
+                group_name: None,
+                model_type: ModelType::OpenAi,
+                base_url: "https://example.com/v1/chat/completions".into(),
+                use_full_url: true,
+                api_key: "test-key".into(),
+                tooltip_data: "Test Model".into(),
+                model_id: "test-model".into(),
+                reasoning_effort: None,
+                openai_endpoint: OPENAI_CHAT_ENDPOINT.into(),
+                openai_extra_params_enabled: false,
+                openai_extra_params: serde_json::json!({}),
+                custom_headers_enabled: false,
+                custom_headers: serde_json::json!({}),
+                anthropic_extra_params_enabled: false,
+                anthropic_extra_params: serde_json::json!({}),
+                context_window_tokens: None,
+                max_completion_tokens: None,
+                anthropic_max_tokens: None,
+                anthropic_thinking_effort: None,
+                thinking_budget_tokens: None,
+            })
+            .await
+            .unwrap();
+        let recorder = CallRecorder::start(
+            store.clone(),
+            NewLlmCall {
+                purpose: crate::model::CallPurpose::Chat,
+                client_source: crate::model::CallClient::Internal,
+                call_id: call_id.into(),
+                run_id: "run".into(),
+                conversation_id: "conversation".into(),
+                provider_call_index: 0,
+                model_hash: model.model_hash,
+                provider_type: ProviderType::OpenAiChat,
+                provider_url: "https://example.com".into(),
+                request_type: ProviderType::OpenAiChat,
+                request_url: "https://example.com/v1/chat/completions".into(),
+                model_id: "test-model".into(),
+                display_name: "Test Model".into(),
+                reasoning_effort: Some("xhigh".into()),
+                fast: false,
+                message_count: 1,
+                tool_count: 0,
+                detailed,
+            },
+        )
+        .await
+        .unwrap();
+        (directory, store, recorder)
+    }
+
+    /// 换挡重发：实际请求正文与生效强度都要更新，但请求头沿用第一次。
+    #[tokio::test]
+    async fn an_adjusted_request_replaces_the_body_but_keeps_the_headers() {
+        let (_directory, store, recorder) = recorder_with_store("adjusted", true).await;
+        let headers =
+            serde_json::json!({"authorization": "[redacted]", "content-type": "application/json"});
+
+        recorder
+            .request(
+                headers.clone(),
+                &serde_json::json!({"messages": [], "reasoning_effort": "xhigh"}),
+            )
+            .await
+            .unwrap();
+        recorder
+            .adjusted_request(
+                &serde_json::json!({"messages": [], "reasoning_effort": "high"}),
+                Some("high"),
+            )
+            .await
+            .unwrap();
+
+        let call = store.llm_call("adjusted").await.unwrap().unwrap();
+        assert_eq!(call.reasoning_effort.as_deref(), Some("high"));
+        let request = store.llm_call_request("adjusted").await.unwrap().unwrap();
+        assert_eq!(request.body["reasoning_effort"], "high");
+        assert_eq!(request.headers, headers);
+    }
+
+    /// 失败记录保存稳定码与脱敏诊断：桌面端复制诊断与 `llm_calls` 都读这两个字段。
+    #[tokio::test]
+    async fn a_failed_call_records_the_stable_code_and_a_redacted_diagnostic() {
+        let (_directory, store, recorder) = recorder_with_store("failed", false).await;
+
+        recorder.response_headers(400).await.unwrap();
+        recorder
+            .failed(&crate::Error::UpstreamRejected {
+                label: "OpenAI Chat".into(),
+                status: 400,
+                body: "bad key sk-live-secret-999 at https://user:pass@example.com/v1?key=abc"
+                    .into(),
+            })
+            .await
+            .unwrap();
+
+        let call = store.llm_call("failed").await.unwrap().unwrap();
+        assert_eq!(call.status, "error");
+        assert_eq!(call.error_kind.as_deref(), Some("BYOK-UPSTREAM_HTTP"));
+        assert_eq!(call.http_status, Some(400));
+        let message = call.error_message.unwrap();
+        assert!(message.contains("BYOK-UPSTREAM_HTTP"), "{message}");
+        assert!(!message.contains("sk-live-secret-999"), "{message}");
+        assert!(!message.contains("pass"), "{message}");
     }
 }

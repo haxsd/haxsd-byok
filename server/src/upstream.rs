@@ -34,15 +34,12 @@ pub(crate) struct UpstreamCall<'a> {
 }
 
 /// 一次上游请求的结局。非成功状态与发送失败都交给调用方成文：Codex 直通要按
-/// 自己的文案与状态码回给客户端，provider 适配器走 [`send`] 的统一文案。
+/// 自己的文案与状态码回给客户端，provider 适配器走 [`send_json`]。
 pub(crate) enum Attempt {
     /// 上游接受了请求（2xx）；响应体由调用方读取。
     Response(reqwest::Response),
-    /// 上游给出了非成功状态；响应体还没读，`retries` 是已经用掉的次数。
-    Rejected {
-        response: reqwest::Response,
-        retries: u32,
-    },
+    /// 上游给出了非成功状态；响应体还没读。
+    Rejected { response: reqwest::Response },
     /// 发送阶段失败（连接/TLS/发送）；`retries` 是已经用掉的次数。
     Failed { error: reqwest::Error, retries: u32 },
     /// 被取消：没有发出（或不再发出）请求。
@@ -63,41 +60,73 @@ pub(crate) async fn attempt<F>(
 where
     F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
 {
-    let mut client = outbound.client().clone();
-    // 出网路由（代理设置）在运行期间会变，缓存里的客户端可能已经指向没人监听的
-    // 代理端口：第一连接类失败时按当前配置重建一次。它和瞬时失败重试共用同一份
-    // 次数预算，所以一次请求最多发出 MAX_RETRIES + 1 次。
-    let mut recovery_allowed = true;
-    let mut retries = 0_u32;
+    let mut budget = RetryBudget::new(outbound);
+    attempt_with_budget(call, outbound, build, cancellation, recorder, &mut budget).await
+}
+
+struct RetryBudget {
+    client: reqwest::Client,
+    recovery_allowed: bool,
+    retries: u32,
+}
+
+impl RetryBudget {
+    fn new(outbound: &OutboundClient) -> Self {
+        Self {
+            client: outbound.client().clone(),
+            recovery_allowed: true,
+            retries: 0,
+        }
+    }
+}
+
+async fn attempt_with_budget<F>(
+    call: &UpstreamCall<'_>,
+    outbound: &OutboundClient,
+    build: F,
+    cancellation: &CancellationToken,
+    recorder: Option<&CallRecorder>,
+    budget: &mut RetryBudget,
+) -> Result<Attempt>
+where
+    F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
+{
     loop {
         let sent = tokio::select! {
             _ = cancellation.cancelled() => return Ok(Attempt::Cancelled),
-            sent = build(&client).send() => sent,
+            sent = build(&budget.client).send() => sent,
         };
         let response = match sent {
             Ok(response) => response,
             Err(error) => {
-                // 重建客户端仍然对超时做：它刷新的是缓存里那条路由（下一次请求就不必
-                // 再撞同一堵墙），但"要不要重发"由 `retryable_send_failure` 单独决定。
-                let rebuilt = if recovery_allowed {
-                    recovery_allowed = false;
+                let rebuilt = if budget.recovery_allowed {
+                    budget.recovery_allowed = false;
                     outbound.rebuild_after(&error).await
                 } else {
                     None
                 };
-                let retryable = retryable_send_failure(&error);
-                let Some(backoff) = retry_backoff(retryable, retries) else {
-                    return Ok(Attempt::Failed { error, retries });
+                let Some(backoff) = retry_backoff(retryable_send_failure(&error), budget.retries)
+                else {
+                    return Ok(Attempt::Failed {
+                        error,
+                        retries: budget.retries,
+                    });
                 };
                 if let Some(rebuilt) = rebuilt {
-                    client = rebuilt;
+                    budget.client = rebuilt;
                 }
-                if !wait_before_retry(call, retries, &error.to_string(), backoff, cancellation)
-                    .await
+                if !wait_before_retry(
+                    call,
+                    budget.retries,
+                    &error.to_string(),
+                    backoff,
+                    cancellation,
+                )
+                .await
                 {
                     return Ok(Attempt::Cancelled);
                 }
-                retries += 1;
+                budget.retries += 1;
                 continue;
             }
         };
@@ -106,50 +135,101 @@ where
             return Ok(Attempt::Response(response));
         }
         if retryable_status(response.status()) {
-            if let Some(backoff) = retry_backoff(true, retries) {
+            if let Some(backoff) = retry_backoff(true, budget.retries) {
                 let reason = format!("HTTP {}", response.status());
-                // 不读正文：这次尝试的内容不会被任何人看到，连接直接放掉。
                 drop(response);
-                if !wait_before_retry(call, retries, &reason, backoff, cancellation).await {
+                if !wait_before_retry(call, budget.retries, &reason, backoff, cancellation).await {
                     return Ok(Attempt::Cancelled);
                 }
-                retries += 1;
+                budget.retries += 1;
                 continue;
             }
         }
         record_headers(recorder, &response).await;
-        return Ok(Attempt::Rejected { response, retries });
+        return Ok(Attempt::Rejected { response });
     }
 }
 
-/// provider 适配器共用的发送：成功给出 2xx 响应，`None` 表示收到取消。
-///
-/// 非成功状态与重试后的发送失败都已经转成带文案的错误：
-/// `{label} 502 Bad Gateway (after 2 retries): <上游正文>`。
-pub(crate) async fn send<F>(
+/// A JSON model request. Only the protocol's effort field may change between rejected attempts.
+pub(crate) struct JsonRequest<'a> {
+    pub body: &'a mut serde_json::Value,
+    pub effort: crate::provider::effort_fallback::EffortField,
+    pub timeout: Duration,
+}
+
+/// All BYOK JSON paths share this loop; official Cursor forwarding still uses `attempt` unchanged.
+pub(crate) async fn send_json<F>(
     call: &UpstreamCall<'_>,
     outbound: &OutboundClient,
+    request: JsonRequest<'_>,
     build: F,
     cancellation: &CancellationToken,
     recorder: Option<&CallRecorder>,
 ) -> Result<Option<reqwest::Response>>
 where
-    F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
+    F: Fn(&reqwest::Client, &serde_json::Value) -> reqwest::RequestBuilder,
 {
-    match attempt(call, outbound, build, cancellation, recorder).await? {
-        Attempt::Response(response) => Ok(Some(response)),
-        Attempt::Cancelled => Ok(None),
-        Attempt::Rejected { response, retries } => {
-            let status = response.status();
-            let body = tokio::select! {
-                _ = cancellation.cancelled() => return Ok(None),
-                body = read_rejected_body(response) => body,
-            };
-            Err(Error::Provider(rejected_message(
-                call.label, status, retries, &body,
-            )))
+    let deadline = tokio::time::Instant::now() + request.timeout;
+    let mut budget = RetryBudget::new(outbound);
+    let mut efforts =
+        crate::provider::effort_fallback::EffortFallback::new(request.body, request.effort);
+    loop {
+        let attempt = tokio::select! {
+            _ = cancellation.cancelled() => return Ok(None),
+            result = tokio::time::timeout_at(deadline, attempt_with_budget(
+                call, outbound,
+                |client| build(client, request.body).timeout(deadline.saturating_duration_since(tokio::time::Instant::now())),
+                cancellation, recorder, &mut budget,
+            )) => match result {
+                Ok(result) => result?,
+                Err(_) => return Err(Error::Timeout("provider request deadline elapsed before a response".into())),
+            },
+        };
+        match attempt {
+            Attempt::Response(response) => return Ok(Some(response)),
+            Attempt::Cancelled => return Ok(None),
+            Attempt::Rejected { response, .. } => {
+                let status = response.status().as_u16();
+                let body = tokio::select! {
+                    _ = cancellation.cancelled() => return Ok(None),
+                    result = tokio::time::timeout_at(deadline, read_rejected_body(response)) => match result {
+                        Ok(body) => body,
+                        Err(_) => return Err(Error::Timeout("provider request deadline elapsed while reading an error response".into())),
+                    },
+                };
+                let message = String::from_utf8_lossy(&body);
+                if let Some(change) = efforts.adjust(request.body, status, &message) {
+                    tracing::warn!(
+                        model = call.model, status,
+                        rejected = %crate::error::redact(&change.rejected),
+                        adjusted = change.adjusted.unwrap_or("provider default"),
+                        "upstream rejected the requested reasoning effort; trying the next candidate"
+                    );
+                    if let Some(recorder) = recorder {
+                        if let Err(error) = recorder
+                            .adjusted_request(request.body, request.effort.value(request.body))
+                            .await
+                        {
+                            tracing::warn!("failed to record the adjusted request: {error}");
+                        }
+                    }
+                    continue;
+                }
+                return Err(Error::UpstreamRejected {
+                    label: call.label.into(),
+                    status,
+                    body: message.into_owned(),
+                });
+            }
+            Attempt::Failed { error, .. } => {
+                let details = crate::diagnostics::error_chain(&error);
+                return Err(if error.is_timeout() {
+                    Error::Timeout(details)
+                } else {
+                    Error::Network(details)
+                });
+            }
         }
-        Attempt::Failed { error, retries } => Err(send_failure(call.label, error, retries)),
     }
 }
 
@@ -176,25 +256,6 @@ async fn read_rejected_body(mut response: reqwest::Response) -> Vec<u8> {
             return body;
         }
         body.extend_from_slice(&chunk);
-    }
-}
-
-/// 非成功状态的最终文案：`{label} 502 Bad Gateway (after 2 retries): <正文>`。
-///
-/// 正文为空时连冒号一起省略，界面拿到的是完整的一句话而不是悬空的标点。
-pub(crate) fn rejected_message(
-    label: &str,
-    status: reqwest::StatusCode,
-    retries: u32,
-    body: &[u8],
-) -> String {
-    let text = String::from_utf8_lossy(body);
-    let text = text.trim();
-    let note = retry_note(retries);
-    if text.is_empty() {
-        format!("{label} {status}{note}")
-    } else {
-        format!("{label} {status}{note}: {text}")
     }
 }
 
@@ -270,12 +331,12 @@ async fn wait_before_retry(
 ) -> bool {
     tracing::warn!(
         model = call.model,
-        url = call.url,
+        url = %crate::error::redact(call.url),
         path = call.label,
         retry = retries + 1,
         max_retries = MAX_RETRIES,
         delay_ms = backoff.as_millis() as u64,
-        reason,
+        reason = %crate::error::redact(reason),
         "upstream request failed before any response; retrying"
     );
     tokio::select! {
@@ -307,6 +368,33 @@ mod tests {
         provider::{FinishReason, ModelEvent, OpenAiChatProvider, Provider, ProviderStream},
         store::{ProxyMode, ProxySettingsInput, Store},
     };
+
+    // Keep network-only fixtures small while exercising the production JSON send loop.
+    async fn send<F>(
+        call: &UpstreamCall<'_>,
+        outbound: &OutboundClient,
+        build: F,
+        cancellation: &CancellationToken,
+        recorder: Option<&CallRecorder>,
+    ) -> Result<Option<reqwest::Response>>
+    where
+        F: Fn(&reqwest::Client) -> reqwest::RequestBuilder,
+    {
+        let mut body = json!({});
+        send_json(
+            call,
+            outbound,
+            JsonRequest {
+                body: &mut body,
+                effort: crate::provider::effort_fallback::EffortField::Chat,
+                timeout: Duration::from_secs(30),
+            },
+            |client, _| build(client),
+            cancellation,
+            recorder,
+        )
+        .await
+    }
 
     /// 上游网关自己的 502：正文就是网关那一层的一段说明。
     const GATEWAY_DOWN: &[u8] =
@@ -674,13 +762,11 @@ mod tests {
         .await
         .unwrap_err();
 
-        let Error::Provider(message) = error else {
-            panic!("a rejected status must be a provider error");
+        let Error::UpstreamRejected { status, body, .. } = error else {
+            panic!("a rejected status must retain its typed HTTP status");
         };
-        assert_eq!(
-            message,
-            "OpenAI Chat 502 Bad Gateway (after 2 retries): down"
-        );
+        assert_eq!(status, 502);
+        assert_eq!(body, "down");
         assert_eq!(stub.attempts(), 1 + MAX_RETRIES as usize);
     }
 
@@ -703,13 +789,7 @@ mod tests {
         .await
         .unwrap_err();
 
-        let Error::Provider(message) = error else {
-            panic!("a retried send failure must carry the count: {error:?}");
-        };
-        assert!(
-            message.starts_with("OpenAI Chat upstream request failed (after 2 retries):"),
-            "unexpected message: {message}"
-        );
+        assert_eq!(error.code(), crate::error::code::NETWORK);
     }
 
     /// 已经开始返回响应体之后断开：不再重试，错误原样交给调用方（这里表现为
@@ -760,10 +840,11 @@ mod tests {
         .await
         .unwrap_err();
 
-        let Error::Provider(message) = error else {
-            panic!("a rejected status must be a provider error");
+        let Error::UpstreamRejected { status, body, .. } = error else {
+            panic!("a rejected status must retain its typed HTTP status");
         };
-        assert_eq!(message, "OpenAI Chat 400 Bad Request: nope");
+        assert_eq!(status, 400);
+        assert_eq!(body, "nope");
         assert_eq!(stub.attempts(), 1);
     }
 
@@ -795,20 +876,11 @@ mod tests {
         .expect("正文上限生效时必须立刻收手，而不是把整份响应读完")
         .unwrap_err();
 
-        let Error::Provider(message) = error else {
-            panic!("被拒绝的状态必须是 provider 错误");
+        let Error::UpstreamRejected { body, .. } = error else {
+            panic!("the rejected response must preserve its bounded body");
         };
-        let prefix = "OpenAI Chat 400 Bad Request: ";
-        assert!(message.starts_with(prefix), "{message}");
-        assert!(
-            message.ends_with("…<truncated>"),
-            "截断必须在正文尾部标出来: {message}"
-        );
-        assert_eq!(
-            message.len(),
-            prefix.len() + REJECTED_BODY_LIMIT + " …<truncated>".len(),
-            "正文必须正好停在 {REJECTED_BODY_LIMIT} 字节，多一字节都说明没按上限收手"
-        );
+        assert!(body.ends_with("…<truncated>"));
+        assert_eq!(body.len(), REJECTED_BODY_LIMIT + " …<truncated>".len());
         assert!(
             stub.written() > REJECTED_BODY_LIMIT,
             "桩还在继续吐（已吐 {} 字节），所以截断只可能来自上限本身，不是上游读完了",
@@ -1033,6 +1105,351 @@ mod tests {
         assert!(error.is_timeout(), "这里要构造的是请求级超时: {error:?}");
         assert_eq!(retries, 0, "超时不许进重试预算");
         assert_eq!(connections.load(Ordering::SeqCst), 1, "只许发一次");
+    }
+
+    #[tokio::test]
+    async fn retry_logs_redact_credentials_in_the_url_and_transport_reason() {
+        let logs = CapturedLogs::default();
+        let _captured = capture_logs(&logs);
+        assert!(
+            wait_before_retry(
+                &UpstreamCall {
+                    label: "test",
+                    model: "m",
+                    url: "https://name:private-password@example.com/model?token=private-url-token"
+                },
+                0,
+                "Authorization: Basic private-header-secret",
+                Duration::ZERO,
+                &CancellationToken::new()
+            )
+            .await
+        );
+        let text = logs.text();
+        for secret in [
+            "private-password",
+            "private-url-token",
+            "private-header-secret",
+        ] {
+            assert!(!text.contains(secret), "{text}");
+        }
+        assert!(text.contains("upstream request failed before any response; retrying"));
+    }
+
+    #[tokio::test]
+    async fn network_retry_budget_is_shared_across_effort_changes() {
+        use crate::provider::effort_fallback::EffortField;
+        use axum::{response::IntoResponse, routing::post, Json, Router};
+        let seen = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let captured = seen.clone();
+        let router = Router::new().route(
+            "/model",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let captured = captured.clone();
+                async move {
+                    let mut seen = captured.lock().await;
+                    let index = seen.len();
+                    seen.push(body);
+                    if index == 1 || index == 3 {
+                        (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(json!({"error":{"message":"unsupported reasoning effort"}})),
+                        )
+                            .into_response()
+                    } else {
+                        (
+                            axum::http::StatusCode::BAD_GATEWAY,
+                            "fixture gateway failure",
+                        )
+                            .into_response()
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/model", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let mut body = json!({"reasoning_effort":"xhigh"});
+        let error = send_json(
+            &UpstreamCall {
+                label: "test",
+                model: "m",
+                url: &url,
+            },
+            &fixed_outbound(),
+            JsonRequest {
+                body: &mut body,
+                effort: EffortField::Chat,
+                timeout: Duration::from_secs(5),
+            },
+            |client, body| client.post(&url).json(body),
+            &CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.upstream_status(), Some(502));
+        let seen = seen.lock().await;
+        let levels: Vec<_> = seen
+            .iter()
+            .map(|body| body["reasoning_effort"].as_str().unwrap())
+            .collect();
+        assert_eq!(levels, ["xhigh", "xhigh", "max", "max", "high"]);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn the_total_request_deadline_is_not_reset_after_effort_rejection() {
+        use crate::provider::effort_fallback::EffortField;
+        use axum::{response::IntoResponse, routing::post, Json, Router};
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let counted = attempts.clone();
+        let router = Router::new().route(
+            "/model",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let counted = counted.clone();
+                async move {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                    // Deliberate server latency makes two individually valid requests exceed the one-call budget.
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    if body["reasoning_effort"] == "xhigh" {
+                        (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(json!({"error":{"message":"unsupported reasoning effort"}})),
+                        )
+                            .into_response()
+                    } else {
+                        Json(json!({})).into_response()
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/model", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let mut body = json!({"reasoning_effort":"xhigh"});
+        let error = send_json(
+            &UpstreamCall {
+                label: "test",
+                model: "m",
+                url: &url,
+            },
+            &fixed_outbound(),
+            JsonRequest {
+                body: &mut body,
+                effort: EffortField::Chat,
+                timeout: Duration::from_millis(500),
+            },
+            |client, body| client.post(&url).json(body),
+            &CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code(), crate::error::code::TIMEOUT);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        task.abort();
+    }
+
+    async fn effort_stub(
+        field: crate::provider::effort_fallback::EffortField,
+        accepted: Option<&'static str>,
+        rejection: &'static str,
+    ) -> (
+        String,
+        Arc<tokio::sync::Mutex<Vec<serde_json::Value>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{response::IntoResponse, routing::post, Json, Router};
+        let seen = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let captured = seen.clone();
+        let router = Router::new().route(
+            "/model",
+            post(move |Json(body): Json<serde_json::Value>| {
+                let captured = captured.clone();
+                async move {
+                    let effort = field.value(&body).map(str::to_owned);
+                    captured.lock().await.push(body);
+                    if accepted.is_some_and(|accepted| effort.as_deref() == Some(accepted)) {
+                        (axum::http::StatusCode::OK, Json(json!({}))).into_response()
+                    } else {
+                        (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(json!({"error":{"message":rejection}})),
+                        )
+                            .into_response()
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/model", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        (url, seen, task)
+    }
+
+    #[tokio::test]
+    async fn supported_xhigh_is_sent_once_and_unsupported_xhigh_tries_max_for_every_wire_field() {
+        use crate::provider::effort_fallback::EffortField;
+        for (field, body) in [
+            (
+                EffortField::Chat,
+                json!({"reasoning_effort":"xhigh","messages":[{"role":"user","content":"hello"}],"tools":[]}),
+            ),
+            (
+                EffortField::Responses,
+                json!({"reasoning":{"effort":"xhigh","summary":"auto"},"input":"hello"}),
+            ),
+            (
+                EffortField::Anthropic,
+                json!({"output_config":{"effort":"xhigh"},"thinking":{"type":"adaptive"}}),
+            ),
+        ] {
+            for accepted in ["xhigh", "max"] {
+                let (url, seen, task) =
+                    effort_stub(field, Some(accepted), "unsupported reasoning effort").await;
+                let mut sent = body.clone();
+                let response = send_json(
+                    &UpstreamCall {
+                        label: "test",
+                        model: "m",
+                        url: &url,
+                    },
+                    &fixed_outbound(),
+                    JsonRequest {
+                        body: &mut sent,
+                        effort: field,
+                        timeout: Duration::from_secs(5),
+                    },
+                    |client, body| client.post(&url).json(body),
+                    &CancellationToken::new(),
+                    None,
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                assert!(response.status().is_success());
+                let requests = seen.lock().await;
+                assert_eq!(requests.len(), if accepted == "xhigh" { 1 } else { 2 });
+                assert_eq!(requests[0], body, "the first request must be unchanged");
+                let mut expected = body.clone();
+                let path = match field {
+                    EffortField::Chat => "/reasoning_effort",
+                    EffortField::Responses => "/reasoning/effort",
+                    EffortField::Anthropic => "/output_config/effort",
+                };
+                *expected.pointer_mut(path).unwrap() = json!(accepted);
+                assert_eq!(
+                    requests.last().unwrap(),
+                    &expected,
+                    "no history or other parameters may change"
+                );
+                task.abort();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn all_rejected_levels_are_bounded_and_unrelated_errors_do_not_switch_levels() {
+        use crate::provider::effort_fallback::EffortField;
+        for (rejection, expected) in [
+            (
+                "unsupported reasoning effort",
+                vec![
+                    Some("xhigh"),
+                    Some("max"),
+                    Some("high"),
+                    Some("medium"),
+                    Some("low"),
+                    None,
+                ],
+            ),
+            (
+                "messages contain invalid reasoning_content",
+                vec![Some("xhigh")],
+            ),
+            ("invalid request", vec![Some("xhigh")]),
+        ] {
+            let (url, seen, task) = effort_stub(EffortField::Chat, None, rejection).await;
+            let mut body = json!({"reasoning_effort":"xhigh"});
+            let error = send_json(
+                &UpstreamCall {
+                    label: "test",
+                    model: "m",
+                    url: &url,
+                },
+                &fixed_outbound(),
+                JsonRequest {
+                    body: &mut body,
+                    effort: EffortField::Chat,
+                    timeout: Duration::from_secs(5),
+                },
+                |client, body| client.post(&url).json(body),
+                &CancellationToken::new(),
+                None,
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.upstream_status(), Some(400));
+            let requests = seen.lock().await;
+            let levels: Vec<_> = requests
+                .iter()
+                .map(|body| body["reasoning_effort"].as_str())
+                .collect();
+            assert_eq!(levels, expected);
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_adjusted_request_updates_the_existing_call_instead_of_creating_a_failed_call() {
+        use crate::provider::effort_fallback::EffortField;
+        let (url, seen, task) = effort_stub(
+            EffortField::Chat,
+            Some("max"),
+            "unsupported reasoning effort",
+        )
+        .await;
+        let (_directory, store, recorder) = test_recorder("effort-adjustment").await;
+        let mut body = json!({"reasoning_effort":"xhigh","messages":[]});
+        recorder
+            .request(json!({"x-test":"kept"}), &body)
+            .await
+            .unwrap();
+        let response = send_json(
+            &UpstreamCall {
+                label: "test",
+                model: "m",
+                url: &url,
+            },
+            &fixed_outbound(),
+            JsonRequest {
+                body: &mut body,
+                effort: EffortField::Chat,
+                timeout: Duration::from_secs(5),
+            },
+            |client, body| client.post(&url).json(body),
+            &CancellationToken::new(),
+            Some(&recorder),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(response.status().is_success());
+        recorder.completed(FinishReason::Stop).await.unwrap();
+        let rows = store.llm_calls(10).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, "completed");
+        assert_eq!(rows[0].http_status, Some(200));
+        assert_eq!(rows[0].reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(seen.lock().await.len(), 2);
+        task.abort();
     }
 
     async fn collect_events(mut stream: ProviderStream) -> Vec<ModelEvent> {

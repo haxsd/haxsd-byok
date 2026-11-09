@@ -64,7 +64,9 @@ impl Provider for ProviderRouter {
                 if selected.starts_with(ADAPTER_ID_PREFIX) {
                     // 插件模型与内置模型走完全相同的流程:资源选择与将来的
                     // 负载均衡都在插件 Provider 内部。
-                    let plan = plugins.plan_model(&selected).await?;
+                    let plan = plugins.plan_model(&selected).await.inspect_err(|error| {
+                        log_unrecorded_failure(&invocation, error);
+                    })?;
                     let mut routed = invocation.clone();
                     routed.request.model.display_name = Some(plan.model.display_name.clone());
                     if let Some(tokens) = plan.model.max_output_tokens {
@@ -91,7 +93,18 @@ impl Provider for ProviderRouter {
                     (recorder, guard, provider.stream(routed, cancellation.clone()))
                 } else {
                     let mut routed = invocation.clone();
-                    let model = store.model(&selected).await?.ok_or_else(|| Error::Provider(format!("unknown model: {selected}")))?;
+                    let model = match store.model(&selected).await {
+                        Ok(Some(model)) => model,
+                        Ok(None) => {
+                            let error = Error::Provider(format!("unknown model: {selected}"));
+                            log_unrecorded_failure(&invocation, &error);
+                            Err(error)?
+                        }
+                        Err(error) => {
+                            log_unrecorded_failure(&invocation, &error);
+                            Err(error)?
+                        }
+                    };
                     let provider_type = model.provider_type();
                     let request_url = model.request_url()?;
                     model.configure(&mut routed.request.model);
@@ -150,9 +163,13 @@ impl Provider for ProviderRouter {
                     Ok(None) => break,
                     Err(_) => {
                         let elapsed_ms = stream_started.elapsed().as_millis() as u64;
-                        let error = stream_idle_timeout_error(stream_idle_timeout);
+                        let error = conversation_error(
+                            stream_idle_timeout_error(stream_idle_timeout),
+                            invocation.client_source,
+                            &recorder,
+                        );
                         tracing::warn!(
-                            error = %error,
+                            error = %error.diagnostic_message(),
                             elapsed_ms,
                             event_count,
                             idle_timeout_ms = stream_idle_timeout.as_millis() as u64,
@@ -181,9 +198,13 @@ impl Provider for ProviderRouter {
                         yield event;
                     }
                     Err(error) => {
-                        let error = normalize_provider_stream_error(error, request_timeout);
+                        let error = conversation_error(
+                            normalize_provider_stream_error(error, request_timeout),
+                            invocation.client_source,
+                            &recorder,
+                        );
                         tracing::debug!(
-                            error = %error,
+                            error = %error.diagnostic_message(),
                             elapsed_ms,
                             gap_ms,
                             event_count,
@@ -196,7 +217,7 @@ impl Provider for ProviderRouter {
                     }
                 }
             }
-            finish_stream(&recorder, &cancellation).await?;
+            finish_stream(&recorder, &cancellation, invocation.client_source).await?;
         })
     }
 }
@@ -250,7 +271,7 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
         request_url,
         model_id,
     } = call;
-    CallRecorder::start(
+    let started = CallRecorder::start(
         store.clone(),
         NewLlmCall {
             // 调用用途随 invocation 一路带下来：压缩摘要与普通对话共用记录表，
@@ -277,7 +298,25 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
             detailed: false,
         },
     )
-    .await
+    .await;
+    match started {
+        Ok(recorder) => Ok(recorder),
+        Err(error) => {
+            log_unrecorded_failure(invocation, &error);
+            Err(error)
+        }
+    }
+}
+
+/// 调用记录还不存在时的失败只落日志：请求编号是本地生成的，不能为了关联去伪造一行
+/// `llm_calls`，也不能拿别的调用编号顶替。
+fn log_unrecorded_failure(invocation: &ModelInvocation, error: &Error) {
+    tracing::warn!(
+        reference = %invocation.call_id,
+        code = error.code(),
+        detail = %error.diagnostic_message(),
+        "conversation request failed before a call record existed"
+    );
 }
 
 /// 观测写入失败只留一条 warn。
@@ -295,18 +334,40 @@ fn warn_on_record_failure(label: &str, recorded: Result<()>) {
     }
 }
 
-async fn finish_stream(recorder: &CallRecorder, cancellation: &CancellationToken) -> Result<()> {
+async fn finish_stream(
+    recorder: &CallRecorder,
+    cancellation: &CancellationToken,
+    client: crate::model::CallClient,
+) -> Result<()> {
     if recorder.is_finished() {
         return Ok(());
     }
     if cancellation.is_cancelled() {
         warn_on_record_failure("cancelled", recorder.cancelled().await);
     } else {
-        let error = Error::Provider("provider stream ended without Done".into());
+        let error = conversation_error(
+            Error::Provider("provider stream ended without Done".into()),
+            client,
+            recorder,
+        );
         warn_on_record_failure("failure", recorder.failed(&error).await);
         return Err(error);
     }
     Ok(())
+}
+
+/// 本次对话错误规范只覆盖 Cursor / Devin / Codex；Claude 和内部调用保留原始错误类型。
+fn conversation_error(
+    error: Error,
+    client: crate::model::CallClient,
+    recorder: &CallRecorder,
+) -> Error {
+    match client {
+        crate::model::CallClient::Cursor
+        | crate::model::CallClient::Devin
+        | crate::model::CallClient::Codex => error.conversation(&recorder.call_id()),
+        crate::model::CallClient::Claude | crate::model::CallClient::Internal => error,
+    }
 }
 
 /// 插件模型的 Provider 实现;对路由与规范化层完全等同于内置 Provider。
@@ -344,7 +405,7 @@ async fn next_provider_event(
 }
 
 fn stream_idle_timeout_error(idle_timeout: Duration) -> Error {
-    Error::Provider(format!(
+    Error::Timeout(format!(
         "provider stream idle timeout: no events received for {} seconds ({} minutes)",
         idle_timeout.as_secs(),
         idle_timeout.as_secs() / 60
@@ -352,7 +413,7 @@ fn stream_idle_timeout_error(idle_timeout: Duration) -> Error {
 }
 
 fn request_timeout_error(request_timeout: Duration) -> Error {
-    Error::Provider(format!(
+    Error::Timeout(format!(
         "provider request timed out after {} seconds ({} minutes)",
         request_timeout.as_secs(),
         request_timeout.as_secs() / 60
@@ -366,6 +427,7 @@ fn normalize_provider_stream_error(error: Error, request_timeout: Duration) -> E
             "provider stream transport failed while reading the response body: {}",
             root_error_message(&source)
         )),
+        Error::Http(source) => Error::Network(crate::diagnostics::error_chain(&source)),
         error => error,
     }
 }
@@ -824,16 +886,16 @@ mod tests {
 
     #[test]
     fn timeout_errors_state_the_boundary_and_duration() {
-        let Error::Provider(idle) = stream_idle_timeout_error(Duration::from_secs(30 * 60)) else {
-            panic!("idle timeout must be a provider error");
+        let Error::Timeout(idle) = stream_idle_timeout_error(Duration::from_secs(30 * 60)) else {
+            panic!("idle timeout must be a typed timeout error");
         };
         assert_eq!(
             idle,
             "provider stream idle timeout: no events received for 1800 seconds (30 minutes)"
         );
 
-        let Error::Provider(request) = request_timeout_error(Duration::from_secs(60 * 60)) else {
-            panic!("request timeout must be a provider error");
+        let Error::Timeout(request) = request_timeout_error(Duration::from_secs(60 * 60)) else {
+            panic!("request timeout must be a typed timeout error");
         };
         assert_eq!(
             request,

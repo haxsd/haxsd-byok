@@ -1,5 +1,6 @@
 //! Defines the provider interface and exports provider implementations.
 mod anthropic;
+pub(crate) mod effort_fallback;
 mod event;
 mod normalize;
 mod openai_chat;

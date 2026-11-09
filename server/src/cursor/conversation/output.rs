@@ -150,15 +150,20 @@ impl ConversationOutput {
             if !self.superseded.is_cancelled() {
                 self.abort_execs().await;
                 let (category, summary) = match error {
-                    Error::Provider(_) | Error::Http(_) => ("provider", error.to_string()),
+                    Error::Provider(_)
+                    | Error::Http(_)
+                    | Error::UpstreamRejected { .. }
+                    | Error::Network(_)
+                    | Error::Timeout(_)
+                    | Error::Conversation { .. } => ("provider", error.diagnostic_message()),
                     Error::Store(_) | Error::Database(_) | Error::Migration(_) => {
-                        ("store", error.to_string())
+                        ("store", error.diagnostic_message())
                     }
                     _ => (
                         "protocol",
                         match error {
                             Error::Protocol(message) => message.clone(),
-                            _ => error.to_string(),
+                            _ => error.diagnostic_message(),
                         },
                     ),
                 };
@@ -870,6 +875,7 @@ impl ConversationOutput {
                                 self.abort_execs().await;
                                 Ok(RunFinish::Transport(TransportFinish::Failed(cursor_error(
                                     failure,
+                                    &self.context.request_id,
                                 ))))
                             }
                         };
@@ -1113,30 +1119,24 @@ enum Input {
     CheckpointFailure(Option<Error>),
 }
 
-fn cursor_error(failure: RunFailure) -> Error {
+fn cursor_error(failure: RunFailure, reference: &str) -> Error {
     match failure {
         RunFailure::Protocol(message) => Error::Protocol(message),
-        RunFailure::Provider(message) | RunFailure::Truncated(message) => Error::Provider(message),
+        // Provider 失败在 run 层仍按要求保留了分类与真实状态；到这里才成文，
+        // 客户端拿到的是稳定码 + 安全摘要 + 请求编号。
+        RunFailure::Provider(failure) => failure.into_error(reference),
+        RunFailure::Truncated(message) => Error::Provider(message).conversation(reference),
         RunFailure::Store(message) => Error::Store(message),
         RunFailure::Client(message) => Error::Protocol(message),
     }
 }
 
-/// 回给客户端的短摘要：只取服务端自己拼的那一段，上游正文不进客户端弹窗。
+/// 回给客户端的短摘要：稳定码 + 安全摘要 + 定位编号。
 ///
-/// `Error::Provider` 的形状是 `<label> <status>: <body>`（见 `provider::provider_event_error`
-/// 与各家 provider 的 HTTP 错误拼装），冒号前是本地拼的标签与状态码；冒号后是上游
-/// SSE/JSON 里的原文，属于外部可控文本。`Error::Http` 整条文本来自 reqwest（含请求
-/// URL），没有可信前缀可用，直接给一句固定的。上游原文仍然留在本地：`tracing`、失败现场
-/// 诊断，以及 run 落库的 failure summary（桌面端"查看详情"读的就是它）。
-fn client_error_summary(error: &Error) -> String {
-    match error {
-        Error::Provider(message) => match message.split_once(": ") {
-            Some((head, _)) if !head.is_empty() => head.to_string(),
-            _ => "the provider rejected the request".into(),
-        },
-        _ => "the provider request could not be completed".into(),
-    }
+/// 上游正文永远留在本地：`tracing`、失败现场诊断，以及 run 落库的 failure summary
+/// （桌面端"查看详情"读的就是它）。
+fn client_error_summary(error: &Error, reference: &str) -> String {
+    error.public_message_with_reference(reference)
 }
 
 fn accept_tool_completion(
@@ -1179,14 +1179,30 @@ pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<(
         details: Vec::new(),
     };
     let stream_error = match error {
-        Error::Provider(_) | Error::Http(_) => {
-            // 弹窗里只放服务端自己拼的短摘要：正文是上游可控文本，而 Cursor 会把这个
+        Error::Cancelled => plain(ConnectCode::Canceled, "run was cancelled".into()),
+        // 取消经过统一成文后仍然是取消，不冒充内部失败。
+        Error::Conversation {
+            code: crate::error::code::CANCELLED,
+            ..
+        } => plain(
+            ConnectCode::Canceled,
+            client_error_summary(error, handle.request_id()),
+        ),
+        Error::Provider(_)
+        | Error::Http(_)
+        | Error::UpstreamRejected { .. }
+        | Error::Network(_)
+        | Error::Timeout(_)
+        | Error::Conversation { .. } => {
+            // 弹窗里只放稳定码、安全摘要与定位编号：正文是上游可控文本，而 Cursor 会把这个
             // 字段按 markdown 渲染——字段名本身就是约束（"只给我手写的可信 markdown"），
             // 过去却对最不可信的一类文本置了 true，等于授权上游在错误提示里塞命令链接。
-            let summary = client_error_summary(error);
+            let summary = client_error_summary(error, handle.request_id());
             tracing::error!(
-                %error,
-                "provider request failed; the client receives the server-side summary only"
+                code = error.code(),
+                status = ?error.upstream_status(),
+                detail = %error.diagnostic_message(),
+                "provider request failed; the client receives the stable code and summary only"
             );
             let detail = ai::ErrorDetails {
                 error: ai::error_details::Error::ProviderError as i32,
@@ -1212,7 +1228,6 @@ pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<(
         Error::Protocol(message) => plain(ConnectCode::InvalidArgument, message.clone()),
         Error::Decode(_) | Error::Json(_) => plain(ConnectCode::InvalidArgument, error.to_string()),
         Error::RunNotFound(_) => plain(ConnectCode::NotFound, error.to_string()),
-        Error::Cancelled => plain(ConnectCode::Canceled, error.to_string()),
         _ => plain(ConnectCode::Internal, error.to_string()),
     };
     handle
@@ -1250,21 +1265,28 @@ mod tests {
     /// 客户端可见的错误文本只能是服务端自己拼的那一段；上游正文（可能带 markdown 与
     /// 命令链接）不进弹窗。
     #[test]
-    fn provider_errors_reach_the_client_as_a_server_side_summary() {
+    fn provider_errors_reach_the_client_as_a_stable_code_and_summary() {
         let upstream = Error::Provider(
             "Anthropic 400 Bad Request: {\"error\":{\"message\":\"[run this](command:rm -rf /)\"}}"
                 .into(),
         );
-        assert_eq!(
-            client_error_summary(&upstream),
-            "Anthropic 400 Bad Request",
-            "冒号前是本地拼的标签与状态码，冒号后是上游原文"
+        let summary = client_error_summary(&upstream, "cursor-run:7");
+        assert!(
+            summary.starts_with("BYOK-STREAM: Anthropic 400 Bad Request"),
+            "{summary}"
         );
-        assert_eq!(
-            client_error_summary(&Error::Provider("nothing local to keep".into())),
-            "the provider rejected the request",
-            "没有本地前缀可留时用固定文案，而不是把上游原文当摘要"
+        assert!(summary.contains("ref cursor-run:7"), "{summary}");
+        assert!(!summary.contains("command:"), "{summary}");
+        assert!(!summary.contains("run this"), "{summary}");
+        let fallback = client_error_summary(
+            &Error::Provider("nothing local to keep".into()),
+            "cursor-run:8",
         );
+        assert!(
+            fallback.contains("the provider rejected the request"),
+            "{fallback}"
+        );
+        assert!(!fallback.contains("nothing local to keep"), "{fallback}");
     }
 
     /// 注入投递必须按入队顺序发出。

@@ -401,7 +401,7 @@ fn failure(
     let retryable = match &failure {
         RunFailure::Protocol(_) => true,
         RunFailure::Provider(message)
-            if is_rejected_request(message) || is_gateway_timeout(message) =>
+            if is_rejected_request(message.message()) || is_gateway_timeout(message.message()) =>
         {
             false
         }

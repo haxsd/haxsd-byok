@@ -52,12 +52,64 @@
 .errorGroup {
   grid-column: 1 / -1;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 
   p {
     margin: 0;
-    color: var(--oa-bad);
     font-size: type.$font-size-xs;
     overflow-wrap: anywhere;
   }
+}
+
+/* 错误码和定位编号必须完整可读：这里不能用事实行的 nowrap/省略号。 */
+.errorFacts {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+
+  div {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: var(--oa-space-2);
+    align-items: baseline;
+  }
+
+  dt {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+  }
+
+  dd {
+    margin: 0;
+    font-size: type.$font-size-2xs;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: inherit;
+    overflow-wrap: anywhere;
+  }
+}
+
+.errorReason {
+  color: var(--oa-bad);
+}
+
+.errorUpstream {
+  color: var(--vscode-descriptionForeground);
+}
+
+.errorActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--oa-space-2);
+}
+
+.copyFailure {
+  color: var(--oa-bad);
+  font-size: type.$font-size-xs;
+  overflow-wrap: anywhere;
 }
