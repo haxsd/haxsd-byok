@@ -616,6 +616,30 @@ pub struct ModelSpec {
     /// 协议不支持的适配器（Responses）由入站网关在事件层截断。
     #[serde(default)]
     pub stop_sequences: Vec<String>,
+    /// 入站客户端自己给出的请求级参数（目前只有 Anthropic messages 网关填写）。
+    ///
+    /// 全部可选、缺省为空：其它宿主不填，适配器的行为与以前完全一致。
+    #[serde(default)]
+    pub client: Box<ClientRequestOptions>,
+}
+
+/// 客户端请求里原本就有、但共享请求格式以前装不下的参数。
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct ClientRequestOptions {
+    /// 客户端原样的 Anthropic `system` 文本块（带它自己的 `cache_control` 断点）。
+    /// 只有客户端确实放了断点时才保留，Anthropic 上游原样使用。
+    #[serde(default)]
+    pub anthropic_system_blocks: Option<Vec<serde_json::Value>>,
+    /// Anthropic 形状的 `tool_choice`（`auto` / `any` / `tool` / `none`，可带
+    /// `disable_parallel_tool_use`）。
+    #[serde(default)]
+    pub tool_choice: Option<serde_json::Value>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    /// 客户端的 `anthropic-beta` 头（已滤掉只对官方 OAuth 账号有意义的项）。
+    /// 只在上游同为 Anthropic 协议时转发。
+    #[serde(default)]
+    pub anthropic_beta: Option<String>,
 }
 
 impl ModelSpec {
@@ -630,6 +654,7 @@ impl ModelSpec {
             supports_image_generation: false,
             extra_params: serde_json::json!({}),
             stop_sequences: Vec::new(),
+            client: Box::default(),
         }
     }
 }
