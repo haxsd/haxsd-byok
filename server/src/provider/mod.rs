@@ -107,17 +107,89 @@ fn merge_extra_params(body: &mut serde_json::Value, extra: &serde_json::Value) -
     Ok(())
 }
 
-fn apply_openai_prompt_cache_key(body: &mut serde_json::Value, model_id: &str) -> Result<()> {
-    if !model_id.to_ascii_lowercase().contains("gpt") {
+/// OpenAI 兼容上游里已知会因为请求体多出未知字段而整轮 400 的服务（按主机名匹配）。
+///
+/// - `generativelanguage.googleapis.com`：Gemini 的 OpenAI 兼容端点对未声明字段报
+///   `Invalid JSON payload received. Unknown name`；
+/// - `api.mistral.ai`：请求模型按 `extra="forbid"` 校验，多余字段返回 422。
+///
+/// 其它兼容服务（DeepSeek、GLM、Kimi、OpenRouter、vLLM 等）忽略不认识的字段，
+/// 发上 `prompt_cache_key` 无害；支持它的上游则能把同一会话路由到同一缓存。
+const PROMPT_CACHE_KEY_REJECTING_HOSTS: [&str; 2] =
+    ["generativelanguage.googleapis.com", "api.mistral.ai"];
+
+/// 按会话生成 `prompt_cache_key`：同一会话稳定、不同会话不同。
+///
+/// 以前所有会话共用一个常量 key，而且只对模型名含 `gpt` 的模型生效：OpenAI 按 key
+/// 做缓存路由，全局共用同一个 key 会把所有会话挤到同一组缓存机器上，命中率反而更低。
+/// 会话 ID 做一次摘要再发出去，不把本地标识原样交给上游。
+fn apply_openai_prompt_cache_key(
+    body: &mut serde_json::Value,
+    conversation_id: &str,
+    request_url: &str,
+) -> Result<()> {
+    if conversation_id.trim().is_empty() || rejects_prompt_cache_key(request_url) {
         return Ok(());
     }
     body.as_object_mut()
         .ok_or_else(|| crate::Error::Provider("provider request body must be an object".into()))?
         .insert(
             "prompt_cache_key".into(),
-            serde_json::Value::String("cursor-byok".into()),
+            serde_json::Value::String(prompt_cache_key(conversation_id)),
         );
     Ok(())
+}
+
+fn prompt_cache_key(conversation_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = hex::encode(Sha256::digest(conversation_id.as_bytes()));
+    format!("haxsd-{}", &digest[..32])
+}
+
+fn rejects_prompt_cache_key(request_url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(request_url) else {
+        return false;
+    };
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    PROMPT_CACHE_KEY_REJECTING_HOSTS
+        .iter()
+        .any(|rejecting| host == *rejecting || host.ends_with(&format!(".{rejecting}")))
+}
+
+#[cfg(test)]
+mod prompt_cache_key_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_key_is_stable_per_conversation_and_differs_across_conversations() {
+        let mut first = json!({});
+        let mut again = json!({});
+        let mut other = json!({});
+        let url = "https://api.deepseek.com/chat/completions";
+        apply_openai_prompt_cache_key(&mut first, "conversation-a", url).unwrap();
+        apply_openai_prompt_cache_key(&mut again, "conversation-a", url).unwrap();
+        apply_openai_prompt_cache_key(&mut other, "conversation-b", url).unwrap();
+        let key = first["prompt_cache_key"].as_str().unwrap();
+        assert!(key.starts_with("haxsd-") && !key.contains("conversation"));
+        assert_eq!(first, again);
+        assert_ne!(first["prompt_cache_key"], other["prompt_cache_key"]);
+    }
+
+    #[test]
+    fn hosts_that_reject_unknown_fields_get_no_key() {
+        for url in [
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "https://api.mistral.ai/v1/chat/completions",
+        ] {
+            let mut body = json!({});
+            apply_openai_prompt_cache_key(&mut body, "conversation-a", url).unwrap();
+            assert!(body.get("prompt_cache_key").is_none(), "{url}");
+        }
+    }
 }
 
 #[cfg(test)]

@@ -69,7 +69,7 @@ impl Provider for OpenAiResponsesProvider {
         let recorder = self.recorder.clone();
         let owner = replay_owner(&config.request_url, &invocation.request.model.model_id);
         Box::pin(try_stream! {
-            let ModelInvocation { call_id, request, .. } = invocation;
+            let ModelInvocation { call_id, conversation_id, request, .. } = invocation;
             let input = responses_input(&request.history, &owner)?;
             let mut body = json!({
                 "model": request.model.model_id, "input": input, "stream": true,
@@ -81,7 +81,7 @@ impl Provider for OpenAiResponsesProvider {
             }
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             merge_extra_params(&mut body, &request.model.extra_params)?;
-            apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
+            apply_openai_prompt_cache_key(&mut body, &conversation_id, &config.request_url)?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;
