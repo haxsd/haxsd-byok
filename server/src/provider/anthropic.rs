@@ -15,7 +15,7 @@ use crate::{
 use super::{
     effort_fallback, map_sse_error, merge_extra_params, provider_event_error,
     recorder::recorded_headers,
-    wire::anthropic::{anthropic_stop, thinking_budget, AnthropicStop},
+    wire::anthropic::{anthropic_stop, mark_cache_breakpoint, thinking_budget, AnthropicStop},
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
 use crate::upstream::{self, UpstreamCall};
@@ -574,29 +574,6 @@ fn anthropic_messages(messages: &[ProjectedMessage]) -> Result<Vec<Value>> {
         }
     }
     Ok(output)
-}
-
-fn mark_cache_breakpoint(messages: &mut [Value]) {
-    let Some(message) = messages
-        .iter_mut()
-        .rev()
-        .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
-    else {
-        return;
-    };
-    let Some(content) = message.get_mut("content").and_then(Value::as_array_mut) else {
-        return;
-    };
-    for block in content.iter_mut().rev() {
-        let kind = block.get("type").and_then(Value::as_str);
-        if !matches!(kind, Some("text" | "image" | "tool_result")) {
-            continue;
-        }
-        if let Some(block) = block.as_object_mut() {
-            block.insert("cache_control".into(), json!({"type": "ephemeral"}));
-            return;
-        }
-    }
 }
 
 fn anthropic_parts(role: &Role, parts: &[ContentPart]) -> Result<Vec<Value>> {

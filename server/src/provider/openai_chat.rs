@@ -95,7 +95,7 @@ impl Provider for OpenAiChatProvider {
         let config = self.config.clone();
         let recorder = self.recorder.clone();
         Box::pin(try_stream! {
-            let ModelInvocation { call_id, request, .. } = invocation;
+            let ModelInvocation { call_id, conversation_id, request, .. } = invocation;
             tracing::debug!(
                 model = %request.model.model_id,
                 call_id = %call_id,
@@ -134,7 +134,7 @@ impl Provider for OpenAiChatProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             apply_client_options(&mut body, &request.model.client);
             merge_extra_params(&mut body, &request.model.extra_params)?;
-            apply_openai_prompt_cache_key(&mut body, &request.model.model_id)?;
+            apply_openai_prompt_cache_key(&mut body, &conversation_id, &config.request_url)?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
                 recorder.request(request_headers.clone(), &body).await?;

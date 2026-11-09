@@ -104,12 +104,15 @@ fn anthropic_hoists_instructions_and_developer_history_into_system() {
             {"type": "message", "role": "user", "content": "hello"}
         ]
     }));
-    assert_eq!(mapped.body["system"], "base instructions\n\ndev rules");
+    assert_eq!(
+        mapped.body["system"][0]["text"],
+        "base instructions\n\ndev rules"
+    );
     assert_eq!(mapped.body["max_tokens"], 4096);
     assert_eq!(mapped.body["stream"], true);
     assert_eq!(
         mapped.body["messages"],
-        json!([{"role": "user", "content": [{"type": "text", "text": "hello"}]}])
+        json!([{"role": "user", "content": [{"type": "text", "text": "hello", "cache_control": {"type": "ephemeral"}}]}])
     );
 }
 
@@ -156,7 +159,7 @@ fn images_map_to_chat_parts_and_anthropic_sources() {
     );
     assert_eq!(
         mapped.body["messages"][0]["content"][2],
-        json!({"type": "image", "source": {"type": "url", "url": "https://example.test/shot.png"}})
+        json!({"type": "image", "source": {"type": "url", "url": "https://example.test/shot.png"}, "cache_control": {"type": "ephemeral"}})
     );
 }
 
@@ -386,7 +389,7 @@ fn anthropic_custom_tool_history_wraps_raw_input_in_tool_use() {
     );
     assert_eq!(
         mapped.body["messages"][2],
-        json!({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": "Success"}]})
+        json!({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": "Success", "cache_control": {"type": "ephemeral"}}]})
     );
 }
 
@@ -1680,4 +1683,24 @@ fn chat_reasoning_round_trips_into_reasoning_content() {
     let assistant = &next.body["messages"][1];
     assert_eq!(assistant["reasoning_content"], "check");
     assert_eq!(assistant["tool_calls"][0]["function"]["name"], "shell");
+}
+
+#[test]
+fn anthropic_requests_carry_prompt_cache_breakpoints() {
+    let mapped = anthropic(json!({
+        "instructions": "base instructions",
+        "tools": [
+            {"type": "function", "name": "first", "parameters": {"type": "object"}},
+            {"type": "function", "name": "second", "parameters": {"type": "object"}}
+        ],
+        "input": [{"type": "message", "role": "user", "content": "hello"}]
+    }));
+    let ephemeral = json!({"type": "ephemeral"});
+    assert_eq!(mapped.body["system"][0]["cache_control"], ephemeral);
+    let tools = mapped.body["tools"].as_array().unwrap();
+    assert!(tools[0].get("cache_control").is_none());
+    assert_eq!(tools[1]["cache_control"], ephemeral);
+    let messages = mapped.body["messages"].as_array().unwrap();
+    let last = messages.last().unwrap()["content"].as_array().unwrap();
+    assert_eq!(last.last().unwrap()["cache_control"], ephemeral);
 }

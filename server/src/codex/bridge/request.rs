@@ -785,6 +785,7 @@ fn anthropic_body(
             }
         }
     }
+    crate::provider::wire::anthropic::mark_request_cache_breakpoints(&mut body);
     Ok(body)
 }
 
