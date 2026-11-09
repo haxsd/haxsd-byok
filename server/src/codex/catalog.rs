@@ -139,6 +139,12 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
         // - `use_responses_lite`：它改的是客户端发往**服务商**的请求形状，只对官方后端验证过。
         // - `prefer_websockets`：没有实时传输通道。
         // - `max_context_window`：等于 `context_window`，服务商的真实硬上限我们不知道。
+        // 关掉图片能力的模型只声明文本输入，客户端就不会把截图/附图发过来。
+        let input_modalities = if model.supports_images {
+            json!(["text", "image"])
+        } else {
+            json!(["text"])
+        };
         catalog.push(json!({
             "haxsd_byok_routing_fingerprint":routing_fingerprint(model)?,
             "slug":model.model_hash,"display_name":model.display_name,"description":null,
@@ -158,7 +164,7 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
             "context_window":context,"max_context_window":context,"auto_compact_token_limit":context*4/5,
             "effective_context_window_percent":95,
             "experimental_supported_tools":["send_user_message_async","clock"],
-            "input_modalities":["text","image"],"supports_image_detail_original":true,
+            "input_modalities":input_modalities,"supports_image_detail_original":model.supports_images,
             "supports_search_tool":false,"supports_experimental_context":false,"use_responses_lite":false,
             "prefer_websockets":false,"supports_parallel_tool_calls":true,
             "supports_reasoning_effort_updates":true,"multi_agent_version":"v2"
@@ -197,6 +203,7 @@ mod tests {
             anthropic_max_tokens: Some(4096),
             anthropic_thinking_effort: anthropic.map(String::from),
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }
@@ -205,6 +212,22 @@ mod tests {
     /// 回放归属 = 上游 origin + 上游 model_id + 协议（复核 13-codex/P1-1）：
     /// 只影响"这次怎么发"的配置（凭据、上限、参数、自定义头、思考强度）不能让进行中
     /// 会话的旧推理状态失效；换上游主机、换上游模型 ID、换协议才是另一段推理状态。
+    #[test]
+    fn image_capability_controls_the_declared_input_modalities() {
+        let mut text_only = model(ModelType::OpenAi, None, None);
+        text_only.supports_images = false;
+        let catalog = build_catalog(&[model(ModelType::OpenAi, None, None), text_only]).unwrap();
+        assert_eq!(
+            catalog["models"][0]["input_modalities"],
+            json!(["text", "image"])
+        );
+        assert_eq!(catalog["models"][1]["input_modalities"], json!(["text"]));
+        assert_eq!(
+            catalog["models"][1]["supports_image_detail_original"],
+            json!(false)
+        );
+    }
+
     #[test]
     fn the_replay_owner_ignores_route_configuration_but_tracks_the_upstream_identity() {
         let base = model(ModelType::OpenAi, Some("high"), None);

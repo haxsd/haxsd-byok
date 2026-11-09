@@ -178,6 +178,7 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
           {!advancedOpen && advancedCount > 0 && <span className={styles.advancedCount}>{t("已设置 {count} 项", { count: advancedCount })}</span>}
         </button>
         {advancedOpen && <div className={styles.grid}>
+          <Checkbox checked={draft.model.supports_images !== false} label={t("支持图片输入")} onChange={(supports_images) => setModel({ supports_images })} />
           <FormField label={t("上下文窗口 Token")} hint={t("Cursor 可留空；Codex 网关必须填写模型文档中的真实上限。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.context_window_tokens ?? ""} onChange={(event) => setModel({ context_window_tokens: numberValue(event.target.value) })} /></FormField>
           {draft.model.type === "openai" ? <>
             <FormField label={t("最大输出 Token")} hint={t("留空时使用默认值。")}> <TextInput type="number" min={1} step={1} placeholder={t("留空使用默认值")} value={draft.model.max_completion_tokens ?? ""} onChange={(event) => setModel({ max_completion_tokens: numberValue(event.target.value) })} /></FormField>
@@ -232,6 +233,7 @@ export function advancedValueCount(draft: CursorModelDraft) {
     model.max_completion_tokens !== null,
     model.anthropic_max_tokens !== null,
     model.thinking_budget_tokens !== null,
+    model.supports_images === false,
     model.reasoning_effort !== null,
     Boolean(model.anthropic_thinking_effort && model.anthropic_thinking_effort !== "xhigh"),
     model.custom_headers_enabled,

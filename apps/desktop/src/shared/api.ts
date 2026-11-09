@@ -28,6 +28,8 @@ export interface Model {
   anthropic_max_tokens: number | null;
   anthropic_thinking_effort: string | null;
   thinking_budget_tokens: number | null;
+  /** 能否接收图片输入；Cursor / Devin / Codex 的模型目录按它声明。缺省 true。 */
+  supports_images: boolean;
   created_at_ms: number;
   updated_at_ms: number;
 }
@@ -56,6 +58,8 @@ export interface ModelInput {
   anthropic_max_tokens: number | null;
   anthropic_thinking_effort: string | null;
   thinking_budget_tokens: number | null;
+  /** 缺席表示不改：新建按支持图片处理，编辑保持已保存的值。 */
+  supports_images?: boolean;
 }
 
 export interface ModelDiscoveryInput {

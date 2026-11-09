@@ -70,6 +70,7 @@ mod tests {
                 context_window_tokens: None,
                 default: false,
                 parameters: None,
+                supports_images: true,
             })
             .collect()
     }

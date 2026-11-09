@@ -278,7 +278,30 @@ impl ControlService {
         model_hash: &str,
         display_name: &str,
     ) -> Result<ModelConfig> {
-        self.store.duplicate_model(model_hash, display_name).await
+        let source = self.store.require_model(model_hash).await?;
+        let mut copy = self.store.duplicate_model(model_hash, display_name).await?;
+        // 能力不在 `model_configs` 里，复制时要单独带过去，否则副本悄悄变回"支持图片"。
+        self.set_model_supports_images(&mut copy, Some(source.supports_images))
+            .await?;
+        Ok(copy)
+    }
+
+    /// 写入一个模型的图片能力并同步到 `model`。`None` 表示请求没带这个开关：不改。
+    pub async fn set_model_supports_images(
+        &self,
+        model: &mut ModelConfig,
+        supports_images: Option<bool>,
+    ) -> Result<()> {
+        let Some(supports_images) = supports_images else {
+            return Ok(());
+        };
+        if model.supports_images != supports_images {
+            self.store
+                .set_model_supports_images(&model.model_hash, supports_images)
+                .await?;
+            model.supports_images = supports_images;
+        }
+        Ok(())
     }
 
     pub async fn reorder_models(&self, model_hashes: &[String]) -> Result<Vec<ModelConfig>> {

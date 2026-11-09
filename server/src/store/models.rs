@@ -37,22 +37,31 @@ impl Store {
     pub async fn models(&self) -> Result<Vec<ModelConfig>> {
         let query =
             format!("SELECT {MODEL_COLUMNS} FROM model_configs ORDER BY sort_order, display_name");
-        sqlx::query(&query)
+        let mut models = sqlx::query(&query)
             .fetch_all(&self.pool)
             .await?
             .into_iter()
             .map(model_from_row)
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        let capabilities = self.model_capabilities().await?;
+        models
+            .iter_mut()
+            .for_each(|model| capabilities.apply(model));
+        Ok(models)
     }
 
     pub async fn model(&self, hash: &str) -> Result<Option<ModelConfig>> {
         let query = format!("SELECT {MODEL_COLUMNS} FROM model_configs WHERE model_hash = ?");
-        sqlx::query(&query)
+        let mut model = sqlx::query(&query)
             .bind(hash)
             .fetch_optional(&self.pool)
             .await?
             .map(model_from_row)
-            .transpose()
+            .transpose()?;
+        if let Some(model) = model.as_mut() {
+            self.model_capabilities().await?.apply(model);
+        }
+        Ok(model)
     }
 
     /// 取一份模型配置；模型不在了就报"配置问题 + 下一步"这条统一文案。
@@ -414,6 +423,7 @@ fn model_from_row(row: sqlx::sqlite::SqliteRow) -> Result<ModelConfig> {
         anthropic_max_tokens: optional_u64(&row, "anthropic_max_tokens")?,
         anthropic_thinking_effort: row.try_get("anthropic_thinking_effort")?,
         thinking_budget_tokens: optional_u64(&row, "thinking_budget_tokens")?,
+        supports_images: true,
         created_at_ms: row.try_get("created_at_ms")?,
         updated_at_ms: row.try_get("updated_at_ms")?,
     })
@@ -450,6 +460,35 @@ mod tests {
         .await
         .unwrap();
         (directory, store)
+    }
+
+    /// 图片能力存在 KV 键里：缺省支持（老库零迁移），关掉后读模型时合并出来，
+    /// 设回缺省值就把那一项删掉。
+    #[tokio::test]
+    async fn image_capability_defaults_on_and_round_trips_through_settings() {
+        let (_directory, store) = test_store().await;
+        let created = store.create_model(&model_input(None)).await.unwrap();
+        assert!(created.supports_images);
+
+        store
+            .set_model_supports_images(&created.model_hash, false)
+            .await
+            .unwrap();
+        assert!(!store.models().await.unwrap()[0].supports_images);
+        assert!(
+            !store
+                .require_model(&created.model_hash)
+                .await
+                .unwrap()
+                .supports_images
+        );
+
+        store
+            .set_model_supports_images(&created.model_hash, true)
+            .await
+            .unwrap();
+        assert!(store.model_capabilities().await.unwrap().models.is_empty());
+        assert!(store.models().await.unwrap()[0].supports_images);
     }
 
     fn model_input(group_name: Option<&str>) -> ModelConfigInput {

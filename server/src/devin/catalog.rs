@@ -31,7 +31,7 @@ const MODEL_IDENTITY_FIELD: u32 = 2;
 /// Devin 客户端据此决定能不能发图：这个字段缺席时它按 false 处理，于是用户一贴图就被
 /// 拦下（"This model does not support images."）。Cursor 那侧的模型目录一直把
 /// `supports_images` 写死为 true（`cursor/services/model_catalog.rs` 的 `available_model`），
-/// 所以这里也报 true：两个客户端对同一份模型库的说法必须一致。
+/// 两个客户端对同一份模型库的说法必须一致：都按 `ModelConfig::supports_images` 报，缺省 true。
 const MODEL_SUPPORTS_IMAGES_FIELD: u32 = 5;
 const MODEL_DISPLAY_CONTEXT_FIELD: u32 = 18;
 pub(super) const MODEL_UID_FIELD: u32 = 22;
@@ -369,8 +369,11 @@ fn build_model(entry: &LocalModelEntry, gateway_url: &str) -> Result<Vec<u8>> {
         wire::Field::bytes(MODEL_UID_FIELD, uid),
         wire::Field::bytes(MODEL_INFO_FIELD, wire::serialize_fields(&model_info)?),
         wire::Field::bytes(MODEL_METADATA_FIELD, wire::serialize_fields(&metadata)?),
-        // 与 Cursor 侧一致：模型库里的模型按「能看图」报给客户端。
-        wire::Field::varint(MODEL_SUPPORTS_IMAGES_FIELD, 1),
+        // 与 Cursor 侧一致：按模型库的能力声明报。关掉时显式写 0（缺席同样按 false）。
+        wire::Field::varint(
+            MODEL_SUPPORTS_IMAGES_FIELD,
+            u64::from(entry.supports_images),
+        ),
     ];
     if context > 0 {
         fields.push(wire::Field::varint(MODEL_DISPLAY_CONTEXT_FIELD, context));
@@ -518,6 +521,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }
@@ -587,6 +591,18 @@ mod tests {
         assert_eq!(
             varint_field(&first_model_fields(&payload), MODEL_SUPPORTS_IMAGES_FIELD),
             Some(1)
+        );
+    }
+
+    #[test]
+    fn generated_catalog_reports_disabled_image_support_as_zero() {
+        let mut model = model_config("hash-a", "Library A", 128_000);
+        model.supports_images = false;
+        let payload =
+            model_configs_payload(&settings(), &[model], "http://127.0.0.1:43112").unwrap();
+        assert_eq!(
+            varint_field(&first_model_fields(&payload), MODEL_SUPPORTS_IMAGES_FIELD),
+            Some(0)
         );
     }
 

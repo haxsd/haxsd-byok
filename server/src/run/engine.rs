@@ -2728,6 +2728,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }
