@@ -284,6 +284,15 @@ impl Store {
         if result.rows_affected() != 1 {
             return Err(missing_model(hash));
         }
+        // Keep the separately stored capability declaration in the same deletion transaction.
+        sqlx::query(
+            "UPDATE service_settings SET value_json = json_remove(value_json, ?), updated_at_ms = ? WHERE setting_key = ? AND json_valid(value_json)",
+        )
+        .bind(format!("$.models.\"{hash}\""))
+        .bind(now_ms())
+        .bind(super::settings::MODEL_CAPABILITIES_SETTINGS_KEY)
+        .execute(&mut *transaction)
+        .await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -489,6 +498,19 @@ mod tests {
             .unwrap();
         assert!(store.model_capabilities().await.unwrap().models.is_empty());
         assert!(store.models().await.unwrap()[0].supports_images);
+    }
+
+    #[tokio::test]
+    async fn deleting_a_model_removes_its_image_capability_override() {
+        let (_directory, store) = test_store().await;
+        let created = store.create_model(&model_input(None)).await.unwrap();
+        store
+            .set_model_supports_images(&created.model_hash, false)
+            .await
+            .unwrap();
+        store.delete_model(&created.model_hash).await.unwrap();
+        assert!(store.model(&created.model_hash).await.unwrap().is_none());
+        assert!(store.model_capabilities().await.unwrap().models.is_empty());
     }
 
     fn model_input(group_name: Option<&str>) -> ModelConfigInput {
