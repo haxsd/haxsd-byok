@@ -181,6 +181,12 @@ pub struct ModelConfig {
     pub anthropic_max_tokens: Option<u64>,
     pub anthropic_thinking_effort: Option<String>,
     pub thinking_budget_tokens: Option<u64>,
+    /// 模型能否接收图片输入。Cursor / Devin / Codex 的模型目录按它声明能力。
+    ///
+    /// 不在 `model_configs` 表里：存在 `service_settings` 的 `model_capabilities`
+    /// 键（只记关掉的模型），读取模型时合并进来。缺省 `true`，与以前目录里写死的
+    /// 值一致，老库升级不需要迁移，也不需要用户做任何事。
+    pub supports_images: bool,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
 }
@@ -664,6 +670,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: effort.map(String::from),
             thinking_budget_tokens: budget,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }

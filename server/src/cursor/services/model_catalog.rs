@@ -599,7 +599,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         degradation_status: Some(0),
         tooltip_data: Some(tooltip.clone()),
         supports_thinking: Some(true),
-        supports_images: Some(true),
+        supports_images: Some(model.supports_images),
         supports_max_mode: Some(true),
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.model_hash.clone()),
@@ -936,6 +936,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }

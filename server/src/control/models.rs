@@ -42,7 +42,18 @@ fn views(models: Vec<ModelConfig>) -> Vec<ModelView> {
 
 #[derive(Deserialize)]
 pub struct SaveModels {
-    pub models: Vec<ModelConfigInput>,
+    pub models: Vec<ModelSave>,
+}
+
+/// 保存一个模型时的请求体：配置本身，外加不在 `model_configs` 表里的能力开关。
+///
+/// 能力缺席（老前端、脚本）表示"不改"：新建按缺省值（支持图片），编辑保持原值。
+#[derive(Deserialize)]
+pub struct ModelSave {
+    #[serde(flatten)]
+    pub input: ModelConfigInput,
+    #[serde(default)]
+    pub supports_images: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -63,10 +74,16 @@ pub async fn create(
     State(service): State<ControlService>,
     Json(input): Json<SaveModels>,
 ) -> Result<(StatusCode, Json<Vec<ModelView>>)> {
-    Ok((
-        StatusCode::CREATED,
-        Json(views(service.create_models(&input.models).await?)),
-    ))
+    let (inputs, flags): (Vec<_>, Vec<_>) = input
+        .models
+        .into_iter()
+        .map(|entry| (entry.input, entry.supports_images))
+        .unzip();
+    let mut models = service.create_models(&inputs).await?;
+    for (model, flag) in models.iter_mut().zip(flags) {
+        service.set_model_supports_images(model, flag).await?;
+    }
+    Ok((StatusCode::CREATED, Json(views(models))))
 }
 
 pub async fn duplicate(
@@ -104,11 +121,13 @@ pub async fn remove(
 pub async fn update(
     State(service): State<ControlService>,
     Path(model_hash): Path<String>,
-    Json(input): Json<ModelConfigInput>,
+    Json(input): Json<ModelSave>,
 ) -> Result<Json<ModelView>> {
-    Ok(Json(ModelView::from(
-        service.update_model(&model_hash, &input).await?,
-    )))
+    let mut model = service.update_model(&model_hash, &input.input).await?;
+    service
+        .set_model_supports_images(&mut model, input.supports_images)
+        .await?;
+    Ok(Json(ModelView::from(model)))
 }
 
 pub async fn test(
@@ -175,6 +194,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 1,
             updated_at_ms: 1,
         }

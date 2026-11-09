@@ -1322,6 +1322,7 @@
   "f0f5b5f45cd49fb1": "{label} copied",
   "f11a5b16412f4d7b": "Downloading {percent}%",
   "f1d90817fbcc832c": "Choose a Claude Desktop model to add",
+  "f1fff850de6df26a": "Supports image input",
   "f220068d0d0331f6": "The gateway is ready; Devin settings still need to be written",
   "f28461bb49c85647": "Done",
   "f2e367fbb3adb19f": "The install command is already copied. Click Open terminal: it runs the command and shows a UAC prompt — choose Yes; this page refreshes once the certificate is installed.",

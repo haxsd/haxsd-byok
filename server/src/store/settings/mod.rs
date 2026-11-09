@@ -1,5 +1,6 @@
 //! Persists application settings.
 
+mod capabilities;
 mod commit;
 mod compaction;
 mod desktop;
@@ -8,6 +9,7 @@ mod ports;
 mod pricing;
 mod proxy;
 
+pub use capabilities::{ModelCapabilities, ModelCapabilitySettings};
 pub use commit::{CommitPromptLocale, CommitSettings};
 pub use compaction::CompactionSettings;
 pub use desktop::{DesktopSettings, DesktopSettingsPatch, PendingUpdate};
@@ -34,6 +36,8 @@ const CURSOR_MODE_KEY: &str = "cursor_mode";
 const LEGACY_CURSOR_TAKEOVER_KEY: &str = "cursor_takeover_enabled";
 /// 每个模型的单价规则表。
 const MODEL_PRICING_SETTINGS_KEY: &str = "model_token_pricing";
+/// 每个模型偏离缺省值的能力声明（目前只有图片输入），见 `capabilities.rs`。
+const MODEL_CAPABILITIES_SETTINGS_KEY: &str = "model_capabilities";
 /// 旧版的全套全局价。只读键已不存在；唯一剩下的用途是用户成功保存第一条
 /// 按模型规则后把它删掉，见 `Store::set_model_pricing`。
 const LEGACY_PRICING_SETTINGS_KEY: &str = "token_pricing";

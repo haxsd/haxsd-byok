@@ -602,6 +602,7 @@ function createModel({ hash, order, name, type, url, modelId, endpoint = "/v1/re
     anthropic_max_tokens: type === "anthropic" ? 32_000 : null,
     anthropic_thinking_effort: type === "anthropic" ? "high" : null,
     thinking_budget_tokens: null,
+    supports_images: true,
     created_at_ms: FIXED_NOW - order * 86_400_000,
     updated_at_ms: FIXED_NOW,
   };

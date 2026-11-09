@@ -18,6 +18,8 @@ pub struct LocalModelEntry {
     pub context_window_tokens: Option<u64>,
     pub default: bool,
     pub parameters: Option<NativeModelVariant>,
+    /// 来自模型库的图片能力；绑定的模型已不在库里时按缺省值（支持）报。
+    pub supports_images: bool,
 }
 
 pub const NATIVE_MODEL_UID_PREFIX: &str = "haxsd-byok:";
@@ -65,6 +67,7 @@ pub fn local_entries(
                 .filter(|tokens| *tokens > 0),
             default: default_uid.is_some_and(|default_uid| default_uid == uid),
             parameters: None,
+            supports_images: model.is_none_or(|model| model.supports_images),
         });
     }
 
@@ -168,6 +171,7 @@ mod tests {
             anthropic_max_tokens: None,
             anthropic_thinking_effort: None,
             thinking_budget_tokens: None,
+            supports_images: true,
             created_at_ms: 0,
             updated_at_ms: 0,
         }
@@ -208,6 +212,7 @@ mod tests {
                     context_window_tokens: Some(128_000),
                     default: false,
                     parameters: None,
+                    supports_images: true,
                 },
                 LocalModelEntry {
                     uid: "devin-b".into(),
@@ -216,6 +221,7 @@ mod tests {
                     context_window_tokens: Some(256_000),
                     default: true,
                     parameters: None,
+                    supports_images: true,
                 },
             ]
         );
@@ -240,6 +246,7 @@ mod tests {
                 context_window_tokens: Some(200_000),
                 default: false,
                 parameters: None,
+                supports_images: true,
             }]
         );
     }
