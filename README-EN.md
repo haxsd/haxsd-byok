@@ -72,7 +72,7 @@ Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs
 
 - **Windows says "unknown publisher" or SmartScreen blocks the installer?** Updates are signed with this product's own Tauri update signature, which is not a Windows code signature. Choose **More info → Run anyway**; use the Releases page as the only distribution source.
 - **How do I roll back?** Switch back to official mode and Cursor stops going through the local gateway; for Codex, undo "Apply to Codex" to restore the previous configuration; for Claude, undo the takeover on the matching tab to remove the keys written to `settings.json` or the Desktop profile. Details are in the [user guide](./docs/user-guide.md).
-- **How does this relate to cursor-byok?** Two independent products by the same author with different data directories, identifiers and update channels that do not interfere; this project rebuilds on that base, see [UPSTREAM.md](./UPSTREAM.md).
+- **How does this relate to cursor-byok?** This project is based on upstream [leookun/cursor-byok](https://github.com/leookun/cursor-byok); the author's personal repository `haxsd/cursor-byok` has been deleted.
 
 ## Build, support and license
 

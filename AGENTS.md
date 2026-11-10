@@ -27,7 +27,7 @@
 ## 仓库边界：内部资料不进公开仓库
 
 本仓库对陌生人可见。**内部资料**——交接说明、内部方案与审查/审计记录、含机器路径或真实用量数据的笔记、
-逆向工具——一律写进私有记录仓库 `haxsd/haxsd-dev-records`（本仓库对应分区 `haxsd-byok/` 或 `cursor-byok/`），
+逆向工具——一律写进私有记录仓库 `haxsd/haxsd-dev-records`（本仓库对应分区 `haxsd-byok/`；历史分区 `cursor-byok/` 对应的 GitHub 仓已删除），
 公开仓库只放产品与贡献者需要的内容。
 
 公开仓库不得出现这些路径：`HANDOFF.md`、`BRANCH_ISOLATION.md`、`docs/plans/**`、`docs/superpowers/**`、

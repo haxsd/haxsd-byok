@@ -72,7 +72,7 @@
 
 - **Windows 提示“未知发布者”或 SmartScreen 拦截？** 更新包使用本产品自己的 Tauri 更新签名，不等同于 Windows 代码签名。选择「更多信息 → 仍要运行」即可；正式分发版本以 Releases 页为准。
 - **怎么回滚？** 切回官方模式后 Cursor 不再经过本地网关；Codex 侧撤销“应用到 Codex”恢复原配置；Claude 侧在对应标签页撤销接管，移除写入 `settings.json` 的键或 Desktop 的 profile。详见 [用户指南](./docs/user-guide.md)。
-- **和 cursor-byok 是什么关系？** 同一作者的两个独立产品，数据目录、标识和更新渠道都不同，互不影响；本项目在其基础上重做，见 [UPSTREAM.md](./UPSTREAM.md)。
+- **和 cursor-byok 是什么关系？** 本项目基于上游 [leookun/cursor-byok](https://github.com/leookun/cursor-byok)；作者个人仓 `haxsd/cursor-byok` 已删除。
 
 ## 构建、反馈与许可
 
