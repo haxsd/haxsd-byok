@@ -14,7 +14,7 @@ import { PageActions } from "../../shell/PageActions";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
-import { devinConnectionView } from "./devinConnectionView";
+import { devinConnectionView, devinPointsAtGateway } from "./devinConnectionView";
 import { applyDevinHostConfiguration, canRestoreDevinHost } from "./devinHostApply";
 import {
   appendRouteForBinding,
@@ -468,16 +468,11 @@ export function DevinSettingsPage() {
   const canAddNativeBinding = nativeBindingForNextModel(settings.bindings, models) !== null;
   // 选择器显示 Devin 里的模型名，写回的仍是客户端随后会请求的标识。
   const uidOptions = modelChoices.map((choice) => ({ value: choice.uid, label: choice.name }));
-  const hostIntegrated = Boolean(
-    hostStatus?.configured
-    && hostStatus.extension.patched
-    && hostStatus.ports?.api_port === saved.api_port
-    && hostStatus.ports?.inference_port === saved.inference_port,
-  );
+  const hostIntegrated = devinPointsAtGateway(hostStatus, saved);
   const hostRestorable = canRestoreDevinHost(hostStatus);
   const extensionMissing = hostStatus != null && hostStatus.extension.path == null;
   const extensionUnsupported = hostStatus != null && hostStatus.extension.path != null && !hostStatus.extension.compatible;
-  const canAutoConnect = Boolean(hostStatus?.unconfigured && hostStatus.extension.clean);
+  const canAutoConnect = Boolean(hostStatus?.unconfigured && hostStatus.extension.compatible && hostStatus.extension.clean);
   const connectDisabled = loading
     || Boolean(loadError)
     || saving
@@ -496,7 +491,7 @@ export function DevinSettingsPage() {
         ? t("正在检查 Devin 配置…")
         : hostIntegrated
           ? t("已连接。重新打开 Devin 就可以对话。")
-          : hostStatus.unconfigured && hostStatus.extension.clean
+          : canAutoConnect
             ? !settings.enabled
               ? t("先开启“使用自选模型”，选择默认模型并保存。")
               : view.pendingChanges
@@ -506,7 +501,9 @@ export function DevinSettingsPage() {
             : extensionMissing
               ? t("找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。")
               : extensionUnsupported
-                ? t("当前 Devin 版本暂不支持自动接入。")
+                ? hostStatus.extension.patched && hostRestorable
+                  ? t("接管配置需要恢复。点右上角“撤销接管”，再重新应用。")
+                  : t("当前 Devin 版本暂不支持自动接入。")
                 : hostStatus.configured
                   ? hostRestorable
                     ? t("接管配置需要恢复。点右上角“撤销接管”，再重新应用。")
@@ -629,7 +626,7 @@ export function DevinSettingsPage() {
       description={t("第一次使用时完成一次；之后打开 Devin 就能直接对话。")}
       badge={hostIntegrated
         ? <StatusPill tone="ok">{t("已接入")}</StatusPill>
-        : hostStatus?.unconfigured && hostStatus.extension.clean
+        : canAutoConnect
           ? <StatusPill tone="idle">{t("尚未接入")}</StatusPill>
           : hostStatus
             ? <StatusPill tone="warn">{t("配置冲突")}</StatusPill>

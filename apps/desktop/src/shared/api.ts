@@ -382,7 +382,8 @@ export interface DevinHostReceipt {
  * `extension.js` 的一次性接入补丁状态。
  *
  * 设置文件只给出端点；打包版 Devin 只有在补丁写入后才会读取它们，所以状态面板
- * 必须同时看到 `settings.configured` 和 `extension.patched`。
+ * 必须同时看到 `settings.configured`、`extension.compatible` 和 `extension.patched`。
+ * `patched` 也用于保留旧补丁的安全恢复，不单独保证新版仍按显式端点路由。
  */
 export interface DevinExtensionStatus {
   path: string | null;

@@ -55,6 +55,7 @@ export interface DevinConnectionView {
 
 export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinHostPorts | null): boolean {
   return host?.configured === true
+    && host.extension.compatible
     && host.extension.patched
     && ports !== null
     && host.ports?.api_port === ports.api_port
@@ -77,7 +78,7 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
 
   const savedEnabled = saved.enabled;
   const settingsConfigured = hostStatus?.configured ?? false;
-  const extensionPatched = hostStatus?.extension.patched ?? false;
+  const extensionPatched = Boolean(hostStatus?.extension.compatible && hostStatus.extension.patched);
   const devinPointsHere = devinPointsAtGateway(hostStatus, saved);
   const devinState: "here" | "settings-only" | "patch-only" | "elsewhere" | "clean" | "unknown" = !savedEnabled
     ? "unknown"

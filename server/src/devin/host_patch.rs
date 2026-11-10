@@ -4,7 +4,11 @@
 //! `codeium.inferenceApiServerUrl` when the `Codeium.codeium-dev` extension is
 //! present. Packaged builds therefore ignore those user settings and keep using
 //! the official endpoints. This module removes that one development-only gate
-//! from a uniquely identified endpoint settings function.
+//! from a uniquely identified endpoint settings function. When a signed-in API
+//! address is present, it remains the fallback after explicit settings rather
+//! than taking precedence over them. A signed-in session must also not restart
+//! the language server onto its own API address when an explicit setting exists.
+//! Workspace trust rules stay unchanged.
 //!
 //! The patch never embeds gateway URLs: the two user settings remain the source
 //! of truth. Surrounding settings code identifies the gate across builds;
@@ -28,6 +32,23 @@ pub const RECEIPT_SUFFIX: &str = ".devin-router-gate.receipt";
 const CLEAN_GATE_PATTERN: &str = r"if\(![A-Za-z_$][A-Za-z0-9_$]*\(\)&&!\(0,[A-Za-z_$][A-Za-z0-9_$]*\.isDevelopment\)\(\)\)return ([A-Za-z_$][A-Za-z0-9_$]*)\(\);";
 const PATCHED_GATE_PATTERN: &str = r"if\(!1\)return ([A-Za-z_$][A-Za-z0-9_$]*)\(\);";
 const GATE_CONTEXT_WINDOW: usize = 2_048;
+const JS_IDENTIFIER: &str = r"[A-Za-z_$][A-Za-z0-9_$]*";
+const SESSION_BRANCH_PATTERN: &str = concat!(
+    r#"if\((?P<session_key>[A-Za-z_$][A-Za-z0-9_$]*)===[A-Za-z_$][A-Za-z0-9_$]*\.API_SERVER_URL\)\{"#,
+    r#"const (?P<value>[A-Za-z_$][A-Za-z0-9_$]*)=\(0,[A-Za-z_$][A-Za-z0-9_$]*\.getSessionApiServerUrl\)\(\);"#,
+    r#"if\(void 0!==(?P<defined>[A-Za-z_$][A-Za-z0-9_$]*)&&""!==(?P<nonempty>[A-Za-z_$][A-Za-z0-9_$]*)\)return\{value:(?P<returned>[A-Za-z_$][A-Za-z0-9_$]*),source:"auth_session"\}\}"#,
+);
+const DEPLOYMENT_VALUE_PATTERN: &str = r#"\{value:[A-Za-z_$][A-Za-z0-9_$]*\((?P<key>[A-Za-z_$][A-Za-z0-9_$]*)\),source:"deployment_default"\}"#;
+const LS_RESTART_WINDOW: usize = 800;
+const LS_VENDOR_RESTART_PATTERN: &str = concat!(
+    r#"await async function\(e\)\{let t;try\{t=(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\}catch\{return\}"#,
+    r#"e!==t\.apiServerUrl&&await t\.restart\(e\)\}\(t\)"#,
+);
+const LS_PATCHED_RESTART_PATTERN: &str = concat!(
+    r#"await async function\(e\)\{let t;try\{t=(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\}catch\{return\}"#,
+    r#"const n=\(0,(?P<diagnostics>[A-Za-z_$][A-Za-z0-9_$]*)\.getApiServerUrlDiagnostics\)\(\),i="user_setting"===n\.source\?\(0,(?P<config>[A-Za-z_$][A-Za-z0-9_$]*)\.getConfig\)\((?P<config_again>[A-Za-z_$][A-Za-z0-9_$]*)\.Config\.API_SERVER_URL\):e;"#,
+    r#"i!==t\.apiServerUrl&&await t\.restart\(i\)\}\(t\)"#,
+);
 const GATE_CONTEXT_ANCHORS: [&str; 7] = [
     "deployment_default",
     "getConfiguration",
@@ -156,7 +177,7 @@ fn apply_with(path: &Path) -> Result<GateReceipt> {
     let content = std::str::from_utf8(&current)
         .map_err(|_| Error::Config("Devin extension is not UTF-8; patch refused".into()))?;
     let status = inspect_existing(path);
-    if !status.clean {
+    if !status.clean || !status.compatible {
         return Err(Error::Config(refusal_message(&status)));
     }
 
@@ -236,12 +257,36 @@ fn inspect_existing(path: &Path) -> GateStatus {
             }
         }
     };
-    let clean_count = gate_occurrences(content, CLEAN_GATE_PATTERN).len();
-    let patched_count = gate_occurrences(content, PATCHED_GATE_PATTERN).len();
+    let clean_gates = gate_occurrences(content, CLEAN_GATE_PATTERN);
+    let patched_gates = gate_occurrences(content, PATCHED_GATE_PATTERN);
+    let clean_count = clean_gates.len();
+    let patched_count = patched_gates.len();
     let clean = clean_count == 1 && patched_count == 0;
+    // `patched` also preserves restoration of a verified earlier patch. Only
+    // `compatible && patched` means that this build honors endpoint settings.
     let patched = clean_count == 0 && patched_count == 1;
-    let compatible = clean || patched;
-    let message = if compatible {
+    let session_update = if clean || patched {
+        let (range, fallback) = clean_gates.first().or(patched_gates.first()).unwrap();
+        session_fallback_update(content, range.start, fallback)
+    } else {
+        Ok(None)
+    };
+    let restart_update = language_server_restart_update(content);
+    let needs_refresh = patched
+        && (matches!(&session_update, Ok(Some(_))) || matches!(&restart_update, Ok(Some(_))));
+    let compatible =
+        (clean || patched) && session_update.is_ok() && restart_update.is_ok() && !needs_refresh;
+    let message = if needs_refresh {
+        format!(
+            "Devin {version} endpoint settings patch needs refresh: the signed-in API address \
+             still overrides an explicit setting or the language server; restore the existing \
+             integration before applying it again"
+        )
+    } else if let Err(error) = &session_update {
+        error.to_string()
+    } else if let Err(error) = &restart_update {
+        error.to_string()
+    } else if compatible {
         String::new()
     } else {
         format!(
@@ -308,6 +353,119 @@ fn product_version(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
+/// Keep the logged-in endpoint as the default, after the vendor's existing
+/// trusted/untrusted setting selection. This recognizes both the vendor prefix
+/// and its single transformed form; unfamiliar code is never rewritten.
+fn session_fallback_update(
+    content: &str,
+    gate_start: usize,
+    fallback: &str,
+) -> Result<Option<(std::ops::Range<usize>, String)>> {
+    let mut from = gate_start.saturating_sub(GATE_CONTEXT_WINDOW);
+    while !content.is_char_boundary(from) {
+        from -= 1;
+    }
+    let prefix = &content[from..gate_start];
+    if !prefix.contains("getSessionApiServerUrl") && !prefix.contains("source:\"auth_session\"") {
+        return Ok(None);
+    }
+
+    let before = Regex::new(&format!(
+        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\((?P<default>{DEPLOYMENT_VALUE_PATTERN})\);(?P<session>{SESSION_BRANCH_PATTERN})$"
+    ))
+    .expect("static session endpoint prefix regex");
+    let after = Regex::new(&format!(
+        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\{{(?P<session>{SESSION_BRANCH_PATTERN})return(?P<default>{DEPLOYMENT_VALUE_PATTERN})\}};$"
+    ))
+    .expect("static session endpoint fallback regex");
+    let refusal = || {
+        Error::Config(
+            "Devin endpoint settings session fallback is unrecognized or inconsistent; patch refused"
+                .into(),
+        )
+    };
+    let (captures, reorder) = if let Some(captures) = before.captures(prefix) {
+        (captures, true)
+    } else if let Some(captures) = after.captures(prefix) {
+        (captures, false)
+    } else {
+        return Err(refusal());
+    };
+    if &captures["fallback"] != fallback
+        || captures["key"] != captures["session_key"]
+        || ["defined", "nonempty", "returned"]
+            .iter()
+            .any(|name| captures[*name] != captures["value"])
+    {
+        return Err(refusal());
+    }
+    if !reorder {
+        return Ok(None);
+    }
+    let matched = captures.get(0).unwrap();
+    Ok(Some((
+        from + matched.start()..from + matched.end(),
+        format!(
+            "{fallback}=()=>{{{}return{}}};",
+            &captures["session"], &captures["default"]
+        ),
+    )))
+}
+
+/// A signed-in session restarts the language server with its own API address.
+/// An explicit user setting must win; without one, the session address stays.
+fn language_server_restart_update(
+    content: &str,
+) -> Result<Option<(std::ops::Range<usize>, String)>> {
+    let vendor =
+        Regex::new(LS_VENDOR_RESTART_PATTERN).expect("static language-server restart regex");
+    let patched =
+        Regex::new(LS_PATCHED_RESTART_PATTERN).expect("static language-server restart patch regex");
+    let vendor_matches = vendor.captures_iter(content).collect::<Vec<_>>();
+    let patched_matches = patched
+        .captures_iter(content)
+        .filter(|captures| {
+            captures["diagnostics"] == captures["config"]
+                && captures["config"] == captures["config_again"]
+        })
+        .collect::<Vec<_>>();
+    if vendor_matches.len() + patched_matches.len() > 1 {
+        return Err(Error::Config(
+            "Devin language-server API restart is ambiguous; patch refused".into(),
+        ));
+    }
+    let Some(captures) = vendor_matches.first() else {
+        return Ok(None);
+    };
+    let matched = captures.get(0).expect("language-server restart match");
+    let mut from = matched.start().saturating_sub(LS_RESTART_WINDOW);
+    while !content.is_char_boundary(from) {
+        from -= 1;
+    }
+    let config = Regex::new(&format!(
+        r"\(0,(?P<config>{JS_IDENTIFIER})\.getConfig\)\((?P<config_again>{JS_IDENTIFIER})\.Config\.API_SERVER_URL\)"
+    ))
+    .expect("static API config binding regex");
+    let Some(config) = config
+        .captures_iter(&content[from..matched.start()])
+        .filter(|captures| captures["config"] == captures["config_again"])
+        .last()
+    else {
+        return Err(Error::Config(
+            "Devin language-server API restart has no recognizable settings binding; patch refused"
+                .into(),
+        ));
+    };
+    let client = &captures["client"];
+    let config = &config["config"];
+    Ok(Some((
+        matched.range(),
+        format!(
+            "await async function(e){{let t;try{{t={client}.LanguageServerClient.getInstance()}}catch{{return}}const n=(0,{config}.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,{config}.getConfig)({config}.Config.API_SERVER_URL):e;i!==t.apiServerUrl&&await t.restart(i)}}(t)"
+        ),
+    )))
+}
+
 fn patch_content(content: &str) -> Result<String> {
     let gates = gate_occurrences(content, CLEAN_GATE_PATTERN);
     if gates.len() != 1 || !gate_occurrences(content, PATCHED_GATE_PATTERN).is_empty() {
@@ -316,10 +474,25 @@ fn patch_content(content: &str) -> Result<String> {
         ));
     }
     let (range, return_name) = &gates[0];
+    let session_update = session_fallback_update(content, range.start, return_name)?;
+    let restart_update = language_server_restart_update(content)?;
+    let mut edits = vec![(range.clone(), format!("if(!1)return {return_name}();"))];
+    if let Some(update) = session_update {
+        edits.push(update);
+    }
+    if let Some(update) = restart_update {
+        edits.push(update);
+    }
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
     let mut patched = content.to_owned();
-    patched.replace_range(range.clone(), &format!("if(!1)return {return_name}();"));
-    if gate_occurrences(&patched, PATCHED_GATE_PATTERN).len() != 1
+    for (range, replacement) in edits {
+        patched.replace_range(range, &replacement);
+    }
+    let patched_gates = gate_occurrences(&patched, PATCHED_GATE_PATTERN);
+    if patched_gates.len() != 1
         || !gate_occurrences(&patched, CLEAN_GATE_PATTERN).is_empty()
+        || session_fallback_update(&patched, patched_gates[0].0.start, return_name)?.is_some()
+        || language_server_restart_update(&patched)?.is_some()
     {
         return Err(Error::Config(
             "Devin endpoint settings gate verification failed before writing".into(),
@@ -547,6 +720,129 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         .into()
     }
 
+    fn logged_in_fixture() -> String {
+        fixture()
+            .replace("const e=null;", "const e=(0,l.getSessionApiServerUrl)();")
+            .replace("source:\"local_account\"", "source:\"auth_session\"")
+    }
+
+    #[test]
+    fn logged_in_api_is_only_a_fallback_after_explicit_settings() {
+        let original = logged_in_fixture();
+        let patched = patch_content(&original).unwrap();
+        let expected = r#"i=()=>{if(e===m.API_SERVER_URL){const e=(0,l.getSessionApiServerUrl)();if(void 0!==e&&""!==e)return{value:e,source:"auth_session"}}return{value:C(e),source:"deployment_default"}};if(!1)return i();const r=a.workspace.getConfiguration(t).inspect(n);"#;
+        assert!(patched.contains(expected), "{patched}");
+        assert!(patched.ends_with(
+            original
+                .split("const r=")
+                .nth(1)
+                .map(|tail| format!("const r={tail}"))
+                .unwrap()
+                .as_str()
+        ));
+        assert_eq!(patched.matches("getSessionApiServerUrl").count(), 1);
+    }
+
+    #[test]
+    fn a_gate_only_patch_requires_refresh_but_keeps_its_restore_receipt() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original = logged_in_fixture();
+        let previous_patch = original.replace(CLEAN_GATE, PATCHED_GATE);
+        fs::write(&path, &previous_patch).unwrap();
+        fs::write(backup_path(&path), &original).unwrap();
+        let receipt = GateReceipt {
+            path: path.clone(),
+            backup_path: backup_path(&path),
+            version: "unknown".into(),
+            original_sha256: sha256(original.as_bytes()),
+            patched_sha256: sha256(previous_patch.as_bytes()),
+        };
+        write_receipt(&receipt).unwrap();
+
+        let status = inspect(Some(&path));
+        assert!(status.patched);
+        assert!(
+            !status.compatible,
+            "a disabled gate does not establish endpoint priority"
+        );
+        assert!(status.message.contains("restore"), "{}", status.message);
+        assert_eq!(status.restore_receipt, Some(receipt.clone()));
+
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        let refreshed = apply(&path).unwrap();
+        let status = inspect(Some(&path));
+        assert!(status.patched && status.compatible);
+        restore(&refreshed).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn an_unrecognized_session_override_is_refused_before_writing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original =
+            logged_in_fixture().replace("getSessionApiServerUrl", "getAnotherApiServerUrl");
+        fs::write(&path, &original).unwrap();
+
+        assert!(!inspect(Some(&path)).compatible);
+        assert!(apply(&path).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert!(!backup_path(&path).exists());
+        assert!(!receipt_path(&path).exists());
+    }
+
+    #[test]
+    fn signed_in_language_server_keeps_an_explicit_api_setting() {
+        let restart = "await async function(e){let t;try{t=u.LanguageServerClient.getInstance()}catch{return}e!==t.apiServerUrl&&await t.restart(e)}(t)";
+        let original = format!(
+            "{}\nfunction applyAuthSession(e){{const t=e?.apiServerUrl;if((0,m.isStaging)((0,d.getConfig)(d.Config.API_SERVER_URL))){{}}{restart}}}",
+            logged_in_fixture()
+        );
+        let patched = patch_content(&original).unwrap();
+        assert!(
+            patched.contains(
+                "const n=(0,d.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,d.getConfig)(d.Config.API_SERVER_URL):e;i!==t.apiServerUrl&&await t.restart(i)"
+            ),
+            "{patched}"
+        );
+        assert_eq!(patched.matches("t.restart(e)").count(), 0);
+    }
+
+    #[test]
+    fn an_endpoint_priority_patch_that_still_restarts_the_language_server_needs_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let restart = "await async function(e){let t;try{t=u.LanguageServerClient.getInstance()}catch{return}e!==t.apiServerUrl&&await t.restart(e)}(t)";
+        let endpoint_only = patch_content(&logged_in_fixture()).unwrap();
+        let stale = format!(
+            "{endpoint_only}\nfunction later(){{(0,d.getConfig)(d.Config.API_SERVER_URL);{restart}}}"
+        );
+        fs::write(&path, &stale).unwrap();
+
+        let status = inspect(Some(&path));
+        assert!(status.patched);
+        assert!(!status.compatible, "{}", status.message);
+        assert!(status.message.contains("restore"), "{}", status.message);
+    }
+
+    #[test]
+    fn session_fallback_uses_the_same_endpoint_and_value_bindings() {
+        for (from, to) in [
+            ("if(e===m.API_SERVER_URL)", "if(other===m.API_SERVER_URL)"),
+            ("void 0!==e", "void 0!==other"),
+            ("\"\"!==e", "\"\"!==other"),
+            (
+                "value:e,source:\"auth_session\"",
+                "value:other,source:\"auth_session\"",
+            ),
+        ] {
+            let original = logged_in_fixture().replace(from, to);
+            assert!(patch_content(&original).is_err(), "{from}");
+        }
+    }
+
     fn apply_fixture(path: &Path) -> GateReceipt {
         apply(path).unwrap()
     }
@@ -715,8 +1011,19 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         let receipt = apply(&path).unwrap();
         let patched = inspect(Some(&path));
         assert!(patched.patched, "{}", patched.message);
+        assert!(patched.compatible, "{}", patched.message);
         assert!(patched.restore_receipt.is_some());
-        assert_ne!(fs::read(&path).unwrap(), original);
+        let patched_text = String::from_utf8(fs::read(&path).unwrap()).unwrap();
+        assert!(
+            patched_text.contains("\"user_setting\"===n.source")
+                && patched_text.contains("i!==t.apiServerUrl&&await t.restart(i)"),
+            "real bundle restart did not prefer an explicit user setting"
+        );
+        assert!(
+            !patched_text.contains("e!==t.apiServerUrl&&await t.restart(e)"),
+            "vendor session restart remained"
+        );
+        assert_ne!(patched_text.as_bytes(), original.as_slice());
 
         restore(&receipt).unwrap();
         assert_eq!(fs::read(&path).unwrap(), original);

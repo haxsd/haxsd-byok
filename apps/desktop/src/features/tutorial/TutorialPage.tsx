@@ -87,7 +87,7 @@ export function TutorialPage() {
       cli: claudeTakeover.cli.state,
       desktop: claudeTakeover.desktop.state,
     } : null,
-    hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.patched),
+    hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.compatible && hostStatus.extension.patched),
     hostConfigRead: hostStatusRead,
     callCounts,
   });

@@ -141,6 +141,31 @@ function viewInput(overrides = {}) {
   };
 }
 
+test("an outdated endpoint patch is not connected even when old calls succeeded", async () => {
+  const devinConnectionView = await loadView();
+  const saved = enabledWithBinding();
+  const view = devinConnectionView(viewInput({
+    draft: saved,
+    saved,
+    models: [model()],
+    hostStatus: hostStatus({
+      unconfigured: false,
+      configured: true,
+      parts: { api: true, inference: true },
+      ports: { api_port: saved.api_port, inference_port: saved.inference_port },
+      extension: extensionStatus({ clean: false, patched: true, compatible: false }),
+    }),
+    gateway: gateway({ listening: true, ready: true }),
+    devinCalls: 2,
+    lastCallSuccess: true,
+  }));
+
+  assert.equal(view.hero.connected, false);
+  assert.equal(view.hero.stages.find(stage => stage.key === "devin").state, "down");
+  assert.ok(view.hero.steps.some(step => step.key === "connect"));
+  assert.notEqual(view.summary.label, "已连接");
+});
+
 test("a saved-off gateway that is still listening is reported as such, not as disabled", async () => {
   const devinConnectionView = await loadView();
   // 已保存关闭，但上一轮运行里起来的网关任务还没随进程退出：端口仍然在应答请求。

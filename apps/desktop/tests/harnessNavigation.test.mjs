@@ -25,7 +25,7 @@ const connectedDevin = {
   devinHostStatus: {
     configured: true,
     ports: { api_port: 44110, inference_port: 44111 },
-    extension: { patched: true },
+    extension: { compatible: true, patched: true },
   },
 };
 
@@ -39,7 +39,7 @@ test("Devin settings without the extension patch do not count as connected", asy
     devinHostStatus: {
       configured: true,
       ports: { api_port: 44110, inference_port: 44111 },
-      extension: { patched: false },
+      extension: { compatible: true, patched: false },
     },
     codexStatus: { enabled: true, listening: true, configured: true, config_conflict: false, last_error: null },
   });

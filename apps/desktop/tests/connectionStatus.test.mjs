@@ -82,13 +82,14 @@ test("a running Devin gateway is not taken over until its host points here with 
   const connectedHost = {
     configured: true,
     ports: { api_port: 44110, inference_port: 44111 },
-    extension: { patched: true },
+    extension: { compatible: true, patched: true },
   };
 
   assert.equal(devinEntryStatus(status, null).state, "checking");
   for (const host of [
     { ...connectedHost, configured: false, ports: null },
-    { ...connectedHost, extension: { patched: false } },
+    { ...connectedHost, extension: { compatible: true, patched: false } },
+    { ...connectedHost, extension: { compatible: false, patched: true } },
     { ...connectedHost, ports: { api_port: 45110, inference_port: 45111 } },
   ]) {
     const result = devinEntryStatus(status, host);
