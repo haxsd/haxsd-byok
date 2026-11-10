@@ -1516,7 +1516,7 @@ fn message_text(message: &ProjectedMessage) -> Option<String> {
             .iter()
             .filter_map(|part| match part {
                 ContentPart::Text { text } => Some(text.as_str()),
-                ContentPart::Image { .. } => None,
+                ContentPart::Image { .. } | ContentPart::Document { .. } => None,
             })
             .collect::<Vec<_>>()
             .join("\n"),

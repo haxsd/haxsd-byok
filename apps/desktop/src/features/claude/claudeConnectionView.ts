@@ -1,5 +1,4 @@
 import type {
-  ClaudeCliTakeoverState,
   ClaudeConfigSource,
   ClaudeDesktopTakeover,
   ClaudeDesktopTakeoverState,
@@ -14,8 +13,8 @@ import type { StatusTone } from "../../shared/ui/StatusPill";
 /**
  * Claude 接入页的纯推导。
  *
- * 页面只负责渲染与发请求；"现在通没通、按钮能不能点、接管时会写什么"都从这里算，
- * 这样状态矩阵可以单测，不必启动整个应用。
+ * 页面只负责渲染与发请求；"现在通没通、按钮能不能点"都从这里算，这样状态矩阵可以
+ * 单测，不必启动整个应用。
  */
 
 export type ClaudeConnectionState =
@@ -34,8 +33,7 @@ export type ClaudeConnectionState =
  *
  * 优先级：配置冲突 > 配置已过期 > 网关未启用 / 未监听 > 已接管 > 受管配置 > 待应用。
  * 「已接管」只在网关确实监听时出现：网关关着还显示绿色，等于告诉用户请求正在走网关，
- * 而实际上一条都进不来。两端都没检测到时是"未检测到客户端"，不是"未启用"——后者是
- * 读到了网关而且关着的结论。
+ * 而实际上一条都进不来。
  */
 export function claudeConnectionView(
   status: ClaudeStatus | null,
@@ -43,21 +41,21 @@ export function claudeConnectionView(
 ): EntryStatus<ClaudeConnectionState> {
   if (!status) return { state: "checking", tone: "idle", label: t("读取中…") };
   if (!takeover) return { state: "checking", tone: "idle", label: t("读取中…") };
-  const states: (ClaudeCliTakeoverState | ClaudeDesktopTakeoverState)[] = [takeover.cli.state, takeover.desktop.state];
-  if (states.includes("conflict")) return { state: "conflict", tone: "bad", label: t("配置冲突") };
-  // 收据与客户端文件仍一致，但网关地址、令牌或模型映射变了：客户端指着旧配置。
-  if (states.includes("stale")) return { state: "stale", tone: "warn", label: t("配置已过期") };
+  const state = takeover.desktop.state;
+  if (state === "conflict") return { state: "conflict", tone: "bad", label: t("配置冲突") };
+  // 收据与客户端文件仍一致，但网关地址、令牌或模型列表变了：客户端指着旧配置。
+  if (state === "stale") return { state: "stale", tone: "warn", label: t("配置已过期") };
   if (!status.enabled) return { state: "disabled", tone: "idle", label: t("未启用") };
   if (!status.listening) return { state: "unavailable", tone: "bad", label: t("网关不可用") };
-  if (states.includes("applied")) return { state: "taken-over", tone: "ok", label: t("已接管") };
-  if (states.includes("managed")) return { state: "managed", tone: "warn", label: t("受管配置") };
-  if (states.includes("ready") || states.includes("running")) {
+  if (state === "applied") return { state: "taken-over", tone: "ok", label: t("已接管") };
+  if (state === "managed") return { state: "managed", tone: "warn", label: t("受管配置") };
+  if (state === "ready" || state === "running") {
     return { state: "pending-apply", tone: "warn", label: t("待应用配置") };
   }
   return { state: "idle", tone: "idle", label: t("未检测到客户端") };
 }
 
-const takeoverLabels: Record<ClaudeCliTakeoverState | ClaudeDesktopTakeoverState, () => string> = {
+const takeoverLabels: Record<ClaudeDesktopTakeoverState, () => string> = {
   missing: () => t("未检测到"),
   ready: () => t("待接管"),
   applied: () => t("已接管"),
@@ -67,11 +65,11 @@ const takeoverLabels: Record<ClaudeCliTakeoverState | ClaudeDesktopTakeoverState
   running: () => t("运行中"),
 };
 
-export function claudeTakeoverStateLabel(state: ClaudeCliTakeoverState | ClaudeDesktopTakeoverState): string {
+export function claudeTakeoverStateLabel(state: ClaudeDesktopTakeoverState): string {
   return takeoverLabels[state]();
 }
 
-export function claudeTakeoverStateTone(state: ClaudeCliTakeoverState | ClaudeDesktopTakeoverState): StatusTone {
+export function claudeTakeoverStateTone(state: ClaudeDesktopTakeoverState): StatusTone {
   switch (state) {
     case "applied": return "ok";
     case "conflict": return "bad";
@@ -92,45 +90,42 @@ export function claudeConfigSourceLabel(source: ClaudeConfigSource): string {
   }
 }
 
-export type ClaudeTakeoverTarget = "cli" | "desktop";
-
 export interface ClaudeActionGate {
-  /** 「应用接管」：网关可用、设置已保存、目标客户端处于可写状态。 */
+  /** 「应用接管」：网关可用、设置已保存、Desktop 处于可写状态。 */
   apply: boolean;
   /** 「撤销接管」：服务端有归属当前安装的接管收据才可点；网关关着也能撤。 */
   undo: boolean;
   /** 按钮为什么点不了；可以点时是 null。 */
   applyBlockedReason: string | null;
-  /** 需要先去别的页面处理时给出入口；目前只有模型库。 */
-  applyBlockedLink: "/models" | null;
 }
 
 export interface ClaudeGateInput {
   settings: ClaudeSettings | null;
   status: ClaudeStatus | null;
   takeover: ClaudeTakeover | null;
-  /** Desktop 的模型草稿；CLI 不用。 */
+  /** Desktop 的模型草稿。 */
   desktopModels?: string[];
   /** 设置还有未保存的改动：先保存，再应用，避免写入一半旧值。 */
   dirty: boolean;
 }
 
 /**
- * 两个 tab 的按钮可用性。
+ * Desktop 接管的按钮可用性。
  *
  * 撤销只看服务端的接管收据（`restorable`），不看 enabled/listening，也不从备份文件
  * 推断：网关关掉、配置冲突时，用户仍然要能撤回已经写进客户端的东西。
  *
  * `stale` 不是冲突：客户端文件仍归本应用接管，只是内容过期；网关就绪时允许重新应用。
  */
-export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGateInput): ClaudeActionGate {
+export function claudeActionGate(input: ClaudeGateInput): ClaudeActionGate {
   const takeover = input.takeover;
-  const entry = target === "cli" ? takeover?.cli : takeover?.desktop;
+  const entry = takeover?.desktop;
   const undo = Boolean(entry?.restorable);
-  const blocked = (
-    reason: string,
-    link: "/models" | null = null,
-  ): ClaudeActionGate => ({ apply: false, undo, applyBlockedReason: reason, applyBlockedLink: link });
+  const blocked = (reason: string): ClaudeActionGate => ({
+    apply: false,
+    undo,
+    applyBlockedReason: reason,
+  });
 
   if (!input.settings || !input.status) return blocked(t("正在读取网关状态…"));
   if (!input.settings.enabled) return blocked(t("先启用并保存 Claude 网关。"));
@@ -139,28 +134,6 @@ export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGate
   if (input.dirty) return blocked(t("有未保存的改动，点右上角「保存」"));
   if (!takeover) return blocked(t("正在读取接管状态…"));
 
-  // 服务端告诉我们哪些哈希已经不在模型库里；写进客户端之前必须先换掉。
-  const missing = takeover.cli.missing_models;
-  if (missing.includes(input.settings.default_model_hash)) {
-    return blocked(t("默认模型已不在模型库里，请到模型库重新选择。"), "/models");
-  }
-  const selected = [
-    input.settings.sonnet_model_hash,
-    input.settings.opus_model_hash,
-    input.settings.haiku_model_hash,
-  ].filter((hash): hash is string => Boolean(hash));
-  if (selected.some((hash) => missing.includes(hash))) {
-    return blocked(t("选中的模型已不在模型库里，请重新选择。"), "/models");
-  }
-
-  if (target === "cli") {
-    if (takeover.cli.state === "missing") return blocked(t("没有找到 Claude Code 的配置文件，无法接管。"));
-    if (takeover.cli.state === "conflict") return blocked(t("Claude Code 的配置存在冲突，先处理下面的条目。"));
-    if (takeover.cli.state === "managed") return blocked(t("Claude Code 的配置由系统策略托管，本应用不会改写它。"));
-    // `stale` 只说明客户端指向旧配置，文件仍归本应用接管：重新应用就能修好，不能当冲突拦住。
-    return { apply: true, undo, applyBlockedReason: null, applyBlockedLink: null };
-  }
-
   if (takeover.desktop.state === "missing") return blocked(t("没有检测到 Claude Desktop。"));
   if (takeover.desktop.state === "running") return blocked(t("Claude Desktop 正在运行，请先完全退出。"));
   if (takeover.desktop.guided || takeover.desktop.state === "managed") {
@@ -168,7 +141,7 @@ export function claudeActionGate(target: ClaudeTakeoverTarget, input: ClaudeGate
   }
   if (takeover.desktop.state === "conflict") return blocked(t("Claude Desktop 的配置存在冲突，先处理下面的条目。"));
   if ((input.desktopModels ?? []).length === 0) return blocked(t("至少选择一个模型。"));
-  return { apply: true, undo, applyBlockedReason: null, applyBlockedLink: null };
+  return { apply: true, undo, applyBlockedReason: null };
 }
 
 /** 引导视图只在受管或明确只能手工配置时出现。 */
@@ -187,7 +160,7 @@ export interface ClaudeTokenRotationGate {
  *
  * Desktop 接管处于 applied/stale/running 时服务端直接拒绝轮换（400）：新的令牌写不回
  * 正在生效的 Desktop 配置，客户端会立刻失效。必须先撤销 Desktop 接管；运行中还要先
- * 完全退出客户端。CLI 接管由服务端在轮换成功后自己同步，不拦按钮。
+ * 完全退出客户端。
  */
 export function claudeTokenRotationGate(takeover: ClaudeTakeover | null): ClaudeTokenRotationGate {
   const state = takeover?.desktop.state;
@@ -234,15 +207,10 @@ export function claudeUndoKept(conflicts: ClaudeTakeoverConflict[]): ClaudeTakeo
 }
 
 /** 客户端状态的一句话说明；放在状态卡里，不重复页面用途。 */
-export function claudeTakeoverDescription(
-  target: ClaudeTakeoverTarget,
-  state: ClaudeCliTakeoverState | ClaudeDesktopTakeoverState | null,
-): string {
+export function claudeTakeoverDescription(state: ClaudeDesktopTakeoverState | null): string {
   if (!state) return t("正在读取接管状态…");
   switch (state) {
-    case "missing": return target === "cli"
-      ? t("没有找到 Claude Code 的配置文件。")
-      : t("没有检测到 Claude Desktop。");
+    case "missing": return t("没有检测到 Claude Desktop。");
     case "ready": return t("配置已就绪，可以应用接管。");
     case "applied": return t("模型请求已走本机网关。");
     case "stale": return t("客户端仍指向旧的网关配置。");

@@ -1,4 +1,4 @@
-//! Claude Code 入站网关的端到端行为：Anthropic SSE 形状与调用归属。
+//! Claude 入站网关的端到端行为：Anthropic SSE 形状与调用归属。
 //!
 //! 两条路径分开验证：
 //! - 用共享的 `fake_provider`（一个 `Provider` 实现）确定性地检查 SSE 事件序列；

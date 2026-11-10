@@ -15,7 +15,7 @@
 ![haxsd byok main window](./images/en-home-1.png)
 ## Why use it
 
-- **Keep your workflow**: stay in Cursor, Devin, Codex, Claude Code CLI and Claude Desktop; only model inference is replaced with the providers you configure (bring your own).
+- **Keep your workflow**: stay in Cursor, Devin, Codex and Claude Desktop; only model inference is replaced with the providers you configure (bring your own).
 - **Own your models**: the model library supports OpenAI Chat / Responses and Anthropic protocols, with multi-select after discovery and a built-in connection test; in Cursor, official models and your own models can coexist.
 - **See the cost**: every call's status, latency, token usage and an estimate from reference prices.
 - **Desktop app**: Chinese, English and Russian, multiple themes, tray, in-app tutorial and signed updates.
@@ -27,7 +27,6 @@
 | Cursor | Official / local / mixed model sources + local proxy and local CA | Use local to route everything to your models, mixed to keep official models available too; local mode refuses models not in your library instead of silently going official. In local/mixed mode, long-session context compression (automatic and manual summaries) is done by this app's gateway; official mode is still compressed by Cursor |
 | Devin | Optional local gateway + custom models and model mappings | Custom models appear in Devin’s native picker alongside its official catalog; structure-detected endpoint-settings patch with backup/restore and custom installation directories |
 | Codex (ChatGPT client) | Local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced, over Responses / Chat Completions / Anthropic; rewrites only managed fields in `config.toml` and restores them on undo |
-| Claude Code CLI | Local Anthropic gateway (`/v1/messages`) + writes the `env` block of `~/.claude/settings.json` | Will not overwrite an existing Anthropic API key, Bedrock/Vertex/Foundry setup, `apiKeyHelper` or managed settings |
 | Claude Desktop | Local Anthropic gateway + a profile under `%LOCALAPPDATA%\Claude-3p\configLibrary` | Read-only with manual guidance when managed by an organisation policy |
 
 All gateways are off by default and listen on `127.0.0.1` only. Managed settings, port changes and other details are in the [user guide](./docs/user-guide.md) and [Codex setup](./docs/codex-go-live.md).
@@ -39,7 +38,7 @@ All gateways are off by default and listen on `127.0.0.1` only. Managed settings
 | Cursor | Agent / Chat / Plan, local subagents and tools, Rules / Skills / MCP, Checkpoint | Cloud Agents, Projects, Bugbot, Automations, Tab completion, CLI / IDE integrations, Remote Control |
 | Codex | Local Agent / TUI / exec, Plan, tools, approvals, sandbox, multiple sessions, MCP / Skills / Plugins / Hooks, image input | ChatGPT Work, Codex Cloud, Remote Control, hosted web search / image generation / voice |
 | Devin | Cascade, Devin Local, local tools, Rules / Memories / MCP, model mappings, Checkpoint | Account plans and quota, Tab / Command / embedding, Devin Cloud, remote indexing, Slack / Linear / Jira / Teams / GitHub integrations |
-| Claude | Claude Code CLI, local subagents and background sessions, MCP / Skills / Hooks, Checkpoint / Rewind / auto-compaction, local IDE integration | Cloud session, Teleport, Ultrareview, cloud schedules, Remote Control, provider-side WebSearch / WebFetch, CLI-to-Desktop handoff |
+| Claude | Claude Desktop sessions, local tools, MCP / Skills / Hooks, Checkpoint, model-library routing | Cloud session, Teleport, Ultrareview, cloud schedules, Remote Control, provider-side WebSearch / WebFetch, cloud-account features |
 
 Takeover changes only model requests that can be controlled locally. Sign-in, plans, quota and vendor cloud features still belong to each client and are not bypassed.
 
@@ -52,7 +51,7 @@ Takeover changes only model requests that can be controlled locally. Sign-in, pl
 3. **For Cursor**: initialize and trust the local CA, then pick the model source on the **Cursor** page. **Entering or leaving official mode stops a running Cursor: save your work and reopen it manually**; switching between local and mixed does not require a restart.
 4. **For Devin**: add custom models to the native picker or map existing Devin models, then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to apply the integration and verify a request.
 5. **For Codex**: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
-6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply per client: reopen Claude Code after applying for the CLI; **quit Claude Desktop completely (including the tray) before applying, then start it again**.
+6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply the Claude Desktop takeover; **quit Claude Desktop completely (including the tray) before applying, then start it again**.
 
 Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs/user-guide.md).
 
@@ -71,7 +70,7 @@ Full steps for URLs, upgrades, backup and restore are in the [user guide](./docs
 ## FAQ
 
 - **Windows says "unknown publisher" or SmartScreen blocks the installer?** Updates are signed with this product's own Tauri update signature, which is not a Windows code signature. Choose **More info → Run anyway**; use the Releases page as the only distribution source.
-- **How do I roll back?** Switch back to official mode and Cursor stops going through the local gateway; for Codex, undo "Apply to Codex" to restore the previous configuration; for Claude, undo the takeover on the matching tab to remove the keys written to `settings.json` or the Desktop profile. Details are in the [user guide](./docs/user-guide.md).
+- **How do I roll back?** Switch back to official mode and Cursor stops going through the local gateway; for Codex, undo "Apply to Codex" to restore the previous configuration; for Claude, undo the Claude Desktop takeover to remove the profile written by this app. Details are in the [user guide](./docs/user-guide.md).
 - **How does this relate to cursor-byok?** This project is based on upstream [leookun/cursor-byok](https://github.com/leookun/cursor-byok); the author's personal repository `haxsd/cursor-byok` has been deleted.
 
 ## Build, support and license

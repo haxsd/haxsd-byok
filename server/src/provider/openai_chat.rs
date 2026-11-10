@@ -391,7 +391,7 @@ fn openai_chat_messages(
                         .iter()
                         .filter_map(|part| match part {
                             ContentPart::Text { text } => Some(text.as_str()),
-                            ContentPart::Image { .. } => None,
+                            ContentPart::Image { .. } | ContentPart::Document { .. } => None,
                         })
                         .collect::<String>()
                 };
@@ -425,7 +425,7 @@ fn chat_content(_role: &Role, parts: &[ContentPart]) -> Result<Value> {
     for part in parts {
         match part {
             ContentPart::Text { text: part } => text.push_str(part),
-            ContentPart::Image { .. } => {
+            ContentPart::Image { .. } | ContentPart::Document { .. } => {
                 only_text = false;
                 break;
             }
@@ -445,6 +445,20 @@ fn chat_content(_role: &Role, parts: &[ContentPart]) -> Result<Value> {
                         "data:{mime_type};base64,{}",
                         STANDARD.encode(data)
                     )},
+                })),
+                ContentPart::Document {
+                    mime_type,
+                    data,
+                    title,
+                    ..
+                } => Ok(json!({
+                    "type":"text",
+                    "text": format!(
+                        "[document{}: {} content cannot be read by this Chat Completions provider; {} bytes omitted]",
+                        title.as_deref().map(|title| format!(" \"{title}\"")).unwrap_or_default(),
+                        mime_type,
+                        data.len()
+                    ),
                 })),
             })
             .collect::<Result<Vec<_>>>()?,
@@ -540,6 +554,25 @@ mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
     use crate::provider::testing;
+
+    #[test]
+    fn chat_completions_reports_pdf_documents_as_an_explicit_omission() {
+        let content = chat_content(
+            &Role::User,
+            &[ContentPart::Document {
+                mime_type: "application/pdf".into(),
+                data: b"%PDF-1.7".to_vec(),
+                title: Some("paper".into()),
+                cache_control: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(content[0]["type"], "text");
+        assert!(content[0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Chat Completions provider"));
+    }
 
     /// 结束条件一：`[DONE]` 就是收尾信号，即使没有 finish_reason 也要正常结束。
     #[tokio::test]

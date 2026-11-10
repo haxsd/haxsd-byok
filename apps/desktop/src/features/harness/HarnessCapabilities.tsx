@@ -53,7 +53,7 @@ export function HarnessCapabilities({ client }: { client: Client }) {
     ];
   } else {
     usable = [
-      t("Claude Code CLI 会话、Agent 和工具"),
+      t("Claude Desktop 会话、Agent 和工具"),
       t("本机子代理、后台会话、MCP、Skills 与 Hooks"),
       t("Checkpoint、Rewind 与自动压缩"),
       t("本机 IDE 集成与模型库路由"),
@@ -62,7 +62,7 @@ export function HarnessCapabilities({ client }: { client: Client }) {
       t("Cloud session、Teleport 与 Ultrareview"),
       t("云端定时任务与 Remote Control 中继"),
       t("WebSearch / WebFetch（取决于供应商）"),
-      t("Claude Desktop 的 CLI 交接与云账号能力"),
+      t("Claude Desktop 的云账号与厂商托管能力"),
     ];
   }
 

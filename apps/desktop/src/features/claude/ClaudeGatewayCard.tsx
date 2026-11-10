@@ -10,15 +10,14 @@ import { TitledCard } from "../../shared/ui/TitledCard";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import { copyIcon, keyIcon, providerIcon, terminalIcon } from "../../shared/ui/icons";
 import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
-import { claudeAliasOptions, claudeEnvText } from "./claudeTakeoverPlan";
+import { claudeAliasOptions } from "./claudeTakeoverPlan";
 import styles from "./ClaudeSettingsPage.module.scss";
 
 /**
- * 两个 tab 共用的「网关」卡。
+ * 「网关」卡。
  *
- * 网关是唯一一份：Claude Code CLI 与 Claude Desktop 只是它的两个消费者。把启用、
- * 端口、默认模型、地址与令牌放在这里，两个 tab 不各写一份，也就不会出现"这个 tab
- * 说开着、那个 tab 说关着"。
+ * 网关是唯一一份：Claude Desktop 是它的消费者。把启用、端口、默认模型、可选别名、
+ * 地址与令牌放在这里，Desktop 接管只负责自己的 profile。
  */
 export function ClaudeGatewayCard({
   saved,
@@ -65,7 +64,7 @@ export function ClaudeGatewayCard({
 
   return <TitledCard
     title={t("本机网关")}
-    description={t("Claude Code 与 Claude Desktop 共用这个网关")}
+    description={t("Claude Desktop 使用这个网关")}
     icon={providerIcon}
     badge={status
       ? <StatusPill tone={listening ? "ok" : status.enabled ? "warn" : "idle"}>
@@ -125,6 +124,39 @@ export function ClaudeGatewayCard({
         </FormField>
       </div>
 
+      <div className={styles.fields}>
+        <FormField label={t("Sonnet 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
+          <ModelSelect
+            mode="single"
+            label={t("选择 Sonnet 别名模型")}
+            options={claudeAliasOptions(models, selectedHashes)}
+            value={draft?.sonnet_model_hash ?? ""}
+            disabled={!draft || busy}
+            onChange={(hash) => { if (draft) onChange({ ...draft, sonnet_model_hash: hash || null }); }}
+          />
+        </FormField>
+        <FormField label={t("Opus 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
+          <ModelSelect
+            mode="single"
+            label={t("选择 Opus 别名模型")}
+            options={claudeAliasOptions(models, selectedHashes)}
+            value={draft?.opus_model_hash ?? ""}
+            disabled={!draft || busy}
+            onChange={(hash) => { if (draft) onChange({ ...draft, opus_model_hash: hash || null }); }}
+          />
+        </FormField>
+        <FormField label={t("Haiku 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
+          <ModelSelect
+            mode="single"
+            label={t("选择 Haiku 别名模型")}
+            options={claudeAliasOptions(models, selectedHashes)}
+            value={draft?.haiku_model_hash ?? ""}
+            disabled={!draft || busy}
+            onChange={(hash) => { if (draft) onChange({ ...draft, haiku_model_hash: hash || null }); }}
+          />
+        </FormField>
+      </div>
+
       <div className={styles.facts}>
         <div className={styles.fact}>
           <Icon icon={terminalIcon} size="1.1em" />
@@ -172,11 +204,6 @@ export function ClaudeGatewayCard({
       <div className={styles.gatewayFooter}>
         <span>{t("可发现 {count} 个模型", { count: status?.models ?? 0 })}</span>
         <span>{t("已记录 {count} 次调用", { count: status?.calls ?? 0 })}</span>
-        <Button
-          size="small"
-          disabled={!status?.base_url || !status?.token}
-          onClick={() => onCopy(claudeEnvText(status, saved, models), t("环境变量已复制"))}
-        >{t("复制环境变量")}</Button>
       </div>
 
       {status?.last_error && <p className={styles.error} role="alert">

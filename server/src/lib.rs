@@ -2,7 +2,7 @@
 pub mod anthropic;
 pub mod api;
 pub mod app;
-pub mod claude_code;
+pub mod claude_client;
 pub mod codex;
 pub mod config;
 pub mod control;

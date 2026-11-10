@@ -205,6 +205,20 @@ fn wire_content(content: &ProjectedContent, model: &str) -> Result<Value> {
                         "image": STANDARD.encode(data),
                         "mimeType": mime_type,
                     }),
+                    ContentPart::Document {
+                        mime_type,
+                        data,
+                        title,
+                        ..
+                    } => json!({
+                        "type":"text",
+                        "text": format!(
+                            "[document{}: {} content is not representable in Cursor checkpoints; {} bytes omitted]",
+                            title.as_deref().map(|title| format!(" \"{title}\"")).unwrap_or_default(),
+                            mime_type,
+                            data.len()
+                        ),
+                    }),
                 })
                 .collect(),
         ),

@@ -60,6 +60,15 @@ pub enum ContentPart {
         #[serde(with = "base64_bytes")]
         data: Vec<u8>,
     },
+    Document {
+        mime_type: String,
+        #[serde(with = "base64_bytes")]
+        data: Vec<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_control: Option<Value>,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -1,86 +1,16 @@
-import type { ClaudeSettings, ClaudeStatus, Model } from "../../shared/api";
+import type { ClaudeSettings, Model } from "../../shared/api";
 import type { ModelSelectOption } from "../../shared/ui/ModelSelect";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 
 /**
  * 接管时会写入什么、选择器里能选什么。
  *
- * 状态与按钮可用性在 `claudeConnectionView.ts`；这里只回答"应用接管会写哪些键"、
- * "Desktop 的模型列表从哪来、怎么排序"，以及引导视图要展示的值。
+ * 状态与按钮可用性在 `claudeConnectionView.ts`；这里只回答"Desktop 的模型列表从哪来、
+ * 怎么排序"，以及引导视图要展示的值。
  */
 
 /**
- * CLI 的三个模型家族：模型哈希决定请求，显示名只影响客户端的模型选择器。
- * 键名与服务端 `MANAGED_ENV_KEYS` 一一对应。
- */
-const cliFamilies = [
-  { hash: "sonnet_model_hash", model: "ANTHROPIC_DEFAULT_SONNET_MODEL", name: "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME" },
-  { hash: "opus_model_hash", model: "ANTHROPIC_DEFAULT_OPUS_MODEL", name: "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME" },
-  { hash: "haiku_model_hash", model: "ANTHROPIC_DEFAULT_HAIKU_MODEL", name: "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME" },
-] as const;
-
-/**
- * Claude Code 接管时写入 `settings.json` 的 env。
- *
- * 键名与 Claude Code 自己读取的环境变量一致；空值不写，避免把别名清成空串。显示名
- * 取自模型库，与服务端写入的值一致；模型不在库里时只写哈希（应用前 gate 会拦住）。
- * 默认模型不在 env 里：客户端自带的版本化 ID 由网关按家族名回落到它。
- */
-export function claudeCliEnv(
-  status: ClaudeStatus | null,
-  settings: ClaudeSettings | null,
-  models: Model[] = [],
-): Record<string, string> {
-  if (!status) return {};
-  const env: Record<string, string> = {};
-  if (status.base_url) env.ANTHROPIC_BASE_URL = status.base_url;
-  if (status.token) env.ANTHROPIC_AUTH_TOKEN = status.token;
-  env.CLAUDE_CODE_ATTRIBUTION_HEADER = "0";
-  for (const family of cliFamilies) {
-    const hash = settings?.[family.hash];
-    if (!hash) continue;
-    env[family.model] = hash;
-    const name = models.find((model) => model.model_hash === hash)?.display_name?.trim();
-    if (name) env[family.name] = name;
-  }
-  return env;
-}
-
-/** 应用前展示的只读预览：服务端会把这些键写进 `settings.json` 的 `env`。 */
-export function claudeCliPreview(
-  status: ClaudeStatus | null,
-  settings: ClaudeSettings | null,
-  models: Model[] = [],
-): string {
-  return JSON.stringify({ env: claudeCliEnv(status, settings, models) }, null, 2);
-}
-
-/** 复制给终端用的环境变量文本（`KEY=value` 每行一个）。 */
-export function claudeEnvText(
-  status: ClaudeStatus | null,
-  settings: ClaudeSettings | null,
-  models: Model[] = [],
-): string {
-  return Object.entries(claudeCliEnv(status, settings, models))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
-}
-
-/** 接管写入的 env 键：撤销按这份清单逐键还原，顺序与服务端一致。 */
-export const claudeCliEnvKeys = [
-  "ANTHROPIC_BASE_URL",
-  "ANTHROPIC_AUTH_TOKEN",
-  "CLAUDE_CODE_ATTRIBUTION_HEADER",
-  "ANTHROPIC_DEFAULT_SONNET_MODEL",
-  "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-  "ANTHROPIC_DEFAULT_OPUS_MODEL",
-  "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-] as const;
-
-/**
- * Desktop 模型列表的初值：默认模型在前，随后是三个 CLI 别名，按哈希去重。
+ * Desktop 模型列表的初值：默认模型在前，随后是三个可选别名，按哈希去重。
  *
  * Desktop 的列表没有单独持久化字段，设置里的四个哈希是它唯一可用的起点；用户调整
  * 顺序后由 apply 的 `models` 决定客户端里的顺序。
@@ -173,6 +103,6 @@ export function claudeDesktopGuideItems(input: {
       hint: t("第一项是默认模型；顺序与上面的列表一致。"),
     },
     { key: "discovery", label: t("模型发现（Model discovery）"), value: "Off", hint: t("关闭自动发现，只使用上面的模型列表。") },
-    { key: "allow_code", label: t("允许 Code（Allow Code）"), value: "On", hint: t("打开后 Claude Code 才能通过这个网关。") },
+    { key: "allow_code", label: t("允许 Code（Allow Code）"), value: "On", hint: t("打开后 Claude Desktop 才能执行代码。") },
   ];
 }

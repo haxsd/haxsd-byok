@@ -26,7 +26,7 @@ use crate::{
 
 use super::{models, ApiError, ClaudeSettings};
 
-/// URL 图片的下载上限与时限。Claude Code 绝大多数时候发 base64，URL 只是协议允许的
+/// URL 图片的下载上限与时限。Claude 客户端绝大多数时候发 base64，URL 只是协议允许的
 /// 另一种来源；下载行为必须有明确边界，不能把任意地址变成无界的内存占用。
 const MAX_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 const IMAGE_FETCH_TIMEOUT: Duration = Duration::from_secs(20);
@@ -247,10 +247,11 @@ fn apply_client_options(
     Ok(())
 }
 
-/// `document` 块（PDF 等）在共享请求格式里还没有对应的内容类型。
+/// `document` 块的文本降级。
 ///
-/// 纯文本来源原样转成文本；其它来源换成一段明确的说明，而不是像以前那样静默丢弃——
-/// 模型至少知道这里有一份它看不到的文档，可以换用别的方式读取。
+/// base64 来源由 [`document_part`] 保留为 `ContentPart::Document` 原生透传；纯文本来源
+/// 原样转成文本；其它来源换成一段明确的说明，而不是静默丢弃——模型至少知道这里有一份
+/// 它看不到的文档，可以换用别的方式读取。
 fn document_text(block: &Value) -> String {
     let title = block
         .get("title")
@@ -280,6 +281,55 @@ fn document_text(block: &Value) -> String {
         "[document omitted{}: {media} content cannot be forwarded through this model gateway; read the file with a text-based tool instead]",
         title.map(|title| format!(" \"{title}\"")).unwrap_or_default()
     )
+}
+
+fn document_part(block: &Value, fetch_images: bool) -> Result<ContentPart, ApiError> {
+    let Some(source) = block.get("source") else {
+        return Ok(ContentPart::Text {
+            text: document_text(block),
+        });
+    };
+    let Some(kind) = source.get("type").and_then(Value::as_str) else {
+        return Ok(ContentPart::Text {
+            text: document_text(block),
+        });
+    };
+    if kind != "base64" {
+        return Ok(ContentPart::Text {
+            text: document_text(block),
+        });
+    }
+    let mime_type = source
+        .get("media_type")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::invalid("document.source.media_type is required"))?;
+    let encoded = source
+        .get("data")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::invalid("document.source.data is required"))?;
+    // `/count_tokens` 只需要固定估算值，不解码整份 PDF；实际消息仍必须通过 base64 校验。
+    let data = if fetch_images {
+        STANDARD.decode(encoded).map_err(|error| {
+            ApiError::invalid(format!("document.source.data is not base64: {error}"))
+        })?
+    } else {
+        Vec::new()
+    };
+    Ok(ContentPart::Document {
+        mime_type: mime_type.to_owned(),
+        data,
+        title: block
+            .get("title")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(str::to_owned),
+        cache_control: block
+            .get("cache_control")
+            .filter(|value| !value.is_null())
+            .cloned(),
+    })
 }
 
 fn system_text(value: Option<&Value>) -> Result<String, ApiError> {
@@ -379,7 +429,7 @@ fn apply_thinking(value: Option<&Value>, spec: &mut ModelSpec) -> Result<(), Api
                     object.get("budget_tokens").and_then(Value::as_u64);
             }
             Some("adaptive") => enabled = true,
-            // `disabled` 与缺省都表示这一轮不要在网关侧再补思考：Claude Code 的请求
+            // `disabled` 与缺省都表示这一轮不要在网关侧再补思考：Claude 客户端的请求
             // 是自己能力的声明，不能按模型配置替它打开。
             Some("disabled") | None => {}
             Some(other) => {
@@ -532,9 +582,7 @@ async fn user_message(
                 }
             }
             Some("image") => parts.push(image_part(block, clients, fetch_images).await?),
-            Some("document") => parts.push(ContentPart::Text {
-                text: document_text(block),
-            }),
+            Some("document") => parts.push(document_part(block, fetch_images)?),
             Some("tool_result") => {
                 flush_parts(index, sequence, &mut parts, history);
                 sequence += 1;
@@ -701,12 +749,12 @@ async fn tool_result_message(
                         provider_parts.push(image_part(part, clients, fetch_images).await?)
                     }
                     Some("document") => {
+                        provider_parts.push(document_part(part, fetch_images)?);
                         let value = document_text(part);
                         if !text.is_empty() {
                             text.push('\n');
                         }
                         text.push_str(&value);
-                        provider_parts.push(ContentPart::Text { text: value });
                     }
                     Some(_) | None => {}
                 }
@@ -1633,11 +1681,43 @@ mod tests {
             "source": {"type": "text", "media_type": "text/plain", "data": "body"}
         }));
         assert_eq!(text, "[document: notes]\nbody");
-        let pdf = document_text(&json!({
-            "type": "document",
-            "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBERi0="}
-        }));
-        assert!(pdf.starts_with("[document omitted") && pdf.contains("application/pdf"));
+        let part = document_part(
+            &json!({
+                "type": "document", "title": "paper",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBERi0="}
+            }),
+            true,
+        )
+        .unwrap();
+        match part {
+            ContentPart::Document {
+                mime_type,
+                data,
+                title,
+                ..
+            } => {
+                assert_eq!(mime_type, "application/pdf");
+                assert_eq!(data, b"%PDF-");
+                assert_eq!(title.as_deref(), Some("paper"));
+            }
+            other => panic!("PDF document must stay a document, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn count_tokens_does_not_decode_a_document_payload() {
+        let part = document_part(
+            &json!({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": "not-base64"}
+            }),
+            false,
+        )
+        .unwrap();
+        match part {
+            ContentPart::Document { data, .. } => assert!(data.is_empty()),
+            other => panic!("PDF document must stay a document, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -1908,7 +1988,7 @@ mod tests {
                 .iter()
                 .filter_map(|part| match part {
                     ContentPart::Text { text } => Some(text.as_str()),
-                    ContentPart::Image { .. } => None,
+                    ContentPart::Image { .. } | ContentPart::Document { .. } => None,
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),

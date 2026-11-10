@@ -5,6 +5,10 @@ use super::{ContentPart, ProjectedContent, ProjectedMessage, PromptSpec};
 const TOKENS_PER_MESSAGE_OVERHEAD: u64 = 8;
 const TOKENS_PER_TOOL_CALL_OVERHEAD: u64 = 6;
 const TOKENS_PER_IMAGE: u64 = 1_024;
+/// PDF/document blocks are charged by their extracted text and page images.
+/// Without parsing the file here, charge a conservative flat amount so a
+/// document never looks free to the context estimator.
+const TOKENS_PER_DOCUMENT: u64 = 2_048;
 
 /// ASCII text density for English prose, code, and JSON: about four characters
 /// per token on the tokenizers in use.
@@ -85,6 +89,11 @@ fn estimate_parts_tokens(parts: &[ContentPart]) -> u64 {
             ContentPart::Text { text } => estimate_text_tokens(text),
             ContentPart::Image { mime_type, data } => estimate_image_tokens(mime_type, data)
                 .saturating_add(estimate_text_tokens(mime_type)),
+            ContentPart::Document {
+                mime_type, title, ..
+            } => TOKENS_PER_DOCUMENT
+                .saturating_add(estimate_text_tokens(mime_type))
+                .saturating_add(estimate_text_tokens(title.as_deref().unwrap_or_default())),
         };
         total.saturating_add(tokens)
     })

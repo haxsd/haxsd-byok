@@ -1,4 +1,4 @@
-//! Claude Code 的模型别名解析与 Anthropic 格式的模型目录。
+//! Claude 的模型别名解析与 Anthropic 格式的模型目录。
 use std::collections::HashSet;
 
 use chrono::{SecondsFormat, TimeZone, Utc};
@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use super::{ApiError, ClaudeSettings, ModelFamily};
 use crate::{model::ModelConfig, store::Store};
 
-/// `GET /v1/models` 的 ID 前缀。Claude Code 与 Desktop 的模型发现只保留 `id` 里含
+/// `GET /v1/models` 的 ID 前缀。Claude 客户端的模型发现只保留 `id` 里含
 /// `claude`（或 `anthropic`）的条目，裸哈希会被整批过滤掉，所以发现 ID 必须带前缀。
 const DISCOVERY_PREFIX: &str = "claude-";
 
@@ -18,11 +18,11 @@ pub fn discovery_id(model_hash: &str) -> String {
     id
 }
 
-/// 把 Claude Code 发来的模型 ID 解析成模型库里的配置。
+/// 把 Claude 客户端发来的模型 ID 解析成模型库里的配置。
 ///
 /// 顺序：精确的 `model_hash` → 发现 ID（`claude-<model_hash>`）→ 家族名
 /// （`…-sonnet-…` / `…-opus-…` / `…-haiku-…`，含裸别名）→ 默认模型。未知 ID 走默认
-/// 模型而不是报错：Claude Code 会发送它自带的版本化 ID，网关不该要求用户把它们逐一
+/// 模型而不是报错：客户端会发送它自带的版本化 ID，网关不该要求用户把它们逐一
 /// 登记。
 pub async fn resolve(
     store: &Store,
@@ -30,7 +30,7 @@ pub async fn resolve(
     requested: &str,
 ) -> Result<ModelConfig, ApiError> {
     let requested = requested.trim();
-    // Claude Code 会在模型 ID 后面追加 `[1m]` 表示 1M 上下文变体；模型库里的哈希没有
+    // 客户端会在模型 ID 后面追加 `[1m]` 表示 1M 上下文变体；模型库里的哈希没有
     // 这个后缀，先剥掉再解析，否则别名会全部退化成默认模型。
     let requested = requested.strip_suffix("[1m]").unwrap_or(requested).trim();
     let default = settings
@@ -269,7 +269,7 @@ mod tests {
         );
         assert!(value["data"][0]["created_at"].is_string());
 
-        // Claude Code / Desktop 的发现过滤器只保留含 `claude` 的 ID。
+        // Claude 客户端的发现过滤器只保留含 `claude` 的 ID。
         for entry in value["data"].as_array().unwrap() {
             let id = entry["id"].as_str().unwrap();
             assert!(id.contains("claude"), "{id}");
@@ -317,7 +317,7 @@ mod tests {
         let default = resolve(&store, &settings, "claude-").await.unwrap();
         assert_eq!(default.display_name, "Default");
 
-        // Claude Code 的 1M 变体后缀：裸哈希与发现 ID 加 `[1m]` 都要命中同一个模型。
+        // Claude 客户端的 1M 变体后缀：裸哈希与发现 ID 加 `[1m]` 都要命中同一个模型。
         let default_hash = settings.default_model_hash.clone().unwrap();
         let one_million = resolve(&store, &settings, &format!("{default_hash}[1m]"))
             .await

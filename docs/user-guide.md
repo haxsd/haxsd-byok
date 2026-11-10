@@ -119,39 +119,22 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 ## 接入 Claude
 
-「Claude」页由一个本机 Anthropic Messages 网关和两个客户端适配组成：Claude Code CLI 与 Claude Desktop。网关默认端口 `43121`，只监听 `127.0.0.1`，提供 `/v1/messages`、`/v1/messages/count_tokens` 与 `/v1/models`；凭据是本应用自己的 Bearer 令牌，走这条路径不需要在 Claude Code 里登录 Anthropic 账号。
+「Claude」页由一个本机 Anthropic Messages 网关和 Claude Desktop 接管组成。网关默认端口 `43121`，只监听 `127.0.0.1`，提供 `/v1/messages`、`/v1/messages/count_tokens` 与 `/v1/models`；凭据是本应用自己的 Bearer 令牌，不需要在 Claude Desktop 里登录 Anthropic 账号。
 
-顺序：模型库 → 默认模型与家族别名 → 启用网关并保存 → 按客户端应用接管 → 重新打开客户端发起对话 → 在「调用」页查看记录。
+顺序：模型库 → 默认模型与可选别名 → 启用网关并保存 → 应用 Claude Desktop 接管 → 重新打开 Claude Desktop 发起对话 → 在「调用」页查看记录。
 
 ### 网关与模型映射
 
 - 网关默认不启用；启用前必须先选默认模型；关闭时端口不监听。
-- 网关先按模型哈希、再按 `claude-<哈希>` 发现 ID、再按请求里的 `sonnet` / `opus` / `haiku` 家族名解析，最后回落到默认模型。未知模型不会报错：Claude Code 会发送它自带的版本化 ID，不要求你逐个登记。
+- 网关先按模型哈希、再按 `claude-<哈希>` 发现 ID、再按请求里的 `sonnet` / `opus` / `haiku` 家族名解析，最后回落到默认模型。未知模型不会报错：客户端自带的版本化 ID 不要求你逐个登记。
 - Sonnet / Opus / Haiku 三个别名可以留空，留空时回落到默认模型；默认模型接住所有无法识别的请求。
 - `/v1/models` 只列出默认模型与三个别名（按哈希去重），不是整个模型库；列表里的 ID 是 `claude-<哈希>`，显示名来自模型库。
 - 保存后立即按新端口监听；端口被本应用其它网关或别的程序占用时，保存会被拒绝，不会留下「已保存、未监听」的状态。
-- 「网关地址」和「访问令牌」可在页面上复制；「复制环境变量」给出可直接在终端使用的 `KEY=value` 列表。
-
-### Claude Code CLI
-
-「Claude Code CLI」标签页写 `%USERPROFILE%\.claude\settings.json`；设置了 `CLAUDE_CONFIG_DIR` 时写该目录下的同名文件。只改 `env` 里的这些键：
-
-- `ANTHROPIC_BASE_URL`（不带 `/v1`）
-- `ANTHROPIC_AUTH_TOKEN`
-- `CLAUDE_CODE_ATTRIBUTION_HEADER=0`
-- 选中别名时的 `ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU}_MODEL` 与对应的 `_NAME`
-
-- 没有检测到 Claude Code（配置目录、`settings.json` 与 `claude` 可执行文件都不存在）时状态是「未检测到」，应用按钮不可用；先安装并运行一次 Claude Code。配置目录或 CLI 已存在、只是还没有 `settings.json` 时，应用会新建该文件。
-- 文件已存在时，首次写入前留整份备份 `settings.json.haxsd-byok.bak`，之后的应用不会覆盖它；文件原本不存在时没有可备份的内容，撤销后留下的是去掉这些键之后的 `settings.json`。
-- 应用后需要重新打开 Claude Code；已经运行的会话不会切到网关。
-- 撤销只移除上述键并还原接管前的值；你后来改过的值会保留并在页面上报告，不会被静默覆盖。
-- 以下情况会阻断并显示在「冲突与阻断」里：`settings.json` 不是合法 JSON；`apiKeyHelper` 有值；`env` 里已有不是本应用写入的 `ANTHROPIC_BASE_URL`；已有 `ANTHROPIC_API_KEY`，或显式开启（值不是 `false`）了 `CLAUDE_CODE_USE_BEDROCK`、`CLAUDE_CODE_USE_VERTEX`、`CLAUDE_CODE_USE_FOUNDRY`。
-- 存在系统级托管（`managed-settings.json`、它的 `managed-settings.d` 目录里的文件，或注册表 `SOFTWARE\Policies\ClaudeCode`）时状态为「受管配置」，本应用不会改写它。
-- 用户环境变量里的同名键只提示、不阻断：从本应用之外启动的 Claude Code 可能仍读到旧值。
+- 「网关地址」和「访问令牌」可在页面上复制。
 
 ### Claude Desktop
 
-「Claude Desktop」标签页写 `%LOCALAPPDATA%\Claude-3p\configLibrary`：`_meta.json` 是条目表与当前 `appliedId`，每个条目是一个 `<uuid>.json` profile。本应用只追加或更新自己的条目，其它条目、profile 与未知字段原样保留。
+「Claude Desktop」接管写 `%LOCALAPPDATA%\Claude-3p\configLibrary`：`_meta.json` 是条目表与当前 `appliedId`，每个条目是一个 `<uuid>.json` profile。本应用只追加或更新自己的条目，其它条目、profile 与未知字段原样保留。
 
 - 先完全退出 Claude Desktop（从托盘退出或结束进程，只关窗口不算）再应用或撤销；它运行时页面只给提示，服务端会拒绝写入。
 - 模型列表至少选一个，第一项是默认模型，顺序会写进客户端的模型列表；可以上移、下移、移除，模型来自共享模型库。
@@ -162,9 +145,9 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 ### 接管状态与令牌轮换
 
-- 网关由本应用进程提供。正常退出应用（从托盘选择退出）会撤销 CLI 接管；Claude Desktop 未运行时也撤销 Desktop 接管，正在运行时服务端无法改写它的 profile，接管保留到下次启动。下次启动后重新应用接管。
+- 网关由本应用进程提供。正常退出应用（从托盘选择退出）会撤销 Desktop 接管；Claude Desktop 未运行时才执行撤销，正在运行时服务端无法改写它的 profile，接管保留到下次启动。下次启动后重新应用接管。
 - 改端口、轮换令牌或改模型映射后，页面状态可能显示「配置已过期」：客户端里仍是旧值，重新应用接管即可；Desktop 还要先完全退出。
-- 「重新生成」会立即让旧令牌失效。Claude Desktop 正在运行或已接管时，先完全退出 Claude Desktop，已接管再撤销 Desktop 接管，然后轮换；CLI 已接管时，应用会自动把新令牌写回 `settings.json`。
+- 「重新生成」会立即让旧令牌失效。Claude Desktop 正在运行或已接管时，先完全退出 Claude Desktop，已接管再撤销 Desktop 接管，然后轮换。
 - 强制结束或崩溃不会执行退出清理：接管文件会保留，下次启动网关会重新监听同一端口，通常可以直接继续使用；改过端口、令牌或模型映射时按「配置已过期」重新应用。
 
 ### 订阅账号（可选）
@@ -180,15 +163,14 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 | 现象 | 处理 |
 | --- | --- |
-| Claude Code 提示未登录 | 走本机网关不需要登录 Anthropic 账号，凭据是 `ANTHROPIC_AUTH_TOKEN`。确认已应用接管，并且 Claude Code 是在应用之后重新打开的；配置被别的工具改写时重新应用一次接管 |
 | 订阅账号登录失败或 401 / 403 | 在插件账号里刷新令牌，仍失败就删除账号重新登录；`400` 且含 `third-party` / `extra usage` 表示上游不接受这种用法，改用 API Key |
 | 授权时报回调端口被占用 | 回调地址是 `http://localhost:54545/callback`；关掉占用 54545 的进程（例如另一个登录窗口）再重试 |
 | 请求打到了别的模型 | 未知模型会回落到默认模型，这是设计行为；检查默认模型与三个家族别名是否选了想要的模型 |
 | 保存网关时提示端口被占用 | 换一个端口再保存；保存失败时原来的监听与设置保持不变，不会出现「已保存、未监听」 |
-| `/model` 里显示的是哈希 | 映射写入的是模型库哈希；支持 `ANTHROPIC_DEFAULT_*_NAME` 的版本会显示显示名，不支持的版本直接显示哈希，这是预期行为 |
+| `/model` 里显示的是哈希 | 映射写入的是模型库哈希；显示名来自模型库，客户端不支持显示名时直接显示哈希，这是预期行为 |
 | 应用了 Desktop 接管但不生效 | 先完全退出 Claude Desktop（含托盘）再启动；仍不生效就看「配置来源」与冲突条目，受管状态只能手工配置 |
-| 改了端口、令牌或模型映射后连不上 | 状态可能显示「配置已过期」，重新应用接管；Desktop 还要先完全退出。轮换令牌时 Desktop 正在运行或已接管要先退出/撤销，CLI 会自动同步新令牌 |
-| 退出应用后 Claude Code / Desktop 连不上 | 正常退出会撤销 CLI 接管，Desktop 未运行时也撤销；Desktop 运行中则保留。下次启动后重新应用接管。强制结束或崩溃后接管文件保留，下次启动通常可以直接继续使用 |
+| 改了端口、令牌或模型映射后连不上 | 状态可能显示「配置已过期」，重新应用接管；Desktop 还要先完全退出。轮换令牌时 Desktop 正在运行或已接管要先退出/撤销 |
+| 退出应用后 Desktop 连不上 | 正常退出会撤销 Desktop 接管（未运行时）；Desktop 运行中则保留。下次启动后重新应用接管。强制结束或崩溃后接管文件保留，下次启动通常可以直接继续使用 |
 
 ## 调用与价值估算
 

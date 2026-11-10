@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::{Error, Result};
 
-use super::settings::GatewayValues;
+use super::GatewayValues;
 use super::{
     atomic_write, backup_once, content_hash, parse_json, read_optional, remove_file_if_exists,
     same_path, ConfigSource, DesktopTakeoverStatus, Family, TakeoverConflict, TakeoverState,
@@ -770,10 +770,10 @@ fn pretty(document: &Value) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, fs};
+    use std::fs;
 
     use super::*;
-    use crate::claude_code::ownership::DesktopPolicy;
+    use crate::claude_client::ownership::DesktopPolicy;
 
     struct Fixture {
         _root: tempfile::TempDir,
@@ -1178,10 +1178,6 @@ mod tests {
         assert_eq!(fixture.meta()["entries"], "legacy");
     }
 
-    fn desired_env() -> BTreeMap<String, Value> {
-        BTreeMap::new()
-    }
-
     fn inspect_with_gateway(
         fixture: &Fixture,
         gateway: Option<&GatewayValues>,
@@ -1201,11 +1197,9 @@ mod tests {
         let fixture = Fixture::installed();
         assert_eq!(fixture.apply(two_models()).state, TakeoverState::Applied);
 
-        let desired = desired_env();
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:43121",
             token: "rotated-token",
-            desired: &desired,
             available: true,
         };
         let status = inspect_with_gateway(&fixture, Some(&gateway));
@@ -1233,11 +1227,9 @@ mod tests {
         let fixture = Fixture::installed();
         fixture.apply(two_models());
 
-        let desired = desired_env();
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:43121",
             token: "local-test-token",
-            desired: &desired,
             available: false,
         };
         assert_eq!(
@@ -1249,11 +1241,9 @@ mod tests {
     #[test]
     fn a_desktop_takeover_without_a_receipt_is_never_stale() {
         let fixture = Fixture::installed();
-        let desired = desired_env();
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:9",
             token: "other-token",
-            desired: &desired,
             available: false,
         };
         let status = inspect_with_gateway(&fixture, Some(&gateway));

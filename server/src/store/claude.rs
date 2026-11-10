@@ -1,4 +1,4 @@
-//! Claude Code 网关设置与本地令牌；令牌与设置分开存放，不随设置序列化。
+//! Claude 网关设置与本地令牌；令牌与设置分开存放，不随设置序列化。
 use super::{now_ms, Store};
 use crate::{anthropic::ClaudeSettings, Error, Result};
 

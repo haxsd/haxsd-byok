@@ -1,17 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { api, type ClaudeCliTakeover, type ClaudeDesktopTakeover, type ClaudeSettings, type ClaudeTakeoverConflict } from "../../shared/api";
+import { api, type ClaudeDesktopTakeover, type ClaudeSettings, type ClaudeTakeoverConflict } from "../../shared/api";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
-import { Tabs } from "../../shared/ui/Tabs";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
 import { terminalIcon } from "../../shared/ui/icons";
 import { PageActions } from "../../shell/PageActions";
 import { PageContent } from "../../shell/layout/PageContent";
-import { ClaudeCliTab } from "./ClaudeCliTab";
 import { ClaudeDesktopTab } from "./ClaudeDesktopTab";
 import { ClaudeGatewayCard } from "./ClaudeGatewayCard";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
@@ -20,30 +17,26 @@ import {
   claudeConnectionView,
   claudeTokenRotationGate,
   claudeUndoKept,
-  type ClaudeTakeoverTarget,
 } from "./claudeConnectionView";
 import { claudeDesktopModelDraft } from "./claudeTakeoverPlan";
 import styles from "./ClaudeSettingsPage.module.scss";
 
-type ErrorScope = "gateway" | "cli" | "desktop";
+type ErrorScope = "gateway" | "desktop";
 type BusyAction = "save" | "apply" | "undo" | "rotate";
 type Busy = { scope: ErrorScope; action: BusyAction };
 
 /**
- * Claude 接入页：一个网关、两个客户端。
+ * Claude 接入页：一个本机 Anthropic 网关，一个 Claude Desktop 接管。
  *
- * 网关设置是共享的，两个 tab 只负责各自的接管；设置与接管状态分开读：设置是页面的
- * 草稿（保存前不影响结论），状态与接管结果由 store 统一刷新，顶栏计数也读同一份。
+ * 网关设置是共享的；Desktop 接管只写它自己的 configLibrary profile。设置与接管状态
+ * 分开读：设置是页面的草稿（保存前不影响结论），状态与接管结果由 store 统一刷新。
  */
 export function ClaudeSettingsPage() {
-  const navigate = useNavigate();
   const { models, claudeStatus, claudeTakeover } = useAppStore();
   const [saved, setSaved] = useState<ClaudeSettings | null>(null);
   const [draft, setDraft] = useState<ClaudeSettings | null>(null);
   const [desktopModels, setDesktopModels] = useState<string[]>([]);
-  const [target, setTarget] = useState<ClaudeTakeoverTarget>("cli");
   // 撤销不保证全部还原：服务端保留的条目要留在页面上，不能只弹一句「已撤销」。
-  const [cliKept, setCliKept] = useState<ClaudeTakeoverConflict[]>([]);
   const [desktopKept, setDesktopKept] = useState<ClaudeTakeoverConflict[]>([]);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<{ scope: ErrorScope; cause: unknown } | null>(null);
@@ -76,15 +69,13 @@ export function ClaudeSettingsPage() {
   const dirty = Boolean(saved && draft && JSON.stringify(saved) !== JSON.stringify(draft));
   const view = claudeConnectionView(claudeStatus, claudeTakeover);
   const rotation = claudeTokenRotationGate(claudeTakeover);
-  const gate = claudeActionGate("cli", { settings: saved, status: claudeStatus, takeover: claudeTakeover, dirty });
-  const desktopGate = claudeActionGate("desktop", {
+  const gate = claudeActionGate({
     settings: saved,
     status: claudeStatus,
     takeover: claudeTakeover,
     dirty,
     desktopModels,
   });
-  const activeGate = target === "cli" ? gate : desktopGate;
 
   const run = async (next: Busy, operation: () => Promise<void>) => {
     setBusy(next);
@@ -111,34 +102,8 @@ export function ClaudeSettingsPage() {
 
   const rotateToken = () => {
     void run({ scope: "gateway", action: "rotate" }, async () => {
-      // 服务端自己把新令牌写回已接管的 CLI（`cli_synced`）；这里不再二次应用接管，
-      // 否则会用页面上的旧设置覆盖掉刚轮换的令牌。
-      const { cliSynced } = await api.rotateClaudeToken();
-      message(cliSynced ? t("token 已重新生成，CLI 接管已同步") : t("token 已重新生成"));
-    });
-  };
-
-  const applyCli = () => {
-    if (!saved) return;
-    void run({ scope: "cli", action: "apply" }, async () => {
-      await api.applyClaudeCli({
-        sonnet_model_hash: saved.sonnet_model_hash ?? undefined,
-        opus_model_hash: saved.opus_model_hash ?? undefined,
-        haiku_model_hash: saved.haiku_model_hash ?? undefined,
-      });
-      setCliKept([]);
-      message(t("Claude Code 接管已应用，请重新打开 Claude Code"));
-    });
-  };
-
-  const undoCli = () => {
-    void run({ scope: "cli", action: "undo" }, async () => {
-      const status: ClaudeCliTakeover = await api.undoClaudeCli();
-      const kept = claudeUndoKept(status.conflicts);
-      setCliKept(kept);
-      message(kept.length
-        ? t("已撤销；保留了 {count} 项接管后的改动", { count: kept.length })
-        : t("Claude Code 接管已撤销"));
+      await api.rotateClaudeToken();
+      message(t("token 已重新生成"));
     });
   };
 
@@ -185,51 +150,27 @@ export function ClaudeSettingsPage() {
       rotateBlockedReason={rotation.reason}
     />
     <TitledCard
-      title={t("接管客户端")}
-      description={t("两个客户端分别接管；网关设置共用")}
+      title={t("接管 Claude Desktop")}
+      description={t("只写 Desktop 自己的第三方推理 profile；网关设置共用")}
       icon={terminalIcon}
       action={busy?.scope === "gateway"
         ? <StatusPill tone="warn">{t("保存中…")}</StatusPill>
         : dirty ? <StatusPill tone="warn">{t("有未保存的改动")}</StatusPill> : undefined}
     >
-      <div className={styles.tabsBody}>
-        <Tabs value={target} onValueChange={value => setTarget(value as ClaudeTakeoverTarget)} items={[
-          {
-            value: "cli",
-            label: "Claude Code CLI",
-            content: <ClaudeCliTab
-              saved={saved}
-              draft={draft}
-              status={claudeStatus}
-              takeover={claudeTakeover?.cli ?? null}
-              models={models}
-              gate={gate}
-              busy={busy !== null}
-              error={error?.scope === "cli" ? error.cause : null}
-              keptAfterUndo={cliKept}
-              onChange={setDraft}
-              onCopy={copy}
-              onOpenModels={() => void navigate("/models")}
-            />,
-          },
-          {
-            value: "desktop",
-            label: "Claude Desktop",
-            content: <ClaudeDesktopTab
-              draft={draft}
-              status={claudeStatus}
-              takeover={claudeTakeover?.desktop ?? null}
-              models={models}
-              desktopModels={desktopModels}
-              gate={desktopGate}
-              busy={busy !== null}
-              error={error?.scope === "desktop" ? error.cause : null}
-              keptAfterUndo={desktopKept}
-              onDesktopModelsChange={setDesktopModels}
-              onCopy={copy}
-            />,
-          },
-        ]} />
+      <div className={styles.settingsBody}>
+        <ClaudeDesktopTab
+          draft={draft}
+          status={claudeStatus}
+          takeover={claudeTakeover?.desktop ?? null}
+          models={models}
+          desktopModels={desktopModels}
+          gate={gate}
+          busy={busy !== null}
+          error={error?.scope === "desktop" ? error.cause : null}
+          keptAfterUndo={desktopKept}
+          onDesktopModelsChange={setDesktopModels}
+          onCopy={copy}
+        />
       </div>
     </TitledCard>
     <HarnessCapabilities client="claude" />
@@ -242,22 +183,22 @@ export function ClaudeSettingsPage() {
         onClick={() => void save()}
       >{busy?.action === "save" ? t("保存中…") : t("保存")}</Button>
       <Button
-        disabled={busy !== null || !activeGate.apply}
-        title={activeGate.applyBlockedReason ?? undefined}
-        onClick={target === "cli" ? applyCli : applyDesktop}
-      >{target === "cli" ? t("应用到 Claude Code") : t("应用到 Claude Desktop")}</Button>
+        disabled={busy !== null || !gate.apply}
+        title={gate.applyBlockedReason ?? undefined}
+        onClick={applyDesktop}
+      >{t("应用到 Claude Desktop")}</Button>
       <Button
-        disabled={busy !== null || !activeGate.undo}
-        onClick={target === "cli" ? undoCli : undoDesktop}
-      >{target === "cli" ? t("撤销 Claude Code 接管") : t("撤销 Claude Desktop 接管")}</Button>
+        disabled={busy !== null || !gate.undo}
+        onClick={undoDesktop}
+      >{t("撤销 Claude Desktop 接管")}</Button>
     </PageActions>
     <PageContent
       title={<PageTitle
         title="Claude"
         status={<StatusPill tone={view.tone}>{view.label}</StatusPill>}
-        meta={t("把 Claude Code 与 Claude Desktop 的模型请求接到本机网关")}
+        meta={t("把 Claude Desktop 的模型请求接到本机网关")}
       />}
-      sections={[{ key: "claude", estimatedHeight: 1180, content }]}
+      sections={[{ key: "claude", estimatedHeight: 1080, content }]}
     />
   </>;
 }

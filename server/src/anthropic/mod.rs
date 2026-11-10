@@ -1,6 +1,6 @@
 //! 入站 Anthropic Messages 网关。
 //!
-//! Claude Code 是这里的客户端：它把对话与工具定义发到本机回环端口，工具调用仍由
+//! Claude 客户端是这里的调用方：它把对话与工具定义发到本机回环端口，工具调用仍由
 //! 它自己执行，网关只负责把请求投影成共享的模型调用、再把共享事件流写回 Anthropic
 //! 的 SSE 协议。出站协议（Anthropic / OpenAI Chat / OpenAI Responses / 插件）由
 //! `crate::provider` 决定，本模块不复制任何一家的请求构造或 SSE 解析。
@@ -22,10 +22,10 @@ use crate::{Error, Result};
 /// 网关默认端口。与 Codex（43120）相邻，避免两者默认撞在一起。
 pub const DEFAULT_PORT: u16 = 43_121;
 
-/// Claude Code 网关设置。
+/// Claude 网关设置。
 ///
 /// 模型字段存的是模型库里的 `model_hash`（稳定身份），不是显示名：改名或轮换凭据
-/// 之后引用继续有效。别名缺省时回落到默认模型——Claude Code 会发送它自带的
+/// 之后引用继续有效。别名缺省时回落到默认模型——客户端会发送它自带的
 /// `claude-sonnet-4-5-…` 这类 ID，网关按家族名解析。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
@@ -114,7 +114,7 @@ pub struct ClaudeStatus {
     pub enabled: bool,
     pub listening: bool,
     pub port: u16,
-    /// Claude Code 侧应填的 `ANTHROPIC_BASE_URL`。
+    /// Claude 客户端侧应填的 `ANTHROPIC_BASE_URL`。
     pub base_url: String,
     /// 客户端侧应填的 `ANTHROPIC_AUTH_TOKEN`。管理接口只在本机可用，界面需要它来
     /// 生成启动命令；设置 JSON 本身不携带令牌。
@@ -128,7 +128,7 @@ pub struct ClaudeStatus {
 
 /// Anthropic 协议形状的错误。
 ///
-/// `x-should-retry` / `retry-after` 是 Claude Code 的重试判据；上游适配器只把非成功
+/// `x-should-retry` / `retry-after` 是 Claude 客户端的重试判据；上游适配器只把非成功
 /// 状态写进错误文案，取不到原始响应头，所以这里按状态码给出可重试性。`retry-after`
 /// 只在拿到明确秒数时才写（当前不写），不编造等待时间。
 #[derive(Debug)]
@@ -195,7 +195,7 @@ impl ApiError {
         if let Error::Protocol(message) = error {
             // 这条链路上的 `Error::Protocol` 来自适配器对上游 SSE 的解读（例如工具参数
             // 拼不出合法 JSON）或插件协议，不是客户端请求本身不合法：回 502 并标记可
-            // 重试，Claude Code 会重发；以前的 400 让它按"请求写错了"处理，重发也不会好。
+            // 重试，客户端会重发；以前的 400 让它按"请求写错了"处理，重发也不会好。
             // 客户端请求的 400 在 `messages` 里直接构造 `ApiError::invalid`。
             return Self {
                 status: StatusCode::BAD_GATEWAY,

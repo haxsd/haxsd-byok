@@ -50,7 +50,7 @@ function codexStatus(overrides = {}) {
 }
 
 function claudeStatus(overrides = {}) {
-  return { enabled: true, listening: true, cli: "ready", desktop: "ready", ...overrides };
+  return { enabled: true, listening: true, desktop: "ready", ...overrides };
 }
 
 test("before a client is picked the checklist holds only the shared first step", async () => {
@@ -178,7 +178,7 @@ test("picking Claude adds the Claude step and never counts the other clients", a
     cursor: cursorHarness({ mode: "official" }),
     devin: devinStatus({ enabled: false, listening: false, ready: false }),
     codex: codexStatus({ enabled: false, listening: false, configured: false }),
-    claude: claudeStatus({ cli: "applied" }),
+    claude: claudeStatus({ desktop: "applied" }),
     callCounts: { claude: 1 },
   }));
 
@@ -187,18 +187,18 @@ test("picking Claude adds the Claude step and never counts the other clients", a
   assert.equal(view.completed, 3);
 });
 
-test("the Claude step accepts either client but surfaces conflicts and stale takeovers", async () => {
+test("the Claude step surfaces Desktop conflicts and stale takeovers", async () => {
   const buildOnboarding = await loadOnboarding();
 
   const rows = [
     { value: null, done: false, status: "读取中…", why: "no status has been read yet" },
     { value: claudeStatus({ enabled: false, listening: false }), done: false, status: "网关未启用" },
     { value: claudeStatus({ listening: false }), done: false, status: "网关已启用，等待端口就绪" },
-    { value: claudeStatus({ cli: "applied", desktop: "missing" }), done: true, status: "已接管" },
-    { value: claudeStatus({ cli: "conflict", desktop: "applied" }), done: false, status: "配置冲突" },
-    { value: claudeStatus({ cli: "stale", desktop: "applied" }), done: false, status: "配置已过期" },
-    { value: claudeStatus({ cli: "ready", desktop: "running" }), done: false, status: "先完全退出 Claude Desktop" },
-    { value: claudeStatus({ cli: "managed", desktop: "missing" }), done: false, status: "受管配置，按页面指引处理" },
+    { value: claudeStatus({ desktop: "applied" }), done: true, status: "已接管" },
+    { value: claudeStatus({ desktop: "conflict" }), done: false, status: "配置冲突" },
+    { value: claudeStatus({ desktop: "stale" }), done: false, status: "配置已过期" },
+    { value: claudeStatus({ desktop: "running" }), done: false, status: "先完全退出 Claude Desktop" },
+    { value: claudeStatus({ desktop: "managed" }), done: false, status: "受管配置，按页面指引处理" },
     { value: claudeStatus(), done: false, status: "网关在运行，还差应用接管" },
   ];
 

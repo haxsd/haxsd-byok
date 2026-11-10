@@ -1284,7 +1284,7 @@ fn message_text(message: &CanonicalMessage) -> String {
             .iter()
             .filter_map(|part| match part {
                 ContentPart::Text { text } => Some(text.clone()),
-                ContentPart::Image { .. } => None,
+                ContentPart::Image { .. } | ContentPart::Document { .. } => None,
             })
             .collect::<Vec<_>>()
             .join("\n"),

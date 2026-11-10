@@ -598,6 +598,18 @@ fn responses_content(parts: &[ContentPart], text_type: &str) -> Result<Vec<Value
                 "detail":"auto",
                 "image_url":format!("data:{mime_type};base64,{}", STANDARD.encode(data)),
             }))),
+            ContentPart::Document {
+                mime_type,
+                data,
+                title,
+                ..
+            } => Some(Ok(json!({
+                "type":"input_file",
+                "filename": title.as_deref().unwrap_or_else(|| {
+                    if mime_type.contains("pdf") { "document.pdf" } else { "document" }
+                }),
+                "file_data": format!("data:{mime_type};base64,{}", STANDARD.encode(data)),
+            }))),
         })
         .collect()
 }
@@ -656,6 +668,26 @@ mod tests {
     use super::*;
     use crate::model::ProviderReplayState;
     use crate::provider::testing;
+
+    #[test]
+    fn pdf_documents_become_input_files_on_the_responses_wire() {
+        let content = responses_content(
+            &[ContentPart::Document {
+                mime_type: "application/pdf".into(),
+                data: b"%PDF-1.7".to_vec(),
+                title: Some("paper".into()),
+                cache_control: None,
+            }],
+            "input_text",
+        )
+        .unwrap();
+        assert_eq!(content[0]["type"], "input_file");
+        assert_eq!(content[0]["filename"], "paper");
+        assert_eq!(
+            content[0]["file_data"],
+            "data:application/pdf;base64,JVBERi0xLjc="
+        );
+    }
 
     /// 结束条件一：`response.completed` 收尾，文本照常交付。
     #[tokio::test]

@@ -1,4 +1,4 @@
-//! Claude Code 的独立回环监听：启停、端口、令牌与并发边界。
+//! Claude 的独立回环监听：启停、端口、令牌与并发边界。
 //!
 //! 只监听 `127.0.0.1`。鉴权用网关自己的 Bearer 令牌（也接受 `x-api-key`，Claude Code
 //! 两种都可能发），令牌只生成一次并保存在 `service_settings` 里；比较走 SHA-256 摘要，
@@ -465,7 +465,7 @@ async fn streamed(
 
 /// 非流式：先把整条上游事件流收完，再一次性写出完整消息。
 ///
-/// 调用方（Claude Code 的 compaction 重发、Desktop 的连通性测试）要的是一份
+/// 调用方（Claude 客户端的 compaction 重发、Desktop 的连通性测试）要的是一份
 /// Anthropic `message` 文档，但上游共享接口只有流；这里复用同一个 translator，
 /// 保证停止序列、思考签名与 stop_reason 的语义和流式完全一致。
 ///
@@ -1023,7 +1023,7 @@ mod tests {
     }
 
     /// 非流式在写出第一个字节之前就拿到了错误，所以即使已经收到部分文本也能用 HTTP
-    /// 状态码收尾——Claude Code 据此重试，而不是把半截消息当成成功。
+    /// 状态码收尾——客户端据此重试，而不是把半截消息当成成功。
     #[tokio::test]
     async fn a_non_streaming_failure_after_partial_content_is_an_http_error() {
         let (_directory, _store, gateway, token) = gateway_with_results(vec![

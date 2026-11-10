@@ -1,5 +1,4 @@
 import type {
-  ClaudeCliTakeoverState,
   ClaudeDesktopTakeoverState,
   CursorMode,
 } from "../../shared/api";
@@ -34,7 +33,6 @@ export interface CodexOnboardingInput {
 export interface ClaudeOnboardingInput {
   enabled: boolean;
   listening: boolean;
-  cli: ClaudeCliTakeoverState;
   desktop: ClaudeDesktopTakeoverState;
 }
 
@@ -169,18 +167,17 @@ function codexStep(codex: CodexOnboardingInput | null): OnboardingStep {
 }
 
 /**
- * Claude 有 CLI 与 Desktop 两个客户端，任一接管成功都算这条路能用。
+ * Claude Desktop 接管成功即算这条路能用。
  *
- * 冲突和过期优先于「已接管」：一个客户端已经接通、另一个仍处于冲突时，不能把整条
- * 路径显示成已完成，否则用户会以为不需要处理另一个客户端。
+ * 冲突和过期优先于「已接管」：客户端已经接通但配置仍处于冲突时，不能把整条路径
+ * 显示成已完成，否则用户会以为不需要处理。
  */
 function claudeStep(claude: ClaudeOnboardingInput | null): OnboardingStep {
-  const states = claude ? [claude.cli, claude.desktop] : [];
-  const conflict = states.includes("conflict");
-  const stale = states.includes("stale");
-  const applied = states.includes("applied");
-  const managed = states.includes("managed");
-  const running = states.includes("running");
+  const conflict = claude?.desktop === "conflict";
+  const stale = claude?.desktop === "stale";
+  const applied = claude?.desktop === "applied";
+  const managed = claude?.desktop === "managed";
+  const running = claude?.desktop === "running";
   const status = !claude
     ? t("读取中…")
     : conflict
@@ -201,7 +198,7 @@ function claudeStep(claude: ClaudeOnboardingInput | null): OnboardingStep {
   return {
     key: "claude",
     title: t("让 Claude 用上它"),
-    detail: t("选择默认模型并保存、启用 Claude 网关，再接管 Claude Code CLI 或 Claude Desktop；Desktop 接管前需要完全退出。"),
+    detail: t("选择默认模型并保存、启用 Claude 网关，再接管 Claude Desktop；接管前需要完全退出。"),
     done: Boolean(claude?.enabled && claude.listening && applied && !conflict && !stale),
     status,
     path: "/harness/claude",

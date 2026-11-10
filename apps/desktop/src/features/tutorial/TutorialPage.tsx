@@ -84,7 +84,6 @@ export function TutorialPage() {
     claude: claudeStatus && claudeTakeover ? {
       enabled: claudeStatus.enabled,
       listening: claudeStatus.listening,
-      cli: claudeTakeover.cli.state,
       desktop: claudeTakeover.desktop.state,
     } : null,
     hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.compatible && hostStatus.extension.patched),

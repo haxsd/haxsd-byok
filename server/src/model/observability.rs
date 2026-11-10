@@ -105,7 +105,7 @@ pub enum CallClient {
     Cursor,
     Devin,
     Codex,
-    /// Claude Code 经入站 Anthropic Messages 网关发起的调用。
+    /// Claude 客户端经入站 Anthropic Messages 网关发起的调用。
     Claude,
     Internal,
 }

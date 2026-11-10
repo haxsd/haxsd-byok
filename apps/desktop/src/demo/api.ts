@@ -123,15 +123,6 @@ let claudeSettings: ClaudeSettings = {
   haiku_model_hash: models[3].model_hash,
 };
 let claudeTakeover: ClaudeTakeover = {
-  cli: {
-    state: "ready",
-    settings_path: "~/.claude/settings.json",
-    backup_path: "",
-    restorable: false,
-    conflicts: [],
-    missing_models: [],
-    managed_sources: [],
-  },
   desktop: {
     state: "ready",
     config_source: "local",
@@ -323,23 +314,9 @@ export function installDemoApi() {
     }
     if (path === "/claude/status") return json(claudeStatus());
     if (path === "/claude/token/rotate" && method === "POST") {
-      return json({ token: claudeStatus().token, cli_synced: false });
+      return json({ token: claudeStatus().token });
     }
     if (path === "/claude/takeover") return json(claudeTakeover);
-    if (path === "/claude/takeover/cli" && method === "PUT") {
-      const action = (body as { action?: string } | null)?.action ?? "apply";
-      claudeTakeover = {
-        ...claudeTakeover,
-        cli: {
-          ...claudeTakeover.cli,
-          state: action === "apply" ? "applied" : "ready",
-          backup_path: action === "apply" ? "~/.claude/settings.json.haxsd-byok.bak" : "",
-          restorable: action === "apply",
-          conflicts: [],
-        },
-      };
-      return json(claudeTakeover.cli);
-    }
     if (path === "/claude/takeover/desktop" && method === "PUT") {
       const action = (body as { action?: string } | null)?.action ?? "apply";
       claudeTakeover = {

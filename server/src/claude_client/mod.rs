@@ -1,11 +1,10 @@
-//! Claude Code CLI 与 Claude Desktop 的配置接管。
+//! Claude Desktop 的配置接管与共享文件操作。
 //!
-//! 两条接管路径都只写本应用负责的键：CLI 只改 `settings.json` 的 `env`，Desktop 只写
-//! configLibrary 里自己的 entry/profile。首次写入前留整份备份，收据放在应用数据目录；
-//! 撤销按收据逐键还原，用户改过的值保留并报告，不静默覆盖。
+//! 网关本身不写用户文件；只有显式应用/撤销才改 Claude Desktop 的 configLibrary
+//! entry/profile。首次写入前留整份备份，收据放在应用数据目录；撤销按收据逐项还原，
+//! 用户改过的值保留并报告，不静默覆盖。
 pub mod desktop;
 pub mod ownership;
-pub mod settings;
 
 use std::{
     fs,
@@ -17,26 +16,13 @@ use serde::Serialize;
 
 use crate::{Error, Result};
 
-/// Claude Code 读的入口地址；不带 `/v1`。
-pub const BASE_URL_KEY: &str = "ANTHROPIC_BASE_URL";
-pub const AUTH_TOKEN_KEY: &str = "ANTHROPIC_AUTH_TOKEN";
-pub const ATTRIBUTION_HEADER_KEY: &str = "CLAUDE_CODE_ATTRIBUTION_HEADER";
-pub const ATTRIBUTION_VALUE: &str = "0";
-/// 接管必须让位的键：已有非我们的值时拒绝覆盖。
-pub const API_KEY_KEY: &str = "ANTHROPIC_API_KEY";
-pub const BEDROCK_KEY: &str = "CLAUDE_CODE_USE_BEDROCK";
-pub const VERTEX_KEY: &str = "CLAUDE_CODE_USE_VERTEX";
-pub const FOUNDRY_KEY: &str = "CLAUDE_CODE_USE_FOUNDRY";
-/// 顶层键，不在 `env` 里；它会盖过 `ANTHROPIC_AUTH_TOKEN`。
-pub const API_KEY_HELPER_KEY: &str = "apiKeyHelper";
-
-/// 用户手写文件的备份后缀：`settings.json` → `settings.json.haxsd-byok.bak`。
+/// 用户手写文件的备份后缀：`_meta.json` → `_meta.json.haxsd-byok.bak`。
 pub const BACKUP_SUFFIX: &str = "haxsd-byok.bak";
 pub const RECEIPT_VERSION: u32 = 1;
 /// `_meta.json` 里我们的条目名。
 pub const DESKTOP_ENTRY_NAME: &str = "haxsd byok";
 
-/// 模型家族：决定 CLI 的 `ANTHROPIC_DEFAULT_*` 键与 Desktop 的 `anthropicFamilyTier`。
+/// 模型家族：只用于 Desktop profile 的 `anthropicFamilyTier`。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Family {
     Sonnet,
@@ -55,22 +41,6 @@ impl Family {
         }
     }
 
-    pub const fn model_env(self) -> &'static str {
-        match self {
-            Self::Sonnet => "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            Self::Opus => "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            Self::Haiku => "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-        }
-    }
-
-    pub const fn name_env(self) -> &'static str {
-        match self {
-            Self::Sonnet => "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            Self::Opus => "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-            Self::Haiku => "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-        }
-    }
-
     /// 从显示名或厂商标识里认家族；`opus` 优先，避免名字里同时出现多个家族时误判。
     pub fn from_hint(text: &str) -> Option<Self> {
         let text = text.to_ascii_lowercase();
@@ -85,20 +55,6 @@ impl Family {
         }
     }
 }
-
-/// 我们可能写进 CLI `env` 的全部键。`ANTHROPIC_MODEL`、`ANTHROPIC_API_KEY`、
-/// `CLAUDE_CODE_OAUTH_TOKEN` 都不在列表里：它们属于用户或客户端自己的选择。
-pub const MANAGED_ENV_KEYS: [&str; 9] = [
-    BASE_URL_KEY,
-    AUTH_TOKEN_KEY,
-    ATTRIBUTION_HEADER_KEY,
-    Family::Sonnet.model_env(),
-    Family::Sonnet.name_env(),
-    Family::Opus.model_env(),
-    Family::Opus.name_env(),
-    Family::Haiku.model_env(),
-    Family::Haiku.name_env(),
-];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -159,18 +115,13 @@ impl TakeoverConflict {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct CliTakeoverStatus {
-    pub state: TakeoverState,
-    pub settings_path: String,
-    pub backup_path: String,
-    /// 收据属于当前配置目录，撤销才有依据；备份文件本身不足以还原。
-    pub restorable: bool,
-    pub conflicts: Vec<TakeoverConflict>,
-    /// 设置里选中了、但模型库里已经不存在的哈希。
-    pub missing_models: Vec<String>,
-    /// 生效的受管策略文件；任意一个存在就说明 `settings.json` 不会被读取。
-    pub managed_sources: Vec<String>,
+/// 状态检查时已知的网关值：判断客户端 profile 是否仍指向当前网关。
+#[derive(Clone, Copy, Debug)]
+pub struct GatewayValues<'a> {
+    pub base_url: &'a str,
+    pub token: &'a str,
+    /// 网关已启用、正在监听、端口一致、默认模型存在，并且没有缺失模型。
+    pub available: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -188,7 +139,6 @@ pub struct DesktopTakeoverStatus {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct TakeoverStatus {
-    pub cli: CliTakeoverStatus,
     pub desktop: DesktopTakeoverStatus,
 }
 
@@ -282,8 +232,6 @@ pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use super::*;
 
     /// 桌面端解析器读的是同一份 JSON：服务端字段一改，Rust 与 Node 两个测试都会失败，
@@ -294,36 +242,6 @@ mod tests {
     #[test]
     fn the_desktop_fixture_matches_the_server_takeover_status() {
         let status = TakeoverStatus {
-            cli: CliTakeoverStatus {
-                state: TakeoverState::Conflict,
-                settings_path: "C:\\Users\\me\\.claude\\settings.json".into(),
-                backup_path: "C:\\Users\\me\\.claude\\settings.json.haxsd-byok.bak".into(),
-                restorable: true,
-                conflicts: vec![
-                    TakeoverConflict::keyed(
-                        "env_base_url",
-                        "ANTHROPIC_BASE_URL",
-                        "env.ANTHROPIC_BASE_URL is already set to https://api.anthropic.com; applying would replace it",
-                        true,
-                    ),
-                    TakeoverConflict::keyed(
-                        "user_modified",
-                        "ANTHROPIC_DEFAULT_SONNET_MODEL",
-                        "env.ANTHROPIC_DEFAULT_SONNET_MODEL changed after the takeover; undo will keep the current value",
-                        true,
-                    ),
-                    TakeoverConflict::keyed(
-                        "shell_env",
-                        "ANTHROPIC_AUTH_TOKEN",
-                        "ANTHROPIC_AUTH_TOKEN=[redacted] is also set in the user environment; Claude Code started outside these settings may use it",
-                        false,
-                    ),
-                ],
-                missing_models: vec!["gone3333".into()],
-                managed_sources: vec![
-                    "C:\\Program Files\\ClaudeCode\\managed-settings.d\\10-company.json".into(),
-                ],
-            },
             desktop: DesktopTakeoverStatus {
                 state: TakeoverState::Applied,
                 config_source: ConfigSource::Local,
@@ -339,27 +257,11 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    /// 9 个键：入口地址、凭据、归属头，以及三个家族各自的模型与显示名。
     #[test]
-    fn managed_env_keys_name_the_model_and_its_display_name_for_every_family() {
-        assert_eq!(MANAGED_ENV_KEYS.len(), 9);
-        let unique = MANAGED_ENV_KEYS.iter().collect::<BTreeSet<_>>();
-        assert_eq!(
-            unique.len(),
-            MANAGED_ENV_KEYS.len(),
-            "duplicate managed key"
-        );
-        for family in Family::ALL {
-            assert!(MANAGED_ENV_KEYS.contains(&family.model_env()));
-            assert!(MANAGED_ENV_KEYS.contains(&family.name_env()));
-            assert_eq!(
-                family.name_env(),
-                format!(
-                    "ANTHROPIC_DEFAULT_{}_MODEL_NAME",
-                    family.tier().to_uppercase()
-                )
-            );
-        }
-        assert!(MANAGED_ENV_KEYS.contains(&ATTRIBUTION_HEADER_KEY));
+    fn families_are_recognised_from_display_names() {
+        assert_eq!(Family::from_hint("Claude Opus 4"), Some(Family::Opus));
+        assert_eq!(Family::from_hint("claude-sonnet-4-5"), Some(Family::Sonnet));
+        assert_eq!(Family::from_hint("haiku"), Some(Family::Haiku));
+        assert_eq!(Family::from_hint("deepseek"), None);
     }
 }

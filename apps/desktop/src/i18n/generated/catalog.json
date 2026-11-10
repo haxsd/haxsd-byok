@@ -74,7 +74,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 138,
+          "line": 137,
           "column": 6
         }
       ]
@@ -247,7 +247,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 67,
+          "line": 66,
           "column": 12
         },
         {
@@ -257,12 +257,12 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 188,
+          "line": 189,
           "column": 14
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 207,
           "column": 36
         }
       ]
@@ -322,7 +322,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 135,
           "column": 15
         }
       ]
@@ -334,7 +334,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 137,
+          "line": 136,
           "column": 18
         }
       ]
@@ -446,7 +446,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 588,
+          "line": 585,
           "column": 86
         }
       ]
@@ -485,7 +485,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 154,
+          "line": 155,
           "column": 19
         },
         {
@@ -531,7 +531,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 220,
+          "line": 217,
           "column": 13
         }
       ]
@@ -557,7 +557,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 216,
+          "line": 213,
           "column": 13
         }
       ]
@@ -569,7 +569,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 585,
+          "line": 582,
           "column": 119
         }
       ]
@@ -629,7 +629,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 149,
+          "line": 114,
           "column": 15
         }
       ]
@@ -694,7 +694,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 592,
+          "line": 589,
           "column": 39
         }
       ]
@@ -734,7 +734,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 587,
+          "line": 584,
           "column": 69
         }
       ]
@@ -780,7 +780,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 160,
+          "line": 161,
           "column": 14
         }
       ]
@@ -806,18 +806,6 @@
           "file": "features/calls/CallsPage.tsx",
           "line": 128,
           "column": 34
-        }
-      ]
-    },
-    "098d0ffd69fc799a": {
-      "source": "settings.json 预览",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 151,
-          "column": 64
         }
       ]
     },
@@ -859,7 +847,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 98,
+          "line": 99,
           "column": 19
         }
       ]
@@ -873,18 +861,6 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 96,
           "column": 21
-        }
-      ]
-    },
-    "0a1a815fd66ba627": {
-      "source": "Claude Desktop 的 CLI 交接与云账号能力",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 65,
-          "column": 7
         }
       ]
     },
@@ -1034,7 +1010,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 225,
+          "line": 224,
           "column": 24
         }
       ]
@@ -1124,35 +1100,6 @@
         }
       ]
     },
-    "0ccdddcbb83794d0": {
-      "source": "默认模型已不在模型库里，请到模型库重新选择。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 145,
-          "column": 20
-        }
-      ]
-    },
-    "0d741e79b92ee3b0": {
-      "source": "模型映射",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 134,
-          "column": 53
-        },
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 136,
-          "column": 18
-        }
-      ]
-    },
     "0dbd1f223921aa7d": {
       "source": "插件运行时与插件数据",
       "kind": "text",
@@ -1186,18 +1133,6 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 36,
           "column": 68
-        }
-      ]
-    },
-    "0e37b6408d8aa540": {
-      "source": "应用到 Claude Code",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 248,
-          "column": 28
         }
       ]
     },
@@ -1343,7 +1278,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 132,
+          "line": 164,
           "column": 22
         }
       ]
@@ -1372,7 +1307,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 208,
+          "line": 205,
           "column": 13
         }
       ]
@@ -1460,13 +1395,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 175,
-          "column": 141
-        },
-        {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 62,
+          "line": 61,
           "column": 25
         },
         {
@@ -1488,7 +1418,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 89,
+          "line": 87,
           "column": 32
         }
       ]
@@ -1615,7 +1545,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 139,
+          "line": 138,
           "column": 6
         }
       ]
@@ -1662,18 +1592,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 98,
-          "column": 13
-        },
-        {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 61,
+          "line": 59,
           "column": 18
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 91,
+          "line": 89,
           "column": 21
         },
         {
@@ -1712,7 +1637,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 517,
           "column": 24
         },
         {
@@ -1735,6 +1660,28 @@
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 128,
+          "column": 48
+        }
+      ]
+    },
+    "163368238da51da7": {
+      "source": "客户端按家族请求时使用；留空回落到默认模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 128,
+          "column": 49
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 138,
+          "column": 47
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 148,
           "column": 48
         }
       ]
@@ -1875,7 +1822,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 647,
+          "line": 644,
           "column": 48
         }
       ]
@@ -1887,7 +1834,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 162,
+          "line": 160,
           "column": 12
         }
       ]
@@ -2015,7 +1962,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 189,
+          "line": 190,
           "column": 31
         }
       ]
@@ -2195,17 +2142,17 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 125,
+          "line": 123,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 154,
+          "line": 152,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 191,
+          "line": 188,
           "column": 13
         }
       ]
@@ -2267,7 +2214,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 136,
+          "line": 132,
           "column": 47
         }
       ]
@@ -2365,7 +2312,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 105,
+          "line": 104,
           "column": 27
         },
         {
@@ -2375,7 +2322,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 612,
+          "line": 609,
           "column": 23
         }
       ]
@@ -2413,12 +2360,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 53,
-          "column": 83
+          "line": 51,
+          "column": 76
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 66,
+          "line": 64,
           "column": 18
         }
       ]
@@ -2430,7 +2377,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 67,
+          "line": 65,
           "column": 18
         },
         {
@@ -2440,7 +2387,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 121,
+          "line": 122,
           "column": 13
         },
         {
@@ -2457,7 +2404,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 209,
+          "line": 208,
           "column": 34
         }
       ]
@@ -2481,7 +2428,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 167,
+          "line": 97,
           "column": 30
         }
       ]
@@ -2513,18 +2460,6 @@
         }
       ]
     },
-    "1fd519aabd211495": {
-      "source": "服务端没有返回令牌同步结果",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "shared/api.ts",
-          "line": 1479,
-          "column": 23
-        }
-      ]
-    },
     "1ffaa10e41043e8d": {
       "source": "找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。",
       "kind": "text",
@@ -2532,7 +2467,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 507,
+          "line": 502,
           "column": 17
         }
       ]
@@ -2544,7 +2479,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 149,
+          "line": 150,
           "column": 15
         }
       ]
@@ -2611,12 +2546,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 116,
+          "line": 117,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 216,
+          "line": 217,
           "column": 13
         },
         {
@@ -2662,7 +2597,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 514,
+          "line": 511,
           "column": 21
         }
       ]
@@ -2758,7 +2693,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 248,
+          "line": 217,
           "column": 26
         }
       ]
@@ -2813,7 +2748,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 100,
+          "line": 101,
           "column": 12
         }
       ]
@@ -2863,7 +2798,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 667,
+          "line": 664,
           "column": 27
         }
       ]
@@ -3004,7 +2939,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 160,
+          "line": 125,
           "column": 11
         }
       ]
@@ -3105,7 +3040,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 143,
+          "line": 144,
           "column": 14
         }
       ]
@@ -3143,6 +3078,18 @@
           "file": "features/home/metrics/HomeMetrics.tsx",
           "line": 203,
           "column": 85
+        }
+      ]
+    },
+    "29f9d8a4e5b48397": {
+      "source": "Claude Desktop 会话、Agent 和工具",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 56,
+          "column": 7
         }
       ]
     },
@@ -3223,7 +3170,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 140,
+          "line": 138,
           "column": 13
         }
       ]
@@ -3235,7 +3182,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 145,
+          "line": 146,
           "column": 11
         }
       ]
@@ -3480,18 +3427,6 @@
         }
       ]
     },
-    "2f28aa31c920438f": {
-      "source": "模型库里缺少这些模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 117,
-          "column": 16
-        }
-      ]
-    },
     "2f3dea901ef4d3f7": {
       "source": "网关固定监听 127.0.0.1，不对外网开放。",
       "kind": "text",
@@ -3499,7 +3434,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 212,
+          "line": 211,
           "column": 20
         }
       ]
@@ -3588,7 +3523,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 491,
           "column": 11
         }
       ]
@@ -3652,11 +3587,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 158,
-          "column": 53
-        },
-        {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 206,
           "column": 57
@@ -3668,7 +3598,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 692,
+          "line": 689,
           "column": 133
         }
       ]
@@ -3704,7 +3634,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 238,
+          "line": 237,
           "column": 18
         }
       ]
@@ -3740,7 +3670,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 167,
+          "line": 165,
           "column": 13
         }
       ]
@@ -3752,7 +3682,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 165,
+          "line": 197,
           "column": 28
         }
       ]
@@ -3784,7 +3714,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 218,
+          "line": 215,
           "column": 75
         }
       ]
@@ -3796,7 +3726,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 165,
+          "line": 197,
           "column": 40
         }
       ]
@@ -3829,11 +3759,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 131,
-          "column": 15
-        },
-        {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 113,
           "column": 15
@@ -3847,12 +3772,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 151,
+          "line": 150,
           "column": 65
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 169,
+          "line": 168,
           "column": 80
         }
       ]
@@ -3878,12 +3803,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 140,
-          "column": 11
-        },
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 159,
+          "line": 124,
           "column": 11
         }
       ]
@@ -3994,7 +3914,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 169,
+          "line": 143,
           "column": 61
         }
       ]
@@ -4008,7 +3928,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 594,
           "column": 160
         }
       ]
@@ -4069,18 +3989,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 92,
-          "column": 13
-        },
-        {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 44,
+          "line": 42,
           "column": 65
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 45,
+          "line": 43,
           "column": 67
         },
         {
@@ -4110,12 +4025,12 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 134,
+          "line": 166,
           "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 151,
+          "line": 183,
           "column": 39
         },
         {
@@ -4165,12 +4080,12 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 133,
+          "line": 131,
           "column": 13
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 185,
+          "line": 182,
           "column": 7
         }
       ]
@@ -4182,12 +4097,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 140,
+          "line": 136,
           "column": 33
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 241,
+          "line": 212,
           "column": 22
         }
       ]
@@ -4267,25 +4182,8 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 200,
+          "line": 197,
           "column": 21
-        }
-      ]
-    },
-    "360869b612e2670b": {
-      "source": "将写入的 settings.json",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 146,
-          "column": 53
-        },
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 148,
-          "column": 18
         }
       ]
     },
@@ -4296,7 +4194,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 167,
+          "line": 168,
           "column": 15
         }
       ]
@@ -4308,7 +4206,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 125,
+          "line": 124,
           "column": 17
         }
       ]
@@ -4320,7 +4218,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 225,
+          "line": 224,
           "column": 47
         }
       ]
@@ -4497,7 +4395,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 204,
+          "line": 203,
           "column": 16
         }
       ]
@@ -4550,18 +4448,6 @@
         }
       ]
     },
-    "39051a2f70296799": {
-      "source": "选择 Opus 映射模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 141,
-          "column": 51
-        }
-      ]
-    },
     "393e1241552b1870": {
       "source": "请求",
       "kind": "text",
@@ -4581,7 +4467,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 242,
+          "line": 241,
           "column": 18
         }
       ]
@@ -4680,7 +4566,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 130,
+          "line": 60,
           "column": 45
         }
       ]
@@ -4772,12 +4658,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 115,
+          "line": 114,
           "column": 27
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 117,
+          "line": 116,
           "column": 25
         }
       ]
@@ -4868,7 +4754,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 215,
+          "line": 212,
           "column": 12
         }
       ]
@@ -4957,30 +4843,6 @@
         }
       ]
     },
-    "3e13e292febace10": {
-      "source": "Haiku 模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 142,
-          "column": 38
-        }
-      ]
-    },
-    "3e3b782847d22484": {
-      "source": "Claude Code CLI 会话、Agent 和工具",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/harness/HarnessCapabilities.tsx",
-          "line": 56,
-          "column": 7
-        }
-      ]
-    },
     "3eb036ee9ddd484c": {
       "source": "搜模型名称、ID 或地址…",
       "kind": "text",
@@ -5000,12 +4862,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 676,
+          "line": 673,
           "column": 165
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 679,
+          "line": 676,
           "column": 186
         }
       ]
@@ -5077,12 +4939,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 165,
+          "line": 139,
           "column": 60
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 251,
+          "line": 220,
           "column": 28
         }
       ]
@@ -5190,7 +5052,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 51,
+          "line": 49,
           "column": 77
         },
         {
@@ -5275,20 +5137,8 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 234,
+          "line": 235,
           "column": 11
-        }
-      ]
-    },
-    "41e8af8e126241c1": {
-      "source": "预览已复制",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 153,
-          "column": 61
         }
       ]
     },
@@ -5372,7 +5222,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 254,
+          "line": 253,
           "column": 18
         }
       ]
@@ -5384,7 +5234,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 173,
+          "line": 103,
           "column": 13
         }
       ]
@@ -5410,7 +5260,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 110,
+          "line": 109,
           "column": 15
         }
       ]
@@ -5427,6 +5277,18 @@
         }
       ]
     },
+    "43dda965cad9406a": {
+      "source": "Opus 别名",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 138,
+          "column": 27
+        }
+      ]
+    },
     "44022b9af7a07f02": {
       "source": "Kimi Code 编程套餐页获取 API Key（api.kimi.com/coding 端点）",
       "kind": "text",
@@ -5436,18 +5298,6 @@
           "file": "shared/utils/modelPresets.ts",
           "line": 79,
           "column": 20
-        }
-      ]
-    },
-    "44035cb1ddf29ebb": {
-      "source": "模型库里缺少模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 116,
-          "column": 101
         }
       ]
     },
@@ -5470,12 +5320,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 139,
+          "line": 135,
           "column": 35
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 93,
+          "line": 92,
           "column": 19
         }
       ]
@@ -5518,12 +5368,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 47,
-          "column": 84
+          "line": 45,
+          "column": 77
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 65,
+          "line": 63,
           "column": 19
         },
         {
@@ -5538,7 +5388,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 635,
+          "line": 632,
           "column": 40
         },
         {
@@ -5548,7 +5398,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 187,
+          "line": 184,
           "column": 9
         }
       ]
@@ -5602,7 +5452,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 216,
+          "line": 215,
           "column": 24
         }
       ]
@@ -5657,7 +5507,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 616,
+          "line": 613,
           "column": 20
         }
       ]
@@ -5719,7 +5569,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 207,
+          "line": 206,
           "column": 35
         }
       ]
@@ -5772,7 +5622,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 209,
+          "line": 208,
           "column": 53
         }
       ]
@@ -5882,7 +5732,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 516,
+          "line": 513,
           "column": 40
         },
         {
@@ -6032,18 +5882,6 @@
         }
       ]
     },
-    "4a7e4113530b4206": {
-      "source": "受管策略",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 107,
-          "column": 14
-        }
-      ]
-    },
     "4a861200ad513a3c": {
       "source": "初始化插件运行时",
       "kind": "text",
@@ -6063,7 +5901,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 612,
+          "line": 609,
           "column": 50
         }
       ]
@@ -6087,7 +5925,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 580,
+          "line": 577,
           "column": 57
         }
       ]
@@ -6142,7 +5980,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 105,
+          "line": 104,
           "column": 17
         }
       ]
@@ -6231,7 +6069,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 133,
+          "line": 134,
           "column": 16
         }
       ]
@@ -6325,7 +6163,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 101,
+          "line": 102,
           "column": 14
         }
       ]
@@ -6393,7 +6231,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 166,
+          "line": 167,
           "column": 15
         }
       ]
@@ -6533,7 +6371,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 246,
+          "line": 215,
           "column": 26
         }
       ]
@@ -6545,7 +6383,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 594,
           "column": 432
         }
       ]
@@ -6557,7 +6395,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 162,
+          "line": 163,
           "column": 11
         }
       ]
@@ -6571,18 +6409,6 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 378,
           "column": 47
-        }
-      ]
-    },
-    "509c099a2b5d07cf": {
-      "source": "已检测到",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 91,
-          "column": 74
         }
       ]
     },
@@ -6621,13 +6447,13 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 164,
+          "line": 138,
           "column": 60
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 245,
-          "column": 9
+          "line": 214,
+          "column": 28
         }
       ]
     },
@@ -6724,7 +6550,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 203,
+          "line": 200,
           "column": 12
         }
       ]
@@ -6762,7 +6588,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 108,
+          "line": 99,
           "column": 15
         }
       ]
@@ -6774,12 +6600,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 52,
-          "column": 84
+          "line": 50,
+          "column": 77
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 63,
+          "line": 61,
           "column": 18
         },
         {
@@ -6794,17 +6620,17 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 106,
+          "line": 104,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 158,
+          "line": 156,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 195,
+          "line": 192,
           "column": 17
         },
         {
@@ -6843,12 +6669,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 193,
+          "line": 158,
           "column": 44
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 685,
+          "line": 682,
           "column": 14
         }
       ]
@@ -6860,7 +6686,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 234,
+          "line": 233,
           "column": 52
         }
       ]
@@ -6966,8 +6792,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 252,
-          "column": 53
+          "line": 193,
+          "column": 9
         }
       ]
     },
@@ -7014,8 +6840,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 117,
-          "column": 56
+          "line": 106,
+          "column": 15
         }
       ]
     },
@@ -7026,7 +6852,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 180,
+          "line": 179,
           "column": 46
         }
       ]
@@ -7123,7 +6949,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 580,
+          "line": 577,
           "column": 35
         }
       ]
@@ -7147,20 +6973,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 541,
+          "line": 538,
           "column": 92
-        }
-      ]
-    },
-    "58a87ae877d50cdd": {
-      "source": "应用接管前，请先在模型库重新选择。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 121,
-          "column": 15
         }
       ]
     },
@@ -7171,7 +6985,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 126,
+          "line": 125,
           "column": 15
         }
       ]
@@ -7217,7 +7031,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 130,
+          "line": 129,
           "column": 15
         }
       ]
@@ -7298,7 +7112,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 130,
+          "line": 60,
           "column": 25
         }
       ]
@@ -7334,7 +7148,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 213,
+          "line": 214,
           "column": 9
         }
       ]
@@ -7375,7 +7189,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 103,
+          "line": 101,
           "column": 9
         }
       ]
@@ -7447,7 +7261,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 229,
+          "line": 230,
           "column": 11
         }
       ]
@@ -7473,7 +7287,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 167,
+          "line": 97,
           "column": 88
         }
       ]
@@ -7497,12 +7311,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 591,
+          "line": 588,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 591,
+          "line": 588,
           "column": 84
         }
       ]
@@ -7567,7 +7381,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 122,
+          "line": 121,
           "column": 15
         }
       ]
@@ -7591,7 +7405,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 140,
+          "line": 139,
           "column": 17
         }
       ]
@@ -7617,7 +7431,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 598,
+          "line": 595,
           "column": 83
         }
       ]
@@ -7661,7 +7475,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 564,
+          "line": 561,
           "column": 60
         }
       ]
@@ -7702,12 +7516,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 575,
+          "line": 572,
           "column": 151
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 598,
+          "line": 595,
           "column": 218
         }
       ]
@@ -7747,18 +7561,6 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 31,
           "column": 29
-        }
-      ]
-    },
-    "61cb834e4ac57a91": {
-      "source": "键名已复制",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 154,
-          "column": 81
         }
       ]
     },
@@ -7826,12 +7628,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 123,
+          "line": 124,
           "column": 15
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 135,
+          "line": 136,
           "column": 13
         },
         {
@@ -7841,7 +7643,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 128,
+          "line": 126,
           "column": 11
         }
       ]
@@ -7909,8 +7711,13 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1006,
+          "line": 981,
           "column": 21
+        },
+        {
+          "file": "shared/api.ts",
+          "line": 1080,
+          "column": 29
         },
         {
           "file": "shared/api.ts",
@@ -7919,12 +7726,7 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1130,
-          "column": 29
-        },
-        {
-          "file": "shared/api.ts",
-          "line": 1282,
+          "line": 1230,
           "column": 29
         }
       ]
@@ -7960,7 +7762,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 114,
+          "line": 112,
           "column": 13
         }
       ]
@@ -7974,18 +7776,6 @@
           "file": "features/home/overview/OverviewTimeRangeFilter.tsx",
           "line": 132,
           "column": 109
-        }
-      ]
-    },
-    "63c86525f9823d73": {
-      "source": "Claude Code 的配置存在冲突，先处理下面的条目。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 158,
-          "column": 59
         }
       ]
     },
@@ -8032,18 +7822,6 @@
         }
       ]
     },
-    "6415b155b838311a": {
-      "source": "去模型库重新选择",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 172,
-          "column": 93
-        }
-      ]
-    },
     "643aad27ea0017af": {
       "source": "保留比例（%）",
       "kind": "text",
@@ -8063,7 +7841,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 110,
+          "line": 108,
           "column": 13
         }
       ]
@@ -8206,18 +7984,6 @@
         }
       ]
     },
-    "65a1ac035410edbd": {
-      "source": "没有找到 Claude Code 的配置文件，无法接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 157,
-          "column": 58
-        }
-      ]
-    },
     "65a1f5468eedc2ca": {
       "source": "请求地址",
       "kind": "text",
@@ -8249,7 +8015,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 628,
+          "line": 625,
           "column": 14
         }
       ]
@@ -8273,7 +8039,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 117,
+          "line": 118,
           "column": 11
         },
         {
@@ -8339,7 +8105,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 594,
           "column": 420
         }
       ]
@@ -8380,7 +8146,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 250,
+          "line": 249,
           "column": 18
         }
       ]
@@ -8459,7 +8225,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 698,
+          "line": 695,
           "column": 35
         },
         {
@@ -8484,13 +8250,18 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 131,
+          "line": 129,
           "column": 11
         },
         {
           "file": "shared/api.ts",
-          "line": 1014,
+          "line": 989,
           "column": 20
+        },
+        {
+          "file": "shared/api.ts",
+          "line": 1080,
+          "column": 41
         },
         {
           "file": "shared/api.ts",
@@ -8499,12 +8270,7 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1130,
-          "column": 41
-        },
-        {
-          "file": "shared/api.ts",
-          "line": 1282,
+          "line": 1230,
           "column": 41
         }
       ]
@@ -8581,7 +8347,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 176,
+          "line": 106,
           "column": 33
         }
       ]
@@ -8677,17 +8443,17 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 129,
+          "line": 127,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 156,
+          "line": 154,
           "column": 9
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 193,
+          "line": 190,
           "column": 15
         }
       ]
@@ -8757,7 +8523,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1541,
+          "line": 1484,
           "column": 23
         }
       ]
@@ -8793,7 +8559,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 139,
+          "line": 137,
           "column": 12
         }
       ]
@@ -8805,12 +8571,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 151,
+          "line": 152,
           "column": 17
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 200,
+          "line": 201,
           "column": 15
         }
       ]
@@ -8858,7 +8624,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 564,
+          "line": 561,
           "column": 37
         }
       ]
@@ -8932,7 +8698,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 149,
+          "line": 181,
           "column": 22
         }
       ]
@@ -8955,11 +8721,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 101,
-          "column": 14
-        },
-        {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 99,
           "column": 14
@@ -8973,7 +8734,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 264,
+          "line": 263,
           "column": 13
         }
       ]
@@ -8985,7 +8746,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 124,
+          "line": 125,
           "column": 15
         }
       ]
@@ -9031,7 +8792,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 97,
+          "line": 98,
           "column": 22
         }
       ]
@@ -9090,18 +8851,6 @@
           "file": "shared/store/appStore.ts",
           "line": 410,
           "column": 25
-        }
-      ]
-    },
-    "73ea21fb9c2fdc9e": {
-      "source": "撤销 Claude Code 接管",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 252,
-          "column": 28
         }
       ]
     },
@@ -9165,6 +8914,30 @@
         }
       ]
     },
+    "76e66853823a2559": {
+      "source": "Haiku 别名",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 148,
+          "column": 27
+        }
+      ]
+    },
+    "771d5cf5f1d75c52": {
+      "source": "打开后 Claude Desktop 才能执行代码。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/claudeTakeoverPlan.ts",
+          "line": 106,
+          "column": 78
+        }
+      ]
+    },
     "778686cc7b7b00f0": {
       "source": "上下文压缩设置已保存",
       "kind": "text",
@@ -9218,20 +8991,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 669,
+          "line": 666,
           "column": 27
-        }
-      ]
-    },
-    "78673c650267f63d": {
-      "source": "Opus 模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 141,
-          "column": 37
         }
       ]
     },
@@ -9280,7 +9041,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 172,
+          "line": 173,
           "column": 14
         }
       ]
@@ -9316,7 +9077,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 232,
+          "line": 233,
           "column": 13
         }
       ]
@@ -9328,20 +9089,8 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1528,
+          "line": 1471,
           "column": 43
-        }
-      ]
-    },
-    "7a2b137404d1eec8": {
-      "source": "Claude Code 接管已撤销",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 141,
-          "column": 11
         }
       ]
     },
@@ -9391,7 +9140,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 165,
+          "line": 164,
           "column": 20
         }
       ]
@@ -9444,7 +9193,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 91,
+          "line": 89,
           "column": 13
         }
       ]
@@ -9535,7 +9284,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 166,
+          "line": 96,
           "column": 31
         }
       ]
@@ -9547,7 +9296,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 691,
+          "line": 688,
           "column": 89
         }
       ]
@@ -9629,7 +9378,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 675,
+          "line": 672,
           "column": 27
         }
       ]
@@ -9677,12 +9426,12 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 220,
+          "line": 221,
           "column": 13
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 157,
+          "line": 156,
           "column": 193
         },
         {
@@ -9699,7 +9448,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 117,
+          "line": 116,
           "column": 17
         }
       ]
@@ -9723,7 +9472,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 512,
+          "line": 505,
+          "column": 21
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 509,
           "column": 23
         }
       ]
@@ -9735,7 +9489,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 166,
+          "line": 165,
           "column": 118
         }
       ]
@@ -9822,7 +9576,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 958,
+          "line": 933,
           "column": 11
         },
         {
@@ -9890,7 +9644,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 153,
+          "line": 152,
           "column": 52
         }
       ]
@@ -9902,7 +9656,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 201,
+          "line": 200,
           "column": 49
         }
       ]
@@ -9914,7 +9668,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 72,
+          "line": 71,
           "column": 50
         },
         {
@@ -9943,7 +9697,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 144,
+          "line": 142,
           "column": 13
         }
       ]
@@ -9955,7 +9709,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 157,
+          "line": 189,
           "column": 62
         }
       ]
@@ -9967,7 +9721,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 86,
+          "line": 84,
           "column": 12
         }
       ]
@@ -9977,11 +9731,6 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 125,
-          "column": 16
-        },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 107,
@@ -10103,7 +9852,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 62,
+          "line": 61,
           "column": 42
         }
       ]
@@ -10221,7 +9970,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 147,
+          "line": 148,
           "column": 13
         }
       ]
@@ -10233,7 +9982,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 115,
+          "line": 114,
           "column": 44
         }
       ]
@@ -10245,7 +9994,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 114,
+          "line": 113,
           "column": 15
         }
       ]
@@ -10259,6 +10008,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 112,
           "column": 91
+        }
+      ]
+    },
+    "86d70625cd3b3132": {
+      "source": "把 Claude Desktop 的模型请求接到本机网关",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 199,
+          "column": 15
         }
       ]
     },
@@ -10321,6 +10082,18 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 106,
           "column": 51
+        }
+      ]
+    },
+    "87e095f1f0f32ec8": {
+      "source": "只写 Desktop 自己的第三方推理 profile；网关设置共用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 154,
+          "column": 20
         }
       ]
     },
@@ -10393,7 +10166,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 87,
+          "line": 85,
           "column": 13
         }
       ]
@@ -10463,7 +10236,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 542,
+          "line": 539,
           "column": 80
         }
       ]
@@ -10475,7 +10248,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 548,
+          "line": 545,
           "column": 72
         }
       ]
@@ -10506,6 +10279,18 @@
           "file": "features/calls/CallTable.tsx",
           "line": 84,
           "column": 14
+        }
+      ]
+    },
+    "8b71023647dd8e67": {
+      "source": "选择 Sonnet 别名模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 131,
+          "column": 20
         }
       ]
     },
@@ -10542,20 +10327,8 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1476,
+          "line": 1424,
           "column": 23
-        }
-      ]
-    },
-    "8c2f3584ad577bac": {
-      "source": "接管客户端",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 188,
-          "column": 14
         }
       ]
     },
@@ -10839,7 +10612,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 531,
+          "line": 528,
           "column": 20
         }
       ]
@@ -10924,18 +10697,6 @@
         }
       ]
     },
-    "9284ee545ffb584d": {
-      "source": "Sonnet 模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 140,
-          "column": 39
-        }
-      ]
-    },
     "928780b74fc377cf": {
       "source": "这个范围内没有调用记录。",
       "kind": "text",
@@ -11013,17 +10774,17 @@
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 49,
-          "column": 79
+          "line": 47,
+          "column": 72
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 64,
+          "line": 62,
           "column": 16
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 189,
+          "line": 186,
           "column": 11
         }
       ]
@@ -11040,7 +10801,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 197,
+          "line": 194,
           "column": 19
         }
       ]
@@ -11052,7 +10813,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 682,
+          "line": 679,
           "column": 55
         }
       ]
@@ -11064,7 +10825,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 539,
+          "line": 536,
           "column": 50
         }
       ]
@@ -11182,20 +10943,8 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 171,
+          "line": 101,
           "column": 14
-        }
-      ]
-    },
-    "94cae5a7ae697cd7": {
-      "source": "撤销只还原当前值仍等于接管值的键；你之后改过的值会保留并在撤销后列出。备份文件只供人工查看，不会自动写回。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 161,
-          "column": 17
         }
       ]
     },
@@ -11218,12 +10967,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 152,
+          "line": 184,
           "column": 38
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 155,
+          "line": 187,
           "column": 31
         }
       ]
@@ -11360,7 +11109,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 660,
+          "line": 657,
           "column": 20
         }
       ]
@@ -11372,7 +11121,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 675,
+          "line": 672,
           "column": 52
         }
       ]
@@ -11400,30 +11149,6 @@
           "file": "shared/ui/ModelSelect.tsx",
           "line": 138,
           "column": 9
-        }
-      ]
-    },
-    "98708989c6df4a11": {
-      "source": "没有找到 Claude Code 的配置文件",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 91,
-          "column": 44
-        }
-      ]
-    },
-    "989029a51549f133": {
-      "source": "只读预览；应用后这些键会写进上面的配置文件，已有的同名键会被替换。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 149,
-          "column": 17
         }
       ]
     },
@@ -11470,7 +11195,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 147,
+          "line": 146,
           "column": 14
         }
       ]
@@ -11484,7 +11209,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 575,
+          "line": 572,
           "column": 77
         }
       ]
@@ -11496,7 +11221,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 535,
+          "line": 532,
           "column": 52
         }
       ]
@@ -11532,12 +11257,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 535,
+          "line": 532,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 536,
+          "line": 533,
           "column": 51
         }
       ]
@@ -11582,18 +11307,6 @@
         }
       ]
     },
-    "9a89741f86788e79": {
-      "source": "Claude Code 的配置由系统策略托管，本应用不会改写它。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 159,
-          "column": 58
-        }
-      ]
-    },
     "9aa4b74ee19488dc": {
       "source": "管理请求超时",
       "kind": "text",
@@ -11601,20 +11314,20 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 971,
+          "line": 946,
           "column": 11
         }
       ]
     },
-    "9b31168c4905c67b": {
-      "source": "Claude Code 按模型家族请求；留空时回落到默认模型。",
+    "9ac8a69c349f39a2": {
+      "source": "选择默认模型并保存、启用 Claude 网关，再接管 Claude Desktop；接管前需要完全退出。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 137,
-          "column": 17
+          "file": "features/tutorial/onboarding.ts",
+          "line": 201,
+          "column": 13
         }
       ]
     },
@@ -11625,7 +11338,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 668,
+          "line": 665,
           "column": 27
         }
       ]
@@ -11663,18 +11376,6 @@
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 105,
           "column": 68
-        }
-      ]
-    },
-    "9b82c7d4a820441b": {
-      "source": "选择默认模型并保存、启用 Claude 网关，再接管 Claude Code CLI 或 Claude Desktop；Desktop 接管前需要完全退出。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/tutorial/onboarding.ts",
-          "line": 204,
-          "column": 13
         }
       ]
     },
@@ -11726,7 +11427,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 669,
+          "line": 666,
           "column": 49
         }
       ]
@@ -11786,7 +11487,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 170,
+          "line": 144,
           "column": 64
         }
       ]
@@ -11858,7 +11559,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 105,
+          "line": 104,
           "column": 44
         }
       ]
@@ -11892,7 +11593,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 194,
+          "line": 195,
           "column": 14
         },
         {
@@ -12023,6 +11724,18 @@
         }
       ]
     },
+    "9e4334c04c622214": {
+      "source": "接管 Claude Desktop",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 153,
+          "column": 14
+        }
+      ]
+    },
     "9e445ec84f2a42a7": {
       "source": "实际使用",
       "kind": "text",
@@ -12030,7 +11743,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 566,
+          "line": 563,
           "column": 49
         }
       ]
@@ -12080,7 +11793,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 62,
+          "line": 60,
           "column": 16
         }
       ]
@@ -12147,7 +11860,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 89,
+          "line": 87,
           "column": 75
         }
       ]
@@ -12197,7 +11910,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 530,
+          "line": 527,
           "column": 14
         }
       ]
@@ -12298,7 +12011,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 243,
+          "line": 184,
           "column": 47
         },
         {
@@ -12323,7 +12036,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 690,
+          "line": 687,
           "column": 172
         },
         {
@@ -12370,7 +12083,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 201,
+          "line": 200,
           "column": 24
         }
       ]
@@ -12444,7 +12157,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 96,
+          "line": 97,
           "column": 11
         }
       ]
@@ -12456,7 +12169,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 197,
+          "line": 171,
           "column": 15
         }
       ]
@@ -12468,7 +12181,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 109,
+          "line": 107,
           "column": 12
         }
       ]
@@ -12636,7 +12349,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 648,
+          "line": 645,
           "column": 64
         }
       ]
@@ -12670,11 +12383,6 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 104,
-          "column": 13
-        },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 100,
@@ -12769,7 +12477,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 118,
+          "line": 117,
           "column": 15
         }
       ]
@@ -12846,7 +12554,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 113,
+          "line": 112,
           "column": 17
         }
       ]
@@ -12870,7 +12578,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 571,
+          "line": 568,
           "column": 78
         }
       ]
@@ -12882,7 +12590,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 656,
+          "line": 653,
           "column": 35
         }
       ]
@@ -13000,7 +12708,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 129,
+          "line": 128,
           "column": 17
         }
       ]
@@ -13038,7 +12746,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 604,
+          "line": 601,
           "column": 58
         }
       ]
@@ -13067,7 +12775,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 168,
+          "line": 98,
           "column": 27
         }
       ]
@@ -13096,7 +12804,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 97,
+          "line": 96,
           "column": 17
         }
       ]
@@ -13156,7 +12864,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 629,
+          "line": 626,
           "column": 20
         }
       ]
@@ -13180,7 +12888,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 122,
+          "line": 52,
           "column": 83
         },
         {
@@ -13197,7 +12905,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 98,
+          "line": 97,
           "column": 15
         }
       ]
@@ -13286,18 +12994,6 @@
         }
       ]
     },
-    "ae6dc7e1cccf7979": {
-      "source": "选择 Haiku 映射模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 142,
-          "column": 53
-        }
-      ]
-    },
     "ae79d0ed73774db7": {
       "source": "压缩数据库",
       "kind": "text",
@@ -13363,7 +13059,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 646,
+          "line": 643,
           "column": 38
         }
       ]
@@ -13387,7 +13083,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 250,
+          "line": 219,
           "column": 28
         }
       ]
@@ -13399,7 +13095,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 202,
+          "line": 203,
           "column": 15
         }
       ]
@@ -13423,7 +13119,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 570,
           "column": 31
         },
         {
@@ -13454,7 +13150,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 140,
+          "line": 172,
           "column": 65
         }
       ]
@@ -13497,11 +13193,6 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 124,
-          "column": 79
-        },
-        {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 106,
           "column": 79
@@ -13527,7 +13218,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 633,
+          "line": 630,
           "column": 38
         }
       ]
@@ -13575,7 +13266,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 249,
+          "line": 218,
           "column": 29
         }
       ]
@@ -13599,7 +13290,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 199,
+          "line": 200,
           "column": 15
         }
       ]
@@ -13613,7 +13304,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 650,
+          "line": 647,
           "column": 51
         }
       ]
@@ -13625,7 +13316,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 247,
+          "line": 216,
           "column": 28
         },
         {
@@ -13668,7 +13359,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 137,
+          "line": 133,
           "column": 47
         }
       ]
@@ -13707,12 +13398,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 156,
+          "line": 155,
           "column": 24
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 263,
+          "line": 262,
           "column": 101
         }
       ]
@@ -13741,7 +13432,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 517,
           "column": 100
         },
         {
@@ -13816,7 +13507,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 498,
           "column": 19
         }
       ]
@@ -13828,7 +13519,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 101,
+          "line": 99,
           "column": 7
         }
       ]
@@ -13842,18 +13533,6 @@
           "file": "features/codex/CodexSettingsForm.tsx",
           "line": 38,
           "column": 69
-        }
-      ]
-    },
-    "b36a46724d18b145": {
-      "source": "把 Claude Code 与 Claude Desktop 的模型请求接到本机网关",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 258,
-          "column": 15
         }
       ]
     },
@@ -13914,7 +13593,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 174,
+          "line": 206,
           "column": 16
         },
         {
@@ -13931,7 +13610,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 105,
+          "line": 103,
           "column": 11
         }
       ]
@@ -13969,7 +13648,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 153,
+          "line": 154,
           "column": 19
         }
       ]
@@ -14060,7 +13739,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 494,
+          "line": 489,
           "column": 9
         }
       ]
@@ -14087,7 +13766,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 216,
+          "line": 215,
           "column": 48
         }
       ]
@@ -14142,20 +13821,8 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 234,
+          "line": 233,
           "column": 24
-        }
-      ]
-    },
-    "b8458188dec2b7b8": {
-      "source": "没有找到 Claude Code 的配置文件。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 244,
-          "column": 9
         }
       ]
     },
@@ -14166,7 +13833,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 164,
+          "line": 165,
           "column": 13
         }
       ]
@@ -14195,7 +13862,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 79,
+          "line": 78,
           "column": 65
         },
         {
@@ -14215,7 +13882,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 518,
+          "line": 515,
           "column": 147
         },
         {
@@ -14252,7 +13919,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 57,
+          "line": 55,
           "column": 48
         }
       ]
@@ -14314,7 +13981,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 137,
+          "line": 136,
           "column": 6
         }
       ]
@@ -14481,18 +14148,6 @@
         }
       ]
     },
-    "bb4bd25d2f46c2a9": {
-      "source": "CLI 是否可用",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 89,
-          "column": 14
-        }
-      ]
-    },
     "bb68e2157511acda": {
       "source": "启用路由：{route}",
       "kind": "template",
@@ -14502,7 +14157,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 595,
+          "line": 592,
           "column": 60
         }
       ]
@@ -14583,7 +14238,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 176,
+          "line": 177,
           "column": 13
         }
       ]
@@ -14607,7 +14262,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1552,
+          "line": 1495,
           "column": 43
         }
       ]
@@ -14650,7 +14305,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 168,
+          "line": 98,
           "column": 67
         }
       ]
@@ -14804,7 +14459,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 138,
+          "line": 137,
           "column": 23
         }
       ]
@@ -14931,7 +14586,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 205,
+          "line": 204,
           "column": 22
         }
       ]
@@ -15046,7 +14701,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 546,
+          "line": 543,
           "column": 117
         }
       ]
@@ -15058,7 +14713,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 174,
+          "line": 175,
           "column": 11
         }
       ]
@@ -15113,7 +14768,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 637,
+          "line": 634,
           "column": 125
         }
       ]
@@ -15125,7 +14780,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 644,
+          "line": 641,
           "column": 21
         }
       ]
@@ -15137,7 +14792,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 109,
+          "line": 108,
           "column": 17
         }
       ]
@@ -15151,7 +14806,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 231,
+          "line": 232,
           "column": 13
         }
       ]
@@ -15228,7 +14883,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 135,
+          "line": 134,
           "column": 6
         }
       ]
@@ -15240,12 +14895,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 135,
+          "line": 167,
           "column": 38
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 138,
+          "line": 170,
           "column": 31
         }
       ]
@@ -15257,7 +14912,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 666,
+          "line": 663,
           "column": 27
         }
       ]
@@ -15334,7 +14989,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 94,
+          "line": 93,
           "column": 19
         },
         {
@@ -15387,8 +15042,20 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "line": 560,
           "column": 62
+        }
+      ]
+    },
+    "c6563c1e4be8c9d3": {
+      "source": "选择 Opus 别名模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 141,
+          "column": 20
         }
       ]
     },
@@ -15523,7 +15190,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 164,
+          "line": 163,
           "column": 14
         }
       ]
@@ -15600,7 +15267,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 246,
+          "line": 245,
           "column": 18
         }
       ]
@@ -15796,7 +15463,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 72,
+          "line": 71,
           "column": 22
         }
       ]
@@ -15810,18 +15477,6 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 119,
           "column": 24
-        }
-      ]
-    },
-    "ccc5f6f51d516f03": {
-      "source": "复制预览",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 153,
-          "column": 75
         }
       ]
     },
@@ -15858,18 +15513,6 @@
           "file": "features/models/CursorGates.tsx",
           "line": 34,
           "column": 9
-        }
-      ]
-    },
-    "cd8d68e59d31b4b4": {
-      "source": "Claude Code 接管已应用，请重新打开 Claude Code",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 130,
-          "column": 15
         }
       ]
     },
@@ -15924,7 +15567,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 498,
+          "line": 493,
           "column": 13
         }
       ]
@@ -15955,7 +15598,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 649,
+          "line": 646,
           "column": 32
         }
       ]
@@ -16013,7 +15656,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 135,
+          "line": 134,
           "column": 23
         }
       ]
@@ -16037,7 +15680,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 140,
+          "line": 139,
           "column": 6
         }
       ]
@@ -16049,7 +15692,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
+          "line": 120,
           "column": 17
         }
       ]
@@ -16066,18 +15709,6 @@
         }
       ]
     },
-    "d0152c8fdebecdc2": {
-      "source": "两个客户端分别接管；网关设置共用",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 189,
-          "column": 20
-        }
-      ]
-    },
     "d0bc83ab05c118ff": {
       "source": "在「接入」里切到 Codex：选好可用模型与默认模型，保存后点「应用到 Codex」写入 config.toml，再重新打开客户端或新建一个本地会话。",
       "kind": "text",
@@ -16085,7 +15716,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 163,
+          "line": 161,
           "column": 13
         }
       ]
@@ -16109,7 +15740,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 55,
+          "line": 53,
           "column": 59
         },
         {
@@ -16140,7 +15771,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 183,
+          "line": 210,
           "column": 10
         }
       ]
@@ -16164,7 +15795,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 106,
+          "line": 105,
           "column": 15
         }
       ]
@@ -16301,7 +15932,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 545,
+          "line": 542,
           "column": 60
         }
       ]
@@ -16350,8 +15981,20 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 135,
+          "line": 133,
           "column": 15
+        }
+      ]
+    },
+    "d4efc568752a3453": {
+      "source": "Claude Desktop 的云账号与厂商托管能力",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/HarnessCapabilities.tsx",
+          "line": 65,
+          "column": 7
         }
       ]
     },
@@ -16372,11 +16015,6 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
-        {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 153,
-          "column": 20
-        },
         {
           "file": "features/harness/harnessErrorText.ts",
           "line": 88,
@@ -16449,7 +16087,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 513,
+          "line": 510,
           "column": 23
         }
       ]
@@ -16577,12 +16215,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 570,
           "column": 41
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 659,
+          "line": 656,
           "column": 14
         },
         {
@@ -16659,7 +16297,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 89,
+          "line": 87,
           "column": 30
         }
       ]
@@ -16736,8 +16374,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 509,
-          "column": 19
+          "line": 506,
+          "column": 21
         }
       ]
     },
@@ -16760,7 +16398,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 179,
+          "line": 180,
           "column": 13
         }
       ]
@@ -16787,7 +16425,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 700,
+          "line": 697,
           "column": 13
         }
       ]
@@ -16996,7 +16634,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 139,
+          "line": 138,
           "column": 18
         }
       ]
@@ -17010,6 +16648,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 54,
           "column": 15
+        }
+      ]
+    },
+    "dc852d3b12e81ebb": {
+      "source": "Sonnet 别名",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 128,
+          "column": 27
         }
       ]
     },
@@ -17032,7 +16682,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "line": 560,
           "column": 37
         }
       ]
@@ -17095,7 +16745,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 91,
+          "line": 90,
           "column": 17
         }
       ]
@@ -17126,18 +16776,6 @@
         }
       ]
     },
-    "dd5ea70cfd3440a0": {
-      "source": "复制键名",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 154,
-          "column": 95
-        }
-      ]
-    },
     "dd83b70c63ec0862": {
       "source": "存储进度读取失败，稍后自动重试。",
       "kind": "text",
@@ -17147,18 +16785,6 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 59,
           "column": 26
-        }
-      ]
-    },
-    "dd97a379e8be2ddf": {
-      "source": "打开后 Claude Code 才能通过这个网关。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 176,
-          "column": 78
         }
       ]
     },
@@ -17181,7 +16807,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 102,
+          "line": 101,
           "column": 15
         }
       ]
@@ -17193,7 +16819,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 101,
+          "line": 100,
           "column": 17
         }
       ]
@@ -17246,14 +16872,14 @@
         }
       ]
     },
-    "ded94e7578e997b0": {
-      "source": "Claude Code 与 Claude Desktop 共用这个网关",
+    "dec06ea21311aeaf": {
+      "source": "Claude Desktop 使用这个网关",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 68,
+          "line": 67,
           "column": 18
         }
       ]
@@ -17376,7 +17002,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 505,
+          "line": 500,
           "column": 22
         }
       ]
@@ -17388,7 +17014,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 673,
+          "line": 670,
           "column": 35
         }
       ]
@@ -17412,7 +17038,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 203,
+          "line": 204,
           "column": 15
         }
       ]
@@ -17436,7 +17062,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 135,
+          "line": 131,
           "column": 56
         }
       ]
@@ -17500,6 +17126,18 @@
           "file": "features/calls/CallFacts.tsx",
           "line": 31,
           "column": 6
+        }
+      ]
+    },
+    "e1612e5948ea133b": {
+      "source": "选择 Haiku 别名模型",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 151,
+          "column": 20
         }
       ]
     },
@@ -17570,7 +17208,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 178,
+          "line": 179,
           "column": 15
         }
       ]
@@ -17606,7 +17244,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 678,
+          "line": 675,
           "column": 50
         }
       ]
@@ -17632,12 +17270,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 87,
+          "line": 86,
           "column": 20
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 97,
+          "line": 96,
           "column": 18
         }
       ]
@@ -17680,7 +17318,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 572,
+          "line": 569,
           "column": 100
         }
       ]
@@ -17764,7 +17402,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 88,
+          "line": 86,
           "column": 26
         }
       ]
@@ -17880,7 +17518,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 148,
+          "line": 147,
           "column": 13
         }
       ]
@@ -17909,7 +17547,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 207,
           "column": 55
         }
       ]
@@ -17947,7 +17585,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 159,
+          "line": 157,
           "column": 11
         }
       ]
@@ -17959,7 +17597,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 167,
+          "line": 141,
           "column": 20
         }
       ]
@@ -18105,18 +17743,6 @@
         }
       ]
     },
-    "e9000975860a1df4": {
-      "source": "token 已重新生成，CLI 接管已同步",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 117,
-          "column": 27
-        }
-      ]
-    },
     "e9554e112a01940a": {
       "source": "这是什么",
       "kind": "text",
@@ -18124,7 +17750,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 146,
+          "line": 145,
           "column": 47
         }
       ]
@@ -18160,7 +17786,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 199,
+          "line": 196,
           "column": 21
         }
       ]
@@ -18208,7 +17834,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 678,
+          "line": 675,
           "column": 27
         }
       ]
@@ -18220,7 +17846,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 135,
           "column": 6
         }
       ]
@@ -18273,7 +17899,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 539,
+          "line": 536,
           "column": 23
         }
       ]
@@ -18328,20 +17954,6 @@
         }
       ]
     },
-    "ebb134164db40814": {
-      "source": "默认模型：{model}",
-      "kind": "template",
-      "placeholders": [
-        "model"
-      ],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 175,
-          "column": 33
-        }
-      ]
-    },
     "ec5d5dacc26ff554": {
       "source": "选择 Claude 默认模型",
       "kind": "text",
@@ -18349,7 +17961,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 108,
+          "line": 107,
           "column": 20
         }
       ]
@@ -18361,7 +17973,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 649,
+          "line": 646,
           "column": 101
         }
       ]
@@ -18430,7 +18042,7 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 136,
+          "line": 137,
           "column": 13
         }
       ]
@@ -18444,7 +18056,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 218,
+          "line": 215,
           "column": 29
         }
       ]
@@ -18468,7 +18080,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 90,
+          "line": 88,
           "column": 35
         }
       ]
@@ -18561,20 +18173,8 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 99,
+          "line": 100,
           "column": 16
-        }
-      ]
-    },
-    "ef88820743b544ad": {
-      "source": "环境变量已复制",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 178,
-          "column": 71
         }
       ]
     },
@@ -18609,7 +18209,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 138,
+          "line": 134,
           "column": 58
         }
       ]
@@ -18673,7 +18273,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 136,
+          "line": 134,
           "column": 15
         }
       ]
@@ -18685,7 +18285,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 157,
+          "line": 156,
           "column": 74
         }
       ]
@@ -18725,18 +18325,6 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 205,
           "column": 15
-        }
-      ]
-    },
-    "f34e4e1844efddea": {
-      "source": "撤销会逐键还原",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 160,
-          "column": 18
         }
       ]
     },
@@ -18781,8 +18369,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 248,
-          "column": 51
+          "line": 189,
+          "column": 9
         }
       ]
     },
@@ -18807,7 +18395,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 78,
+          "line": 77,
           "column": 16
         }
       ]
@@ -18971,18 +18559,6 @@
         }
       ]
     },
-    "f72b895ce62133fb": {
-      "source": "选择 Sonnet 映射模型",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeCliTab.tsx",
-          "line": 140,
-          "column": 55
-        }
-      ]
-    },
     "f780914a15e1190c": {
       "source": "正在按模型读取用量",
       "kind": "text",
@@ -19034,18 +18610,6 @@
         }
       ]
     },
-    "f7b9d3015e3449f4": {
-      "source": "复制环境变量",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 179,
-          "column": 11
-        }
-      ]
-    },
     "f7c5f9022d991582": {
       "source": "安装命令已自动复制。点击「打开终端」，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。",
       "kind": "text",
@@ -19065,7 +18629,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 166,
+          "line": 96,
           "column": 88
         }
       ]
@@ -19137,12 +18701,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 50,
+          "line": 48,
           "column": 73
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 72,
+          "line": 71,
           "column": 61
         },
         {
@@ -19152,7 +18716,7 @@
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 217,
+          "line": 218,
           "column": 13
         },
         {
@@ -19216,7 +18780,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 594,
           "column": 210
         }
       ]
@@ -19228,7 +18792,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 175,
+          "line": 105,
           "column": 80
         }
       ]
@@ -19264,7 +18828,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 631,
+          "line": 628,
           "column": 34
         }
       ]
@@ -19358,22 +18922,22 @@
       "refs": [
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 119,
+          "line": 120,
           "column": 11
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 219,
+          "line": 220,
           "column": 13
         },
         {
           "file": "features/devin/devinConnectionView.ts",
-          "line": 235,
+          "line": 236,
           "column": 36
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 637,
+          "line": 634,
           "column": 113
         },
         {
@@ -19567,7 +19131,7 @@
       "refs": [
         {
           "file": "features/claude/claudeTakeoverPlan.ts",
-          "line": 175,
+          "line": 105,
           "column": 32
         }
       ]
@@ -19579,7 +19143,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 649,
+          "line": 646,
           "column": 90
         }
       ]
@@ -19671,7 +19235,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 262,
+          "line": 261,
           "column": 14
         },
         {
@@ -19705,17 +19269,17 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 89,
+          "line": 88,
           "column": 15
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 192,
+          "line": 157,
           "column": 36
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 243,
+          "line": 184,
           "column": 35
         },
         {
@@ -19735,7 +19299,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 690,
+          "line": 687,
           "column": 160
         },
         {
@@ -19767,7 +19331,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 501,
+          "line": 496,
           "column": 17
         }
       ]
@@ -19779,7 +19343,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 584,
+          "line": 581,
           "column": 26
         }
       ]
@@ -19793,7 +19357,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 173,
+          "line": 205,
           "column": 16
         }
       ]

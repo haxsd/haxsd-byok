@@ -15,7 +15,7 @@
 ![haxsd byok 主界面](./images/en-home-1.png)
 ## 为什么用它
 
-- **不换工作流**：继续用 Cursor、Devin、Codex、Claude Code CLI 与 Claude Desktop 的界面和习惯，只把模型推理换成你配置的服务（需自备）。
+- **不换工作流**：继续用 Cursor、Devin、Codex 与 Claude Desktop 的界面和习惯，只把模型推理换成你配置的服务（需自备）。
 - **模型自己管**：模型库支持 OpenAI Chat / Responses 与 Anthropic 协议，发现后多选添加、带连接测试；Cursor 可让官方模型和自配模型同时可用。
 - **成本看得见**：每次调用的成败、耗时、Token 用量，以及按参考单价估算的金额。
 - **桌面管理**：中英俄三语、多主题、托盘、应用内教程与签名更新。
@@ -27,7 +27,6 @@
 | Cursor | 官方 / 本地 / 混合模型来源 + 本机代理与本地 CA | 只用自配模型选本地，官方模型同时可用选混合；本地模式不在模型库的模型会被明确拒绝，不会静默走官方。本地/混合模式下长会话的上下文压缩（自动与手动摘要）由本应用网关执行，官方模式仍由 Cursor 自己压缩 |
 | Devin | 可选本机网关 + 自选模型与模型映射 | 自选模型直接出现在 Devin 原生选择器；保留官方目录；按端点设置结构识别的补丁，带备份恢复与自定义安装目录 |
 | Codex（ChatGPT 客户端） | 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；支持 Responses / Chat Completions / Anthropic；只改 `config.toml` 受管字段，撤销即恢复 |
-| Claude Code CLI | 本机 Anthropic 网关（`/v1/messages`）+ 写入 `~/.claude/settings.json` 的 `env` | 已有 Anthropic API Key、Bedrock/Vertex/Foundry、`apiKeyHelper` 或受管配置时不覆盖 |
 | Claude Desktop | 本机 Anthropic 网关 + `%LOCALAPPDATA%\Claude-3p\configLibrary` 下的 profile | 组织策略托管时只读，只给手工配置引导 |
 
 各网关默认关闭，只监听 `127.0.0.1`。受管配置、端口修改等细节见 [用户指南](./docs/user-guide.md) 与 [Codex 接入](./docs/codex-go-live.md)。
@@ -39,7 +38,7 @@
 | Cursor | Agent / Chat / Plan、本机子代理与工具、Rules / Skills / MCP、Checkpoint | Cloud Agents、Projects、Bugbot、Automations、Tab 补全、CLI / IDE 插件、Remote Control |
 | Codex | 本地 Agent / TUI / exec、Plan、工具、审批、沙箱、多会话、MCP / Skills / Plugins / Hooks、图片输入 | ChatGPT Work、Codex Cloud、Remote Control、官方托管搜索 / 图像 / 语音 |
 | Devin | Cascade、Devin Local、本机工具、Rules / Memories / MCP、模型映射、Checkpoint | 账号套餐与额度、Tab / Command / embedding、Devin Cloud、远程索引、Slack / Linear / Jira / Teams / GitHub 集成 |
-| Claude | Claude Code CLI、本机子代理与后台会话、MCP / Skills / Hooks、Checkpoint / Rewind / 自动压缩、本机 IDE 集成 | Cloud session、Teleport、Ultrareview、云端定时任务、Remote Control、供应商侧 WebSearch / WebFetch、CLI 到 Desktop 的 handoff |
+| Claude | Claude Desktop 会话、本机工具、MCP / Skills / Hooks、Checkpoint、模型库路由 | Cloud session、Teleport、Ultrareview、云端定时任务、Remote Control、供应商侧 WebSearch / WebFetch、云账号能力 |
 
 接管只改变本机可控制的模型请求；登录、套餐、额度和厂商云端功能仍由对应客户端管理，不会绕过。
 
@@ -52,7 +51,7 @@
 3. **用 Cursor**：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。**进出官方模式会结束正在运行的 Cursor，先保存工作并手动重新打开**；本地与混合模式之间切换不需要重启。
 4. **用 Devin**：添加自选模型（直接出现在原生选择器）或映射已有 Devin 模型，再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
 5. **用 Codex**：在「Codex」页选择模型、启用网关并保存，点「应用到 Codex」，然后重新打开客户端或新建会话；详见 [Codex 接入](./docs/codex-go-live.md)。
-6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，再按客户端应用接管：CLI 应用后重新打开 Claude Code；**Desktop 需先完全退出（含托盘），应用后再启动**。
+6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，再应用 Claude Desktop 接管；**Desktop 需先完全退出（含托盘），应用后再启动**。
 
 地址填写、升级、备份与恢复的完整步骤见 [用户指南](./docs/user-guide.md)。
 
@@ -71,7 +70,7 @@
 ## 常见问题
 
 - **Windows 提示“未知发布者”或 SmartScreen 拦截？** 更新包使用本产品自己的 Tauri 更新签名，不等同于 Windows 代码签名。选择「更多信息 → 仍要运行」即可；正式分发版本以 Releases 页为准。
-- **怎么回滚？** 切回官方模式后 Cursor 不再经过本地网关；Codex 侧撤销“应用到 Codex”恢复原配置；Claude 侧在对应标签页撤销接管，移除写入 `settings.json` 的键或 Desktop 的 profile。详见 [用户指南](./docs/user-guide.md)。
+- **怎么回滚？** 切回官方模式后 Cursor 不再经过本地网关；Codex 侧撤销“应用到 Codex”恢复原配置；Claude 侧撤销 Desktop 接管，移除本应用写入的 profile。详见 [用户指南](./docs/user-guide.md)。
 - **和 cursor-byok 是什么关系？** 本项目基于上游 [leookun/cursor-byok](https://github.com/leookun/cursor-byok)；作者个人仓 `haxsd/cursor-byok` 已删除。
 
 ## 构建、反馈与许可

@@ -69,7 +69,7 @@ export function ClaudeDesktopTab({
     <div className={styles.tabHeader}>
       <div>
         <strong>Claude Desktop</strong>
-        <small>{claudeTakeoverDescription("desktop", takeover?.state ?? null)}</small>
+        <small>{claudeTakeoverDescription(takeover?.state ?? null)}</small>
       </div>
       {takeover && <StatusPill tone={claudeTakeoverStateTone(takeover.state)}>{claudeTakeoverStateLabel(takeover.state)}</StatusPill>}
     </div>

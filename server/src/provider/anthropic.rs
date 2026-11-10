@@ -15,7 +15,9 @@ use crate::{
 use super::{
     effort_fallback, map_sse_error, merge_extra_params, provider_event_error,
     recorder::recorded_headers,
-    wire::anthropic::{anthropic_stop, mark_cache_breakpoint, thinking_budget, AnthropicStop},
+    wire::anthropic::{
+        anthropic_stop, has_one_hour_cache, mark_cache_breakpoint, thinking_budget, AnthropicStop,
+    },
     CallRecorder, FinishReason, ModelEvent, Provider, ProviderStream,
 };
 use crate::upstream::{self, UpstreamCall};
@@ -61,17 +63,15 @@ impl Provider for AnthropicProvider {
         Box::pin(try_stream! {
             let ModelInvocation { call_id, request, .. } = invocation;
             let mut messages = anthropic_messages(&request.history)?;
-            // 客户端自己放了 system 断点时原样使用；Anthropic 一次请求最多 4 个断点，
-            // 先保证末条消息的断点（增量缓存最关键），再给工具表。
+            // 客户端自己放了 system 断点时原样使用；Anthropic 一次请求最多 4 个断点。
+            // system 断点已经覆盖它前面的工具前缀，再给 tools 加一个默认 5 分钟断点
+            // 会把短 TTL 放在客户端 1 小时断点之前，既多余又可能违反上游顺序。
             let client_system = request.model.client.anthropic_system_blocks.clone();
-            let client_breakpoints = client_system.as_ref().map_or(0, |blocks| {
-                blocks.iter().filter(|block| block.get("cache_control").is_some()).count()
-            });
-            let budget = 4_usize.saturating_sub(client_breakpoints);
-            if client_system.is_none() || budget >= 1 {
+            let (mark_messages, mark_tools) =
+                cache_breakpoint_plan(client_system.as_deref(), &messages);
+            if mark_messages {
                 mark_cache_breakpoint(&mut messages);
             }
-            let mark_tools = client_system.is_none() || budget >= 2;
             let system = if let Some(blocks) = client_system {
                 Value::Array(blocks)
             } else if request.prompt.instructions.is_empty() {
@@ -395,22 +395,48 @@ fn beta_header(beta: Option<&str>) -> reqwest::header::HeaderMap {
     headers
 }
 
+/// 客户端 `system` 或历史消息是否自带缓存断点，以及我们还能补哪些断点。
+///
+/// 返回 `(mark_messages, mark_tools)`。客户端断点已经缓存了它前面的工具表；
+/// 再给 tools 加默认 5 分钟断点会把短 TTL 排在客户端的 1 小时断点之前，
+/// 因此在客户端自带断点时不再补 tools。1 小时断点也可能出现在历史消息的
+/// document 块上，同样不能在前面插 5 分钟断点。
+fn cache_breakpoint_plan(client_system: Option<&[Value]>, messages: &[Value]) -> (bool, bool) {
+    let client_breakpoints = client_system
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter(|block| {
+                    block
+                        .get("cache_control")
+                        .is_some_and(|value| !value.is_null())
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let one_hour = client_system.is_some_and(|blocks| blocks.iter().any(has_one_hour_cache))
+        || messages.iter().any(has_one_hour_cache);
+    let budget = 4_usize.saturating_sub(client_breakpoints);
+    (budget >= 1, client_breakpoints == 0 && !one_hour)
+}
+
 /// 客户端给的 `tool_choice` / `temperature`。
 ///
 /// 强制工具调用（`any` / `tool`）与 thinking 互斥，`temperature` 也只能在不开 thinking 时
-/// 发：上游对这两种组合都直接 400。所以 thinking 已开时强制选择降级成 `auto`、温度不发。
+/// 发：上游对这两种组合都直接 400。强制调用优先：thinking 已开时关掉 thinking 与
+/// `output_config.effort`，保留客户端的强制选择；这也与 Codex 桥接的取舍一致。
 fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOptions) {
-    let thinking = body.get("thinking").is_some();
+    let mut thinking = body.get("thinking").is_some();
     if body.get("tools").is_some() {
         if let Some(choice) = &client.tool_choice {
-            let mut choice = choice.clone();
+            let choice = choice.clone();
             let forced = matches!(choice["type"].as_str(), Some("any" | "tool"));
             if forced && thinking {
-                let parallel = choice.get("disable_parallel_tool_use").cloned();
-                choice = json!({"type": "auto"});
-                if let Some(parallel) = parallel {
-                    choice["disable_parallel_tool_use"] = parallel;
+                if let Some(object) = body.as_object_mut() {
+                    object.remove("thinking");
+                    object.remove("output_config");
                 }
+                thinking = false;
             }
             body["tool_choice"] = choice;
         }
@@ -593,6 +619,31 @@ fn anthropic_parts(role: &Role, parts: &[ContentPart]) -> Result<Vec<Value>> {
             ContentPart::Image { .. } => Some(Err(Error::Protocol(
                 "Anthropic only accepts images in user messages".into(),
             ))),
+            ContentPart::Document {
+                mime_type,
+                data,
+                title,
+                cache_control,
+            } if *role == Role::User => {
+                let mut block = json!({
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime_type,
+                        "data": STANDARD.encode(data),
+                    },
+                });
+                if let Some(title) = title {
+                    block["title"] = json!(title);
+                }
+                if let Some(cache_control) = cache_control {
+                    block["cache_control"] = cache_control.clone();
+                }
+                Some(Ok(block))
+            }
+            ContentPart::Document { .. } => Some(Err(Error::Protocol(
+                "Anthropic only accepts documents in user messages".into(),
+            ))),
         })
         .collect()
 }
@@ -664,24 +715,100 @@ mod tests {
     use super::*;
 
     #[test]
-    fn forced_tool_choice_falls_back_to_auto_when_thinking_is_on_and_temperature_is_dropped() {
+    fn forced_tool_choice_disables_thinking_instead_of_degrading() {
         let client = crate::model::ClientRequestOptions {
             tool_choice: Some(json!({"type": "any", "disable_parallel_tool_use": true})),
             temperature: Some(0.3),
             ..Default::default()
         };
-        let mut thinking = json!({"tools": [], "thinking": {"type": "adaptive"}});
+        let mut thinking = json!({
+            "tools": [],
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "xhigh"},
+        });
         apply_client_options(&mut thinking, &client);
         assert_eq!(
             thinking["tool_choice"],
-            json!({"type": "auto", "disable_parallel_tool_use": true})
+            json!({"type": "any", "disable_parallel_tool_use": true}),
+            "强制工具调用必须原样保留"
         );
-        assert!(thinking.get("temperature").is_none());
+        assert!(thinking.get("thinking").is_none(), "thinking 必须让位");
+        assert!(
+            thinking.get("output_config").is_none(),
+            "effort 也要一起去掉"
+        );
+        assert_eq!(thinking["temperature"], 0.3, "关掉 thinking 后温度可以发送");
 
         let mut plain = json!({"tools": []});
         apply_client_options(&mut plain, &client);
         assert_eq!(plain["tool_choice"]["type"], "any");
         assert_eq!(plain["temperature"], 0.3);
+    }
+
+    #[test]
+    fn client_system_cache_blocks_do_not_add_a_shorter_tool_breakpoint() {
+        let one_hour = vec![json!({
+            "type": "text",
+            "text": "stable",
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+        })];
+        assert_eq!(
+            cache_breakpoint_plan(Some(&one_hour), &[]),
+            (true, false),
+            "system 的 1 小时断点已覆盖工具前缀，不能再加 5 分钟工具断点"
+        );
+
+        let cache_control_only = vec![json!({
+            "type": "text",
+            "text": "stable",
+            "cache_control": {"type": "ephemeral"},
+        })];
+        assert_eq!(
+            cache_breakpoint_plan(Some(&cache_control_only), &[]),
+            (true, false)
+        );
+
+        let plain = vec![json!({"type": "text", "text": "stable"})];
+        assert_eq!(
+            cache_breakpoint_plan(Some(&plain), &[]),
+            (true, true),
+            "客户端没放断点时仍按原逻辑补 tools 和末条消息"
+        );
+
+        let one_hour_message = vec![json!({
+            "role": "user",
+            "content": [{
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": "JVBERi0="},
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }],
+        })];
+        assert_eq!(
+            cache_breakpoint_plan(None, &one_hour_message),
+            (true, false),
+            "历史消息里的 1 小时文档断点也不能被前面的 5 分钟工具断点抢先生效"
+        );
+        assert_eq!(cache_breakpoint_plan(None, &[]), (true, true));
+    }
+
+    #[test]
+    fn a_pdf_document_stays_a_document_on_the_anthropic_wire() {
+        let parts = vec![ContentPart::Document {
+            mime_type: "application/pdf".into(),
+            data: b"%PDF-1.7\n".to_vec(),
+            title: Some("paper".into()),
+            cache_control: Some(json!({"type": "ephemeral", "ttl": "1h"})),
+        }];
+        let blocks = anthropic_parts(&Role::User, &parts).unwrap();
+        assert_eq!(blocks[0]["type"], "document");
+        assert_eq!(blocks[0]["source"]["media_type"], "application/pdf");
+        assert_eq!(blocks[0]["source"]["data"], "JVBERi0xLjcK");
+        assert_eq!(blocks[0]["title"], "paper");
+        assert_eq!(blocks[0]["cache_control"]["ttl"], "1h");
+        assert!(
+            anthropic_parts(&Role::Assistant, &parts).is_err(),
+            "Anthropic 只接受 user 消息里的 document"
+        );
     }
     use crate::model::{ModelSpec, ReasoningSpec, ToolResultContent};
     use crate::provider::testing;

@@ -1,36 +1,4 @@
 {
-  "cli": {
-    "state": "conflict",
-    "settings_path": "C:\\Users\\me\\.claude\\settings.json",
-    "backup_path": "C:\\Users\\me\\.claude\\settings.json.haxsd-byok.bak",
-    "restorable": true,
-    "conflicts": [
-      {
-        "code": "env_base_url",
-        "key": "ANTHROPIC_BASE_URL",
-        "message": "env.ANTHROPIC_BASE_URL is already set to https://api.anthropic.com; applying would replace it",
-        "blocking": true
-      },
-      {
-        "code": "user_modified",
-        "key": "ANTHROPIC_DEFAULT_SONNET_MODEL",
-        "message": "env.ANTHROPIC_DEFAULT_SONNET_MODEL changed after the takeover; undo will keep the current value",
-        "blocking": true
-      },
-      {
-        "code": "shell_env",
-        "key": "ANTHROPIC_AUTH_TOKEN",
-        "message": "ANTHROPIC_AUTH_TOKEN=[redacted] is also set in the user environment; Claude Code started outside these settings may use it",
-        "blocking": false
-      }
-    ],
-    "missing_models": [
-      "gone3333"
-    ],
-    "managed_sources": [
-      "C:\\Program Files\\ClaudeCode\\managed-settings.d\\10-company.json"
-    ]
-  },
   "desktop": {
     "state": "applied",
     "config_source": "local",
