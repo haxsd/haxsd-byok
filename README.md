@@ -2,7 +2,7 @@
 
 # haxsd byok
 
-**在 Cursor、Devin、ChatGPT 客户端里的 Codex，以及 Claude Code CLI 与 Claude Desktop 中使用你自己配置的模型：本地模型网关，自带模型库、接管状态和调用记录。**
+**让 Cursor、Devin、Codex、Claude Code 和 Claude Desktop 改用你自己的模型 API。装在 Windows 电脑上，不用换工具，调用记录和估算花费一眼能看到。**
 
 [![Release](https://img.shields.io/github/v/release/haxsd/haxsd-byok)](https://github.com/haxsd/haxsd-byok/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/haxsd/haxsd-byok/releases/latest)

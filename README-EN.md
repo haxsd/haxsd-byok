@@ -2,7 +2,7 @@
 
 # haxsd byok
 
-**Use your own models in Cursor, Devin, the Codex engine inside the ChatGPT client, Claude Code CLI and Claude Desktop: a local model gateway with a model library, takeover status and call records.**
+**Make Cursor, Devin, Codex, Claude Code and Claude Desktop use your own model API. Install it on Windows, keep your usual tools, and see every call and its estimated cost at a glance.**
 
 [![Release](https://img.shields.io/github/v/release/haxsd/haxsd-byok)](https://github.com/haxsd/haxsd-byok/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/haxsd/haxsd-byok/releases/latest)
