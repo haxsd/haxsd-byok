@@ -2,7 +2,7 @@
 
 # haxsd byok
 
-**Заставьте Cursor, Devin, Codex, Claude Code и Claude Desktop работать через ваш собственный API моделей. Установите на Windows, пользуйтесь привычными инструментами и видьте каждый вызов и его оценочную стоимость.**
+**Заставьте Cursor, Devin, Codex и Claude Desktop работать через ваш собственный API моделей. Установите на Windows, пользуйтесь привычными инструментами и видьте каждый вызов и его оценочную стоимость.**
 
 [![Release](https://img.shields.io/github/v/release/haxsd/haxsd-byok)](https://github.com/haxsd/haxsd-byok/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/haxsd/haxsd-byok/releases/latest)

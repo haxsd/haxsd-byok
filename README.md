@@ -2,7 +2,7 @@
 
 # haxsd byok
 
-**让 Cursor、Devin、Codex、Claude Code 和 Claude Desktop 改用你自己的模型 API。装在 Windows 电脑上，不用换工具，调用记录和估算花费一眼能看到。**
+**让 Cursor、Devin、Codex 和 Claude Desktop 改用你自己的模型 API。装在 Windows 电脑上，不用换工具，调用记录和估算花费一眼能看到。**
 
 [![Release](https://img.shields.io/github/v/release/haxsd/haxsd-byok)](https://github.com/haxsd/haxsd-byok/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/haxsd/haxsd-byok/releases/latest)
