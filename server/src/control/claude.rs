@@ -26,6 +26,19 @@ use crate::{
 
 use super::{desktop_cors, reject_cross_site};
 
+/// Claude Desktop 接管状态的进程级串行边界。
+///
+/// `inspect`/`recover` 会读取并消费写前日志；如果 apply 正在写日志后被另一个
+/// status GET 当作旧中断处理，就会把在途更新消费掉。所有会读写接管状态/收据的
+/// 入口（status GET、apply/undo、token 轮换、退出清理）都经过同一把锁。锁是进程
+/// 级静态值，多 ClaudeControl 实例、clone 和 cleanup 共用；每个请求新建 Mutex 不能
+/// 提供这个保证。
+static CLAUDE_TAKEOVER_SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn serial() -> tokio::sync::MutexGuard<'static, ()> {
+    CLAUDE_TAKEOVER_SERIAL.lock().await
+}
+
 #[derive(Clone)]
 struct ClaudeControl {
     gateway: ClaudeGateway,
@@ -47,6 +60,7 @@ enum TakeoverContext {
 struct FixedTakeover {
     desktop: DesktopPaths,
     state_dir: std::path::PathBuf,
+    running: bool,
 }
 
 impl TakeoverContext {
@@ -78,7 +92,7 @@ impl TakeoverContext {
         match self {
             Self::System => claude_desktop::process_running().await,
             #[cfg(test)]
-            Self::Fixed(_) => false,
+            Self::Fixed(fixed) => fixed.running,
         }
     }
 }
@@ -134,6 +148,7 @@ async fn status(State(state): State<ClaudeControl>) -> Result<Json<ClaudeStatus>
 /// 已接管 Claude Desktop 时先拒绝：它的 profile 里也有令牌，Desktop 关闭时服务端
 /// 无法把新令牌写进去，轮换只会让用户下次打开 Desktop 时拿着旧令牌报错。
 async fn rotate_token(State(state): State<ClaudeControl>) -> Result<Json<Value>> {
+    let _serial = serial().await;
     let facts = Facts::load(&state).await?;
     let gateway = facts.gateway_values();
     let state_dir = state.takeover.state_dir()?;
@@ -146,16 +161,17 @@ async fn rotate_token(State(state): State<ClaudeControl>) -> Result<Json<Value>>
         state.takeover.desktop_running().await,
         Some(&gateway),
     )?;
+    // 运行状态与配置状态分开判断：运行中先要求退出，接管生效后先要求撤销。
+    if desktop.running {
+        return Err(Error::Config(
+            "quit Claude Desktop completely, then undo the takeover or rotate the gateway token"
+                .into(),
+        ));
+    }
     match desktop.state {
         TakeoverState::Applied | TakeoverState::Stale => {
             return Err(Error::Config(
                 "undo the Claude Desktop takeover before rotating the gateway token".into(),
-            ));
-        }
-        TakeoverState::Running => {
-            return Err(Error::Config(
-                "quit Claude Desktop completely, then undo the takeover or rotate the gateway token"
-                    .into(),
             ));
         }
         _ => {}
@@ -170,6 +186,7 @@ async fn rotate_token(State(state): State<ClaudeControl>) -> Result<Json<Value>>
 /// 进程被强杀或崩溃时没有机会运行这里；下次启动网关会重新监听同一端口，客户端
 /// 继续可用。清理失败只记日志：进程已经在退出，没有第二次机会。
 pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
+    let _serial = serial().await;
     let state_dir = match claude_client::state_dir() {
         Ok(directory) => directory,
         Err(error) => {
@@ -197,7 +214,7 @@ pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
                 running,
                 gateway_values.as_ref(),
             ) {
-                Ok(status) if running => {
+                Ok(status) if status.running => {
                     if status.restorable {
                         tracing::warn!(
                             "Claude Desktop is running; left its takeover in place during shutdown"
@@ -246,11 +263,11 @@ fn leaves_something(state: &TakeoverState) -> bool {
             | TakeoverState::Stale
             | TakeoverState::Conflict
             | TakeoverState::Managed
-            | TakeoverState::Running
     )
 }
 
 async fn takeover_status(State(state): State<ClaudeControl>) -> Result<Json<TakeoverStatus>> {
+    let _serial = serial().await;
     Ok(Json(build_takeover_status(&state).await?))
 }
 
@@ -258,6 +275,7 @@ async fn takeover_desktop(
     State(state): State<ClaudeControl>,
     Json(request): Json<DesktopTakeoverRequest>,
 ) -> Result<Json<DesktopTakeoverStatus>> {
+    let _serial = serial().await;
     let facts = Facts::load(&state).await?;
     let paths = state.takeover.desktop_paths()?;
     let state_dir = state.takeover.state_dir()?;
@@ -331,6 +349,8 @@ struct Facts {
     /// 网关当前实际持有的监听端口；`None` 表示没有监听器。
     listening_port: Option<u16>,
     models: BTreeMap<String, ModelConfig>,
+    /// 模型库里当前存在的全部身份，用于核对 Desktop profile 的精确发现 ID。
+    model_hashes: std::collections::BTreeSet<String>,
     /// 网关已启用、正在监听、端口一致、默认模型存在，并且没有缺失模型。
     available: bool,
 }
@@ -344,17 +364,19 @@ impl Facts {
         let settings = store.claude_settings().await?;
         let status = gateway.status().await?;
         let listening_port = gateway.listening_port().await;
-        let models = store
+        let models: BTreeMap<String, ModelConfig> = store
             .models()
             .await?
             .into_iter()
             .map(|model| (model.model_hash.clone(), model))
             .collect();
+        let model_hashes = models.keys().cloned().collect();
         let mut facts = Self {
             settings,
             status,
             listening_port,
             models,
+            model_hashes,
             available: false,
         };
         facts.available = facts.gateway_available();
@@ -366,6 +388,7 @@ impl Facts {
             base_url: &self.status.base_url,
             token: &self.status.token,
             available: self.available,
+            model_hashes: &self.model_hashes,
         }
     }
 
@@ -534,12 +557,17 @@ mod tests {
     }
 
     async fn takeover_fixture(enabled: bool) -> TakeoverFixture {
-        takeover_fixture_with_gateway(enabled, true).await
+        takeover_fixture_with_gateway(enabled, true, false).await
     }
 
     /// 已启用、默认模型也在，但网关没有启动：apply 必须在这一步就拒绝。
     async fn takeover_fixture_not_listening() -> TakeoverFixture {
-        takeover_fixture_with_gateway(true, false).await
+        takeover_fixture_with_gateway(true, false, false).await
+    }
+
+    /// Claude Desktop 正在运行：状态读取与写入门槛必须同时准确。
+    async fn takeover_fixture_running(enabled: bool) -> TakeoverFixture {
+        takeover_fixture_with_gateway(enabled, true, true).await
     }
 
     fn free_port() -> u16 {
@@ -550,7 +578,11 @@ mod tests {
             .port()
     }
 
-    async fn takeover_fixture_with_gateway(enabled: bool, started: bool) -> TakeoverFixture {
+    async fn takeover_fixture_with_gateway(
+        enabled: bool,
+        started: bool,
+        running: bool,
+    ) -> TakeoverFixture {
         let directory = tempfile::tempdir().unwrap();
         let store = create_store(&directory).await;
         let mut hashes = Vec::new();
@@ -585,6 +617,7 @@ mod tests {
             TakeoverContext::Fixed(Box::new(FixedTakeover {
                 desktop: desktop.clone(),
                 state_dir: state_dir.clone(),
+                running,
             })),
         );
         TakeoverFixture {
@@ -598,12 +631,21 @@ mod tests {
     }
 
     async fn create_store(directory: &tempfile::TempDir) -> Store {
-        Store::connect(&format!(
+        let store = Store::connect(&format!(
             "sqlite://{}",
             directory.path().join("claude-takeover.db").display()
         ))
         .await
-        .unwrap()
+        .unwrap();
+        // 测试只走直连：避免任何 NetworkClients/ProviderRouter 路径触发系统代理查询。
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                ..crate::store::ProxySettingsInput::default()
+            })
+            .await
+            .unwrap();
+        store
     }
 
     async fn create_model(store: &Store, name: &str) -> String {
@@ -814,6 +856,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_deleted_desktop_profile_model_marks_the_takeover_stale() {
+        let fixture = takeover_fixture(true).await;
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/desktop",
+            Some(json!({
+                "action": "apply",
+                "models": [{"model_hash": fixture.hashes[1]}],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["state"], "applied");
+
+        // 正常删除接口不需要读取 Desktop 收据；profile 指向的精确发现 ID 失效后，
+        // 接管状态必须明确过期，而不是继续显示已应用。
+        fixture
+            .store
+            .delete_model(&fixture.hashes[1])
+            .await
+            .unwrap();
+
+        let (status, body) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/takeover",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["desktop"]["state"], "stale", "{body}");
+        assert_eq!(body["desktop"]["restorable"], true);
+
+        // 过期不是冲突：撤销仍按收据清理客户端里的条目和 profile。
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/desktop",
+            Some(json!({"action": "undo"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["state"], "ready");
+    }
+
+    #[tokio::test]
     async fn takeover_requires_an_enabled_gateway_and_known_models() {
         let fixture = takeover_fixture(false).await;
         let (status, body) = send(
@@ -917,6 +1006,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_running_desktop_keeps_its_configuration_state_but_refuses_writes() {
+        let fixture = takeover_fixture_running(true).await;
+        let (status, body) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/takeover",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        // running 是独立条件：没有接管时配置状态仍是 ready，不能被运行状态吞掉。
+        assert_eq!(body["desktop"]["state"], "ready", "{body}");
+        assert_eq!(body["desktop"]["running"], true, "{body}");
+
+        let (status, body) = rotate(&fixture).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("quit Claude Desktop completely"),
+            "{body}"
+        );
+
+        let (status, body) = send(
+            &fixture.app,
+            Method::PUT,
+            "/__byok-api__/api/claude/takeover/desktop",
+            Some(json!({
+                "action": "apply",
+                "models": [{"model_hash": fixture.hashes[0]}],
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("quit Claude Desktop"),
+            "{body}"
+        );
+        assert!(!fixture.desktop.meta.exists(), "拒绝发生在写文件之前");
+    }
+
+    #[tokio::test]
     async fn rotating_is_refused_while_claude_desktop_has_the_takeover() {
         let fixture = takeover_fixture(true).await;
         let (status, body) = send(
@@ -966,5 +1101,94 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(fixture.desktop.profile(uuid)).unwrap())
                 .unwrap();
         assert_eq!(profile["inferenceGatewayApiKey"], old.as_str());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_status_read_waits_for_an_in_flight_apply_instead_of_consuming_its_log() {
+        use crate::claude_client::desktop::test_hooks;
+
+        let fixture = takeover_fixture(true).await;
+        let state_dir = fixture.state_dir.clone();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let release_rx = std::sync::Mutex::new(release_rx);
+        let hook_state = state_dir.clone();
+        test_hooks::set_after_journal(
+            &state_dir,
+            Arc::new(move |path: &std::path::Path| {
+                if path != hook_state {
+                    return;
+                }
+                entered_tx.send(()).unwrap();
+                release_rx.lock().unwrap().recv().unwrap();
+            }),
+        );
+
+        let apply_app = fixture.app.clone();
+        let apply_hash = fixture.hashes[0].clone();
+        let apply_task = tokio::spawn(async move {
+            send(
+                &apply_app,
+                Method::PUT,
+                "/__byok-api__/api/claude/takeover/desktop",
+                Some(json!({
+                    "action": "apply",
+                    "models": [{"model_hash": apply_hash}],
+                })),
+            )
+            .await
+        });
+
+        let entered = tokio::task::spawn_blocking(move || {
+            entered_rx.recv_timeout(std::time::Duration::from_secs(5))
+        })
+        .await
+        .unwrap();
+        entered.expect("apply must reach the journal write");
+
+        let status_result = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            send(
+                &fixture.app,
+                Method::GET,
+                "/__byok-api__/api/claude/takeover",
+                None,
+            ),
+        )
+        .await;
+
+        // 先释放被阻塞的 apply，再断言，避免失败路径把运行时线程永久挂住。
+        release_tx.send(()).unwrap();
+        let (apply_status, apply_body) = apply_task.await.unwrap();
+        test_hooks::clear_after_journal(&state_dir);
+        assert_eq!(apply_status, StatusCode::OK, "{apply_body}");
+        assert_eq!(apply_body["state"], "applied");
+        assert!(
+            status_result.is_err(),
+            "status GET 不能越过正在持锁的 apply：{status_result:?}"
+        );
+
+        let (status, body) = send(
+            &fixture.app,
+            Method::GET,
+            "/__byok-api__/api/claude/takeover",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["desktop"]["state"], "applied");
+        assert!(!body["desktop"]["conflicts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|conflict| {
+                conflict["code"] == "apply_preserved"
+                    || conflict["code"] == "apply_rolled_back"
+                    || conflict["code"] == "apply_committed"
+            }));
+        assert!(
+            !state_dir.join("desktop.pending.json").exists(),
+            "apply 结束后写前日志必须消失"
+        );
     }
 }

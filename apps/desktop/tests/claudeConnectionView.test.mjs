@@ -52,6 +52,7 @@ const takeover = {
     profile_path: "/home/u/Library/Application Support/Claude",
     backup_path: "",
     restorable: false,
+    running: false,
     conflicts: [],
     guided: false,
   },
@@ -175,11 +176,17 @@ test("token rotation is refused while the Desktop takeover is applied, stale or 
   assert.deepEqual(claudeTokenRotationGate(null), { allowed: true, reason: null });
   assert.equal(claudeTokenRotationGate(takeover).allowed, true, "an unapplied Desktop does not block rotation");
 
-  for (const state of ["applied", "stale", "running"]) {
+  for (const state of ["applied", "stale"]) {
     const gate = claudeTokenRotationGate({ desktop: { ...takeover.desktop, state } });
     assert.equal(gate.allowed, false, `desktop ${state} must disable rotation`);
     assert.match(gate.reason, /先撤销 Claude Desktop 接管（运行中先完全退出）再轮换令牌。/);
   }
+
+  const running = claudeTokenRotationGate({
+    desktop: { ...takeover.desktop, state: "applied", running: true },
+  });
+  assert.equal(running.allowed, false, "running is a separate refusal reason");
+  assert.match(running.reason, /完全退出/);
 });
 
 test("apply stays disabled with a readable reason until the gateway and client are ready", async () => {
@@ -218,9 +225,12 @@ test("a running or guided Claude Desktop is a blocker, not an apply button", asy
   const { claudeActionGate } = await loadClaude();
 
   const running = claudeActionGate(gateInput({
-    takeover: { desktop: { ...takeover.desktop, state: "running" } },
+    takeover: {
+      desktop: { ...takeover.desktop, state: "applied", restorable: true, running: true },
+    },
   }));
   assert.equal(running.apply, false);
+  assert.equal(running.undo, false, "running also forbids undo");
   assert.match(running.applyBlockedReason, /完全退出/);
 
   const guided = claudeActionGate(gateInput({
@@ -233,6 +243,41 @@ test("a running or guided Claude Desktop is a blocker, not an apply button", asy
     claudeActionGate(gateInput({ desktopModels: [] })).applyBlockedReason,
     /至少选择一个模型/,
   );
+});
+
+test("running stays separate from the applied, stale or ready configuration state", async () => {
+  const { claudeConnectionView, claudeTakeoverStateLabel } = await loadClaude();
+
+  const applied = { desktop: { ...takeover.desktop, state: "applied", restorable: true, running: true } };
+  assert.equal(claudeConnectionView(status, applied).state, "taken-over");
+  assert.equal(claudeConnectionView(status, applied).label, "已接管");
+
+  const stale = { desktop: { ...takeover.desktop, state: "stale", running: true } };
+  assert.equal(claudeConnectionView(status, stale).state, "stale");
+  assert.equal(claudeConnectionView(status, stale).label, "配置已过期");
+
+  const ready = { desktop: { ...takeover.desktop, state: "ready", running: true } };
+  assert.equal(claudeConnectionView(status, ready).state, "pending-apply");
+
+  assert.equal(claudeTakeoverStateLabel("applied"), "已接管");
+  assert.equal(claudeTakeoverStateLabel("stale"), "配置已过期");
+});
+
+test("running blocks token rotation even before the takeover is applied", async () => {
+  const { claudeTokenRotationGate } = await loadClaude();
+
+  for (const state of ["ready", "applied", "stale"]) {
+    const gate = claudeTokenRotationGate({
+      desktop: { ...takeover.desktop, state, running: true },
+    });
+    assert.equal(gate.allowed, false, `desktop ${state} while running must disable rotation`);
+    assert.match(gate.reason, /完全退出/);
+  }
+  const applied = claudeTokenRotationGate({
+    desktop: { ...takeover.desktop, state: "applied", running: false },
+  });
+  assert.equal(applied.allowed, false);
+  assert.match(applied.reason, /先撤销 Claude Desktop 接管/);
 });
 
 test("undo follows the server receipt, not the gateway switch or the backup file", async () => {
@@ -309,10 +354,10 @@ test("the guided view lists the exact fields Claude Desktop asks for", async () 
   assert.doesNotMatch(markup, /选择 Claude Desktop 模型/, "the model editor is replaced by the guide");
 });
 
-test("a running Claude Desktop is called out and cannot be applied", async () => {
+test("a running Claude Desktop is called out and cannot be applied or undone", async () => {
   const { ClaudeDesktopTab } = await loader.load("/src/features/claude/ClaudeDesktopTab.tsx");
   const { claudeActionGate } = await loadClaude();
-  const running = { ...takeover.desktop, state: "running" };
+  const running = { ...takeover.desktop, state: "applied", restorable: true, running: true };
   const gate = claudeActionGate(gateInput({ takeover: { desktop: running } }));
   const markup = await renderWithTooltip(createElement(ClaudeDesktopTab, {
     draft: settings,
@@ -330,7 +375,10 @@ test("a running Claude Desktop is called out and cannot be applied", async () =>
 
   assert.match(markup, /先完全退出 Claude Desktop/);
   assert.match(markup, /Claude Desktop 正在运行，请先完全退出。/);
+  assert.match(markup, /已接管/, "the configuration state stays visible while running");
+  assert.match(markup, /正在运行/, "running is shown as its own condition");
   assert.equal(gate.apply, false);
+  assert.equal(gate.undo, false, "the server refuses undo while the client is running");
   assert.doesNotMatch(markup, /应用接管<\/button>/, "takeover commands belong to the page header");
 });
 
@@ -347,6 +395,20 @@ test("the real server takeover JSON parses without dropping Desktop conflicts or
 
   const undone = await api.undoClaudeDesktop();
   assert.deepEqual(undone, serverTakeover.desktop);
+});
+
+test("the takeover parser keeps the running flag separate from the configuration state", async () => {
+  const runningTakeover = {
+    desktop: { ...serverTakeover.desktop, state: "applied", running: true },
+  };
+  const backend = new FakeBackend()
+    .route("GET", `${API_ROOT}/claude/takeover`, () => ({ body: runningTakeover }));
+  backend.install();
+  const { api } = await loader.load("/src/shared/api.ts");
+
+  const parsed = await api.claudeTakeover();
+  assert.equal(parsed.desktop.state, "applied", "running must not replace the configuration state");
+  assert.equal(parsed.desktop.running, true);
 });
 
 test("Claude settings, status, takeover and the Desktop apply call stay on the management HTTP boundary", async () => {
@@ -460,7 +522,7 @@ test("a stale Desktop shows the expiry pill and the re-apply notice above the co
     onCopy: () => {},
   }));
   assert.match(markup, /配置已过期/, "the tab carries the stale pill");
-  assert.match(markup, /网关设置已变化，客户端仍指向旧地址\/令牌，请重新应用接管。/);
+  assert.match(markup, /网关设置已变化，或接管时使用的模型已被删除；客户端仍指向旧配置，请重新应用接管。/);
   assert.doesNotMatch(markup, /配置冲突/);
   assert.doesNotMatch(markup, /先完全退出 Claude Desktop/, "stale does not mean the client is running");
 });

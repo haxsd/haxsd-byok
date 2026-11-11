@@ -10,10 +10,11 @@ use bytes::Bytes;
 use cursor_server::{
     cursor::prompting::{PromptAssets, PromptCompiler},
     cursor::protocol::{connect, proto::agent::v1 as pb},
-    cursor::{TransportCommand, TransportRegistry},
+    cursor::{TransportCommand, TransportParent, TransportRegistry},
     model::{
-        CanonicalMessage, ConversationId, ModelConfigInput, ModelSpec, ModelType, Origin,
-        PreparedRun, PromptSpec, Role, RunAction, RunId, RunKind, Usage, OPENAI_CHAT_ENDPOINT,
+        CanonicalMessage, ConversationId, MessageContent, ModelConfigInput, ModelSpec, ModelType,
+        Origin, PreparedRun, ProjectedContent, ProjectedMessage, PromptSpec, Role, RunAction,
+        RunId, RunKind, ToolResultContent, Usage, OPENAI_CHAT_ENDPOINT,
     },
     provider::{FinishReason, ModelEvent},
     run::{self, CommandResult, CommitCause, RunEngine, RunEvent, RunOutcome, RunPhase},
@@ -772,7 +773,7 @@ async fn tool_call_with_empty_arguments_does_not_fail_the_run() {
 async fn parallel_tool_results_complete_the_round_without_a_protocol_error() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider = fake_provider::FakeProvider::default();
-    provider.push(parallel_tool_response([
+    provider.push(parallel_tool_response(&[
         ("call-1", "Read", "{\"path\":\"/tmp/a\"}"),
         ("call-2", "Read", "{\"path\":\"/tmp/b\"}"),
     ]));
@@ -1815,6 +1816,817 @@ async fn cancel_subagent_action_aborts_the_target_task_and_keeps_the_parent_runn
     assert_eq!(provider.requests().len(), 2);
 }
 
+/// C02：工具轮活跃时，客户端在插话动作里给出被中断调用的真实 shell 结果。服务端必须
+/// 用它完成这次调用，而不是再生成一条 generic interrupted 结果把真实输出顶掉。
+#[tokio::test]
+async fn a_user_interrupt_uses_the_client_supplied_shell_resolution() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(tool_response(
+        "shell-interrupt",
+        "Shell",
+        r#"{"command":"echo actual","block_until_ms":1000}"#,
+    ));
+    provider.push(text_response("superseded by the follow-up"));
+    provider.push(text_response("continued after the resolution"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry
+        .get_or_create("resolution-user-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "resolution-user-request",
+                "resolution-user-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before the shell exec");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        assert_eq!(flags & connect::END_STREAM_FLAG, 0);
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(_)) => {
+                acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec))
+                if matches!(
+                    exec.message.as_ref(),
+                    Some(pb::exec_server_message::Message::ShellStreamArgs(_))
+                ) =>
+            {
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(runtime_user_message_with_shell_resolution(
+                "shell-interrupt",
+            )),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    drain_successfully(&handle, &mut output, &mut append_seqno).await;
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        3,
+        "the resolved round runs once, then the queued follow-up interrupts it"
+    );
+    let final_history = &requests.last().unwrap().history;
+    let result = projected_tool_result(final_history, "shell-interrupt")
+        .expect("the client-supplied shell result must reach history");
+    assert!(
+        result.content.contains("client-side shell output"),
+        "the actual shell result must be committed, got: {}",
+        result.content
+    );
+    assert!(
+        !result
+            .content
+            .contains("interrupted by a newer user message"),
+        "the generic interruption must not replace the actual result: {}",
+        result.content
+    );
+    assert!(!result.is_error);
+}
+
+/// C02：CancelAction 携带真实 shell 结果时，先把结果收进历史再取消这一轮；取消仍然
+/// 生效（客户端收到 canceled EndStream），但不能把唯一的结果载体丢掉。
+#[tokio::test]
+async fn a_cancel_action_persists_the_client_supplied_shell_resolution_before_cancelling() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(tool_response(
+        "shell-cancel",
+        "Shell",
+        r#"{"command":"echo cancel","block_until_ms":1000}"#,
+    ));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider),
+        PromptCompiler::new(assets),
+    );
+    let handle = registry
+        .get_or_create("resolution-cancel-request")
+        .await
+        .unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "resolution-cancel-request",
+                "resolution-cancel-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut append_seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before the shell exec");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        assert_eq!(flags & connect::END_STREAM_FLAG, 0);
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(_)) => {
+                acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec))
+                if matches!(
+                    exec.message.as_ref(),
+                    Some(pb::exec_server_message::Message::ShellStreamArgs(_))
+                ) =>
+            {
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    handle
+        .command(TransportCommand::Append {
+            seqno: append_seqno,
+            message: Box::new(runtime_cancel_action_with_shell_resolution("shell-cancel")),
+        })
+        .await
+        .unwrap();
+    append_seqno += 1;
+
+    // 先看到取消收尾，再检查历史：结果必须在取消之前提交。
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before canceled EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+            assert_eq!(json["error"]["code"], "canceled");
+            break;
+        }
+        acknowledge_kv(&handle, &mut append_seqno, &frame).await;
+    }
+
+    let messages = store
+        .load_current_messages(&ConversationId::new("resolution-cancel-conversation"))
+        .await
+        .unwrap();
+    let result = messages
+        .iter()
+        .find_map(|message| match &message.content {
+            MessageContent::ToolResult(result) if result.call_id == "shell-cancel" => Some(result),
+            _ => None,
+        })
+        .expect("the cancelled run must keep the client-supplied shell result");
+    assert!(
+        result.content.contains("client-side cancel output"),
+        "got: {}",
+        result.content
+    );
+    assert!(!result.is_error);
+}
+
+/// C02：上一轮被取消、checkpoint 里留下 pending 工具调用时，新用户动作携带的真实
+/// shell / Task 结果必须被收进历史（包括 Task 的 agent 关联），而不是被 Start 静默清掉。
+#[tokio::test]
+async fn a_new_user_action_resolves_pending_tool_calls_from_checkpoint() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push(parallel_tool_response(&[
+        (
+            "pending-shell",
+            "Shell",
+            r#"{"command":"echo pending","block_until_ms":1000}"#,
+        ),
+        (
+            "pending-task",
+            "Task",
+            r#"{"description":"pending task","prompt":"do work","subagent_type":"generalPurpose","run_in_background":true}"#,
+        ),
+    ]));
+    provider.push(text_response("resumed after resolving the pending calls"));
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let first = registry
+        .get_or_create("pending-resolution-first")
+        .await
+        .unwrap();
+    let mut first_output = first.subscribe();
+    first
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "pending-resolution-first",
+                "pending-resolution-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+    let mut first_seqno = 1;
+    let staged = loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), first_output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before the staged checkpoint");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            panic!("the first run ended before the pending checkpoint")
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(state)) =
+            &server.message
+        {
+            if state.pending_tool_calls.len() == 1 {
+                break state.clone();
+            }
+        }
+        acknowledge_kv(&first, &mut first_seqno, &frame).await;
+    };
+    first
+        .command(TransportCommand::Append {
+            seqno: first_seqno,
+            message: Box::new(runtime_cancel_action()),
+        })
+        .await
+        .unwrap();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), first_output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before canceled EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+            assert_eq!(json["error"]["code"], "canceled");
+            break;
+        }
+    }
+
+    let resumed = registry
+        .get_or_create("pending-resolution-second")
+        .await
+        .unwrap();
+    let mut resumed_output = resumed.subscribe();
+    resumed
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_with_pending_resolutions(
+                "pending-resolution-second",
+                "pending-resolution-conversation",
+                staged,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut resumed_seqno = 1;
+    let mut settled = None;
+    loop {
+        let frame =
+            match tokio::time::timeout(std::time::Duration::from_secs(5), resumed_output.recv())
+                .await
+            {
+                Ok(Some(frame)) => frame,
+                Ok(None) => break,
+                Err(_) => panic!("resumed run did not finish"),
+            };
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(payload.as_ref(), b"{}");
+            break;
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(state)) =
+            &server.message
+        {
+            if state.pending_tool_calls.is_empty() {
+                settled = Some(state.clone());
+            }
+        }
+        acknowledge_kv(&resumed, &mut resumed_seqno, &frame).await;
+    }
+
+    let requests = provider.requests();
+    assert_eq!(
+        requests.len(),
+        2,
+        "the new action must continue with a model call"
+    );
+    let shell = projected_tool_result(&requests[1].history, "pending-shell")
+        .expect("the pending shell result must reach history");
+    assert!(
+        shell.content.contains("client-side pending shell output"),
+        "got: {}",
+        shell.content
+    );
+    let task = projected_tool_result(&requests[1].history, "pending-task")
+        .expect("the pending Task result must reach history");
+    assert!(
+        task.content.contains("resolved-pending-agent"),
+        "{}",
+        task.content
+    );
+    assert!(!task.is_error, "the resolved Task must stay a success");
+
+    let settled = settled.expect("the resolved run must publish a settled checkpoint");
+    let run = settled
+        .subagent_runs_by_parent_tool_call_id
+        .get("pending-task")
+        .expect("the resolved Task must keep its parent-tool-call association");
+    assert_eq!(run.subagent_id.as_deref(), Some("resolved-pending-agent"));
+    assert_eq!(
+        run.status,
+        pb::SubagentRunStatus::Backgrounded as i32,
+        "a resolved background Task must not be turned into an abort"
+    );
+}
+
+/// C02/F02：活跃工具轮里通过 UserMessageAction 的 Task resolution 收尾 Task 后，
+/// 同一 transport 立即按 agent id 取消必须命中当前 generation 的关联，而不是等下一次
+/// RunRequest 的 checkpoint 种子。
+#[tokio::test]
+async fn an_active_task_resolution_updates_the_current_transport_agent_map_for_cancel() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(
+        "active-resolution-conversation",
+        tool_response(
+            "active-resolution-task",
+            "Task",
+            r#"{"description":"active task","prompt":"do work","subagent_type":"generalPurpose","run_in_background":true}"#,
+        ),
+    );
+    let _hold_parent = provider.push_gated_for(
+        "active-resolution-conversation",
+        text_response("parent stays active"),
+    );
+    let _hold_child = provider.push_gated_for(
+        "active-resolution-child",
+        text_response("child stays active"),
+    );
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let parent = registry
+        .get_or_create("active-resolution-parent")
+        .await
+        .unwrap();
+    let mut parent_output = parent.subscribe();
+    parent
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "active-resolution-parent",
+                "active-resolution-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+    let mut parent_seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), parent_output.recv())
+            .await
+            .expect("parent did not dispatch the Task")
+            .expect("parent stream closed");
+        let Some(server) = frame_role(&frame) else {
+            panic!("parent ended before the Task exec");
+        };
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                acknowledge_kv(&parent, &mut parent_seqno, &frame).await;
+                let _ = kv;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
+                let Some(pb::exec_server_message::Message::SubagentArgs(args)) = exec.message
+                else {
+                    continue;
+                };
+                assert_eq!(args.tool_call_id, "active-resolution-task");
+                let child = registry
+                    .get_or_create("active-resolution-child-request")
+                    .await
+                    .unwrap();
+                child
+                    .set_parent(TransportParent {
+                        request_id: Some("active-resolution-parent".into()),
+                        tool_call_id: Some("active-resolution-task".into()),
+                    })
+                    .unwrap();
+                child
+                    .command(TransportCommand::Append {
+                        seqno: 0,
+                        message: Box::new(subagent_run_request(
+                            "active-resolution-child-request",
+                            "active-resolution-child",
+                        )),
+                    })
+                    .await
+                    .unwrap();
+                let child_handle = child.clone();
+                let mut child_output = child.subscribe();
+                tokio::spawn(async move {
+                    let mut seqno = 1;
+                    while let Some(frame) = child_output.recv().await {
+                        let Some(server) = frame_role(&frame) else {
+                            break;
+                        };
+                        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                            server.message
+                        {
+                            let _ = child_handle
+                                .command(TransportCommand::Append {
+                                    seqno,
+                                    message: Box::new(kv_ack(kv.id)),
+                                })
+                                .await;
+                            seqno += 1;
+                        }
+                    }
+                });
+                break;
+            }
+            _ => {}
+        }
+    }
+    // 用 Task resolution 收尾活跃调用；结果会走正常 tool round 提交。
+    parent
+        .command(TransportCommand::Append {
+            seqno: parent_seqno,
+            message: Box::new(runtime_user_message_with_task_resolution(
+                "active-resolution-task",
+                "active-resolution-child",
+            )),
+        })
+        .await
+        .unwrap();
+    wait_for_tool_call_status(&store, "active-resolution-task", "completed").await;
+    wait_for_run_status(&store, "active-resolution-child-request", "running").await;
+
+    parent
+        .command(TransportCommand::Append {
+            seqno: parent_seqno + 1,
+            message: Box::new(runtime_cancel_subagent("active-resolution-child")),
+        })
+        .await
+        .unwrap();
+    wait_for_run_status(&store, "active-resolution-child-request", "cancelled").await;
+    registry.shutdown().await;
+}
+
+/// C02/F02：旧 run 留下的 pending 工具轮由新动作补齐真实结果时，必须同时收尾原
+/// `tool_round_calls`（background_task/call 候选依赖 completed）、更新当前 transport 的
+/// agent→call 映射，并让真实 child 的完成唤醒与 agent-id 取消都成立。
+#[tokio::test]
+async fn a_pending_task_resolution_completes_the_old_round_and_supports_wake_and_cancel() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(
+        "pending-round-conversation",
+        parallel_tool_response(&[
+            (
+                "pending-shell",
+                "Shell",
+                r#"{"command":"echo pending","block_until_ms":1000}"#,
+            ),
+            (
+                "pending-wake-task",
+                "Task",
+                r#"{"description":"wake task","prompt":"do work","subagent_type":"generalPurpose","run_in_background":true}"#,
+            ),
+            (
+                "pending-cancel-task",
+                "Task",
+                r#"{"description":"cancel task","prompt":"do work","subagent_type":"generalPurpose","run_in_background":true}"#,
+            ),
+        ]),
+    );
+    let release_wake = provider.push_gated_for(
+        "pending-wake-child",
+        text_response("pending wake child finished"),
+    );
+    let _hold_cancel = provider.push_gated_for(
+        "pending-cancel-child",
+        text_response("pending cancel child stays active"),
+    );
+    provider.push_for(
+        "pending-round-conversation",
+        text_response("resumed after resolving the pending calls"),
+    );
+    provider.push_for(
+        "pending-round-conversation",
+        text_response("after the wake"),
+    );
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let first = registry.get_or_create("pending-round-first").await.unwrap();
+    let mut first_output = first.subscribe();
+    first
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "pending-round-first",
+                "pending-round-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+    let mut first_seqno = 1;
+    let mut staged = None;
+    let mut started_children = 0;
+    while staged.is_none() || started_children < 2 {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), first_output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before the staged checkpoint");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            panic!("the first run ended before the pending checkpoint")
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(state)) =
+            &server.message
+        {
+            if state.pending_tool_calls.len() == 1 {
+                staged = Some(state.clone());
+            }
+        }
+        if let Some(pb::agent_server_message::Message::ExecServerMessage(exec)) = &server.message {
+            let Some(pb::exec_server_message::Message::SubagentArgs(args)) = &exec.message else {
+                continue;
+            };
+            let (child_conversation, child_request) = match args.tool_call_id.as_str() {
+                "pending-wake-task" => ("pending-wake-child", "pending-wake-child-request"),
+                "pending-cancel-task" => ("pending-cancel-child", "pending-cancel-child-request"),
+                _ => continue,
+            };
+            let child = registry.get_or_create(child_request).await.unwrap();
+            child
+                .set_parent(TransportParent {
+                    request_id: Some("pending-round-first".into()),
+                    tool_call_id: Some(args.tool_call_id.clone()),
+                })
+                .unwrap();
+            child
+                .command(TransportCommand::Append {
+                    seqno: 0,
+                    message: Box::new(subagent_run_request(child_request, child_conversation)),
+                })
+                .await
+                .unwrap();
+            let child_handle = child.clone();
+            let mut child_output = child.subscribe();
+            tokio::spawn(async move {
+                let mut seqno = 1;
+                while let Some(frame) = child_output.recv().await {
+                    let Some(server) = frame_role(&frame) else {
+                        break;
+                    };
+                    if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                        server.message
+                    {
+                        let _ = child_handle
+                            .command(TransportCommand::Append {
+                                seqno,
+                                message: Box::new(kv_ack(kv.id)),
+                            })
+                            .await;
+                        seqno += 1;
+                    }
+                }
+            });
+            started_children += 1;
+        }
+        acknowledge_kv(&first, &mut first_seqno, &frame).await;
+    }
+    let staged = staged.expect("the first run did not publish a pending checkpoint");
+    // 子 run 必须在取消父轮之前真正 active：后续的 agent-id 取消按“当前 running run”
+    // 绑定目标，子 run 还没 claim 时只能安全拒绝。
+    wait_for_run_status(&store, "pending-wake-child-request", "running").await;
+    wait_for_run_status(&store, "pending-cancel-child-request", "running").await;
+    first
+        .command(TransportCommand::Append {
+            seqno: first_seqno,
+            message: Box::new(runtime_cancel_action()),
+        })
+        .await
+        .unwrap();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), first_output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before canceled EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+            assert_eq!(json["error"]["code"], "canceled");
+            break;
+        }
+    }
+
+    let resumed = registry
+        .get_or_create("pending-round-second")
+        .await
+        .unwrap();
+    let mut resumed_output = resumed.subscribe();
+    resumed
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_with_pending_task_resolutions(
+                "pending-round-second",
+                "pending-round-conversation",
+                staged,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut resumed_seqno = 1;
+    loop {
+        let frame =
+            match tokio::time::timeout(std::time::Duration::from_secs(5), resumed_output.recv())
+                .await
+            {
+                Ok(Some(frame)) => frame,
+                Ok(None) => panic!("resumed transport closed before turnEnded"),
+                Err(_) => panic!("resumed run did not finish"),
+            };
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        assert_eq!(
+            flags & connect::END_STREAM_FLAG,
+            0,
+            "resumed run closed before turnEnded"
+        );
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        let ended = matches!(
+            server.message,
+            Some(pb::agent_server_message::Message::InteractionUpdate(
+                pb::InteractionUpdate {
+                    message: Some(pb::interaction_update::Message::TurnEnded(_)),
+                }
+            ))
+        );
+        acknowledge_kv(&resumed, &mut resumed_seqno, &frame).await;
+        if ended {
+            break;
+        }
+    }
+
+    // F2（pending）：解析出的 Task 身份必须进入当前 transport 的 map；立刻按 agent id 取消。
+    resumed
+        .command(TransportCommand::Append {
+            seqno: resumed_seqno,
+            message: Box::new(runtime_cancel_subagent("pending-cancel-child")),
+        })
+        .await
+        .unwrap();
+
+    // F1：旧 round 的三个调用都必须由 resolution 收敛为 completed，而不是继续 pending。
+    let calls: Vec<(String, String, Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT call_id, status, result_content, result_is_error FROM tool_round_calls
+          WHERE call_id IN ('pending-shell','pending-wake-task','pending-cancel-task')
+          ORDER BY call_id",
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(calls.len(), 3);
+    for (call_id, status, content, is_error) in &calls {
+        assert_eq!(status, "completed", "{call_id} must be completed");
+        assert_eq!(*is_error, Some(0), "{call_id} must keep success");
+        let content = content.as_deref().unwrap_or_default();
+        match call_id.as_str() {
+            "pending-shell" => assert!(content.contains("client-side pending shell output")),
+            "pending-wake-task" => assert!(content.contains("pending-wake-child")),
+            "pending-cancel-task" => assert!(content.contains("pending-cancel-child")),
+            other => panic!("unexpected call {other}"),
+        }
+    }
+
+    wait_for_run_status(&store, "pending-cancel-child-request", "running").await;
+    wait_for_run_status(&store, "pending-cancel-child-request", "cancelled").await;
+
+    // F1 的后台唤醒：释放 wake child，让 background_task 通过已 completed 的旧 call。
+    wait_for_run_status(&store, "pending-wake-child-request", "running").await;
+    release_wake.notify_one();
+    wait_for_run_status(&store, "pending-wake-child-request", "completed").await;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+
+    let third = registry.get_or_create("pending-round-third").await.unwrap();
+    let mut third_output = third.subscribe();
+    third
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(client_run_for(
+                "pending-round-third",
+                "pending-round-conversation",
+            )),
+        })
+        .await
+        .unwrap();
+    let mut third_seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(5), third_output.recv())
+            .await
+            .unwrap()
+            .expect("third run closed before EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(payload.as_ref(), b"{}");
+            break;
+        }
+        acknowledge_kv(&third, &mut third_seqno, &frame).await;
+    }
+    let history = serde_json::to_string(
+        &provider
+            .requests()
+            .last()
+            .expect("third run did not call the model")
+            .history,
+    )
+    .unwrap();
+    assert!(
+        history.contains("pending-wake-child") && history.contains("pending-wake-task"),
+        "the completed Task must wake the parent with its child/call identity: {history}"
+    );
+    registry.shutdown().await;
+}
+
 fn client_run() -> pb::AgentClientMessage {
     client_run_for("cancel-request", "cancel-conversation")
 }
@@ -1905,21 +2717,21 @@ fn tool_response(call_id: &str, name: &str, arguments: &str) -> Vec<ModelEvent> 
     ]
 }
 
-/// 同一轮里的两个并行调用，索引必须分开，否则第二轮会被当成重复的同一调用。
-fn parallel_tool_response(calls: [(&str, &str, &str); 2]) -> Vec<ModelEvent> {
+/// 同一轮里的并行调用，索引必须分开，否则第二轮会被当成重复的同一调用。
+fn parallel_tool_response(calls: &[(&str, &str, &str)]) -> Vec<ModelEvent> {
     let mut events = vec![ModelEvent::Start {
         model_call_id: "parallel-tool-call".into(),
     }];
-    for (index, (call_id, name, arguments)) in calls.into_iter().enumerate() {
+    for (index, (call_id, name, arguments)) in calls.iter().enumerate() {
         events.extend([
             ModelEvent::ToolCallStart {
                 index,
-                call_id: call_id.into(),
-                name: name.into(),
+                call_id: (*call_id).into(),
+                name: (*name).into(),
             },
             ModelEvent::ToolCallArgumentsDelta {
                 index,
-                delta: arguments.into(),
+                delta: (*arguments).into(),
             },
             ModelEvent::ToolCallEnd { index },
         ]);
@@ -2226,6 +3038,283 @@ fn runtime_cancel_subagent(tool_call_id: &str) -> pb::AgentClientMessage {
             },
         )),
     }
+}
+
+fn shell_resolution(call_id: &str, stdout: &str) -> pb::InterruptedPendingToolCallResolution {
+    pb::InterruptedPendingToolCallResolution {
+        tool_call_id: call_id.into(),
+        resolution: Some(
+            pb::interrupted_pending_tool_call_resolution::Resolution::ShellResult(
+                pb::ShellResult {
+                    result: Some(pb::shell_result::Result::Success(pb::ShellSuccess {
+                        stdout: stdout.into(),
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                },
+            ),
+        ),
+    }
+}
+
+fn task_resolution(call_id: &str, agent_id: &str) -> pb::InterruptedPendingToolCallResolution {
+    pb::InterruptedPendingToolCallResolution {
+        tool_call_id: call_id.into(),
+        resolution: Some(
+            pb::interrupted_pending_tool_call_resolution::Resolution::TaskResult(pb::TaskResult {
+                result: Some(pb::task_result::Result::Success(pb::TaskSuccess {
+                    agent_id: Some(agent_id.into()),
+                    is_background: true,
+                    result_suffix: Some("resolved task output".into()),
+                    background_reason: pb::SubagentBackgroundReason::AgentRequest as i32,
+                    ..Default::default()
+                })),
+            }),
+        ),
+    }
+}
+
+fn runtime_user_message_with_shell_resolution(call_id: &str) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::UserMessageAction(
+                    pb::UserMessageAction {
+                        user_message: Some(pb::UserMessage {
+                            text: "continue".into(),
+                            message_id: "resolution-user".into(),
+                            mode: pb::AgentMode::Agent as i32,
+                            ..Default::default()
+                        }),
+                        interrupted_pending_tool_call_resolutions: Some(
+                            pb::InterruptedPendingToolCallResolutions {
+                                resolutions: vec![shell_resolution(
+                                    call_id,
+                                    "client-side shell output",
+                                )],
+                            },
+                        ),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn runtime_cancel_action_with_shell_resolution(call_id: &str) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::CancelAction(
+                    pb::CancelAction {
+                        reason: "user cancelled".into(),
+                        interrupted_pending_tool_call_resolutions: Some(
+                            pb::InterruptedPendingToolCallResolutions {
+                                resolutions: vec![shell_resolution(
+                                    call_id,
+                                    "client-side cancel output",
+                                )],
+                            },
+                        ),
+                    },
+                )),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn client_run_with_pending_resolutions(
+    request_id: &str,
+    conversation_id: &str,
+    state: pb::ConversationStateStructure,
+) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::RunRequest(
+            pb::AgentRunRequest {
+                action: Some(pb::ConversationAction {
+                    action: Some(pb::conversation_action::Action::UserMessageAction(
+                        pb::UserMessageAction {
+                            user_message: Some(pb::UserMessage {
+                                text: "continue after the interruption".into(),
+                                message_id: "pending-resolution-user".into(),
+                                mode: pb::AgentMode::Agent as i32,
+                                ..Default::default()
+                            }),
+                            interrupted_pending_tool_call_resolutions: Some(
+                                pb::InterruptedPendingToolCallResolutions {
+                                    resolutions: vec![
+                                        shell_resolution(
+                                            "pending-shell",
+                                            "client-side pending shell output",
+                                        ),
+                                        task_resolution("pending-task", "resolved-pending-agent"),
+                                    ],
+                                },
+                            ),
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                }),
+                conversation_id: Some(conversation_id.into()),
+                conversation_state: Some(state),
+                run_id: Some(request_id.into()),
+                requested_model: Some(pb::RequestedModel {
+                    model_id: "test-model".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn client_run_with_pending_task_resolutions(
+    request_id: &str,
+    conversation_id: &str,
+    state: pb::ConversationStateStructure,
+) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::RunRequest(
+            pb::AgentRunRequest {
+                action: Some(pb::ConversationAction {
+                    action: Some(pb::conversation_action::Action::UserMessageAction(
+                        pb::UserMessageAction {
+                            user_message: Some(pb::UserMessage {
+                                text: "continue after the interruption".into(),
+                                message_id: "pending-task-resolution-user".into(),
+                                mode: pb::AgentMode::Agent as i32,
+                                ..Default::default()
+                            }),
+                            interrupted_pending_tool_call_resolutions: Some(
+                                pb::InterruptedPendingToolCallResolutions {
+                                    resolutions: vec![
+                                        shell_resolution(
+                                            "pending-shell",
+                                            "client-side pending shell output",
+                                        ),
+                                        task_resolution("pending-wake-task", "pending-wake-child"),
+                                        task_resolution(
+                                            "pending-cancel-task",
+                                            "pending-cancel-child",
+                                        ),
+                                    ],
+                                },
+                            ),
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                }),
+                conversation_id: Some(conversation_id.into()),
+                conversation_state: Some(state),
+                run_id: Some(request_id.into()),
+                requested_model: Some(pb::RequestedModel {
+                    model_id: "test-model".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn runtime_user_message_with_task_resolution(
+    call_id: &str,
+    agent_id: &str,
+) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::UserMessageAction(
+                    pb::UserMessageAction {
+                        user_message: Some(pb::UserMessage {
+                            text: "continue".into(),
+                            message_id: "task-resolution-user".into(),
+                            mode: pb::AgentMode::Agent as i32,
+                            ..Default::default()
+                        }),
+                        interrupted_pending_tool_call_resolutions: Some(
+                            pb::InterruptedPendingToolCallResolutions {
+                                resolutions: vec![task_resolution(call_id, agent_id)],
+                            },
+                        ),
+                        ..Default::default()
+                    },
+                )),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn subagent_run_request(request_id: &str, conversation_id: &str) -> pb::AgentClientMessage {
+    let mut request = client_run_for(request_id, conversation_id);
+    if let Some(pb::agent_client_message::Message::RunRequest(run)) = &mut request.message {
+        run.subagent_type_name = Some("generalPurpose".into());
+    }
+    request
+}
+
+async fn wait_for_tool_call_status(
+    store: &cursor_server::store::Store,
+    call_id: &str,
+    expected: &str,
+) {
+    for _ in 0..400 {
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM tool_round_calls WHERE call_id = ?")
+                .bind(call_id)
+                .fetch_optional(store.pool())
+                .await
+                .unwrap();
+        if status.as_deref() == Some(expected) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("tool call {call_id} did not become {expected}");
+}
+
+async fn wait_for_run_status(
+    store: &cursor_server::store::Store,
+    request_id: &str,
+    expected: &str,
+) {
+    for _ in 0..400 {
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM runs WHERE cursor_request_id = ?")
+                .bind(request_id)
+                .fetch_optional(store.pool())
+                .await
+                .unwrap();
+        if status.as_deref() == Some(expected) {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("run {request_id} did not become {expected}");
+}
+
+fn frame_role(frame: &[u8]) -> Option<pb::AgentServerMessage> {
+    let (flags, payload) = connect::decode_frames(frame).unwrap().pop().unwrap();
+    if flags & connect::END_STREAM_FLAG != 0 {
+        return None;
+    }
+    Some(pb::AgentServerMessage::decode(payload).unwrap())
+}
+
+fn projected_tool_result<'a>(
+    history: &'a [ProjectedMessage],
+    call_id: &str,
+) -> Option<&'a ToolResultContent> {
+    history.iter().find_map(|message| match &message.content {
+        ProjectedContent::ToolResult(result) if result.call_id == call_id => Some(result),
+        _ => None,
+    })
 }
 
 fn subagent_aborted(id: u32) -> pb::AgentClientMessage {

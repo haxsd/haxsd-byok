@@ -201,6 +201,22 @@ export interface CodexConfigConflict {
   current: string;
 }
 
+/**
+ * Codex 冲突/不可用状态的机器可读分类。
+ *
+ * `managed`：管理员 requirements 覆盖路由；`local_drift`：端点仍归本机但目录/模型漂移；
+ * `foreign_provider`：别家 provider/端点占用；`policy_unavailable`：策略读取失败；
+ * `incomplete_update`：配置已写但最终收据缺失；`unreadable`：配置/收据无法解析。
+ */
+export type CodexConflictKind = "none" | "managed" | "local_drift" | "foreign_provider" | "policy_unavailable" | "incomplete_update" | "unreadable";
+
+/** 管理员 requirements 与本次发布路由的差异。 */
+export interface CodexManagedConflict {
+  field: string;
+  required: string;
+  published: string;
+}
+
 export interface CodexStatus {
   enabled: boolean;
   listening: boolean;
@@ -211,6 +227,16 @@ export interface CodexStatus {
   restorable: boolean;
   /** 与接管快照不一致的受管字段；没有差异时是空数组。 */
   conflicts: CodexConfigConflict[];
+  /** 冲突的机器可读分类；当前服务端总会返回。 */
+  conflict_kind: CodexConflictKind;
+  /** 当前 provider/base_url/token 仍等于接管时发布的那一条。 */
+  route_owned: boolean;
+  /** 管理员 requirements 中真正改变请求出口的要求。 */
+  managed_conflicts: CodexManagedConflict[];
+  /** requirements 读取/解析失败的原因；此时仍可凭有效收据撤销。 */
+  managed_error: string | null;
+  /** 当前只核对本地系统 requirements 层。 */
+  managed_scope: "local_system_only";
   /** Codex 配置目录里存在有效的 ChatGPT 登录凭据；接管只换模型请求凭据，不碰它。 */
   chatgpt_signed_in: boolean;
   home: string;
@@ -249,10 +275,9 @@ export interface ClaudeSettings {
  *
  * `managed` 表示配置由系统策略托管，我们不会改写；`stale` 表示客户端文件仍与接管
  * 收据一致，但网关地址、令牌或模型列表已经变了——客户端还指着旧配置，需要重新应用。
- * `running` 表示程序正在运行，必须先完全退出。
+ * 运行状态由独立的 `running` 表达，不覆盖配置是否已应用。
  */
 export type ClaudeTakeoverState = "missing" | "ready" | "applied" | "stale" | "conflict" | "managed";
-export type ClaudeDesktopTakeoverState = ClaudeTakeoverState | "running";
 
 /** Claude Desktop 读到的配置来源：本地配置或两级系统策略。 */
 export type ClaudeConfigSource = "none" | "local" | "user_policy" | "machine_policy";
@@ -271,12 +296,14 @@ export interface ClaudeTakeoverConflict {
 }
 
 export interface ClaudeDesktopTakeover {
-  state: ClaudeDesktopTakeoverState;
+  state: ClaudeTakeoverState;
   config_source: ClaudeConfigSource;
   profile_path: string;
   backup_path: string;
   /** 接管收据存在且属于当前安装：撤销只在这时为 true。 */
   restorable: boolean;
+  /** Claude Desktop 进程正在运行：运行中可以保留 applied/stale，但不能写入。 */
+  running: boolean;
   conflicts: ClaudeTakeoverConflict[];
   /** Claude Desktop 只能手工填第三方推理配置：为 true 时页面走引导视图。 */
   guided: boolean;
@@ -1031,17 +1058,60 @@ function requireDevinStatus(payload: unknown): DevinStatus {
   return status;
 }
 
+const CODEX_CONFLICT_KINDS: readonly CodexConflictKind[] = [
+  "none",
+  "managed",
+  "local_drift",
+  "foreign_provider",
+  "policy_unavailable",
+  "incomplete_update",
+  "unreadable",
+];
+
+function codexManagedConflicts(value: unknown): CodexManagedConflict[] {
+  if (!Array.isArray(value)) throw unusableRead("Codex 状态");
+  return value.map((entry) => {
+    if (typeof entry !== "object" || entry === null) throw unusableRead("Codex 状态");
+    const candidate = entry as Record<string, unknown>;
+    if (
+      typeof candidate.field !== "string"
+      || typeof candidate.required !== "string"
+      || typeof candidate.published !== "string"
+    ) {
+      throw unusableRead("Codex 状态");
+    }
+    return { field: candidate.field, required: candidate.required, published: candidate.published };
+  });
+}
+
 /**
  * Codex 状态里的可用部分。
  *
- * `restorable` 与 `conflicts` 是后加的字段：缺少 `conflicts` 时按空数组处理——冲突卡片要
- * 遍历它，`undefined` 会在渲染里抛错。坏条目（缺 key 或某个值不是字符串）丢掉并留一条
- * 控制台记录，和列表接口的处置一致。缺 `restorable` 时退回旧口径（`configured`），
- * 撤销按钮对旧服务端的行为不变。
+ * 当前服务端总会返回诊断字段；缺失/非法按一次读取失败处理，不把缺失字段默认成
+ * `foreign_provider`/`none`，也不从旧字段推断 `restorable`。`conflicts` 中的坏条目
+ * 仍按既有约定丢弃并留一条控制台记录。
  */
 function usableCodexStatus(payload: unknown): CodexStatus {
   const status = requireStatus(payload as CodexStatus, "Codex 状态");
-  const raw = Array.isArray(status.conflicts) ? status.conflicts as unknown[] : [];
+  if (
+    typeof status.enabled !== "boolean"
+    || typeof status.port !== "number"
+    || typeof status.configured !== "boolean"
+    || typeof status.config_conflict !== "boolean"
+    || typeof status.restorable !== "boolean"
+    || !Array.isArray(status.conflicts)
+    || typeof status.chatgpt_signed_in !== "boolean"
+    || typeof status.home !== "string"
+    || (status.last_error !== null && typeof status.last_error !== "string")
+    || !CODEX_CONFLICT_KINDS.includes(status.conflict_kind)
+    || typeof status.route_owned !== "boolean"
+    || !Array.isArray(status.managed_conflicts)
+    || (status.managed_error !== null && typeof status.managed_error !== "string")
+    || status.managed_scope !== "local_system_only"
+  ) {
+    throw unusableRead("Codex 状态");
+  }
+  const raw = status.conflicts as unknown[];
   const conflicts = raw.filter(
     (conflict): conflict is CodexConfigConflict => {
       if (typeof conflict !== "object" || conflict === null) return false;
@@ -1054,11 +1124,11 @@ function usableCodexStatus(payload: unknown): CodexStatus {
   if (conflicts.length !== raw.length) {
     console.warn(`[api] Codex 状态：丢弃了 ${raw.length - conflicts.length} 条结构不完整的冲突记录`);
   }
+  const managed_conflicts = codexManagedConflicts(status.managed_conflicts);
   return {
     ...status,
     conflicts,
-    restorable: typeof status.restorable === "boolean" ? status.restorable : status.configured,
-    chatgpt_signed_in: status.chatgpt_signed_in === true,
+    managed_conflicts,
   };
 }
 
@@ -1129,7 +1199,6 @@ function usableClaudeStatus(payload: unknown): ClaudeStatus {
 }
 
 const claudeTakeoverStates: readonly ClaudeTakeoverState[] = ["missing", "ready", "applied", "stale", "conflict", "managed"];
-const claudeDesktopStates: readonly ClaudeDesktopTakeoverState[] = [...claudeTakeoverStates, "running"];
 const claudeConfigSources: readonly ClaudeConfigSource[] = ["none", "local", "user_policy", "machine_policy"];
 
 function takeoverState<T extends string>(value: unknown, allowed: readonly T[], fallback: T, label: string): T {
@@ -1180,11 +1249,12 @@ function desktopTakeover(raw: Record<string, unknown>): ClaudeDesktopTakeover {
     ? raw.config_source as ClaudeConfigSource
     : "none";
   return {
-    state: takeoverState(raw.state, claudeDesktopStates, "missing", "desktop"),
+    state: takeoverState(raw.state, claudeTakeoverStates, "missing", "desktop"),
     config_source: configSource,
     profile_path: stringField(raw.profile_path),
     backup_path: stringField(raw.backup_path),
     restorable: raw.restorable === true,
+    running: raw.running === true,
     conflicts: takeoverConflicts(raw.conflicts, "desktop.conflicts"),
     guided: raw.guided === true,
   };

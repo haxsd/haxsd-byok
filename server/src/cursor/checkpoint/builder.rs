@@ -287,60 +287,74 @@ impl CheckpointBuilder {
             let Some(pb::conversation_step::Message::ToolCall(call)) = step.message.as_ref() else {
                 continue;
             };
-            let Some(pb::tool_call::Tool::TaskToolCall(task)) = call.tool.as_ref() else {
-                continue;
-            };
-            let (Some(args), Some(result)) = (task.args.as_ref(), task.result.as_ref()) else {
-                continue;
-            };
-            let Some(pb::task_result::Result::Success(success)) = result.result.as_ref() else {
-                continue;
-            };
-            if !success.is_background {
-                continue;
-            }
-            let Some(agent_id) = success.agent_id.as_ref().filter(|id| !id.is_empty()) else {
-                continue;
-            };
-            let Some(tool_call_id) = call.tool_call_id.as_ref().filter(|id| !id.is_empty()) else {
-                continue;
-            };
-            let started_at_ms = call
-                .started_at_ms
-                .unwrap_or_else(crate::cursor::tools::runtime::now_ms);
-            let last_used_timestamp_ms = call.completed_at_ms.unwrap_or(started_at_ms);
-            self.base
-                .subagent_states
-                .entry(agent_id.clone())
-                .and_modify(|state| state.last_used_timestamp_ms = last_used_timestamp_ms)
-                .or_insert_with(|| pb::SubagentPersistedState {
-                    conversation_state: None,
-                    created_timestamp_ms: started_at_ms,
-                    last_used_timestamp_ms,
-                    subagent_type: args.subagent_type.clone(),
-                    model_id: args.model.clone(),
-                    environment: args.environment,
-                    cloud_subagent: None,
-                    first_class_bc_id: None,
-                    cloud_requested_environment_build_id: None,
-                    machine: args.machine.clone(),
-                });
-            self.base.subagent_runs_by_parent_tool_call_id.insert(
-                tool_call_id.clone(),
-                pb::SubagentRunState {
-                    parent_tool_call_id: tool_call_id.clone(),
-                    subagent_id: Some(agent_id.clone()),
-                    environment: args.environment,
-                    status: pb::SubagentRunStatus::Backgrounded as i32,
-                    title: Some(args.description.clone()),
-                    detail: success.result_suffix.clone(),
-                    transcript_path: success.transcript_path.clone(),
-                    output_path: None,
-                    completed_timestamp_ms: None,
-                    completion_reason: None,
-                },
-            );
+            self.record_background_subagent(call);
         }
+    }
+
+    /// 新动作里已解析的 pending Task 结果：补进同一份"父调用 → 子代理"状态。
+    ///
+    /// 这些结果不是当前轮实时派发的（它们随新用户动作到来），所以不会经过
+    /// `presentation`；但客户端要靠同一份状态把任务气泡标成完成/后台。
+    pub(crate) fn record_resolved_tool_calls(&mut self, calls: &[pb::ToolCall]) {
+        for call in calls {
+            self.record_background_subagent(call);
+        }
+    }
+
+    fn record_background_subagent(&mut self, call: &pb::ToolCall) {
+        let Some(pb::tool_call::Tool::TaskToolCall(task)) = call.tool.as_ref() else {
+            return;
+        };
+        let (Some(args), Some(result)) = (task.args.as_ref(), task.result.as_ref()) else {
+            return;
+        };
+        let Some(pb::task_result::Result::Success(success)) = result.result.as_ref() else {
+            return;
+        };
+        if !success.is_background {
+            return;
+        }
+        let Some(agent_id) = success.agent_id.as_ref().filter(|id| !id.is_empty()) else {
+            return;
+        };
+        let Some(tool_call_id) = call.tool_call_id.as_ref().filter(|id| !id.is_empty()) else {
+            return;
+        };
+        let started_at_ms = call
+            .started_at_ms
+            .unwrap_or_else(crate::cursor::tools::runtime::now_ms);
+        let last_used_timestamp_ms = call.completed_at_ms.unwrap_or(started_at_ms);
+        self.base
+            .subagent_states
+            .entry(agent_id.clone())
+            .and_modify(|state| state.last_used_timestamp_ms = last_used_timestamp_ms)
+            .or_insert_with(|| pb::SubagentPersistedState {
+                conversation_state: None,
+                created_timestamp_ms: started_at_ms,
+                last_used_timestamp_ms,
+                subagent_type: args.subagent_type.clone(),
+                model_id: args.model.clone(),
+                environment: args.environment,
+                cloud_subagent: None,
+                first_class_bc_id: None,
+                cloud_requested_environment_build_id: None,
+                machine: args.machine.clone(),
+            });
+        self.base.subagent_runs_by_parent_tool_call_id.insert(
+            tool_call_id.clone(),
+            pb::SubagentRunState {
+                parent_tool_call_id: tool_call_id.clone(),
+                subagent_id: Some(agent_id.clone()),
+                environment: args.environment,
+                status: pb::SubagentRunStatus::Backgrounded as i32,
+                title: Some(args.description.clone()),
+                detail: success.result_suffix.clone(),
+                transcript_path: success.transcript_path.clone(),
+                output_path: None,
+                completed_timestamp_ms: None,
+                completion_reason: None,
+            },
+        );
     }
 
     pub async fn publish(

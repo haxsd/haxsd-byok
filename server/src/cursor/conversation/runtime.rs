@@ -491,7 +491,31 @@ impl ConversationRuntime {
                                             )
                                             .await;
                                         }
-                                        Some(pb::conversation_action::Action::CancelAction(_)) => {
+                                        Some(pb::conversation_action::Action::CancelAction(
+                                            action,
+                                        )) => {
+                                            // 客户端可能把被中断调用的真实结果（shell/task）
+                                            // 放进 CancelAction：先让 output 把这些结果提交
+                                            // 进历史，再取消这一轮；没有结果时保持原来的
+                                            // 立即取消语义。
+                                            let has_resolutions = action
+                                                .interrupted_pending_tool_call_resolutions
+                                                .as_ref()
+                                                .is_some_and(|resolutions| {
+                                                    !resolutions.resolutions.is_empty()
+                                                });
+                                            let delivered = has_resolutions
+                                                && current.as_ref().is_some_and(|generation| {
+                                                    generation
+                                                        .runtime_actions
+                                                        .send(compile::RuntimeAction::Cancel(
+                                                            action.clone(),
+                                                        ))
+                                                        .is_ok()
+                                                });
+                                            if delivered {
+                                                continue;
+                                            }
                                             if let Some(generation) = current.as_ref() {
                                                 if let Some(run) = generation.run.lock().clone() {
                                                     run.cancel();
@@ -539,15 +563,13 @@ impl ConversationRuntime {
                                                 action,
                                             ),
                                         ) => {
-                                            if let Some(generation) = current.as_ref() {
-                                                if let Some(id) = generation
-                                                    .tool_runtime
-                                                    .running_task_exec_id(&action.subagent_id)
-                                                    .await
-                                                {
-                                                    let _ = handle.emit(&codec::abort(id));
-                                                }
-                                            }
+                                            cancel_subagent(
+                                                &registry,
+                                                &handle,
+                                                current.as_ref(),
+                                                &action.subagent_id,
+                                            )
+                                            .await;
                                         }
                                         Some(action) => {
                                             tracing::warn!(
@@ -622,6 +644,16 @@ async fn start_generation(
     let (runtime_actions, runtime_action_receiver) =
         mpsc::unbounded_channel::<compile::RuntimeAction>();
     let tool_runtime = tool_runtime_factory.next_run();
+    // 客户端回带的 checkpoint 里已有"父工具调用 → 子代理身份"的关联：新传输（或进程
+    // 重启后的第一条请求）靠它把 CancelSubagentAction 的 agent id 还原成 Task call id。
+    // 归属仍由 store 的真实父会话在取消时核验，不信任回带状态本身。
+    if let Some(state) = request.conversation_state.as_ref() {
+        for (tool_call_id, run) in &state.subagent_runs_by_parent_tool_call_id {
+            if let Some(agent_id) = run.subagent_id.as_deref().filter(|id| !id.is_empty()) {
+                tool_runtime.remember_subagent(agent_id, tool_call_id).await;
+            }
+        }
+    }
     let tools = ToolDispatcher::with_results(
         tool_runtime.clone(),
         results.clone(),
@@ -779,6 +811,19 @@ fn spawn_run_request(
             context.dynamic_tools.keys().cloned().collect(),
             context.turn_user.clone(),
         );
+        checkpoint.record_resolved_tool_calls(&context.resolved_tool_calls);
+        // 新动作解析出的 Task 身份也必须进入当前 transport 的 map：同一条流随后按
+        // agent id 取消时不能等下一次 RunRequest 的 checkpoint 种子。
+        for call in &context.resolved_tool_calls {
+            if let Some((agent_id, call_id)) =
+                crate::cursor::tools::runtime::task_identity_from_tool_call(call)
+            {
+                generation
+                    .tool_runtime
+                    .remember_subagent(agent_id, call_id)
+                    .await;
+            }
+        }
         if context.background_completion {
             let event_id = prepared
                 .initial_messages
@@ -956,6 +1001,194 @@ fn spawn_run_request(
                 .await;
         }
     });
+}
+
+/// 处理 `CancelSubagentAction`。
+///
+/// 客户端可能用两种身份取消：活跃 Task 的 `call_id`（现有协议路径），或 Task 结果里
+/// 的 `agent_id`（子代理身份，通常也是子会话 id）。后台 Task 的派发结果一提交，exec
+/// 就退出 `execs`，只按 call id 找不到目标；这里沿已记录/回带的父工具调用关联还原
+/// call id，再用 store 里真实的父子归属确认目标属于当前父会话，最后取消子会话的 run。
+/// 不做进程级任意 id 取消，也不把找不到的目标当成成功。
+async fn cancel_subagent(
+    registry: &ConversationRegistry,
+    handle: &TransportHandle,
+    current: Option<&RunGeneration>,
+    subagent_id: &str,
+) {
+    let Some(generation) = current else {
+        tracing::debug!(
+            request_id = handle.request_id(),
+            subagent_id,
+            "ignoring CancelSubagentAction without an active generation"
+        );
+        return;
+    };
+    // 1) 活跃 Task 的 call id：保留现有合法路径，只在恰好一个候选时中止对应 Exec。
+    //    `call_id` 只在轮内唯一，多个候选时任意挑一个会取消错目标。
+    let exec_ids = generation
+        .tool_runtime
+        .running_task_exec_ids(subagent_id)
+        .await;
+    match exec_ids.as_slice() {
+        [id] => {
+            let _ = handle.emit(&codec::abort(*id));
+            return;
+        }
+        [] => {}
+        _ => {
+            tracing::warn!(
+                request_id = handle.request_id(),
+                subagent_id,
+                candidates = ?exec_ids,
+                "refusing to cancel a subagent with an ambiguous active Task call id"
+            );
+            return;
+        }
+    }
+    // 2) 子代理身份：先还原父 Task 调用，再核验归属，最后按子会话取消 run。
+    let Some(parent_conversation) = handle.conversation_id() else {
+        tracing::warn!(
+            request_id = handle.request_id(),
+            subagent_id,
+            "refusing to cancel a subagent without a bound conversation"
+        );
+        return;
+    };
+    let store = &registry.dependencies().store;
+    let (child, tool_call_id) = match generation
+        .tool_runtime
+        .subagent_tool_call(subagent_id)
+        .await
+    {
+        Some(tool_call_id) => (ConversationId::new(subagent_id), tool_call_id),
+        None => {
+            // 回退：客户端只给了后台 Task 的 call_id（exec 已退场，actor 也没有 agent
+            // 映射）。call_id 只在轮内唯一，跨轮复用必须看到全部候选；只有恰好一个
+            // 子会话时才继续，否则拒绝而不是任意挑一个。
+            let parent = ConversationId::new(parent_conversation);
+            let mut children = match store
+                .child_conversations_for_parent_call(&parent, subagent_id)
+                .await
+            {
+                Ok(children) => children,
+                Err(error) => {
+                    tracing::warn!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        %error,
+                        "failed to resolve a Task call id to a child conversation; refusing to cancel"
+                    );
+                    return;
+                }
+            };
+            match children.len() {
+                1 => (
+                    children.pop().expect("length checked"),
+                    subagent_id.to_owned(),
+                ),
+                0 => {
+                    tracing::warn!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        "CancelSubagentAction does not match any Task call in this conversation"
+                    );
+                    return;
+                }
+                _ => {
+                    tracing::warn!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        candidates = children.len(),
+                        "refusing to cancel a subagent whose Task call id is ambiguous"
+                    );
+                    return;
+                }
+            }
+        }
+    };
+    match store.background_task(&child, &tool_call_id).await {
+        Ok(Some((owner, _))) if owner.as_str() == parent_conversation => {
+            // 历史 Task 只证明"这个 agent 曾由当前父会话派发"；真正要停的是子会话
+            // 此刻的 active run。先绑定它的父归属，再在注册表锁内确认 run id 没被换掉。
+            match store.running_child_run(&child).await {
+                Ok(Some(running))
+                    if running
+                        .parent_conversation_id
+                        .as_ref()
+                        .is_some_and(|owner| owner.as_str() == parent_conversation) =>
+                {
+                    let cancelled = registry.cancel_active_run_if(&child, &running.run_id).await;
+                    tracing::info!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        tool_call_id,
+                        child_run_id = running.run_id.as_str(),
+                        cancelled,
+                        "cancel subagent"
+                    );
+                }
+                Ok(Some(running)) => {
+                    tracing::warn!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        tool_call_id,
+                        child_run_id = running.run_id.as_str(),
+                        current_parent = running
+                            .parent_conversation_id
+                            .as_ref()
+                            .map_or("none", |owner| owner.as_str()),
+                        parent_conversation,
+                        "refusing to cancel the child's current run: it belongs to another conversation"
+                    );
+                }
+                Ok(None) => {
+                    tracing::info!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        tool_call_id,
+                        "subagent has no running run to cancel"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        request_id = handle.request_id(),
+                        subagent_id,
+                        tool_call_id,
+                        %error,
+                        "cannot bind the subagent's current run; refusing to cancel"
+                    );
+                }
+            }
+        }
+        Ok(Some((owner, _))) => {
+            tracing::warn!(
+                request_id = handle.request_id(),
+                subagent_id,
+                tool_call_id,
+                owner = owner.as_str(),
+                parent_conversation,
+                "refusing to cancel a subagent owned by another conversation"
+            );
+        }
+        Ok(None) => {
+            tracing::warn!(
+                request_id = handle.request_id(),
+                subagent_id,
+                tool_call_id,
+                "no completed Task result proves this subagent belongs to the conversation"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                request_id = handle.request_id(),
+                subagent_id,
+                tool_call_id,
+                %error,
+                "failed to verify subagent ownership; refusing to cancel"
+            );
+        }
+    }
 }
 
 /// 把父 `ConversationAction` 上报的请求上下文并进具体 action 的 `request_context`。

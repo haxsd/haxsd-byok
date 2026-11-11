@@ -281,6 +281,32 @@ impl ConversationRegistry {
         }
     }
 
+    /// 只有当前活跃 run 仍是 `run_id` 时才取消它；返回是否真的取消。
+    ///
+    /// 取消子代理必须先由 store 绑定"当前 running run + 父归属"，再在注册表锁内确认
+    /// 目标没有在查询与取消之间被换掉。只按会话身份取当前 run 会在这个窗口里误停新父
+    /// resume 出来的 run，因此不保留那条无条件的入口。
+    pub(crate) async fn cancel_active_run_if(
+        &self,
+        conversation_id: &ConversationId,
+        run_id: &RunId,
+    ) -> bool {
+        let active = self
+            .inner
+            .current
+            .lock()
+            .await
+            .get(conversation_id)
+            .cloned();
+        match active {
+            Some(active) if &active.run_id == run_id => {
+                active.handle.cancel();
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) async fn wait_until_idle(&self, conversation_id: &ConversationId) {
         loop {
             let changed = self.inner.changed.notified();

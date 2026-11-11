@@ -12,12 +12,13 @@ use crate::{
         protocol::proto::agent::v1 as pb,
         services::blob_sync::BlobSynchronizer,
         services::context_sync::RequestContextSynchronizer,
-        tools::runtime::{ExecContext, SubagentModel},
+        tools::runtime::{ExecContext, ExecStage, PendingExec, SubagentModel},
         transport::TransportParent,
     },
     model::{
         CanonicalMessage, ContentPart, ConversationId, MessageContent, Origin, PreparedRun,
-        PromptSpec, Role, RunAction, RunId, RunKind,
+        PromptSpec, Role, RunAction, RunId, RunKind, ToolCallContent, ToolResult,
+        ToolResultContent, ToolRoundId,
     },
     store::{BlobId, Store},
     Error, Result,
@@ -45,6 +46,8 @@ pub struct CursorRunContext {
     pub checkpoint_prompt: PromptSpec,
     pub compacting: bool,
     pub background_completion: bool,
+    /// 新动作里已解析的 pending Task 结果：checkpoint builder 用它们补子代理关联。
+    pub resolved_tool_calls: Vec<pb::ToolCall>,
 }
 
 pub(crate) struct PrepareDependencies<'a> {
@@ -139,6 +142,53 @@ pub(crate) async fn prepare(
         compacting,
         background_completion,
     } = action(request)?;
+    // C02：新用户动作携带的 pending 调用真实结果。只有客户端把 checkpoint 里那一个
+    // pending 批次的每个调用都显式收尾时才接管；缺一条就保留原有行为，不凭空补结果。
+    let pending_resolution = if !compacting && starts_turn {
+        let resolutions = match request
+            .action
+            .as_ref()
+            .and_then(|action| action.action.as_ref())
+        {
+            Some(pb::conversation_action::Action::UserMessageAction(action)) => {
+                action.interrupted_pending_tool_call_resolutions.as_ref()
+            }
+            _ => None,
+        };
+        let pending = request.conversation_state.as_ref().and_then(|state| {
+            match state.pending_tool_calls.as_slice() {
+                [pending] => Some(pending.as_str()),
+                _ => None,
+            }
+        });
+        match (pending, resolutions) {
+            (Some(pending), Some(resolutions)) => resolve_pending_round(pending, resolutions)?,
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let (pending_messages, resolved_tool_calls) = match pending_resolution {
+        Some(resolved) => {
+            let completed = store
+                .complete_pending_tool_round(
+                    &conversation_id,
+                    resolved.started_at_ms,
+                    &resolved.call_ids,
+                    &resolved.results,
+                )
+                .await?;
+            if !completed {
+                tracing::warn!(
+                    conversation_id = %conversation_id,
+                    started_at_ms = resolved.started_at_ms,
+                    "no local pending tool round matched the resolutions; keeping the canonical projection only"
+                );
+            }
+            (resolved.messages, resolved.resolved_calls)
+        }
+        None => (Vec::new(), Vec::new()),
+    };
     let checkpoint_mode = if request.subagent_type_name.is_some() {
         Mode::Subagent
     } else {
@@ -189,6 +239,37 @@ pub(crate) async fn prepare(
                 .await?
         }
         None => proposed_base_checkpoint_id,
+    };
+    // C01：ResumeAction 自带的请求上下文只有 parts/dynamic_context 之外的这一条来源时，
+    // 也必须作为新事件追加，而不是只让 `context::hydrate` 读到它、历史里却没有。
+    //
+    // no-state/空-state Resume 的 base 是当前 checkpoint，但 `base_messages` 为空；
+    // 内容去重必须看权威的当前链，否则同一份 context 每次重试都会再追加一条。
+    let resume_action = matches!(
+        request
+            .action
+            .as_ref()
+            .and_then(|action| action.action.as_ref()),
+        Some(pb::conversation_action::Action::ResumeAction(_))
+    );
+    let resume_history = if !compacting
+        && resume_action
+        && base_messages
+            .as_deref()
+            .is_none_or(|messages| messages.is_empty())
+    {
+        store.load_checkpoint_messages(base_checkpoint_id).await?
+    } else {
+        Vec::new()
+    };
+    let resume_context_message = if !compacting && !background_completion && resume_action {
+        let history = base_messages
+            .as_deref()
+            .filter(|messages| !messages.is_empty())
+            .unwrap_or(&resume_history);
+        break_messages::compile_resume_context(base_checkpoint_id, &request_context, history)?
+    } else {
+        None
     };
     let mut projected_user_context = if input_id.is_some() && !compacting && !background_completion
     {
@@ -299,6 +380,14 @@ pub(crate) async fn prepare(
             }
         }
     };
+    if let Some(message) = resume_context_message {
+        initial_messages.push(message);
+    }
+    if !pending_messages.is_empty() {
+        let mut combined = pending_messages;
+        combined.append(&mut initial_messages);
+        initial_messages = combined;
+    }
     let (base_checkpoint_id, reused) = store
         .match_checkpoint_prefix(&conversation_id, base_checkpoint_id, &initial_messages)
         .await?;
@@ -361,8 +450,128 @@ pub(crate) async fn prepare(
             checkpoint_prompt,
             compacting,
             background_completion,
+            resolved_tool_calls,
         },
     ))
+}
+
+struct ResolvedPendingRound {
+    messages: Vec<CanonicalMessage>,
+    resolved_calls: Vec<pb::ToolCall>,
+    results: Vec<ToolResult>,
+    call_ids: Vec<String>,
+    started_at_ms: u64,
+}
+
+/// 把新动作里携带的 pending 调用真实结果变成可提交的历史消息。
+///
+/// 只接管"checkpoint 里只有一个 pending 批次，且每个调用都有中断结果"的情况：
+/// 缺一条就返回 `None`，保留原有 Start 行为（待决调用不进入 canonical 历史），不凭空
+/// 编造未提供的 shell/task 结果。返回的 `results`/`call_ids`/`started_at_ms` 同时交给
+/// `Store::complete_pending_tool_round`，让原 `tool_round_calls` 也收敛为 completed；
+/// Task 的原始 `pb::ToolCall` 继续供 checkpoint builder 写父调用 → 子代理关联。
+fn resolve_pending_round(
+    pending: &str,
+    resolutions: &pb::InterruptedPendingToolCallResolutions,
+) -> Result<Option<ResolvedPendingRound>> {
+    let round = messages::decode_pending(pending)?;
+    let by_call = resolutions
+        .resolutions
+        .iter()
+        .map(|resolution| (resolution.tool_call_id.as_str(), resolution))
+        .collect::<std::collections::HashMap<_, _>>();
+    if round
+        .calls
+        .iter()
+        .any(|call| !by_call.contains_key(call.call_id.as_str()))
+    {
+        return Ok(None);
+    }
+    let started_at_ms = round.started_at_ms;
+    let call_ids = round
+        .calls
+        .iter()
+        .map(|call| call.call_id.clone())
+        .collect::<Vec<_>>();
+    let digest = BlobId::digest(pending.as_bytes()).to_base64();
+    let round_id = format!("cursor-pending:{digest}");
+    let assistant = CanonicalMessage {
+        message_id: format!("{round_id}:assistant"),
+        role: Role::Assistant,
+        origin: Origin::Assistant,
+        content: MessageContent::Assistant {
+            text: round.assistant.text,
+            thinking: round.assistant.thinking,
+            tool_round_id: Some(ToolRoundId::new(round_id.clone())),
+            replay_state: round.assistant.replay_state,
+            tool_calls: round
+                .calls
+                .iter()
+                .map(|call| ToolCallContent {
+                    index: call.index,
+                    call_id: call.call_id.clone(),
+                    name: call.name.clone(),
+                    arguments: call.arguments.clone(),
+                })
+                .collect(),
+        },
+        runtime_event_id: None,
+    };
+    let mut messages = vec![assistant];
+    let mut resolved_calls = Vec::new();
+    let mut results = Vec::new();
+    for call in &round.calls {
+        let Some(wire) =
+            crate::cursor::tools::runtime::resolution_exec_message(by_call[call.call_id.as_str()])
+        else {
+            return Ok(None);
+        };
+        let completion = match crate::cursor::tools::tool_call_result::from_exec(
+            PendingExec {
+                call: call.clone(),
+                context: ExecContext::default(),
+                started_at_ms: round.started_at_ms,
+                stdout: String::new(),
+                stderr: String::new(),
+                stage: ExecStage::Direct,
+            },
+            &wire,
+        ) {
+            Ok(completion) => completion,
+            Err(error) => {
+                tracing::warn!(
+                    call_id = %call.call_id,
+                    %error,
+                    "ignoring an invalid pending tool resolution"
+                );
+                return Ok(None);
+            }
+        };
+        resolved_calls.push(completion.tool_call().clone());
+        let result = completion.result().clone();
+        messages.push(CanonicalMessage {
+            message_id: format!("{round_id}:{}:result", call.call_id),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: call.call_id.clone(),
+                name: call.name.clone(),
+                content: result.content.clone(),
+                is_error: result.is_error,
+                image: None,
+                provider_parts: Vec::new(),
+            }),
+            runtime_event_id: None,
+        });
+        results.push(result);
+    }
+    Ok(Some(ResolvedPendingRound {
+        messages,
+        resolved_calls,
+        results,
+        call_ids,
+        started_at_ms,
+    }))
 }
 
 /// 这次运行的身份：子代理运行（请求带了 `subagent_type_name`）记下父身份。

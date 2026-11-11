@@ -13,17 +13,57 @@ use serde_json::{Map, Value};
 
 use crate::{Error, Result};
 
+use super::recovery::{self, PendingUpdate};
 use super::GatewayValues;
 use super::{
     atomic_write, backup_once, content_hash, parse_json, read_optional, remove_file_if_exists,
     same_path, ConfigSource, DesktopTakeoverStatus, Family, TakeoverConflict, TakeoverState,
     DESKTOP_ENTRY_NAME, RECEIPT_VERSION,
 };
-use crate::anthropic::models::discovery_id;
+use crate::anthropic::models::{discovery_hash, discovery_id};
 
 const RECEIPT_FILE: &str = "desktop.json";
 const ENTRIES_KEY: &str = "entries";
 const APPLIED_ID_KEY: &str = "appliedId";
+
+/// 测试专用的确定性阻塞点：在写前日志落盘后、profile 替换前触发。
+///
+/// 只按 `state_dir` 匹配，允许并发测试各自注册自己的 hook，不共享全局单槽。
+#[cfg(test)]
+pub(crate) mod test_hooks {
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+        sync::{Arc, Mutex, OnceLock},
+    };
+
+    pub(crate) type AfterJournal = Arc<dyn Fn(&Path) + Send + Sync>;
+
+    static HOOKS: OnceLock<Mutex<HashMap<PathBuf, AfterJournal>>> = OnceLock::new();
+
+    fn hooks() -> &'static Mutex<HashMap<PathBuf, AfterJournal>> {
+        HOOKS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    pub(crate) fn set_after_journal(state_dir: &Path, hook: AfterJournal) {
+        hooks()
+            .lock()
+            .unwrap()
+            .insert(state_dir.to_path_buf(), hook);
+    }
+
+    pub(crate) fn clear_after_journal(state_dir: &Path) {
+        hooks().lock().unwrap().remove(state_dir);
+    }
+
+    pub(crate) fn after_journal(state_dir: &Path) {
+        let hook = hooks().lock().unwrap().get(state_dir).cloned();
+        if let Some(hook) = hook {
+            // 不持锁调用，避免 hook 内注册/清理时死锁。
+            hook(state_dir);
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct DesktopPaths {
@@ -116,6 +156,64 @@ pub fn inspect(
     };
     let guided = policy.machine() || policy.user();
     let mut conflicts = Vec::new();
+    // 上一次 apply 可能停在 profile/meta/收据之间。先按写前日志收敛；运行中不写
+    // 客户端文件，只做只读判断并如实报告状态。
+    let receipt_path = state_dir.join(RECEIPT_FILE);
+    let pending = recovery::pending(state_dir, &paths.meta, &paths.library)?;
+    let committed = pending
+        .as_ref()
+        .map(|pending| pending.is_committed(&receipt_path))
+        .transpose()?
+        .unwrap_or(false);
+    let interrupted = pending.is_some() && running && !committed;
+    // 受管策略下可以收回自己的半写，但不能替用户完成一次新的 apply。
+    let allow_commit = !policy.machine() && !policy.user();
+    if let Some(outcome) = if pending.is_some() && !running {
+        recovery::recover(
+            state_dir,
+            &receipt_path,
+            &paths.meta,
+            &paths.library,
+            allow_commit,
+        )?
+    } else {
+        None
+    } {
+        let (code, message) = match outcome {
+            recovery::Recovery::Committed => (
+                "apply_committed",
+                "a completed Claude Desktop update left a pending log; it will be cleaned up",
+            ),
+            recovery::Recovery::Completed => (
+                "apply_completed",
+                "an interrupted Claude Desktop update finished committing",
+            ),
+            recovery::Recovery::RolledBack => (
+                "apply_rolled_back",
+                "an interrupted Claude Desktop update was reverted",
+            ),
+            recovery::Recovery::Preserved => (
+                "apply_preserved",
+                "an interrupted Claude Desktop update was discarded; recovery did not change client files",
+            ),
+        };
+        conflicts.push(TakeoverConflict::new(code, message, false));
+    }
+    if committed && running {
+        // 运行中只读：已提交的事务保持 applied/stale，日志等退出后再清理。
+        conflicts.push(TakeoverConflict::new(
+            "apply_committed",
+            "a completed Claude Desktop update left a pending log; it will be cleaned up",
+            false,
+        ));
+    }
+    if interrupted {
+        conflicts.push(TakeoverConflict::new(
+            "apply_interrupted",
+            "an interrupted Claude Desktop update is waiting to be recovered; quit Claude Desktop completely to finish it",
+            true,
+        ));
+    }
     if policy.machine() {
         conflicts.push(TakeoverConflict::new(
             "machine_policy",
@@ -246,7 +344,7 @@ pub fn inspect(
                 "the gateway profile is missing; apply again",
                 false,
             ));
-        } else if !profile_matches {
+        } else if !profile_matches && !interrupted {
             conflicts.push(TakeoverConflict::new(
                 "profile_modified",
                 "the gateway profile was modified after the takeover; applying would overwrite it",
@@ -275,7 +373,7 @@ pub fn inspect(
     if stale {
         conflicts.push(TakeoverConflict::new(
             "takeover_stale",
-            "the gateway settings changed after the takeover; apply again to update the client",
+            "the gateway settings or model list changed after the takeover; apply again to update the client",
             false,
         ));
     }
@@ -284,6 +382,7 @@ pub fn inspect(
     } else if policy.user()
         || meta_broken
         || receipt_mismatch
+        || interrupted
         || conflicts
             .iter()
             .any(|conflict| conflict.code == "profile_modified")
@@ -291,8 +390,6 @@ pub fn inspect(
         TakeoverState::Conflict
     } else if !paths.installed {
         TakeoverState::Missing
-    } else if running {
-        TakeoverState::Running
     } else if receipt.is_some() {
         if applied {
             if stale {
@@ -313,6 +410,7 @@ pub fn inspect(
         profile_path,
         backup_path,
         restorable: receipt.is_some() && !receipt_mismatch && !meta_broken,
+        running,
         conflicts,
         guided,
     })
@@ -354,6 +452,15 @@ pub fn apply(
     }
     validate_route(route)?;
 
+    // 上一次停在写入间隙的 apply 先按日志收敛；后面的 previous 才是已提交基线。
+    recovery::recover(
+        state_dir,
+        &state_dir.join(RECEIPT_FILE),
+        &paths.meta,
+        &paths.library,
+        true,
+    )?;
+
     let previous = read_receipt(state_dir)?;
     if let Some(receipt) = &previous {
         if !same_path(Path::new(&receipt.meta_path), &paths.meta) {
@@ -376,9 +483,10 @@ pub fn apply(
         .map(|receipt| receipt.uuid.clone())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let profile_path = paths.profile(&uuid);
+    let before_profile = read_optional(&profile_path)?;
     if let Some(receipt) = &previous {
-        if let Some(text) = read_optional(&profile_path)? {
-            if content_hash(&text) != receipt.applied_profile_hash {
+        if let Some(text) = &before_profile {
+            if content_hash(text) != receipt.applied_profile_hash {
                 return Err(Error::Config(
                     "the gateway profile was modified after the takeover; undo before applying again"
                         .into(),
@@ -423,22 +531,39 @@ pub fn apply(
         applied_profile_hash: content_hash(&profile_text),
         applied_meta_hash: content_hash(&meta_text),
     };
-    atomic_write(
-        &state_dir.join(RECEIPT_FILE),
-        &serde_json::to_vec_pretty(&receipt)?,
-    )?;
+    let pending = PendingUpdate::new(
+        paths.meta.display().to_string(),
+        profile_path.display().to_string(),
+        before_profile,
+        profile_text,
+        meta_raw.clone(),
+        meta_text,
+        serde_json::to_value(&receipt)?,
+    );
+    // 先把日志落盘，再改客户端文件；任意一步中断，下一次读取都能收敛。
+    pending.begin(state_dir)?;
+    #[cfg(test)]
+    test_hooks::after_journal(state_dir);
     if read_optional(&paths.meta)? != meta_raw {
         return Err(Error::Config(
             "_meta.json changed while preparing the update".into(),
         ));
     }
-    atomic_write(&profile_path, profile_text.as_bytes())?;
-    if read_optional(&paths.meta)? != meta_raw {
+    // 读取 before_profile 到真正替换之间还有一个 prepare 窗口；写 profile 前再核对
+    // 一次，避免用户在这段时间的修改被静默覆盖。日志里的 before 就是核对基准。
+    if read_optional(&profile_path)?.as_deref() != pending.before_profile.as_deref() {
         return Err(Error::Config(
-            "_meta.json changed before replacement; restore receipt retained".into(),
+            "the gateway profile changed while preparing the update".into(),
         ));
     }
-    atomic_write(&paths.meta, meta_text.as_bytes())?;
+    pending.write_profile()?;
+    if read_optional(&paths.meta)? != meta_raw {
+        return Err(Error::Config(
+            "_meta.json changed before replacement; the previous receipt is retained".into(),
+        ));
+    }
+    pending.write_meta()?;
+    pending.commit(state_dir, &state_dir.join(RECEIPT_FILE))?;
     inspect(paths, state_dir, policy, false, None)
 }
 
@@ -448,8 +573,28 @@ pub fn undo(
     policy: &super::ownership::DesktopPolicy,
     running: bool,
 ) -> Result<DesktopTakeoverStatus> {
+    if running {
+        // 运行中不写客户端文件，也不做中断恢复；有收据或写前日志时都要求先退出。
+        if read_receipt(state_dir)?.is_some()
+            || recovery::pending(state_dir, &paths.meta, &paths.library)?.is_some()
+        {
+            return Err(Error::Config(
+                "quit Claude Desktop before restoring its native configuration".into(),
+            ));
+        }
+        return inspect(paths, state_dir, policy, true, None);
+    }
+    // 上一次中断的 apply 先收敛，再按已提交的收据撤销。undo 不替用户完成新 apply：
+    // 未提交时只把本应用写下的内容收回。
+    recovery::recover(
+        state_dir,
+        &state_dir.join(RECEIPT_FILE),
+        &paths.meta,
+        &paths.library,
+        false,
+    )?;
     let Some(receipt) = read_receipt(state_dir)? else {
-        return inspect(paths, state_dir, policy, running, None);
+        return inspect(paths, state_dir, policy, false, None);
     };
     // 与 apply 同一把锁：收据必须属于这套安装，否则撤销会碰到别处的文件。
     if !same_path(Path::new(&receipt.meta_path), &paths.meta) {
@@ -466,11 +611,6 @@ pub fn undo(
         return Err(Error::Config(
             "the Claude Desktop takeover receipt points outside the configLibrary; undo will not touch it"
                 .into(),
-        ));
-    }
-    if running {
-        return Err(Error::Config(
-            "quit Claude Desktop before restoring its native configuration".into(),
         ));
     }
 
@@ -729,20 +869,36 @@ fn profile_value(route: &DesktopRoute) -> Result<Value> {
     }))
 }
 
-/// profile 里的网关入口与令牌是否仍是当前网关。解析失败按不匹配处理：文件哈希仍
-/// 对得上时它只可能是损坏或手改，状态会显示 stale 让用户重新应用。
+/// profile 里的网关入口、令牌与模型列表是否仍对应当前网关。解析失败按不匹配处理：
+/// 文件哈希仍对得上时它只可能是损坏或手改，状态会显示 stale 让用户重新应用。
 fn profile_points_at(text: &str, gateway: &GatewayValues) -> bool {
     let Ok(profile) = parse_json(text) else {
         return false;
     };
-    profile
+    if profile
         .get("inferenceGatewayBaseUrl")
         .and_then(Value::as_str)
-        == Some(gateway.base_url)
-        && profile
+        != Some(gateway.base_url)
+        || profile
             .get("inferenceGatewayApiKey")
             .and_then(Value::as_str)
-            == Some(gateway.token)
+            != Some(gateway.token)
+    {
+        return false;
+    }
+    // 列表里每一项都是本产品签发的精确发现 ID；模型被正常删除后，这里必须失败，
+    // 接管状态转为 stale。别名设置里未列入 profile 的模型不影响这里。
+    let Some(models) = profile.get("inferenceModels").and_then(Value::as_array) else {
+        return false;
+    };
+    !models.is_empty()
+        && models.iter().all(|entry| {
+            entry
+                .get("name")
+                .and_then(Value::as_str)
+                .and_then(discovery_hash)
+                .is_some_and(|hash| gateway.model_hashes.contains(&hash))
+        })
 }
 
 fn validate_route(route: &DesktopRoute) -> Result<()> {
@@ -770,7 +926,7 @@ fn pretty(document: &Value) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{collections::BTreeSet, fs};
 
     use super::*;
     use crate::claude_client::ownership::DesktopPolicy;
@@ -865,6 +1021,10 @@ mod tests {
             model("sonnet-hash", "Claude Sonnet", Some(Family::Sonnet)),
             model("opus-hash", "Claude Opus", Some(Family::Opus)),
         ]
+    }
+
+    fn model_hashes(values: &[&str]) -> BTreeSet<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
     }
 
     #[test]
@@ -1004,8 +1164,11 @@ mod tests {
     }
 
     #[test]
-    fn a_running_desktop_refuses_the_write() {
+    fn a_running_desktop_keeps_the_configuration_state_and_refuses_writes() {
         let fixture = Fixture::installed();
+        fixture.apply(two_models());
+
+        // 运行状态不覆盖配置所有权：已应用的接管还是 applied，只是不能写。
         let status = inspect(
             &fixture.paths,
             fixture.state.path(),
@@ -1014,7 +1177,8 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(status.state, TakeoverState::Running);
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(status.running);
         assert!(status
             .conflicts
             .iter()
@@ -1029,7 +1193,36 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("quit Claude Desktop"), "{error}");
-        assert!(!fixture.paths.meta.exists());
+
+        let error = undo(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            true,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("quit Claude Desktop"), "{error}");
+
+        // 没有接管时运行中也只是 ready，不能显示成另一种配置状态。
+        let fresh = Fixture::installed();
+        let status = inspect(
+            &fresh.paths,
+            fresh.state.path(),
+            &DesktopPolicy::default(),
+            true,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(apply(
+            &fresh.paths,
+            fresh.state.path(),
+            &DesktopPolicy::default(),
+            true,
+            &route(two_models())
+        )
+        .is_err());
+        assert!(!fresh.paths.meta.exists());
     }
 
     #[test]
@@ -1197,10 +1390,12 @@ mod tests {
         let fixture = Fixture::installed();
         assert_eq!(fixture.apply(two_models()).state, TakeoverState::Applied);
 
+        let models = model_hashes(&["sonnet-hash", "opus-hash"]);
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:43121",
             token: "rotated-token",
             available: true,
+            model_hashes: &models,
         };
         let status = inspect_with_gateway(&fixture, Some(&gateway));
         assert_eq!(status.state, TakeoverState::Stale);
@@ -1213,7 +1408,7 @@ mod tests {
         assert!(!stale.blocking);
         assert_eq!(
             stale.message,
-            "the gateway settings changed after the takeover; apply again to update the client"
+            "the gateway settings or model list changed after the takeover; apply again to update the client"
         );
 
         // 撤销仍然可用：profile 与条目都按收据还原。
@@ -1227,10 +1422,12 @@ mod tests {
         let fixture = Fixture::installed();
         fixture.apply(two_models());
 
+        let models = model_hashes(&["sonnet-hash", "opus-hash"]);
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:43121",
             token: "local-test-token",
             available: false,
+            model_hashes: &models,
         };
         assert_eq!(
             inspect_with_gateway(&fixture, Some(&gateway)).state,
@@ -1239,12 +1436,39 @@ mod tests {
     }
 
     #[test]
+    fn a_deleted_profile_model_marks_an_applied_takeover_stale() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+
+        // 默认模型、地址、令牌都没变，只是 profile 列出的一个精确模型被删除了。
+        let models = model_hashes(&["sonnet-hash"]);
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "local-test-token",
+            available: true,
+            model_hashes: &models,
+        };
+        let status = inspect_with_gateway(&fixture, Some(&gateway));
+        assert_eq!(status.state, TakeoverState::Stale);
+        assert!(status.restorable);
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "takeover_stale" && !conflict.blocking));
+
+        // 过期不影响撤销：只按收据清理客户端内容。
+        assert_eq!(fixture.undo().state, TakeoverState::Ready);
+    }
+
+    #[test]
     fn a_desktop_takeover_without_a_receipt_is_never_stale() {
         let fixture = Fixture::installed();
+        let models = model_hashes(&["sonnet-hash", "opus-hash"]);
         let gateway = GatewayValues {
             base_url: "http://127.0.0.1:9",
             token: "other-token",
             available: false,
+            model_hashes: &models,
         };
         let status = inspect_with_gateway(&fixture, Some(&gateway));
         assert_eq!(status.state, TakeoverState::Ready);
@@ -1252,5 +1476,707 @@ mod tests {
             .conflicts
             .iter()
             .any(|conflict| conflict.code == "takeover_stale"));
+    }
+
+    /// 写前日志：任何一次 apply 都必须先落这份日志，再改客户端文件。
+    #[cfg(windows)]
+    fn pending_journal(fixture: &Fixture) -> PathBuf {
+        fixture.state.path().join("desktop.pending.json")
+    }
+
+    #[cfg(windows)]
+    fn readonly(path: &Path, value: bool) {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(value);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
+    fn journal(fixture: &Fixture) -> PathBuf {
+        fixture.state.path().join(recovery::JOURNAL_FILE)
+    }
+
+    fn different_route() -> DesktopRoute {
+        route(vec![model("new-hash", "New Model", Some(Family::Opus))])
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_apply_interrupted_at_the_profile_write_rolls_back_to_the_previous_takeover() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile = fixture.paths.profile(&uuid);
+        let profile_before = fs::read_to_string(&profile).unwrap();
+        let receipt_before = read_receipt(fixture.state.path()).unwrap().unwrap();
+
+        // 收据已写好、profile 原子替换失败：旧实现的半写状态。
+        readonly(&profile, true);
+        apply(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap_err();
+        readonly(&profile, false);
+
+        assert!(
+            pending_journal(&fixture).is_file(),
+            "中断的更新必须留下可恢复的写前日志"
+        );
+        // 第一次状态读取负责收敛自身半写，而不是把它当成用户手改。
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified"));
+        assert_eq!(fs::read_to_string(&profile).unwrap(), profile_before);
+        let receipt = read_receipt(fixture.state.path()).unwrap().unwrap();
+        assert_eq!(
+            receipt.applied_profile_hash,
+            receipt_before.applied_profile_hash
+        );
+        assert!(!pending_journal(&fixture).exists());
+        assert_eq!(fixture.undo().state, TakeoverState::Ready);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_apply_interrupted_at_the_meta_write_completes_the_update() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+
+        readonly(&fixture.paths.meta, true);
+        apply(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap_err();
+        readonly(&fixture.paths.meta, false);
+
+        assert!(
+            pending_journal(&fixture).is_file(),
+            "中断的更新必须留下可恢复的写前日志"
+        );
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert_eq!(
+            fixture.profile(&uuid)["inferenceModels"][0]["name"],
+            "claude-new-hash"
+        );
+        assert!(!pending_journal(&fixture).exists());
+        assert_eq!(fixture.undo().state, TakeoverState::Ready);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_apply_interrupted_at_the_receipt_commit_completes_the_update() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let receipt_path = fixture.state.path().join("desktop.json");
+
+        readonly(&receipt_path, true);
+        apply(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap_err();
+        readonly(&receipt_path, false);
+
+        assert!(
+            pending_journal(&fixture).is_file(),
+            "中断的更新必须留下可恢复的写前日志"
+        );
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert_eq!(
+            fixture.profile(&uuid)["inferenceModels"][0]["name"],
+            "claude-new-hash"
+        );
+        let receipt = read_receipt(fixture.state.path()).unwrap().unwrap();
+        let profile = fs::read_to_string(fixture.paths.profile(&uuid)).unwrap();
+        assert_eq!(receipt.applied_profile_hash, content_hash(&profile));
+        assert!(!pending_journal(&fixture).exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_interrupted_apply_never_overwrites_a_profile_the_user_changed() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile = fixture.paths.profile(&uuid);
+
+        readonly(&fixture.paths.meta, true);
+        apply(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap_err();
+        readonly(&fixture.paths.meta, false);
+
+        // 用户在失败的更新之后真正改了 profile：恢复不能覆盖它。
+        let edited = "{\"inferenceProvider\": \"user\"}\n";
+        fs::write(&profile, edited).unwrap();
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&profile).unwrap(), edited);
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified" && conflict.blocking));
+
+        let status = fixture.undo();
+        assert_eq!(fs::read_to_string(&profile).unwrap(), edited);
+        assert!(status.restorable);
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "undo_kept_profile"));
+    }
+
+    fn write_pending(
+        fixture: &Fixture,
+        uuid: &str,
+        before_profile: &str,
+        after_profile: &str,
+        before_meta: &str,
+        after_meta: &str,
+        next_receipt: &Receipt,
+    ) {
+        PendingUpdate::new(
+            fixture.paths.meta.display().to_string(),
+            fixture.paths.profile(uuid).display().to_string(),
+            Some(before_profile.to_owned()),
+            after_profile.to_owned(),
+            Some(before_meta.to_owned()),
+            after_meta.to_owned(),
+            serde_json::to_value(next_receipt).unwrap(),
+        )
+        .begin(fixture.state.path())
+        .unwrap();
+    }
+
+    fn rewrite_receipt(fixture: &Fixture, receipt: &Receipt) {
+        fs::write(
+            fixture.state.path().join(RECEIPT_FILE),
+            serde_json::to_vec_pretty(receipt).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// A 已提交 → 应用 B 成功 → 重新留下 B 的写前日志。这是“收据已提交、日志尚未
+    /// 删除”的真实磁盘状态，不依赖在 apply 内部注入失败。
+    struct AppliedUpdate {
+        uuid: String,
+        profile_before: String,
+        profile_after: String,
+        meta_before: String,
+        meta_after: String,
+        receipt_before: Receipt,
+        receipt_after: Receipt,
+    }
+
+    fn apply_b_and_leave_committed_log(fixture: &Fixture) -> AppliedUpdate {
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile = fixture.paths.profile(&uuid);
+        let profile_before = fs::read_to_string(&profile).unwrap();
+        let meta_before = fs::read_to_string(&fixture.paths.meta).unwrap();
+        let receipt_before = read_receipt(fixture.state.path()).unwrap().unwrap();
+
+        apply(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap();
+
+        let profile_after = fs::read_to_string(&profile).unwrap();
+        let meta_after = fs::read_to_string(&fixture.paths.meta).unwrap();
+        let receipt_after = read_receipt(fixture.state.path()).unwrap().unwrap();
+        write_pending(
+            fixture,
+            &uuid,
+            &profile_before,
+            &profile_after,
+            &meta_before,
+            &meta_after,
+            &receipt_after,
+        );
+
+        AppliedUpdate {
+            uuid,
+            profile_before,
+            profile_after,
+            meta_before,
+            meta_after,
+            receipt_before,
+            receipt_after,
+        }
+    }
+
+    #[test]
+    fn a_committed_update_is_not_rolled_back_when_the_user_changes_meta() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+
+        // 收据已经提交后，用户只改了 meta：不能把 profile 拉回 A。
+        let mut meta: Value = serde_json::from_str(&update.meta_after).unwrap();
+        meta["userNote"] = serde_json::json!(true);
+        let meta_edited = serde_json::to_string_pretty(&meta).unwrap();
+        fs::write(&fixture.paths.meta, &meta_edited).unwrap();
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_committed"));
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_rolled_back"));
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified"));
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_after
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            meta_edited
+        );
+        assert!(!journal(&fixture).exists());
+        assert_eq!(
+            read_receipt(fixture.state.path())
+                .unwrap()
+                .unwrap()
+                .applied_profile_hash,
+            update.receipt_after.applied_profile_hash
+        );
+    }
+
+    #[test]
+    fn a_committed_update_is_not_rolled_back_when_the_user_changes_the_profile() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+
+        let edited = "{\"inferenceProvider\": \"user\"}\n";
+        fs::write(fixture.paths.profile(&update.uuid), edited).unwrap();
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_committed"));
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_rolled_back"));
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            edited
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            update.meta_after
+        );
+        assert!(!journal(&fixture).exists());
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified" && conflict.blocking));
+    }
+
+    #[test]
+    fn managed_policy_only_cleans_a_committed_log_and_never_rolls_it_back() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+        let policy = DesktopPolicy {
+            machine_values: vec!["AllowedProviders".into()],
+            user_values: Vec::new(),
+        };
+
+        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false, None).unwrap();
+
+        assert_eq!(status.state, TakeoverState::Managed);
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_after
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            update.meta_after
+        );
+        assert!(!journal(&fixture).exists());
+        assert_eq!(
+            read_receipt(fixture.state.path())
+                .unwrap()
+                .unwrap()
+                .applied_profile_hash,
+            update.receipt_after.applied_profile_hash
+        );
+    }
+
+    #[test]
+    fn managed_policy_rolls_back_an_uncommitted_update_instead_of_completing_it() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+        // 把收据退回 A：profile/meta 已是 B，收据尚未提交，这是未提交的半写。
+        rewrite_receipt(&fixture, &update.receipt_before);
+        assert_eq!(
+            read_receipt(fixture.state.path())
+                .unwrap()
+                .unwrap()
+                .applied_profile_hash,
+            update.receipt_before.applied_profile_hash
+        );
+        let policy = DesktopPolicy {
+            machine_values: vec!["AllowedProviders".into()],
+            user_values: Vec::new(),
+        };
+
+        let status = inspect(&fixture.paths, fixture.state.path(), &policy, false, None).unwrap();
+
+        assert_eq!(status.state, TakeoverState::Managed);
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_before
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            update.meta_before
+        );
+        assert!(!journal(&fixture).exists());
+        let receipt = read_receipt(fixture.state.path()).unwrap().unwrap();
+        assert_eq!(
+            receipt.applied_profile_hash,
+            update.receipt_before.applied_profile_hash
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_committed_log_that_cannot_be_deleted_is_retried_without_rolling_back() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        const FILE_SHARE_READ: u32 = 0x0000_0001;
+
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+
+        // 独占删除权限之外的其他共享模式：文件仍可读，但 DeleteFile 会失败。
+        let held = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(journal(&fixture))
+            .unwrap();
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        let committed = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.code == "apply_committed")
+            .expect("删不掉的提交后日志仍应给出已提交提示");
+        assert!(
+            !committed.message.contains("removed"),
+            "删除失败时不能声称日志已移除：{}",
+            committed.message
+        );
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_after
+        );
+        assert!(
+            journal(&fixture).is_file(),
+            "删不掉的提交后日志不能反过来导致回滚"
+        );
+
+        drop(held);
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(!journal(&fixture).exists());
+    }
+
+    #[test]
+    fn profile_after_meta_before_rolls_back_profile_without_touching_meta() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+        // 退回未提交状态：收据 A、meta 回到 A，profile 仍是 B。
+        rewrite_receipt(&fixture, &update.receipt_before);
+        fs::write(&fixture.paths.meta, &update.meta_before).unwrap();
+        let mut after_meta: Value = serde_json::from_str(&update.meta_after).unwrap();
+        after_meta["recoveryCase"] = serde_json::json!("after");
+        let after_meta = serde_json::to_string_pretty(&after_meta).unwrap();
+        assert_ne!(
+            after_meta, update.meta_before,
+            "本用例要求 after_meta 与 before_meta 不同"
+        );
+        write_pending(
+            &fixture,
+            &update.uuid,
+            &update.profile_before,
+            &update.profile_after,
+            &update.meta_before,
+            &after_meta,
+            &update.receipt_after,
+        );
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_before
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            update.meta_before
+        );
+        assert!(!journal(&fixture).exists());
+        let receipt = read_receipt(fixture.state.path()).unwrap().unwrap();
+        assert_eq!(
+            receipt.applied_profile_hash,
+            update.receipt_before.applied_profile_hash
+        );
+    }
+
+    #[test]
+    fn a_committed_log_while_running_stays_applied_or_stale_without_writing() {
+        let fixture = Fixture::installed();
+        let update = apply_b_and_leave_committed_log(&fixture);
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            true,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(status.running);
+        let committed = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.code == "apply_committed")
+            .expect("已提交的残留日志必须给出非阻断提示");
+        assert!(!committed.blocking);
+        assert!(!committed.message.contains("removed"));
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_interrupted"));
+        assert!(!status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified"));
+        assert_eq!(
+            fs::read_to_string(fixture.paths.profile(&update.uuid)).unwrap(),
+            update.profile_after
+        );
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.meta).unwrap(),
+            update.meta_after
+        );
+        assert!(journal(&fixture).is_file(), "运行中只读，不能清理日志");
+
+        let models = model_hashes(&["new-hash"]);
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "rotated-token",
+            available: true,
+            model_hashes: &models,
+        };
+        let stale = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            true,
+            Some(&gateway),
+        )
+        .unwrap();
+        assert_eq!(stale.state, TakeoverState::Stale);
+        assert!(stale
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_committed" && !conflict.blocking));
+        assert!(!stale
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "apply_interrupted"));
+        assert!(journal(&fixture).is_file());
+    }
+
+    #[test]
+    fn a_first_apply_recovery_does_not_claim_a_previous_receipt() {
+        let fixture = Fixture::installed();
+        let profile = fixture.paths.profile("first-apply");
+        PendingUpdate::new(
+            fixture.paths.meta.display().to_string(),
+            profile.display().to_string(),
+            None,
+            "{\"inferenceProvider\": \"gateway\"}\n".into(),
+            None,
+            "{}\n".into(),
+            serde_json::json!({"version": 1}),
+        )
+        .begin(fixture.state.path())
+        .unwrap();
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        let preserved = status
+            .conflicts
+            .iter()
+            .find(|conflict| conflict.code == "apply_preserved")
+            .expect("首次 apply 的日志恢复必须给出提示");
+        assert!(!preserved.blocking);
+        for forbidden in ["previous", "kept", "removed"] {
+            assert!(
+                !preserved.message.contains(forbidden),
+                "首次 apply 的提示不能声称保留上一收据：{}",
+                preserved.message
+            );
+        }
+        assert!(!journal(&fixture).exists());
+    }
+
+    #[test]
+    fn a_profile_changed_after_the_journal_write_is_not_overwritten() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile = fixture.paths.profile(&uuid);
+        let edited = "{\"inferenceProvider\": \"user\", \"stage\": \"prepare\"}\n";
+        let state_dir = fixture.state.path().to_path_buf();
+        let hook_profile = profile.clone();
+        let hook_edited = edited.to_owned();
+        test_hooks::set_after_journal(
+            &state_dir,
+            std::sync::Arc::new(move |_| {
+                fs::write(&hook_profile, &hook_edited).unwrap();
+            }),
+        );
+
+        let error = apply(
+            &fixture.paths,
+            &state_dir,
+            &DesktopPolicy::default(),
+            false,
+            &different_route(),
+        )
+        .unwrap_err();
+        test_hooks::clear_after_journal(&state_dir);
+
+        assert!(
+            error
+                .to_string()
+                .contains("changed while preparing the update"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&profile).unwrap(), edited);
+        let status = inspect(
+            &fixture.paths,
+            &state_dir,
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&profile).unwrap(), edited);
+        assert!(status
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.code == "profile_modified" && conflict.blocking));
+        assert!(!journal(&fixture).exists());
     }
 }

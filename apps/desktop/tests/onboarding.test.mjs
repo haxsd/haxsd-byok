@@ -50,7 +50,7 @@ function codexStatus(overrides = {}) {
 }
 
 function claudeStatus(overrides = {}) {
-  return { enabled: true, listening: true, desktop: "ready", ...overrides };
+  return { enabled: true, listening: true, desktop: "ready", running: false, ...overrides };
 }
 
 test("before a client is picked the checklist holds only the shared first step", async () => {
@@ -197,7 +197,8 @@ test("the Claude step surfaces Desktop conflicts and stale takeovers", async () 
     { value: claudeStatus({ desktop: "applied" }), done: true, status: "已接管" },
     { value: claudeStatus({ desktop: "conflict" }), done: false, status: "配置冲突" },
     { value: claudeStatus({ desktop: "stale" }), done: false, status: "配置已过期" },
-    { value: claudeStatus({ desktop: "running" }), done: false, status: "先完全退出 Claude Desktop" },
+    { value: claudeStatus({ desktop: "managed", running: true }), done: false, status: "受管配置，按页面指引处理" },
+    { value: claudeStatus({ running: true }), done: false, status: "先完全退出 Claude Desktop" },
     { value: claudeStatus({ desktop: "managed" }), done: false, status: "受管配置，按页面指引处理" },
     { value: claudeStatus(), done: false, status: "网关在运行，还差应用接管" },
   ];

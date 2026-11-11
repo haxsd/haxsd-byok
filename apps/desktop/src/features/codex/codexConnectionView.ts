@@ -1,8 +1,8 @@
-import type { CodexConfigConflict, CodexStatus } from "../../shared/api";
+import type { CodexConfigConflict, CodexManagedConflict, CodexStatus } from "../../shared/api";
 import type { EntryStatus } from "../../shell/connectionStatus";
 import type { StatusTone } from "../../shared/ui/StatusPill";
 
-export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "taken-over" | "unavailable" | "conflict";
+export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "taken-over" | "unavailable" | "conflict" | "managed" | "local-drift" | "policy-unavailable" | "incomplete-update" | "unreadable";
 
 /**
  * 登录态只是账号侧的提示，不参与路由是否接管的判定。
@@ -11,10 +11,12 @@ export type CodexConnectionState = "checking" | "disabled" | "pending-apply" | "
  * 按已登录处理。接管只替换模型请求的凭据，不写登录文件；未登录时客户端的 Work 界面可能
  * 拒绝本地任务，所以界面要提醒"先登录，再接管"。
  */
-export type CodexLoginState = "checking" | "signed-in" | "signed-out";
+export type CodexLoginState = "checking" | "signed-in" | "signed-out" | "unknown";
 
 export function codexLoginState(status: CodexStatus | null): CodexLoginState {
   if (!status) return "checking";
+  // 配置/收据不可读时服务端无法读取 auth.json；false 是未知，不是“未登录”。
+  if (status.conflict_kind === "unreadable") return "unknown";
   return status.chatgpt_signed_in ? "signed-in" : "signed-out";
 }
 
@@ -32,6 +34,8 @@ export function codexLoginView(status: CodexStatus | null): CodexLoginView {
       return { state: "checking", label: t("登录检测中…"), tone: "idle", title: t("正在读取 Codex 登录状态") };
     case "signed-in":
       return { state: "signed-in", label: t("ChatGPT 已登录"), tone: "ok", title: t("接管不会退出或替换登录；模型请求仍走本机网关") };
+    case "unknown":
+      return { state: "unknown", label: t("登录状态未知"), tone: "idle", title: t("Codex 配置无法读取，无法确认 ChatGPT 登录状态") };
     default:
       return { state: "signed-out", label: t("ChatGPT 未登录"), tone: "info", title: t("建议先登录再接管；未登录时 Codex 的 Work 界面可能拒绝本地任务，接管不会替你切换界面") };
   }
@@ -46,6 +50,20 @@ export interface CodexNextStep {
 
 export function codexOutstandingSteps(status: CodexStatus | null, selectedModelCount: number, libraryModelCount: number): CodexNextStep[] {
   if (!status || status.configured) return [];
+  switch (status.conflict_kind) {
+    case "managed":
+      return [{ key: "managed", label: t("管理员策略限制"), hint: t("管理员 requirements 覆盖了路由；本机应用无法覆盖，请调整策略或撤销接管") }];
+    case "policy_unavailable":
+      return [{ key: "policy", label: t("无法读取管理员策略"), hint: t("检查 requirements 文件权限或内容后刷新；撤销接管仍可用") }];
+    case "incomplete_update":
+      return [{ key: "restore-pending", label: t("先撤销上次未完成的应用"), hint: t("撤销会清理这次可能写入的本机路由，然后可重新应用") }];
+    case "local_drift":
+      return [{ key: "restore-drift", label: t("撤销后重新应用"), hint: t("Codex 仍指向本机网关，但模型或目录已被改动") }];
+    case "unreadable":
+      return [{ key: "unreadable", label: t("检查 Codex 配置目录"), hint: t("配置文件或收据无法解析；修复后刷新状态") }];
+    default:
+      break;
+  }
   const steps: CodexNextStep[] = [];
   if (selectedModelCount === 0) {
     steps.push(libraryModelCount === 0
@@ -74,6 +92,11 @@ export function codexVerdictDescription(state: CodexConnectionState): string {
     case "taken-over": return t("模型请求已走本机网关。");
     case "unavailable": return t("本机网关没有在监听。");
     case "conflict": return t("Codex 配置被其他程序占用。");
+    case "managed": return t("管理员策略覆盖了 Codex 路由，本机网关无法应用。");
+    case "local-drift": return t("Codex 仍指向本机网关，但模型或目录已被改动。");
+    case "policy-unavailable": return t("无法读取管理员策略；本地路由状态暂时无法确认。");
+    case "incomplete-update": return t("上次应用没有完成；配置可能已写入，也可能没有。");
+    case "unreadable": return t("Codex 配置或收据无法解析。");
   }
 }
 
@@ -85,12 +108,55 @@ export function codexApplyNeedsSignInConfirm(status: CodexStatus | null): boolea
 export function codexConnectionView(status: CodexStatus | null): EntryStatus<CodexConnectionState> {
   // 还没读到状态时不能说「未启用」：那是「读到了，而且关着」的结论。
   if (!status) return { state: "checking", tone: "idle", label: t("读取中…") };
+  switch (status.conflict_kind) {
+    case "managed":
+      return { state: "managed", tone: "warn", label: t("管理员策略限制") };
+    case "local_drift":
+      return { state: "local-drift", tone: "warn", label: t("本机路由已变化") };
+    case "policy_unavailable":
+      return { state: "policy-unavailable", tone: "bad", label: t("无法读取管理员策略") };
+    case "incomplete_update":
+      return { state: "incomplete-update", tone: "bad", label: t("上次应用未完成") };
+    case "unreadable":
+      return { state: "unreadable", tone: "bad", label: t("配置读取失败") };
+    case "foreign_provider":
+      return { state: "conflict", tone: "bad", label: t("配置冲突") };
+    default:
+      break;
+  }
   if (status.config_conflict) return { state: "conflict", tone: "bad", label: t("配置冲突") };
   if (status.configured && !status.listening) return { state: "unavailable", tone: "bad", label: t("网关不可用") };
   if (!status.enabled) return { state: "disabled", tone: "idle", label: t("未启用") };
   if (!status.listening) return { state: "unavailable", tone: "bad", label: t("网关不可用") };
   if (!status.configured) return { state: "pending-apply", tone: "warn", label: t("待应用配置") };
   return { state: "taken-over", tone: "ok", label: t("已接管") };
+}
+
+/** Codex 阶段卡片：Codex 自己的状态描述，区分已接入、仍归本机但漂移、策略覆盖等。 */
+export interface CodexClientStage {
+  detail: string;
+  state: "up" | "down" | "unknown";
+}
+
+export function codexClientStage(status: CodexStatus | null): CodexClientStage {
+  if (!status) return { detail: t("读取中…"), state: "unknown" };
+  if (status.configured) return { detail: t("指向本机网关"), state: "up" };
+  switch (status.conflict_kind) {
+    case "local_drift":
+      return { detail: t("已写入但模型/目录已变"), state: "unknown" };
+    case "incomplete_update":
+      return { detail: t("上次应用未完成"), state: "unknown" };
+    case "managed":
+      return { detail: t("由管理员策略覆盖"), state: "down" };
+    case "policy_unavailable":
+      return { detail: t("无法确认管理员策略"), state: "unknown" };
+    case "foreign_provider":
+      return { detail: t("由其他程序占用"), state: "down" };
+    case "unreadable":
+      return { detail: t("配置无法解析"), state: "unknown" };
+    default:
+      return { detail: t("未写入配置"), state: "down" };
+  }
 }
 
 /**
@@ -140,8 +206,25 @@ export function codexConflictRows(conflicts: CodexConfigConflict[]): CodexConfli
   }));
 }
 
+export interface CodexManagedConflictRow {
+  key: string;
+  field: string;
+  required: string;
+  published: string;
+}
+
+/** 管理员 requirements 的差异行；值由服务端脱敏，界面不再加工。 */
+export function codexManagedConflictRows(conflicts: CodexManagedConflict[]): CodexManagedConflictRow[] {
+  return conflicts.map((conflict) => ({
+    key: conflict.field,
+    field: conflictFieldLabel(conflict.field),
+    required: conflict.required,
+    published: conflict.published,
+  }));
+}
+
 export interface CodexActionGate {
-  /** 「应用到 Codex」：只有路由被别人占着（`config_conflict`）时才挡住；字段冲突不挡它。 */
+  /** 「应用到 Codex」：只有没有配置冲突/策略覆盖/半写状态时才可用；字段漂移不挡它。 */
   apply: boolean;
   /** 「撤销接管」：有接管凭证（`restorable`）就能点，字段冲突下也照点。 */
   restore: boolean;
@@ -150,12 +233,13 @@ export interface CodexActionGate {
 /**
  * 接入页两个按钮的可用条件。
  *
- * 「撤销接管」以前看 `configured`：受管字段被外部改过时它是假，于是用户既应用不了、
- * 也撤销不了，卡在冲突里出不来。现在看 `restorable`——有没有接管凭证，有就该能撤销。
+ * 「应用」只允许在 `conflict_kind=none` 时点击：managed/policy_unavailable/
+ * incomplete_update/local_drift/foreign_provider 都不能靠再应用一次覆盖。
+ * 「撤销」看 `restorable`——有没有接管凭证，有就该能撤销。
  */
 export function codexActionGate(status: CodexStatus | null, options: { dirty: boolean; enabled: boolean }): CodexActionGate {
   return {
-    apply: Boolean(status && status.listening && !status.config_conflict && options.enabled && !options.dirty),
+    apply: Boolean(status && status.listening && status.conflict_kind === "none" && options.enabled && !options.dirty),
     restore: Boolean(status?.restorable),
   };
 }

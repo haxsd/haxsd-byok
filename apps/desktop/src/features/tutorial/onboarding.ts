@@ -1,5 +1,5 @@
 import type {
-  ClaudeDesktopTakeoverState,
+  ClaudeTakeoverState,
   CursorMode,
 } from "../../shared/api";
 
@@ -33,7 +33,8 @@ export interface CodexOnboardingInput {
 export interface ClaudeOnboardingInput {
   enabled: boolean;
   listening: boolean;
-  desktop: ClaudeDesktopTakeoverState;
+  desktop: ClaudeTakeoverState;
+  running: boolean;
 }
 
 export interface OnboardingInput {
@@ -177,7 +178,7 @@ function claudeStep(claude: ClaudeOnboardingInput | null): OnboardingStep {
   const stale = claude?.desktop === "stale";
   const applied = claude?.desktop === "applied";
   const managed = claude?.desktop === "managed";
-  const running = claude?.desktop === "running";
+  const running = claude?.running === true;
   const status = !claude
     ? t("读取中…")
     : conflict
@@ -190,10 +191,10 @@ function claudeStep(claude: ClaudeOnboardingInput | null): OnboardingStep {
             ? t("网关已启用，等待端口就绪")
             : applied
               ? t("已接管")
-              : running
-                ? t("先完全退出 Claude Desktop")
-                : managed
-                  ? t("受管配置，按页面指引处理")
+              : managed
+                ? t("受管配置，按页面指引处理")
+                : running
+                  ? t("先完全退出 Claude Desktop")
                   : t("网关在运行，还差应用接管");
   return {
     key: "claude",

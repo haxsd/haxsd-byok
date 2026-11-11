@@ -21,6 +21,12 @@ pub struct CursorToolRuntime {
     interactions: Arc<Mutex<HashMap<u32, PendingInteraction>>>,
     completed: Arc<Mutex<HashMap<u32, String>>>,
     interrupted: Arc<Mutex<HashSet<u32>>>,
+    /// 已完成的 Task 调用把两个身份连起来：客户端取消子代理时发的是 `agent_id`
+    /// （子代理/子会话身份），而 Task 工具调用用的是模型生成的 `call_id`。后台 Task
+    /// 的终态结果提交后 exec 已经移出 `execs`，只按 call id 扫活跃 exec 找不到目标。
+    /// 这张表跨同一传输内的轮次共享（子代理可以比父轮活得久），在 actor 销毁时一起
+    /// 释放，不做进程级全局取消。
+    subagents: Arc<Mutex<HashMap<String, String>>>,
     /// 审批之后启动的搜索/抓取任务:它们不在 `execs` 里(`take_interaction` 已经把交互条目
     /// 摘掉了),但"停止/断连/换轮次"必须一样能中断它们。同步锁是为了让 guard 在 Drop 里
     /// 就能摘除条目。
@@ -163,6 +169,8 @@ impl CursorToolRuntime {
             interactions: Arc::new(Mutex::new(HashMap::new())),
             completed: Arc::new(Mutex::new(HashMap::new())),
             interrupted: self.interrupted.clone(),
+            // 跨轮次共享：父轮结束后客户端可能在下一条流里取消上一轮派出的后台子代理。
+            subagents: self.subagents.clone(),
             // 与 interrupted 一样跨轮次共享:旧轮次的搜索/抓取也要能被新轮次的停止路径中断。
             detached: self.detached.clone(),
         }
@@ -428,8 +436,13 @@ impl CursorToolRuntime {
         ids
     }
 
-    pub async fn running_task_exec_id(&self, call_id: &str) -> Option<u32> {
-        self.execs
+    /// 所有活跃 Task exec 中 `call_id` 与给定值相同的 id。
+    ///
+    /// 取消子代理的 fallback 只能在恰好一个候选时使用；`call_id` 只在轮内唯一，出现多个
+    /// 候选时不能任意挑一个（见 `CancelSubagentAction` 的调用点）。
+    pub(crate) async fn running_task_exec_ids(&self, call_id: &str) -> Vec<u32> {
+        let mut ids = self
+            .execs
             .lock()
             .await
             .iter()
@@ -437,7 +450,38 @@ impl CursorToolRuntime {
                 (entry.call.call_id == call_id && entry.call.name.eq_ignore_ascii_case("Task"))
                     .then_some(*id)
             })
-            .min()
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids
+    }
+
+    /// 按工具调用身份找活跃 exec（不区分工具类型）。
+    pub(crate) async fn exec_id_for_call(&self, call_id: &str) -> Option<u32> {
+        self.execs
+            .lock()
+            .await
+            .iter()
+            .find_map(|(id, entry)| (entry.call.call_id == call_id).then_some(*id))
+    }
+
+    /// 记下已提交的 Task 结果里的两个身份：`agent_id` → Task `call_id`。
+    ///
+    /// 后台 Task 的派发结果一提交 exec 就被摘走，取消动作只能靠这张表把客户端发来的
+    /// 子代理身份还原成父工具调用。值覆盖写入：同一 agent id 被复用时以最新一次 Task
+    /// 为准（组合了 `resume_agent_id` 的调用仍然属于最新父调用）。
+    pub(crate) async fn remember_subagent(&self, agent_id: &str, tool_call_id: &str) {
+        if agent_id.is_empty() || tool_call_id.is_empty() {
+            return;
+        }
+        self.subagents
+            .lock()
+            .await
+            .insert(agent_id.to_owned(), tool_call_id.to_owned());
+    }
+
+    /// 客户端取消用的子代理身份对应的父 Task 工具调用。
+    pub(crate) async fn subagent_tool_call(&self, agent_id: &str) -> Option<String> {
+        self.subagents.lock().await.get(agent_id).cloned()
     }
 
     fn next_id(&self) -> Result<u32> {
@@ -453,6 +497,71 @@ pub(crate) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+/// 一个 Task 工具终态里的两个身份：`agent_id`（子代理/子会话身份）与 Task `call_id`。
+pub(crate) fn task_identity_from_tool_call(call: &pb::ToolCall) -> Option<(&str, &str)> {
+    let pb::tool_call::Tool::TaskToolCall(task) = call.tool.as_ref()? else {
+        return None;
+    };
+    let pb::task_result::Result::Success(success) = task.result.as_ref()?.result.as_ref()? else {
+        return None;
+    };
+    let agent_id = success.agent_id.as_deref().filter(|id| !id.is_empty())?;
+    let call_id = call.tool_call_id.as_deref().filter(|id| !id.is_empty())?;
+    Some((agent_id, call_id))
+}
+
+/// 把 `InterruptedPendingToolCallResolution` 还原成执行器认识的终态消息。
+///
+/// 协议里这一步只允许 shell/task 两种形状（`InterruptedPendingToolCallResolution`
+/// 的 oneof）；它们正好是"取消时唯一结果载体"的两类调用。Task 用后端的
+/// `TaskResult` 表达，执行侧的渲染入口吃的是 `SubagentResult`，这里做一次无损字段搬运，
+/// 不引入第二套结果语义。
+pub(crate) fn resolution_exec_message(
+    resolution: &pb::InterruptedPendingToolCallResolution,
+) -> Option<pb::exec_client_message::Message> {
+    use pb::interrupted_pending_tool_call_resolution::Resolution;
+    Some(match resolution.resolution.as_ref()? {
+        Resolution::ShellResult(result) => {
+            pb::exec_client_message::Message::ShellResult(result.clone())
+        }
+        Resolution::TaskResult(result) => {
+            pb::exec_client_message::Message::SubagentResult(task_result_to_subagent(result))
+        }
+    })
+}
+
+fn task_result_to_subagent(result: &pb::TaskResult) -> pb::SubagentResult {
+    let result = match result.result.as_ref() {
+        Some(pb::task_result::Result::Success(success)) => {
+            // `TaskSuccess.is_background` 是独立布尔值；执行侧渲染只看
+            // `background_reason`。为保留"后台任务不当作被取消"的语义，原因未填但
+            // 明确标了后台时补成 AgentRequest（渲染出的 ToolCall 也只在这里使用）。
+            let background_reason = if success.is_background
+                && success.background_reason == pb::SubagentBackgroundReason::Unspecified as i32
+            {
+                pb::SubagentBackgroundReason::AgentRequest as i32
+            } else {
+                success.background_reason
+            };
+            Some(pb::subagent_result::Result::Success(pb::SubagentSuccess {
+                agent_id: success.agent_id.clone().unwrap_or_default(),
+                final_message: success.result_suffix.clone(),
+                tool_call_count: 0,
+                background_reason,
+                transcript_path: success.transcript_path.clone(),
+            }))
+        }
+        Some(pb::task_result::Result::Error(error)) => {
+            Some(pb::subagent_result::Result::Error(pb::SubagentError {
+                agent_id: None,
+                error: error.error.clone(),
+            }))
+        }
+        None => None,
+    };
+    pb::SubagentResult { result }
 }
 
 /// 流式输出边到边收口:上限与 gate 的 `SHELL_STREAM_LIMIT` 是同一个数,不会出现

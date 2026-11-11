@@ -20,6 +20,8 @@ use super::{context, images};
 pub(crate) enum RuntimeAction {
     Inject(pb::InjectContextAction),
     UserMessage(pb::UserMessageAction),
+    /// 带真实中断结果的取消：先让 output 把结果收进历史，再真正取消这一轮。
+    Cancel(pb::CancelAction),
 }
 
 pub(crate) async fn compile_user_message_action(
@@ -258,6 +260,41 @@ fn should_project_request_context(
         .rev()
         .find(|message| message.message_id.starts_with("request-context:"))
         .is_none_or(|previous| previous.content != current.content)
+}
+
+/// ResumeAction 自己携带的请求上下文：作为一条新的 `request-context:*` 事件追加。
+///
+/// 事件身份由"这次 resume 的基线 checkpoint + 编译后上下文的摘要"决定：同一条 resume
+/// 在客户端未拿到新 checkpoint 时重试，基线不变、内容不变，身份就相同（附件与消息身份
+/// 去重都会命中）；上下文回到旧值时基线已经前进，因此 A → B → A 仍会留下三个不同事件。
+/// 不读取时间戳之外的易变状态，也不改写任何既有消息。
+pub(super) fn compile_resume_context(
+    base: crate::model::CheckpointId,
+    request_context: &pb::RequestContext,
+    history: &[CanonicalMessage],
+) -> Result<Option<CanonicalMessage>> {
+    let time = Time::now(
+        request_context
+            .env
+            .as_ref()
+            .map(|env| env.time_zone.as_str()),
+    );
+    let text = context::compile_context(request_context, &time.today);
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let event_id = format!(
+        "resume:{}:{}",
+        base.0,
+        BlobId::digest(text.as_bytes()).to_base64()
+    );
+    let message = CanonicalMessage::text(
+        format!("request-context:{event_id}"),
+        Role::User,
+        Origin::Prompt,
+        text,
+    );
+    Ok(should_project_request_context(history, &message).then_some(message))
 }
 
 pub async fn compile_background(

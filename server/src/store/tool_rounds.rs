@@ -1,4 +1,6 @@
 //! Persists Tool round calls, results, and settlement state.
+use std::collections::{HashMap, HashSet};
+
 use sqlx::Row;
 
 use crate::{
@@ -309,5 +311,118 @@ impl Store {
             version: round.get::<i64, _>(4) as u64,
             created_at_ms: round.get::<i64, _>(5) as u64,
         }))
+    }
+
+    /// 收尾旧 run 里由后续动作补齐结果的 pending 工具轮。
+    ///
+    /// 只更新 `tool_rounds` / `tool_round_calls` 的完成态与结果，不写旧 run checkpoint
+    /// （旧 run 已不再持有会话），也不创建新 run/child。`started_at_ms` 来自 pending
+    /// envelope；`expected_calls` 是该 envelope 的完整调用集合。没有匹配的本地 pending
+    /// round 时返回 `Ok(false)`（未知导入历史只在 canonical 投影，不伪造 DB 状态）；
+    /// 同一起点多个 pending round、调用集合不一致或结果不全时返回错误，不猜目标。
+    pub async fn complete_pending_tool_round(
+        &self,
+        conversation_id: &ConversationId,
+        started_at_ms: u64,
+        expected_calls: &[String],
+        results: &[ToolResult],
+    ) -> Result<bool> {
+        if expected_calls.is_empty() || results.len() != expected_calls.len() {
+            return Err(Error::Store(
+                "pending tool round resolution is incomplete".into(),
+            ));
+        }
+        let started_at_ms = i64::try_from(started_at_ms)
+            .map_err(|_| Error::Protocol("tool round timestamp exceeds SQLite INTEGER".into()))?;
+        let _write = self.writes.lock().await;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let rounds = sqlx::query_as::<_, (String, i64)>(
+            "SELECT round.round_id, round.version
+               FROM tool_rounds round
+               JOIN runs run ON run.run_id = round.run_id
+              WHERE run.conversation_id = ? AND round.status = 'pending'
+                AND round.created_at_ms = ?",
+        )
+        .bind(conversation_id.as_str())
+        .bind(started_at_ms)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut rounds = rounds.into_iter();
+        let Some((round_id, version)) = rounds.next() else {
+            return Ok(false);
+        };
+        if rounds.next().is_some() {
+            return Err(Error::Store(format!(
+                "ambiguous pending tool round at {started_at_ms}"
+            )));
+        }
+        let stored = sqlx::query_as::<_, (String, String)>(
+            "SELECT call_id, status FROM tool_round_calls WHERE round_id = ? ORDER BY call_index",
+        )
+        .bind(&round_id)
+        .fetch_all(&mut *tx)
+        .await?;
+        if stored.len() != expected_calls.len()
+            || stored.iter().any(|(_, status)| status != "pending")
+        {
+            return Err(Error::Store(format!(
+                "pending tool round {round_id} does not match the resolution envelope"
+            )));
+        }
+        let stored_ids = stored
+            .iter()
+            .map(|(call_id, _)| call_id)
+            .collect::<HashSet<_>>();
+        let expected_ids = expected_calls.iter().collect::<HashSet<_>>();
+        if stored_ids != expected_ids {
+            return Err(Error::Store(format!(
+                "pending tool round {round_id} call set differs from the resolution envelope"
+            )));
+        }
+        let results_by_call = results
+            .iter()
+            .map(|result| (result.call_id.as_str(), result))
+            .collect::<HashMap<_, _>>();
+        if results_by_call.len() != expected_calls.len() {
+            return Err(Error::Store(
+                "pending tool round resolution has duplicate results".into(),
+            ));
+        }
+        for call_id in expected_calls {
+            let Some(result) = results_by_call.get(call_id.as_str()) else {
+                return Err(Error::Store(format!(
+                    "pending tool round resolution is missing {call_id}"
+                )));
+            };
+            let updated = sqlx::query(
+                "UPDATE tool_round_calls SET status = 'completed',
+                 result_content = ?, result_is_error = ?, completed_at_ms = ?
+                 WHERE round_id = ? AND call_id = ? AND status = 'pending'",
+            )
+            .bind(&result.content)
+            .bind(result.is_error)
+            .bind(now_ms())
+            .bind(&round_id)
+            .bind(call_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            if updated != 1 {
+                return Err(Error::Store(format!(
+                    "pending tool call {call_id} in round {round_id} was not updated exactly once"
+                )));
+            }
+        }
+        sqlx::query(
+            "UPDATE tool_rounds SET status = 'settled', version = ?, updated_at_ms = ?
+             WHERE round_id = ? AND status = 'pending'",
+        )
+        .bind(version + 1)
+        .bind(now_ms())
+        .bind(&round_id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
     }
 }

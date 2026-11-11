@@ -19,7 +19,7 @@ export function ClaudeConflictList({ conflicts, stale = false }: { conflicts: Cl
   return <>
     {stale && <section className={styles.stale} aria-label={t("配置已过期")}>
       <strong>{t("配置已过期")}</strong>
-      <small>{t("网关设置已变化，客户端仍指向旧地址/令牌，请重新应用接管。")}</small>
+      <small>{t("网关设置已变化，或接管时使用的模型已被删除；客户端仍指向旧配置，请重新应用接管。")}</small>
     </section>}
 
     {blocking.length > 0 && <section className={styles.conflict} aria-label={t("冲突与阻断")}>

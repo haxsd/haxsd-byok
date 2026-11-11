@@ -5,6 +5,7 @@
 //! 用户改过的值保留并报告，不静默覆盖。
 pub mod desktop;
 pub mod ownership;
+mod recovery;
 
 use std::{
     fs,
@@ -68,7 +69,6 @@ pub enum TakeoverState {
     Stale,
     Conflict,
     Managed,
-    Running,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -122,6 +122,8 @@ pub struct GatewayValues<'a> {
     pub token: &'a str,
     /// 网关已启用、正在监听、端口一致、默认模型存在，并且没有缺失模型。
     pub available: bool,
+    /// 模型库里当前存在的全部模型身份；用来核对 profile 的精确发现 ID。
+    pub model_hashes: &'a std::collections::BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -132,6 +134,9 @@ pub struct DesktopTakeoverStatus {
     pub backup_path: String,
     /// 收据属于当前安装目录，撤销才有依据。
     pub restorable: bool,
+    /// Claude Desktop 进程是否在运行。运行状态与配置所有权分开表达：接管仍然可以是
+    /// applied/stale，但不能在运行中写入。
+    pub running: bool,
     pub conflicts: Vec<TakeoverConflict>,
     /// 机器/用户策略存在时只给引导：v1 不写 HKCU 策略，也不覆盖 HKLM 策略。
     pub guided: bool,
@@ -248,6 +253,7 @@ mod tests {
                 profile_path: "C:\\Users\\me\\AppData\\Local\\Claude-3p\\configLibrary\\8f0c2a4e-1d3b-4f6e-9a7c-2b5d8e1f4a6c.json".into(),
                 backup_path: String::new(),
                 restorable: true,
+                running: false,
                 conflicts: Vec::new(),
                 guided: false,
             },

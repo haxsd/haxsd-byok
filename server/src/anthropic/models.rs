@@ -21,9 +21,12 @@ pub fn discovery_id(model_hash: &str) -> String {
 /// 把 Claude 客户端发来的模型 ID 解析成模型库里的配置。
 ///
 /// 顺序：精确的 `model_hash` → 发现 ID（`claude-<model_hash>`）→ 家族名
-/// （`…-sonnet-…` / `…-opus-…` / `…-haiku-…`，含裸别名）→ 默认模型。未知 ID 走默认
-/// 模型而不是报错：客户端会发送它自带的版本化 ID，网关不该要求用户把它们逐一
-/// 登记。
+/// （`…-sonnet-…` / `…-opus-…` / `…-haiku-…`，含裸别名）→ 默认模型。
+///
+/// 本产品签发的模型身份是 16 位十六进制（模型库分配的 8 字节随机身份，旧内容哈希
+/// 同形）。精确身份失效说明模型已被删除：此时明确报错，不能把请求静默转给默认
+/// 模型——那会改变费用、能力和数据目的地。官方版本化家族 ID 不含这种纯哈希形状，
+/// 仍按家族名回落。
 pub async fn resolve(
     store: &Store,
     settings: &ClaudeSettings,
@@ -44,11 +47,17 @@ pub async fn resolve(
         if let Some(model) = load(store, requested).await? {
             return Ok(model);
         }
-        // 发现 ID 剥掉前缀后按哈希查；前缀后面不是已知哈希时继续走家族名回退，
+        if is_model_hash(requested) {
+            return Err(removed_model(requested));
+        }
+        // 发现 ID 剥掉前缀后按哈希查；前缀后面不是已登记的哈希时继续走家族名回退，
         // 这样 `claude-sonnet-4-5-…` 这类客户端自带 ID 仍然可用。
         if let Some(hash) = discovery_hash(requested) {
             if let Some(model) = load(store, &hash).await? {
                 return Ok(model);
+            }
+            if is_model_hash(&hash) {
+                return Err(removed_model(requested));
             }
         }
         if let Some(family) = family_of(requested) {
@@ -60,6 +69,21 @@ pub async fn resolve(
         }
     }
     Ok(default)
+}
+
+/// 模型库身份的形状：8 字节十六进制（16 位小写）。旧的内容哈希同样是
+/// `Sha256[..8]`，所以历史引用也落在这个形状里。
+fn is_model_hash(value: &str) -> bool {
+    value.len() == 16
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn removed_model(requested: &str) -> ApiError {
+    ApiError::not_found(format!(
+        "the Claude model {requested} no longer exists; re-select it in Claude settings"
+    ))
 }
 
 /// `GET /v1/models` 返回的模型集合：默认模型在前，随后是三个别名，按哈希去重。
@@ -105,8 +129,9 @@ pub fn catalog_json(models: &[ModelConfig]) -> Value {
 /// 从发现 ID 里剥出哈希；不是 `claude-` 开头（或后面为空）时返回 `None`。
 ///
 /// 前缀与内容都按大小写不敏感处理：模型哈希本身是小写十六进制，客户端把 ID 大写
-/// 回来时仍应命中同一个模型。
-fn discovery_hash(id: &str) -> Option<String> {
+/// 回来时仍应命中同一个模型。Claude Desktop 的 profile 也用它核对列表里的模型
+/// 是否仍然存在。
+pub(crate) fn discovery_hash(id: &str) -> Option<String> {
     id.get(..DISCOVERY_PREFIX.len())
         .filter(|prefix| prefix.eq_ignore_ascii_case(DISCOVERY_PREFIX))
         .and_then(|_| id.get(DISCOVERY_PREFIX.len()..))
@@ -297,6 +322,55 @@ mod tests {
         assert_eq!(
             resolve(&store, &settings, &upper).await.unwrap().model_hash,
             hash
+        );
+    }
+
+    #[tokio::test]
+    async fn a_deleted_product_model_id_is_an_error_instead_of_the_default() {
+        let (_directory, store, settings) = fixture().await;
+        let removed = settings.haiku_model_hash.clone().unwrap();
+        assert_eq!(
+            removed.len(),
+            16,
+            "模型库签发 8 字节随机身份：十六进制形式必须是 16 位"
+        );
+        store.delete_model(&removed).await.unwrap();
+
+        for requested in [discovery_id(&removed), removed.clone()] {
+            match resolve(&store, &settings, &requested).await {
+                Ok(model) => panic!(
+                    "{requested} resolved to {} instead of failing",
+                    model.display_name
+                ),
+                Err(error) => {
+                    assert_eq!(
+                        error.status,
+                        axum::http::StatusCode::NOT_FOUND,
+                        "{requested}"
+                    );
+                    assert!(
+                        error.message.contains("no longer exists"),
+                        "{requested}: {}",
+                        error.message
+                    );
+                }
+            }
+        }
+
+        // 官方版本化家族别名与未知 ID 的回落不受影响。
+        assert_eq!(
+            resolve(&store, &settings, "claude-sonnet-4-5")
+                .await
+                .unwrap()
+                .display_name,
+            "Sonnet"
+        );
+        assert_eq!(
+            resolve(&store, &settings, "claude-unknown")
+                .await
+                .unwrap()
+                .display_name,
+            "Default"
         );
     }
 

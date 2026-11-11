@@ -2,23 +2,52 @@
 #[path = "support/fixtures.rs"]
 mod fixtures;
 
+/// Codex 网络回归专用：出网固定直连，且 Codex home 固定到临时目录。
+/// 不读真实 `~/.codex/config.toml`/`auth.json`，也不读真实系统代理。
+async fn codex_temp_store() -> (tempfile::TempDir, cursor_server::store::Store) {
+    let (directory, store) = fixtures::temp_store().await;
+    store
+        .set_proxy_settings(ProxySettingsInput {
+            mode: ProxyMode::Direct,
+            address: String::new(),
+            auth_enabled: false,
+            username: String::new(),
+            password: None,
+        })
+        .await
+        .unwrap();
+    store
+        .set_codex_settings(CodexSettings {
+            home: directory.path().join("codex-home").display().to_string(),
+            ..CodexSettings::default()
+        })
+        .await
+        .unwrap();
+    (directory, store)
+}
+
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use cursor_server::{
-    codex::{CodexGateway, CodexSettings},
+    codex::{CodexGateway, CodexSettings, RequirementsSource},
     network::NetworkClients,
+    store::{ProxyMode, ProxySettingsInput},
 };
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn codex_is_disabled_until_explicitly_configured() {
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = codex_temp_store().await;
     let settings = store.codex_settings().await.unwrap();
     assert!(!settings.enabled);
     assert!(settings.model_hashes.is_empty());
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store));
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store),
+        RequirementsSource::unmanaged(),
+    );
     let status = gateway.status().await.unwrap();
     assert!(!status.listening);
     let response = gateway
@@ -36,13 +65,17 @@ async fn codex_is_disabled_until_explicitly_configured() {
 
 #[tokio::test]
 async fn gateway_token_is_stable_and_never_serialized_with_settings() {
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = codex_temp_store().await;
     let first = store.codex_token().await.unwrap();
     assert!(first.len() >= 32);
     assert_eq!(first, store.codex_token().await.unwrap());
     let serialized = serde_json::to_string(&store.codex_settings().await.unwrap()).unwrap();
     assert!(!serialized.contains(&first));
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store));
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store),
+        RequirementsSource::unmanaged(),
+    );
     let response = gateway
         .router()
         .oneshot(
@@ -64,7 +97,7 @@ async fn gateway_token_is_stable_and_never_serialized_with_settings() {
 
 #[tokio::test]
 async fn selected_models_are_validated_before_settings_are_persisted() {
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = codex_temp_store().await;
     let settings = CodexSettings {
         model_hashes: vec!["missing".into()],
         default_model_hash: Some("missing".into()),
@@ -81,8 +114,12 @@ async fn selected_models_are_validated_before_settings_are_persisted() {
 
 #[tokio::test]
 async fn unknown_routes_are_never_forwarded_to_cursor_or_an_upstream() {
-    let (_directory, store) = fixtures::temp_store().await;
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store));
+    let (_directory, store) = codex_temp_store().await;
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store),
+        RequirementsSource::unmanaged(),
+    );
     let response = gateway
         .router()
         .oneshot(
@@ -104,8 +141,22 @@ async fn configured_gateway(
     CodexGateway,
     String,
 ) {
+    configured_gateway_with_requirements(protocol, upstream_url, RequirementsSource::unmanaged())
+        .await
+}
+
+async fn configured_gateway_with_requirements(
+    protocol: &str,
+    upstream_url: String,
+    requirements: RequirementsSource,
+) -> (
+    tempfile::TempDir,
+    cursor_server::store::Store,
+    CodexGateway,
+    String,
+) {
     use cursor_server::model::{ModelConfigInput, ModelType};
-    let (directory, store) = fixtures::temp_store().await;
+    let (directory, store) = codex_temp_store().await;
     let model = store
         .create_model(&ModelConfigInput {
             sort_order: 0,
@@ -151,8 +202,44 @@ async fn configured_gateway(
         })
         .await
         .unwrap();
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store.clone()),
+        requirements,
+    );
     (directory, store, gateway, model.model_hash)
+}
+
+/// 已应用、监听随机回环端口、home 在临时目录的网关。
+async fn applied_codex_gateway() -> (
+    tempfile::TempDir,
+    cursor_server::store::Store,
+    CodexGateway,
+    String,
+    std::path::PathBuf,
+) {
+    let (directory, store, gateway, id) =
+        configured_gateway("responses", "http://127.0.0.1:1".into()).await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    let home = directory.path().join("codex-home");
+    (directory, store, gateway, id, home)
+}
+
+fn edit_codex_config(home: &std::path::Path, change: impl FnOnce(&mut toml_edit::DocumentMut)) {
+    let path = home.join("config.toml");
+    let mut doc = std::fs::read_to_string(&path)
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    change(&mut doc);
+    std::fs::write(&path, doc.to_string()).unwrap();
 }
 
 /// 端到端：模型库里配 800k，发布的目录逐模型写 800k，config.toml 不再有全局窗口。
@@ -818,6 +905,7 @@ async fn non_streaming_upstream_body_timeout_is_recorded_as_failure_not_cancella
     let gateway = CodexGateway::with_timeouts(
         store.clone(),
         NetworkClients::new(store.clone()),
+        RequirementsSource::unmanaged(),
         std::time::Duration::from_secs(2),
         std::time::Duration::from_millis(50),
     );
@@ -1346,8 +1434,10 @@ async fn installed_desktop_engine_edits_a_file_runs_a_command_and_continues() {
 
 #[test]
 fn invalid_settings_cannot_enable_an_unroutable_gateway() {
+    let home = tempfile::tempdir().unwrap();
     let mut settings = CodexSettings {
         enabled: true,
+        home: home.path().display().to_string(),
         ..CodexSettings::default()
     };
     assert!(settings.validate().is_err());
@@ -1459,7 +1549,7 @@ async fn two_model_gateway(
     String,
 ) {
     use cursor_server::model::{ModelConfigInput, ModelType};
-    let (directory, store) = fixtures::temp_store().await;
+    let (directory, store) = codex_temp_store().await;
     let mut hashes = Vec::new();
     for model_id in ["vendor-model-a", "vendor-model-b"] {
         let model = store
@@ -1501,7 +1591,11 @@ async fn two_model_gateway(
         })
         .await
         .unwrap();
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store.clone()),
+        RequirementsSource::unmanaged(),
+    );
     (
         directory,
         store,
@@ -1590,7 +1684,8 @@ async fn the_real_engine_survives_a_client_model_switch_and_a_placeholder_thinki
         );
     assert_ne!(switched, applied);
     std::fs::write(&path, &switched).unwrap();
-    let status = cursor_server::codex::config::inspect(&home).unwrap();
+    let status =
+        cursor_server::codex::config::inspect(&home, &RequirementsSource::unmanaged()).unwrap();
     eprintln!(
         "after the client switch: applied={} conflict={} message={}",
         status.applied, status.conflict, status.message
@@ -1791,4 +1886,338 @@ async fn the_real_engine_survives_a_client_model_switch_and_a_placeholder_thinki
     eprintln!("client model switch and placeholder effort verified");
     // 被强杀的引擎进程在 Windows 上可能让运行时收尾的阻塞 join 一直等下去。
     std::process::exit(0);
+}
+
+/// 正常退出：目录指针被客户端改过后，路由端点仍属于本机网关，必须收回。
+#[tokio::test]
+async fn shutdown_reclaims_a_route_whose_catalog_pointer_drifted() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    let path = home.join("config.toml");
+    let applied = std::fs::read_to_string(&path).unwrap();
+    // 用户字段与目录漂移同时存在：收回只能动受管字段。
+    std::fs::write(&path, format!("{applied}\n[desktop]\nscale = 1.25\n")).unwrap();
+    edit_codex_config(&home, |doc| {
+        doc["model_catalog_json"] =
+            toml_edit::value(home.join("another-models.json").to_string_lossy().as_ref());
+    });
+    let status = gateway.status().await.unwrap();
+    assert!(!status.configured && status.config_conflict, "{status:?}");
+    assert_eq!(status.conflict_kind, "local_drift");
+    assert!(status.route_owned, "{status:?}");
+    assert_eq!(status.managed_scope, "local_system_only");
+
+    gateway.shutdown().await.unwrap();
+
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("haxsd-byok"), "退出没有收回本机路由: {text}");
+    assert!(
+        !text.contains("experimental_bearer_token"),
+        "退出留下了网关令牌: {text}"
+    );
+    assert!(
+        text.contains("scale = 1.25"),
+        "收回不能覆盖用户字段: {text}"
+    );
+}
+
+/// 正常退出：客户端换了模型（目录里没有的 slug），端点仍属于本机网关，必须收回。
+#[tokio::test]
+async fn shutdown_reclaims_a_route_whose_model_drifted() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    edit_codex_config(&home, |doc| {
+        doc["model"] = toml_edit::value("not-in-catalog");
+    });
+    let status = gateway.status().await.unwrap();
+    assert!(!status.configured && status.config_conflict, "{status:?}");
+    assert_eq!(status.conflict_kind, "local_drift");
+    assert!(status.route_owned, "{status:?}");
+
+    gateway.shutdown().await.unwrap();
+    let text = std::fs::read_to_string(home.join("config.toml")).unwrap_or_default();
+    assert!(!text.contains("haxsd-byok"), "退出没有收回本机路由: {text}");
+    assert!(
+        !text.contains("experimental_bearer_token"),
+        "退出留下了网关令牌: {text}"
+    );
+}
+
+/// 本机目录/模型漂移时再次应用：错误必须说“仍指向本机网关”，不能误报别家 provider。
+#[tokio::test]
+async fn apply_reports_local_drift_instead_of_another_provider() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    edit_codex_config(&home, |doc| {
+        doc["model"] = toml_edit::value("not-in-catalog");
+    });
+    let status = gateway.status().await.unwrap();
+    assert_eq!(status.conflict_kind, "local_drift", "{status:?}");
+
+    let error = gateway.apply().await.unwrap_err().to_string();
+    assert!(
+        error.contains("still points at this gateway"),
+        "本机漂移必须返回准确错误: {error}"
+    );
+    assert!(
+        !error.contains("external configuration"),
+        "本机漂移不能被说成别家占用: {error}"
+    );
+}
+
+/// 正常退出：最终收据有效时，残留的损坏 pending 不能阻断收回。
+#[tokio::test]
+async fn shutdown_reclaims_when_a_corrupt_pending_sits_beside_the_final_receipt() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    let pending = home.join(".haxsd-byok-routing.pending.json");
+    std::fs::write(&pending, "not json").unwrap();
+    assert!(gateway.status().await.unwrap().configured);
+
+    gateway.shutdown().await.unwrap();
+
+    let text = std::fs::read_to_string(home.join("config.toml")).unwrap_or_default();
+    assert!(!text.contains("haxsd-byok"), "退出没有收回本机路由: {text}");
+    assert!(!pending.exists(), "有效最终收据旁的坏 pending 应被清掉");
+}
+
+/// 正常退出：别家 provider 已接管时不动它的配置。
+#[tokio::test]
+async fn shutdown_keeps_a_route_taken_over_by_another_provider() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    edit_codex_config(&home, |doc| {
+        doc["model_provider"] = toml_edit::value("another-tool");
+    });
+    let path = home.join("config.toml");
+    let before = std::fs::read_to_string(&path).unwrap();
+    let status = gateway.status().await.unwrap();
+    assert!(!status.route_owned, "{status:?}");
+    assert_eq!(status.conflict_kind, "foreign_provider");
+
+    gateway.shutdown().await.unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "别家 provider 接管的配置不能被收回覆盖"
+    );
+}
+
+/// 正常退出：端点或令牌已被别家改过时同样不收回。
+#[tokio::test]
+async fn shutdown_keeps_a_provider_that_another_tool_repointed() {
+    let changes: [fn(&mut toml_edit::DocumentMut); 2] = [
+        |doc| {
+            doc["model_providers"]["haxsd-byok"]["base_url"] =
+                toml_edit::value("http://127.0.0.1:1/foreign")
+        },
+        |doc| {
+            doc["model_providers"]["haxsd-byok"]["experimental_bearer_token"] =
+                toml_edit::value("foreign-token")
+        },
+    ];
+    for change in changes {
+        let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+        edit_codex_config(&home, change);
+        let path = home.join("config.toml");
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        gateway.shutdown().await.unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            before,
+            "别家的端点/令牌不能被收回覆盖"
+        );
+    }
+}
+
+/// 管理员要求覆盖路由时，状态不能继续报告已接管；撤销仍可用。
+#[tokio::test]
+async fn managed_requirements_that_override_the_route_make_the_gateway_unconfigured() {
+    let requirements_directory = tempfile::tempdir().unwrap();
+    let requirements_path = requirements_directory.path().join("requirements.toml");
+    let (directory, store, gateway, _id) = configured_gateway_with_requirements(
+        "responses",
+        "http://127.0.0.1:1".into(),
+        RequirementsSource::file(requirements_path.clone()),
+    )
+    .await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    assert!(gateway.status().await.unwrap().configured);
+
+    std::fs::write(&requirements_path, "model_provider = \"openai\"\n").unwrap();
+
+    let status = gateway.status().await.unwrap();
+    assert!(!status.configured, "{status:?}");
+    assert!(status.config_conflict, "{status:?}");
+    assert_eq!(status.managed_conflicts.len(), 1, "{status:?}");
+    assert_eq!(status.conflict_kind, "managed");
+    assert!(status.route_owned, "{status:?}");
+    assert!(status.managed_error.is_none(), "{status:?}");
+    assert_eq!(status.managed_scope, "local_system_only");
+    let json = serde_json::to_value(&status).unwrap();
+    assert!(
+        json["managed_conflicts"]
+            .as_array()
+            .is_some_and(|conflicts| !conflicts.is_empty()),
+        "{json}"
+    );
+    assert_eq!(json["conflict_kind"], "managed", "{json}");
+    assert_eq!(json["managed_scope"], "local_system_only", "{json}");
+
+    // 撤销仍可用：本地文件里的受管字段照样能还回去。
+    gateway.restore().await.unwrap();
+    assert!(
+        !directory.path().join("codex-home/config.toml").exists()
+            || !std::fs::read_to_string(directory.path().join("codex-home/config.toml"))
+                .unwrap()
+                .contains("haxsd-byok")
+    );
+    gateway.shutdown().await.unwrap();
+}
+
+/// 收据缺 original 是损坏，不是首次接管；状态不能先报可撤销。
+#[tokio::test]
+async fn a_receipt_without_original_is_unreadable_not_restorable() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    let path = home.join(".haxsd-byok-routing.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    value.as_object_mut().unwrap().remove("original");
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+    let status = gateway.status().await.unwrap();
+    assert!(!status.restorable, "{status:?}");
+    assert_eq!(status.conflict_kind, "unreadable");
+    assert!(status.last_error.is_some(), "{status:?}");
+    let _ = gateway.shutdown().await;
+}
+
+/// 损坏收据本身不能被当成可撤销基线；只有有效收据/待提交收据才 restorable。
+#[tokio::test]
+async fn a_corrupt_receipt_is_not_reported_as_restorable() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    std::fs::write(home.join(".haxsd-byok-routing.json"), "not json").unwrap();
+
+    let status = gateway.status().await.unwrap();
+    assert!(!status.restorable, "{status:?}");
+    assert_eq!(status.conflict_kind, "unreadable");
+    assert!(status.last_error.is_some(), "{status:?}");
+    let _ = gateway.shutdown().await;
+}
+#[tokio::test]
+async fn unreadable_requirements_keep_the_gateway_status_restorable() {
+    let requirements_directory = tempfile::tempdir().unwrap();
+    let requirements_path = requirements_directory.path().join("requirements.toml");
+    let (directory, store, gateway, _id) = configured_gateway_with_requirements(
+        "responses",
+        "http://127.0.0.1:1".into(),
+        RequirementsSource::file(requirements_path.clone()),
+    )
+    .await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    std::fs::write(&requirements_path, "model_provider = [\n").unwrap();
+
+    let status = gateway.status().await.unwrap();
+    assert!(!status.configured, "{status:?}");
+    assert!(status.config_conflict, "{status:?}");
+    assert!(status.restorable, "{status:?}");
+    assert_eq!(status.conflict_kind, "policy_unavailable");
+    assert!(status.managed_error.is_some(), "{status:?}");
+    assert_eq!(status.managed_scope, "local_system_only");
+
+    gateway.restore().await.unwrap();
+    assert!(
+        !directory.path().join("codex-home/config.toml").exists()
+            || !std::fs::read_to_string(directory.path().join("codex-home/config.toml"))
+                .unwrap()
+                .contains("haxsd-byok")
+    );
+    gateway.shutdown().await.unwrap();
+}
+
+const LEAK_MARKER: &str = "SECRET_MARKER_DO_NOT_LEAK";
+
+fn assert_no_marker(text: &str, context: &str) {
+    assert!(
+        !text.contains(LEAK_MARKER),
+        "{context} leaked the sensitive source line: {text}"
+    );
+}
+
+/// requirements 解析错误经 status/apply 传播时不能带源行。
+#[tokio::test]
+async fn invalid_requirements_do_not_leak_source_lines_through_status_or_apply() {
+    let requirements_directory = tempfile::tempdir().unwrap();
+    let requirements_path = requirements_directory.path().join("requirements.toml");
+    let (_directory, store, gateway, _id) = configured_gateway_with_requirements(
+        "responses",
+        "http://127.0.0.1:1".into(),
+        RequirementsSource::file(requirements_path.clone()),
+    )
+    .await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings).await.unwrap();
+    gateway.apply().await.unwrap();
+    std::fs::write(
+        &requirements_path,
+        format!("token = \"{LEAK_MARKER}\" garbage\n"),
+    )
+    .unwrap();
+
+    let status = gateway.status().await.unwrap();
+    assert_no_marker(
+        status.managed_error.as_deref().unwrap_or(""),
+        "status.managed_error",
+    );
+    let error = gateway.apply().await.unwrap_err().to_string();
+    assert_no_marker(&error, "apply");
+    let _ = gateway.shutdown().await;
+}
+
+/// config/receipt 解析错误经 status/restore 传播时不能带源行。
+#[tokio::test]
+async fn invalid_config_and_receipt_do_not_leak_source_lines_through_status_or_restore() {
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    let config = home.join("config.toml");
+    std::fs::write(&config, format!("token = \"{LEAK_MARKER}\" garbage\n")).unwrap();
+    let status = gateway.status().await.unwrap();
+    assert_no_marker(
+        status.last_error.as_deref().unwrap_or(""),
+        "status.last_error/config",
+    );
+    let error = gateway.restore().await.unwrap_err().to_string();
+    assert_no_marker(&error, "restore/config");
+    let _ = gateway.shutdown().await;
+
+    let (_directory, _store, gateway, _id, home) = applied_codex_gateway().await;
+    let receipt = home.join(".haxsd-byok-routing.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&receipt).unwrap()).unwrap();
+    value["original"] = serde_json::json!(format!("token = \"{LEAK_MARKER}\" garbage\n"));
+    std::fs::write(&receipt, serde_json::to_vec(&value).unwrap()).unwrap();
+    let status = gateway.status().await.unwrap();
+    assert_no_marker(
+        status.last_error.as_deref().unwrap_or(""),
+        "status.last_error/receipt",
+    );
+    let error = gateway.restore().await.unwrap_err().to_string();
+    assert_no_marker(&error, "restore/receipt");
+    let _ = gateway.shutdown().await;
 }

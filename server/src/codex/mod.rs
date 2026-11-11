@@ -3,11 +3,13 @@ pub mod bridge;
 pub mod catalog;
 pub mod config;
 pub mod gateway;
+pub mod requirements;
 mod upstream;
 
 use crate::{Error, Result};
 pub use config::ConfigFieldConflict;
 pub use gateway::CodexGateway;
+pub use requirements::{ManagedRequirementConflict, RequirementsSource};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -91,6 +93,17 @@ pub struct CodexStatus {
     pub restorable: bool,
     /// 与接管快照不一致的受管字段；界面据此说清"哪一项被改成了什么"。
     pub conflicts: Vec<ConfigFieldConflict>,
+    /// 管理员 requirements 中真正改变请求出口的要求；非空时本地文件即使与快照一致，
+    /// 实际路由也不归本应用。
+    pub managed_conflicts: Vec<ManagedRequirementConflict>,
+    /// 冲突的机器可读分类，见 `codex::config::ConfigStatus::conflict_kind`。
+    pub conflict_kind: &'static str,
+    /// 当前 provider/base_url/token 仍等于接管时发布的那一条。
+    pub route_owned: bool,
+    /// requirements 读取/解析失败的原因；此时 applied 不能断言，但 restore 仍可用。
+    pub managed_error: Option<String>,
+    /// 已核对的 requirements 范围；cloud/legacy/admin 没有本地可读载体。
+    pub managed_scope: &'static str,
     /// `auth.json` 里有有效的 ChatGPT 登录凭据（tokens 或 personal access token）。
     /// 接管只替换模型请求的凭据，不碰登录文件；界面据此提示"先登录再接管"。
     pub chatgpt_signed_in: bool,

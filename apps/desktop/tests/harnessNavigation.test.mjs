@@ -41,7 +41,7 @@ test("Devin settings without the extension patch do not count as connected", asy
       ports: { api_port: 44110, inference_port: 44111 },
       extension: { compatible: true, patched: false },
     },
-    codexStatus: { enabled: true, listening: true, configured: true, config_conflict: false, last_error: null },
+    codexStatus: { enabled: true, listening: true, configured: true, config_conflict: false, restorable: true, conflicts: [], conflict_kind: "none", route_owned: true, managed_conflicts: [], managed_error: null, managed_scope: "local_system_only", chatgpt_signed_in: true, home: "x", calls: 0, last_error: null },
   });
   assert.equal(harnessClients.find((client) => client.id === "devin").entry(snapshot).active, false);
   assert.equal(harnessEntryStatus(snapshot).label, "1/4 已接入");
@@ -93,7 +93,7 @@ test("the top entry keeps a neutral tone while only some clients are in use", as
   const partial = harnessEntryStatus(state({
     cursorHarness: { mode: "local", settings_applied: true },
     ...connectedDevin,
-    codexStatus: { enabled: true, listening: true, port: 43120, configured: true, config_conflict: false, home: "x", calls: 0, last_error: null },
+    codexStatus: { enabled: true, listening: true, port: 43120, configured: true, config_conflict: false, restorable: true, conflicts: [], conflict_kind: "none", route_owned: true, managed_conflicts: [], managed_error: null, managed_scope: "local_system_only", chatgpt_signed_in: true, home: "x", calls: 0, last_error: null },
   }));
   assert.equal(partial.label, "3/4 已接入");
   assert.equal(partial.tone, "idle");
@@ -101,7 +101,7 @@ test("the top entry keeps a neutral tone while only some clients are in use", as
   // 真正的配置冲突仍然要红：这不是"还没全接"，而是需要处理的问题。
   const conflict = harnessEntryStatus(state({
     devinStatus: { enabled: true, listening: false, ready: false },
-    codexStatus: { enabled: true, listening: true, port: 43120, configured: false, config_conflict: true, home: "x", calls: 0, last_error: null },
+    codexStatus: { enabled: true, listening: true, port: 43120, configured: false, config_conflict: true, restorable: false, conflicts: [], conflict_kind: "foreign_provider", route_owned: false, managed_conflicts: [], managed_error: null, managed_scope: "local_system_only", chatgpt_signed_in: true, home: "x", calls: 0, last_error: null },
   }));
   assert.equal(conflict.tone, "bad");
   assert.equal(conflict.label, "未接入", "a conflict is not counted as an active client");
@@ -144,6 +144,8 @@ test("server errors are shown as readable text, never as the raw service sentenc
   assert.match(clientErrorText(new Error("configuration error: D:\\x is not a Devin settings file or data directory")), /不是 Devin 的设置文件或数据目录/);
   assert.match(clientErrorText(new Error("configuration error: Devin settings file is not valid JSONC: expected value")), /不是有效的 JSONC/);
   assert.match(clientErrorText(new Error("configuration error: restore the applied Codex configuration before changing gateway settings")), /先撤销接管/);
+  assert.match(clientErrorText(new Error("configuration error: Codex configuration restored, but the pending receipt could not be removed: Access is denied")), /待提交收据.*清理/);
+  assert.match(clientErrorText(new Error("configuration error: Codex configuration restored, but the restore receipt could not be removed: Access is denied")), /最终收据.*清理/);
   assert.match(clientErrorText(new Error("configuration error: configure the actual context window for GPT")), /上下文窗口/);
   assert.match(clientErrorText(new Error("configuration error: configure a context window between 4096 and 10000000 tokens for gpt-6-luna")), /上下文窗口/);
   assert.match(clientErrorText(new Error("configuration error: Devin default model must be selected before enabling the gateway")), /默认模型/);

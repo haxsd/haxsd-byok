@@ -71,7 +71,7 @@ mod tests {
 
     use super::*;
 
-    async fn fixture() -> Router {
+    async fn fixture() -> (tempfile::TempDir, Router) {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::connect(&format!(
             "sqlite://{}",
@@ -79,15 +79,40 @@ mod tests {
         ))
         .await
         .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        store
+            .set_codex_settings(CodexSettings {
+                home: directory.path().join("codex-home").display().to_string(),
+                ..CodexSettings::default()
+            })
+            .await
+            .unwrap();
         let clients = crate::network::NetworkClients::new(store.clone());
-        router(CodexGateway::new(store.clone(), clients), store)
+        let router = router(
+            CodexGateway::new(
+                store.clone(),
+                clients,
+                crate::codex::RequirementsSource::unmanaged(),
+            ),
+            store,
+        );
+        (directory, router)
     }
 
     /// 审计 11/P2-1：codex 的写端点（apply/restore 会改 `~/.codex/config.toml`）也必须过
     /// 来源准入——CORS 只在响应上把关，跨站页面的简单请求照样会触发副作用。
     #[tokio::test]
     async fn codex_writes_refuse_cross_site_callers() {
-        let app = fixture().await;
+        let (_directory, app) = fixture().await;
         for (path, name, value) in [
             (
                 "/__byok-api__/api/codex/apply",
@@ -133,7 +158,7 @@ mod tests {
     /// 本机页面与本机原生调用照常放行。只测读端点：写端点会真的改 `~/.codex`。
     #[tokio::test]
     async fn codex_reads_stay_open_to_local_callers() {
-        let app = fixture().await;
+        let (_directory, app) = fixture().await;
         for origin in [
             None,
             Some("http://127.0.0.1:19387"),

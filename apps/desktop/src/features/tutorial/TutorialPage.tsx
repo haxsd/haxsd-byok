@@ -85,6 +85,7 @@ export function TutorialPage() {
       enabled: claudeStatus.enabled,
       listening: claudeStatus.listening,
       desktop: claudeTakeover.desktop.state,
+      running: claudeTakeover.desktop.running,
     } : null,
     hostConfigured: Boolean(hostStatus?.configured && hostStatus.extension.compatible && hostStatus.extension.patched),
     hostConfigRead: hostStatusRead,

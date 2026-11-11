@@ -1,4 +1,7 @@
 //! Codex 用户级配置的字段所有权；拒绝覆盖外部路由与受管字段冲突。
+use super::requirements::{
+    ManagedRequirementConflict, ManagedRequirements, PublishedRoute, RequirementsSource,
+};
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,6 +11,11 @@ use std::{
 };
 use toml_edit::{value, DocumentMut, Item};
 const RECEIPT: &str = ".haxsd-byok-routing.json";
+/// 待提交收据：最终收据落盘前先写这份。配置已写但最终收据失败/进程中断时，
+/// 仍能凭它恢复接管前的原值。
+const PENDING: &str = ".haxsd-byok-routing.pending.json";
+/// 当前只核对本机系统 requirements 层；cloud/legacy/admin 层没有本地可读载体。
+pub(crate) const MANAGED_SCOPE: &str = "local_system_only";
 const PROVIDER: &str = "haxsd-byok";
 /// 路由字段：只有本应用会写它们，一旦被外部改动，路由就不再是我们发布的那条。
 ///
@@ -59,6 +67,18 @@ pub struct ConfigStatus {
     /// 与接管快照不一致的受管字段（含 `model`）。界面据此说清"哪一项被改成了什么"，
     /// 而不是只丢一句"配置冲突"。
     pub conflicts: Vec<ConfigFieldConflict>,
+    /// 管理员 requirements 中真正改变请求出口的要求。非空时本地文件即使与快照一致，
+    /// 实际路由也由管理员要求决定，不能再报告已接管。
+    pub managed_conflicts: Vec<ManagedRequirementConflict>,
+    /// 冲突的机器可读分类：`none`/`managed`/`local_drift`/`foreign_provider`/
+    /// `policy_unavailable`/`incomplete_update`。
+    pub conflict_kind: &'static str,
+    /// 当前 provider/base_url/token 仍等于接管时发布的那一条。
+    pub route_owned: bool,
+    /// requirements 读取/解析失败的原因；此时 applied 不能断言，但 restore 仍可用。
+    pub managed_error: Option<String>,
+    /// 当前核对过的 requirements 范围。cloud/legacy/admin 层没有本地可读载体。
+    pub managed_scope: &'static str,
     /// Codex 配置目录里存在有效的 ChatGPT 登录凭据：ChatGPT 已登录。
     ///
     /// 接管只改模型路由，不碰登录凭据；但 Codex 的中文界面、云端会话、官方插件等由账号态
@@ -162,8 +182,22 @@ fn field_conflicts(doc: &DocumentMut, applied: &DocumentMut) -> Vec<ConfigFieldC
 #[derive(Serialize, Deserialize)]
 struct Receipt {
     version: u32,
+    /// 显式 null 是首次接管；字段缺失在 `receipt_file` 加载时拒绝。
     original: Option<String>,
     applied: String,
+}
+
+/// 收据原值基线：`None` 表示首次接管的显式 null；缺失字段在加载时已被拒绝。
+fn original_text(receipt: &Receipt) -> Option<&str> {
+    receipt.original.as_deref()
+}
+
+fn validate_receipt(receipt: &Receipt) -> Result<()> {
+    parse(&receipt.applied)?;
+    if let Some(original) = original_text(receipt) {
+        parse(original)?;
+    }
+    Ok(())
 }
 
 pub fn default_home() -> Result<PathBuf> {
@@ -191,19 +225,71 @@ fn read(path: &Path) -> Result<Option<String>> {
     }
 }
 fn parse(text: &str) -> Result<DocumentMut> {
-    text.parse::<DocumentMut>()
-        .map_err(|e| Error::Config(format!("invalid Codex TOML: {e}")))
+    text.parse::<DocumentMut>().map_err(|error| {
+        // TomlError 的 Display 会附带出错源行；只保留稳定的解析原因，避免配置/收据原文
+        // 进入 last_error、managed_error 或 restore/apply 错误。
+        Error::Config(format!("invalid Codex TOML: {}", error.message()))
+    })
 }
-fn receipt(home: &Path) -> Result<Option<Receipt>> {
-    read(&home.join(RECEIPT))?
+fn receipt_file(path: &Path) -> Result<Option<Receipt>> {
+    read(path)?
         .map(|text| {
-            let receipt: Receipt = serde_json::from_str(&text)?;
+            let value: serde_json::Value = serde_json::from_str(&text)?;
+            let object = value
+                .as_object()
+                .ok_or_else(|| Error::Config("invalid Codex restore receipt".into()))?;
+            // `Option<String>` 会把缺字段和显式 null 都读成 None；先在原始 JSON 上
+            // 拒绝缺字段，显式 null 才保留为合法的首次接管。
+            if !object.contains_key("original") {
+                return Err(Error::Config(
+                    "Codex restore receipt is missing its original baseline".into(),
+                ));
+            }
+            let receipt: Receipt = serde_json::from_value(value)?;
             if receipt.version != 1 {
                 return Err(Error::Config("unsupported Codex restore receipt".into()));
             }
+            validate_receipt(&receipt)?;
             Ok(receipt)
         })
         .transpose()
+}
+fn receipt(home: &Path) -> Result<Option<Receipt>> {
+    receipt_file(&home.join(RECEIPT))
+}
+fn pending_receipt(home: &Path) -> Result<Option<Receipt>> {
+    receipt_file(&home.join(PENDING))
+}
+/// 懒取恢复基线：最终收据存在时绝不读取/解析 pending。`Option::or` 会急切求值，
+/// 所以不能用 `receipt(home)?.or(pending_receipt(home)?)`。
+fn effective_receipt(home: &Path) -> Result<Option<Receipt>> {
+    match receipt(home)? {
+        Some(receipt) => Ok(Some(receipt)),
+        None => pending_receipt(home),
+    }
+}
+fn remove_receipt_file(path: &Path) -> Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+/// 当前请求出口是否仍等于收据里发布的那一条：选中 provider、base_url、令牌。
+fn route_owned(doc: &DocumentMut, applied: &DocumentMut) -> bool {
+    let current_provider = doc
+        .get("model_providers")
+        .and_then(|providers| providers.get(PROVIDER));
+    let applied_provider = applied
+        .get("model_providers")
+        .and_then(|providers| providers.get(PROVIDER));
+    doc.get("model_provider").and_then(Item::as_str) == Some(PROVIDER)
+        && provider_value(current_provider, "base_url").is_some()
+        && provider_value(current_provider, "base_url")
+            == provider_value(applied_provider, "base_url")
+        && provider_value(current_provider, "experimental_bearer_token").is_some()
+        && provider_value(current_provider, "experimental_bearer_token")
+            == provider_value(applied_provider, "experimental_bearer_token")
 }
 
 /// Codex 的 auth 存储位置：只有 `file`（默认）时 `auth.json` 才代表登录态。
@@ -400,24 +486,132 @@ fn rebase_original(current: &str, previous: Option<&str>) -> Result<String> {
     Ok(doc.to_string())
 }
 
-pub fn inspect(home: &Path) -> Result<ConfigStatus> {
+/// 收据里发布的那条路由：provider 名、目录指针、请求出口与令牌。
+fn published_route(applied: &DocumentMut) -> Option<PublishedRoute> {
+    let provider = applied
+        .get("model_provider")
+        .and_then(Item::as_str)?
+        .to_owned();
+    let catalog = PathBuf::from(applied.get("model_catalog_json").and_then(Item::as_str)?);
+    let provider_item = applied
+        .get("model_providers")
+        .and_then(|providers| providers.get(provider.as_str()))?;
+    Some(PublishedRoute {
+        provider,
+        catalog,
+        base_url: provider_item
+            .get("base_url")
+            .and_then(Item::as_str)?
+            .to_owned(),
+        token: provider_item
+            .get("experimental_bearer_token")
+            .and_then(Item::as_str)?
+            .to_owned(),
+    })
+}
+
+/// 准备写入的路由；与收据里的发布形态用同一组字段参与受管要求比较。
+fn prepared_route(route: &ConfigRoute) -> PublishedRoute {
+    PublishedRoute {
+        provider: PROVIDER.to_owned(),
+        catalog: route.catalog_path.clone(),
+        base_url: route.base_url.clone(),
+        token: route.token.clone(),
+    }
+}
+
+/// provider 表里一个非空标量；缺失与空串都按"没有这一项"处理。
+fn provider_value<'a>(provider: Option<&'a Item>, key: &str) -> Option<&'a str> {
+    provider
+        .and_then(|provider| provider.get(key))
+        .and_then(Item::as_str)
+        .filter(|value| !value.is_empty())
+}
+
+pub fn inspect(home: &Path, requirements: &RequirementsSource) -> Result<ConfigStatus> {
     absolute(home)?;
     let path = home.join("config.toml");
     let text = read(&path)?;
     let doc = parse(text.as_deref().unwrap_or(""))?;
-    let (applied, conflict, restorable, conflicts) = if let Some(receipt) = receipt(home)? {
-        let applied = parse(&receipt.applied)?;
-        let original = parse(receipt.original.as_deref().unwrap_or(""))?;
-        let own = route_matches(&doc, &applied) && model_routes(&doc, &applied);
-        let original_route = route_matches(&doc, &original);
-        (
-            own,
-            !own && !original_route,
-            true,
-            field_conflicts(&doc, &applied),
-        )
+    let existing_receipt = receipt(home)?;
+    // 最终收据优先；没有最终收据时才把待提交收据当作恢复基线。最终收据存在时
+    // 不解析待提交文件，避免旧/损坏的半写文件影响已提交状态。
+    let pending = if existing_receipt.is_none() {
+        pending_receipt(home)?
     } else {
-        (false, external(&doc), false, Vec::new())
+        None
+    };
+    let has_pending = pending.is_some();
+    // 有恢复基线才需要读策略。策略不可读时保留收据事实，只把 applied 降级为未知；
+    // 撤销不受影响。
+    let (managed, managed_error) = if existing_receipt.is_some() {
+        match requirements.load() {
+            Ok(managed) => (managed, None),
+            Err(error) => (ManagedRequirements::default(), Some(error.to_string())),
+        }
+    } else {
+        (ManagedRequirements::default(), None)
+    };
+    let (applied, conflict, restorable, conflicts, managed_conflicts, route_is_owned) =
+        if let Some(receipt) = existing_receipt {
+            let applied = parse(&receipt.applied)?;
+            let original = parse(original_text(&receipt).unwrap_or(""))?;
+            let own = route_matches(&doc, &applied) && model_routes(&doc, &applied);
+            let original_route = route_matches(&doc, &original);
+            let managed_conflicts = published_route(&applied)
+                .map(|published| managed.route_conflicts(&published))
+                .unwrap_or_default();
+            (
+                own && managed_conflicts.is_empty() && managed_error.is_none(),
+                (!own && !original_route)
+                    || !managed_conflicts.is_empty()
+                    || managed_error.is_some(),
+                true,
+                field_conflicts(&doc, &applied),
+                managed_conflicts,
+                route_owned(&doc, &applied),
+            )
+        } else if let Some(pending) = pending {
+            // 配置可能已经写入，但最终收据没有落盘。对外仍算未生效，恢复基线存在。
+            let intended = parse(&pending.applied)?;
+            (
+                false,
+                true,
+                true,
+                field_conflicts(&doc, &intended),
+                Vec::new(),
+                route_owned(&doc, &intended),
+            )
+        } else {
+            (false, external(&doc), false, Vec::new(), Vec::new(), false)
+        };
+    let conflict_kind = if has_pending {
+        "incomplete_update"
+    } else if managed_error.is_some() {
+        "policy_unavailable"
+    } else if !managed_conflicts.is_empty() {
+        "managed"
+    } else if !conflict {
+        "none"
+    } else if route_is_owned {
+        "local_drift"
+    } else {
+        "foreign_provider"
+    };
+    let message = if has_pending {
+        "Codex configuration update was interrupted; restore is available"
+    } else if managed_error.is_some() {
+        "Codex requirements could not be read; restore is still available"
+    } else if !managed_conflicts.is_empty() {
+        "Codex routing is constrained by administrator requirements"
+    } else if conflict_kind == "local_drift" {
+        "Codex configuration still points at this gateway but its catalog or model changed"
+    } else if conflict {
+        "Codex routing is managed by another configuration or was modified"
+    } else if applied {
+        "Codex configuration is applied"
+    } else {
+        "Codex configuration is not applied"
     };
     Ok(ConfigStatus {
         home: home.display().to_string(),
@@ -426,18 +620,20 @@ pub fn inspect(home: &Path) -> Result<ConfigStatus> {
         restorable,
         conflict,
         conflicts,
+        conflict_kind,
+        route_owned: route_is_owned,
+        managed_conflicts,
+        managed_error,
+        managed_scope: MANAGED_SCOPE,
         chatgpt_signed_in: chatgpt_signed_in(home),
-        message: if conflict {
-            "Codex routing is managed by another configuration or was modified"
-        } else if applied {
-            "Codex configuration is applied"
-        } else {
-            "Codex configuration is not applied"
-        }
-        .into(),
+        message: message.into(),
     })
 }
-pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
+pub fn apply(
+    home: &Path,
+    route: &ConfigRoute,
+    requirements: &RequirementsSource,
+) -> Result<ConfigStatus> {
     absolute(home)?;
     absolute(&route.catalog_path)?;
     let url = url::Url::parse(&route.base_url).map_err(|e| Error::Config(e.to_string()))?;
@@ -448,6 +644,14 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     {
         return Err(Error::Config("invalid local Codex route".into()));
     }
+    // 管理员要求无法通过写用户配置覆盖；在动任何文件之前就拒绝，避免留下一条
+    // 看似成功、实际由管理员路由接管的配置。
+    let managed = requirements.load()?;
+    if !managed.route_conflicts(&prepared_route(route)).is_empty() {
+        return Err(Error::Config(
+            "Codex routing is constrained by administrator requirements".into(),
+        ));
+    }
     fs::create_dir_all(home)?;
     let path = home.join("config.toml");
     let original = read(&path)?;
@@ -455,8 +659,13 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     let mut rebased_original = None;
     let existing_receipt = receipt(home)?;
     let first_takeover = existing_receipt.is_none();
+    if existing_receipt.is_none() && pending_receipt(home)?.is_some() {
+        return Err(Error::Config(
+            "restore the interrupted Codex configuration update before applying".into(),
+        ));
+    }
     if let Some(receipt) = existing_receipt {
-        let current = inspect(home)?;
+        let current = inspect(home, requirements)?;
         if current.applied {
             let desired_provider = doc["model_providers"][PROVIDER].clone();
             if desired_provider.get("base_url").and_then(Item::as_str)
@@ -476,9 +685,9 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
             // 旧版本把默认模型的窗口写成了全局覆盖：这里顺手清掉，让已接管的用户
             // 不必先撤销再应用就能拿到逐模型的窗口。
             drop_global_limits(home)?;
-            return inspect(home);
+            return inspect(home, requirements);
         }
-        if !route_matches(&doc, &parse(receipt.original.as_deref().unwrap_or(""))?) {
+        if !route_matches(&doc, &parse(original_text(&receipt).unwrap_or(""))?) {
             return Err(Error::Config(
                 "Codex managed configuration was modified; refusing to overwrite".into(),
             ));
@@ -486,9 +695,10 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
         // 路由已经回到原样，但受管字段里可能还留着我们的值（撤销的短路分支过去只删收据）。
         // 新收据的原值基线要沿用旧收据，否则这些残留会被当成用户的原值。
         if let Some(current_text) = original.as_deref() {
-            rebased_original = Some(rebase_original(current_text, receipt.original.as_deref())?);
+            rebased_original = Some(rebase_original(current_text, original_text(&receipt))?);
         }
-        fs::remove_file(home.join(RECEIPT))?;
+        // 旧收据保留到新收据成功写入：后面的 external 检查、并发修改检查或备份写入
+        // 都可能拒绝这次应用；先删收据会让一次无副作用的拒绝丢掉撤销基线。
     }
     if external(&doc) {
         return Err(Error::Config(
@@ -514,6 +724,11 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
     doc["model_providers"][PROVIDER]["capabilities"]["remote_compaction"] = value("unsupported");
     let applied = doc.to_string();
     let receipt_original = rebased_original.or_else(|| original.clone());
+    let receipt = serde_json::to_vec(&Receipt {
+        version: 1,
+        original: receipt_original,
+        applied: applied.clone(),
+    })?;
     if read(&path)? != original {
         return Err(Error::Config(
             "Codex config changed while preparing the update".into(),
@@ -527,31 +742,30 @@ pub fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
             atomic_write(&backup, original.as_bytes())?;
         }
     }
-    atomic_write(
-        &home.join(RECEIPT),
-        &serde_json::to_vec(&Receipt {
-            version: 1,
-            original: receipt_original,
-            applied: applied.clone(),
-        })?,
-    )?;
+    // 所有拒绝与一致性检查都在旧收据还在时完成；先写待提交收据，再落新配置，
+    // 最后写最终收据作为提交标记。配置已写而最终收据失败时，待提交收据仍能撤销。
     if read(&path)? != original {
         return Err(Error::Config(
             "Codex config changed before replacement; restore receipt retained".into(),
         ));
     }
+    atomic_write(&home.join(PENDING), &receipt)?;
     atomic_write(&path, applied.as_bytes())?;
-    inspect(home)
+    atomic_write(&home.join(RECEIPT), &receipt)?;
+    // 最终收据已提交，待提交文件只是残留；删除失败不影响可撤销性。
+    let _ = remove_receipt_file(&home.join(PENDING));
+    inspect(home, requirements)
 }
-pub fn restore(home: &Path) -> Result<ConfigStatus> {
+pub fn restore(home: &Path, requirements: &RequirementsSource) -> Result<ConfigStatus> {
     absolute(home)?;
-    let Some(receipt) = receipt(home)? else {
-        return inspect(home);
+    let Some(receipt) = effective_receipt(home)? else {
+        return inspect(home, requirements);
     };
     let path = home.join("config.toml");
     let current = read(&path)?;
     let mut doc = parse(current.as_deref().unwrap_or(""))?;
-    let original = parse(receipt.original.as_deref().unwrap_or(""))?;
+    let original_source = original_text(&receipt);
+    let original = parse(original_source.unwrap_or(""))?;
     // 受管字段被外部改过也照样撤销：撤销的意思就是"把我们的字段还回去"，而下面这段只动
     // `OWNED_KEYS`（含 provider 表），不碰其它键。以前这里整体拒绝，于是用户在"应用不了、
     // 也撤销不了"的状态里出不来。
@@ -565,19 +779,58 @@ pub fn restore(home: &Path) -> Result<ConfigStatus> {
         if read(&path)? != current {
             return Err(Error::Config("Codex config changed during restore".into()));
         }
-        if updated.is_empty() && receipt.original.is_none() {
-            fs::remove_file(&path)?;
+        if updated.is_empty() && original_source.is_none() {
+            match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
         } else {
             atomic_write(&path, updated.as_bytes())?;
         }
     }
-    fs::remove_file(home.join(RECEIPT))?;
-    inspect(home)
+    // 配置已经恢复；收据清理失败必须单独报告，不能伪装成恢复写入失败。
+    // 未知目录不递归删除：失败时保留最终收据，用户修好残留后可以重试。
+    if let Err(error) = remove_receipt_file(&home.join(PENDING)) {
+        return Err(Error::Config(format!(
+            "Codex configuration restored, but the pending receipt could not be removed: {error}"
+        )));
+    }
+    if let Err(error) = remove_receipt_file(&home.join(RECEIPT)) {
+        return Err(Error::Config(format!(
+            "Codex configuration restored, but the restore receipt could not be removed: {error}"
+        )));
+    }
+    inspect(home, requirements)
 }
-pub(super) fn applied_catalog(home: &Path) -> Result<Option<serde_json::Value>> {
+
+/// 退出的收回判断：当前请求出口是否仍是本机网关。
+///
+/// `inspect().applied` 要求目录指针和模型也逐字一致；退出时不需要那么严格：只要还选中
+/// 我们的 provider、`base_url` 与令牌未变，配置就仍指向本应用即将停止的端口，应当收回。
+/// provider 已被别家接管或端点/令牌被改过时返回 false，避免覆盖他人的配置。
+pub(crate) fn owned_route_active(home: &Path) -> Result<bool> {
+    absolute(home)?;
+    let Some(receipt) = effective_receipt(home)? else {
+        return Ok(false);
+    };
+    let path = home.join("config.toml");
+    let Some(current) = read(&path)? else {
+        return Ok(false);
+    };
+    let doc = parse(&current)?;
+    let applied = parse(&receipt.applied)?;
+    Ok(route_owned(&doc, &applied))
+}
+
+pub(super) fn applied_catalog(
+    home: &Path,
+    requirements: &RequirementsSource,
+) -> Result<Option<serde_json::Value>> {
     use sha2::{Digest, Sha256};
-    let status = inspect(home)?;
-    if status.conflict {
+    let status = inspect(home, requirements)?;
+    // 受管要求接管了路由时，本地目录只是残留：不覆盖它，也不在每次请求上刷错误。
+    if status.conflict && status.managed_conflicts.is_empty() {
         return Err(Error::Config(
             "Codex managed configuration has external changes".into(),
         ));
@@ -745,6 +998,20 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 这些单元测试只覆盖本地文件所有权；受管 requirements 由 requirements 模块与
+    /// 集成测试用明确的临时文件覆盖，这里绝不触发系统策略探测。
+    fn inspect(home: &Path) -> Result<ConfigStatus> {
+        super::inspect(home, &RequirementsSource::unmanaged())
+    }
+
+    fn apply(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
+        super::apply(home, route, &RequirementsSource::unmanaged())
+    }
+
+    fn restore(home: &Path) -> Result<ConfigStatus> {
+        super::restore(home, &RequirementsSource::unmanaged())
+    }
 
     /// 发布目录：客户端在它自己的界面里能选到的 slug 来自这里。
     fn catalog(home: &Path, slugs: &[&str]) -> PathBuf {
@@ -1265,5 +1532,21 @@ mod tests {
             "接管前的值不能丢"
         );
         assert!(doc.get("model_providers").is_none());
+    }
+
+    /// 退出所有权只看最终收据；残留的 pending 目录不应被解析，也不应被递归删除。
+    #[test]
+    fn owned_route_active_ignores_a_pending_directory_when_final_is_valid() {
+        let directory = applied_home(None);
+        let pending = directory.path().join(PENDING);
+        fs::create_dir(&pending).unwrap();
+        fs::write(pending.join("unknown.txt"), "keep me").unwrap();
+
+        assert!(
+            super::owned_route_active(directory.path()).unwrap(),
+            "最终收据有效时，退出必须认为路由仍归本机"
+        );
+        assert!(pending.is_dir(), "未知目录不能被递归删除");
+        assert!(pending.join("unknown.txt").exists());
     }
 }

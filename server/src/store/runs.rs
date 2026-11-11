@@ -46,6 +46,19 @@ pub struct ClaimedRun {
     pub replaced_run_id: Option<RunId>,
 }
 
+/// 某个子会话当前仍在运行的那条 run 及其父归属。
+///
+/// 取消子代理时必须绑定这个 run：历史 Task 只证明"曾经属于谁"，不能证明"现在要停的
+/// 是哪条 run"。父归属从 `parent_run_id` join 父 run 的 `conversation_id` 得到；
+/// 没有父运行（子会话被单独打开）时为空，调用方必须拒绝取消。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunningChildRun {
+    pub run_id: RunId,
+    pub parent_run_id: Option<RunId>,
+    pub parent_tool_call_id: Option<String>,
+    pub parent_conversation_id: Option<ConversationId>,
+}
+
 impl Store {
     pub async fn claim_run(&self, prepared: &PreparedRun) -> Result<ClaimedRun> {
         let _write = self.writes.lock().await;
@@ -156,6 +169,75 @@ impl Store {
         .fetch_optional(&self.pool)
         .await?;
         Ok(run_id.map(RunId))
+    }
+
+    /// 当前父会话下，某个后台 Task 工具调用 id 对应的子会话。
+    ///
+    /// 客户端只给 Task 的 `call_id`（actor 里没有 agent→call 映射）时用它回退到子会话。
+    /// `call_id` 只在轮内唯一，同一父会话跨轮可能复用，因此返回全部候选，由调用方要求
+    /// 恰好一个；多个候选时不能任意挑。
+    pub async fn child_conversations_for_parent_call(
+        &self,
+        parent_conversation: &ConversationId,
+        parent_tool_call_id: &str,
+    ) -> Result<Vec<ConversationId>> {
+        let rows: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT child.conversation_id
+               FROM runs child
+               JOIN runs parent ON parent.run_id = child.parent_run_id
+               JOIN tool_rounds round ON round.run_id = parent.run_id
+               JOIN tool_round_calls call
+                 ON call.round_id = round.round_id
+                AND call.call_id = child.parent_tool_call_id
+              WHERE parent.conversation_id = ?
+                AND child.parent_tool_call_id = ?
+                AND child.run_kind = 'subagent'
+                AND call.status = 'completed'",
+        )
+        .bind(parent_conversation.as_str())
+        .bind(parent_tool_call_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(ConversationId::new).collect())
+    }
+
+    /// 某个子会话当前仍在运行的 run，以及它的父归属。
+    ///
+    /// 取消路径必须先看这一条，而不是只看该子会话历史上的 completed Task：同一个子代理
+    /// 会话可能已被另一个父会话 resume 成新的 active run，按历史 owner 直接取消会误停
+    /// 新父的 run。同一会话出现多个 running 行时返回错误，拒绝任意挑一个。
+    pub async fn running_child_run(
+        &self,
+        child_conversation: &ConversationId,
+    ) -> Result<Option<RunningChildRun>> {
+        let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
+            "SELECT child.run_id, child.parent_run_id, child.parent_tool_call_id,
+                    parent.conversation_id
+               FROM runs child
+               LEFT JOIN runs parent ON parent.run_id = child.parent_run_id
+              WHERE child.conversation_id = ? AND child.status = 'running'
+              ORDER BY child.created_at_ms DESC",
+        )
+        .bind(child_conversation.as_str())
+        .fetch_all(&self.pool)
+        .await?;
+        let mut rows = rows.into_iter();
+        let Some((run_id, parent_run_id, parent_tool_call_id, parent_conversation_id)) =
+            rows.next()
+        else {
+            return Ok(None);
+        };
+        if rows.next().is_some() {
+            return Err(Error::Store(format!(
+                "multiple running runs for conversation {child_conversation}"
+            )));
+        }
+        Ok(Some(RunningChildRun {
+            run_id: RunId::new(run_id),
+            parent_run_id: parent_run_id.map(RunId::new),
+            parent_tool_call_id,
+            parent_conversation_id: parent_conversation_id.map(ConversationId::new),
+        }))
     }
 
     /// 这次运行还有"后台子代理"在跑吗——父轮靠它决定"先别收尾，等它们回来"。
@@ -1142,6 +1224,389 @@ mod tests {
             store.finished_child_runs(&[]).await.unwrap().is_empty(),
             "空批次不该发查询"
         );
+    }
+
+    async fn insert_run_row(
+        store: &Store,
+        run_id: &str,
+        conversation: &crate::model::ConversationId,
+        parent_run_id: Option<&str>,
+        parent_tool_call_id: Option<&str>,
+        run_kind: &str,
+        status: &str,
+    ) {
+        let checkpoint = store.ensure_conversation(conversation).await.unwrap();
+        sqlx::query(
+            "INSERT INTO runs(run_id,conversation_id,base_checkpoint_id,head_checkpoint_id,
+                 parent_run_id,parent_tool_call_id,run_kind,status,created_at_ms,updated_at_ms)
+             VALUES (?,?,?,?,?,?,?,?,1,1)",
+        )
+        .bind(run_id)
+        .bind(conversation.as_str())
+        .bind(checkpoint.0)
+        .bind(checkpoint.0)
+        .bind(parent_run_id)
+        .bind(parent_tool_call_id)
+        .bind(run_kind)
+        .bind(status)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+
+    /// 取消路径必须绑定当前 running run 及其父会话，而不是该子会话历史上完成的 Task。
+    #[tokio::test]
+    async fn running_child_run_binds_the_current_run_parent() {
+        let (_directory, store) = fixture().await;
+        let parent_a = crate::model::ConversationId("parent-a".into());
+        let parent_b = crate::model::ConversationId("parent-b".into());
+        let child = crate::model::ConversationId("child".into());
+        insert_run_row(
+            &store,
+            "parent-a-run",
+            &parent_a,
+            None,
+            None,
+            "root",
+            "running",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "parent-b-run",
+            &parent_b,
+            None,
+            None,
+            "root",
+            "running",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "child-a-run",
+            &child,
+            Some("parent-a-run"),
+            Some("call-a"),
+            "subagent",
+            "completed",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "child-b-run",
+            &child,
+            Some("parent-b-run"),
+            Some("call-b"),
+            "subagent",
+            "running",
+        )
+        .await;
+
+        let running = store.running_child_run(&child).await.unwrap().unwrap();
+        assert_eq!(running.run_id.as_str(), "child-b-run");
+        assert_eq!(
+            running
+                .parent_conversation_id
+                .as_ref()
+                .map(crate::model::ConversationId::as_str),
+            Some("parent-b")
+        );
+    }
+
+    /// 同一子会话出现多个 running 行时不能任意挑一个取消目标。
+    #[tokio::test]
+    async fn multiple_running_child_runs_are_rejected() {
+        let (_directory, store) = fixture().await;
+        let parent_a = crate::model::ConversationId("parent-a".into());
+        let parent_b = crate::model::ConversationId("parent-b".into());
+        let child = crate::model::ConversationId("child".into());
+        insert_run_row(
+            &store,
+            "parent-a-run",
+            &parent_a,
+            None,
+            None,
+            "root",
+            "running",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "parent-b-run",
+            &parent_b,
+            None,
+            None,
+            "root",
+            "running",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "child-a-run",
+            &child,
+            Some("parent-a-run"),
+            Some("call-a"),
+            "subagent",
+            "running",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "child-b-run",
+            &child,
+            Some("parent-b-run"),
+            Some("call-b"),
+            "subagent",
+            "running",
+        )
+        .await;
+
+        assert!(
+            store.running_child_run(&child).await.is_err(),
+            "多个 running 行必须报错而不是挑一个"
+        );
+    }
+
+    async fn insert_pending_round(
+        store: &Store,
+        run_id: &str,
+        conversation: &ConversationId,
+        round_id: &str,
+        created_at_ms: i64,
+        call_id: &str,
+    ) {
+        let checkpoint = store.ensure_conversation(conversation).await.unwrap();
+        sqlx::query(
+            "INSERT INTO tool_rounds
+             (round_id, run_id, base_checkpoint_id, assistant_json, status, created_at_ms, updated_at_ms)
+             VALUES (?,?,?,'{}','pending',?,?)",
+        )
+        .bind(round_id)
+        .bind(run_id)
+        .bind(checkpoint.0)
+        .bind(created_at_ms)
+        .bind(created_at_ms)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO tool_round_calls
+             (round_id, call_index, call_id, model_call_id, name, arguments_json, status)
+             VALUES (?,0,?,'model-call','Shell','{}','pending')",
+        )
+        .bind(round_id)
+        .bind(call_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    }
+
+    /// 新动作补齐 pending 结果时只更新旧 round/calls，不写旧 run checkpoint；未知本地
+    /// round 返回 false，不把导入历史强塞进 DB。
+    #[tokio::test]
+    async fn completing_a_pending_round_updates_the_old_round_only() {
+        let (_directory, store) = fixture().await;
+        let conversation = crate::model::ConversationId("pending-round-conversation".into());
+        insert_run_row(
+            &store,
+            "pending-run",
+            &conversation,
+            None,
+            None,
+            "root",
+            "completed",
+        )
+        .await;
+        insert_pending_round(
+            &store,
+            "pending-run",
+            &conversation,
+            "pending-round",
+            42,
+            "call-a",
+        )
+        .await;
+        let result = crate::model::ToolResult {
+            call_id: "call-a".into(),
+            content: "resolved".into(),
+            is_error: false,
+            image: None,
+        };
+        assert!(store
+            .complete_pending_tool_round(&conversation, 42, &["call-a".into()], &[result])
+            .await
+            .unwrap());
+        let call_status: String =
+            sqlx::query_scalar("SELECT status FROM tool_round_calls WHERE call_id = 'call-a'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        let round_status: String =
+            sqlx::query_scalar("SELECT status FROM tool_rounds WHERE round_id = 'pending-round'")
+                .fetch_one(store.pool())
+                .await
+                .unwrap();
+        assert_eq!(call_status, "completed");
+        assert_eq!(round_status, "settled");
+
+        let unknown = crate::model::ToolResult {
+            call_id: "call-a".into(),
+            content: "resolved".into(),
+            is_error: false,
+            image: None,
+        };
+        assert!(
+            !store
+                .complete_pending_tool_round(&conversation, 99, &["call-a".into()], &[unknown])
+                .await
+                .unwrap(),
+            "未知导入历史不应创建或修改 round"
+        );
+    }
+
+    /// 同一起点两个 pending round 或调用集合不一致时必须拒绝，不能猜。
+    #[tokio::test]
+    async fn completing_a_pending_round_rejects_ambiguous_or_mismatched_rounds() {
+        let (_directory, store) = fixture().await;
+        let conversation = crate::model::ConversationId("ambiguous-round-conversation".into());
+        insert_run_row(
+            &store,
+            "ambiguous-run",
+            &conversation,
+            None,
+            None,
+            "root",
+            "completed",
+        )
+        .await;
+        insert_pending_round(
+            &store,
+            "ambiguous-run",
+            &conversation,
+            "round-a",
+            42,
+            "call-a",
+        )
+        .await;
+        insert_pending_round(
+            &store,
+            "ambiguous-run",
+            &conversation,
+            "round-b",
+            42,
+            "call-b",
+        )
+        .await;
+        let result = crate::model::ToolResult {
+            call_id: "call-a".into(),
+            content: "resolved".into(),
+            is_error: false,
+            image: None,
+        };
+        assert!(store
+            .complete_pending_tool_round(&conversation, 42, &["call-a".into()], &[result])
+            .await
+            .is_err());
+
+        let other = crate::model::ConversationId("mismatch-round-conversation".into());
+        insert_run_row(
+            &store,
+            "mismatch-run",
+            &other,
+            None,
+            None,
+            "root",
+            "completed",
+        )
+        .await;
+        insert_pending_round(
+            &store,
+            "mismatch-run",
+            &other,
+            "mismatch-round",
+            43,
+            "call-a",
+        )
+        .await;
+        let mismatch = crate::model::ToolResult {
+            call_id: "call-b".into(),
+            content: "resolved".into(),
+            is_error: false,
+            image: None,
+        };
+        assert!(store
+            .complete_pending_tool_round(&other, 43, &["call-b".into()], &[mismatch])
+            .await
+            .is_err());
+    }
+
+    /// 后台 Task 的 call_id 回退返回全部候选：跨轮复用时调用方必须看到多个子会话，
+    /// 不能像 `LIMIT 1` 那样任意挑一个。
+    #[tokio::test]
+    async fn parent_call_lookup_returns_every_child_candidate() {
+        let (_directory, store) = fixture().await;
+        let parent = ConversationId("parent".into());
+        let child_a = ConversationId("child-a".into());
+        let child_b = ConversationId("child-b".into());
+        insert_run_row(&store, "parent-run", &parent, None, None, "root", "running").await;
+        insert_run_row(
+            &store,
+            "child-a-run",
+            &child_a,
+            Some("parent-run"),
+            Some("call-1"),
+            "subagent",
+            "completed",
+        )
+        .await;
+        insert_run_row(
+            &store,
+            "child-b-run",
+            &child_b,
+            Some("parent-run"),
+            Some("call-1"),
+            "subagent",
+            "completed",
+        )
+        .await;
+        let checkpoint = store.ensure_conversation(&parent).await.unwrap();
+        for round_id in ["round-a", "round-b"] {
+            sqlx::query(
+                "INSERT INTO tool_rounds(round_id,run_id,base_checkpoint_id,assistant_json,status,created_at_ms,updated_at_ms)
+                 VALUES (?,'parent-run',?,'{}','completed',1,1)",
+            )
+            .bind(round_id)
+            .bind(checkpoint.0)
+            .execute(store.pool())
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO tool_round_calls(round_id,call_index,call_id,model_call_id,name,arguments_json,status,completed_at_ms)
+                 VALUES (?,0,'call-1','model-call','Task','{}','completed',2)",
+            )
+            .bind(round_id)
+            .execute(store.pool())
+            .await
+            .unwrap();
+        }
+
+        let mut children = store
+            .child_conversations_for_parent_call(&parent, "call-1")
+            .await
+            .unwrap();
+        children.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+        assert_eq!(
+            children
+                .iter()
+                .map(ConversationId::as_str)
+                .collect::<Vec<_>>(),
+            ["child-a", "child-b"]
+        );
+        assert!(store
+            .child_conversations_for_parent_call(&parent, "call-unknown")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     async fn plan_of(store: &Store, sql: &str, binds: &[&str]) -> String {

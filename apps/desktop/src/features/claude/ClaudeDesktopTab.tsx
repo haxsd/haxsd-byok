@@ -56,7 +56,7 @@ export function ClaudeDesktopTab({
   onCopy: (text: string, done: string) => void;
 }) {
   const guided = claudeDesktopGuided(takeover);
-  const running = takeover?.state === "running";
+  const running = takeover?.running === true;
   const options = claudeModelOptions(models, desktopModels);
   const guideItems = claudeDesktopGuideItems({
     baseUrl: status?.base_url ?? "",
@@ -71,7 +71,10 @@ export function ClaudeDesktopTab({
         <strong>Claude Desktop</strong>
         <small>{claudeTakeoverDescription(takeover?.state ?? null)}</small>
       </div>
-      {takeover && <StatusPill tone={claudeTakeoverStateTone(takeover.state)}>{claudeTakeoverStateLabel(takeover.state)}</StatusPill>}
+      {takeover && <span className={styles.headerBadges}>
+        <StatusPill tone={claudeTakeoverStateTone(takeover.state)}>{claudeTakeoverStateLabel(takeover.state)}</StatusPill>
+        {running && <StatusPill tone="warn">{t("正在运行")}</StatusPill>}
+      </span>}
     </div>
 
     <dl className={styles.factList}>

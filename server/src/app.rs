@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     anthropic::ClaudeGateway,
     api,
-    codex::CodexGateway,
+    codex::{CodexGateway, RequirementsSource},
     config::{Config, ConsoleSource},
     control,
     cursor::{
@@ -93,6 +93,7 @@ impl App {
         let codex_gateway = CodexGateway::with_timeouts(
             store.clone(),
             clients.clone(),
+            RequirementsSource::system(),
             config.provider_request_timeout,
             config.provider_stream_idle_timeout,
         );

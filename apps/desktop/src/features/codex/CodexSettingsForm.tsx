@@ -6,12 +6,29 @@ import { Switch } from "../../shared/ui/Switch";
 import { codexModelAvailability } from "./codexModelOptions";
 import styles from "./CodexSettingsPage.module.scss";
 
-export function CodexSettingsForm({ draft, models, pluginModels, locked, applied, onChange }: {
+export type CodexLockReason = "restore" | "unreadable" | "foreign" | "blocked";
+
+function codexLockHint(reason: CodexLockReason): string {
+  switch (reason) {
+    case "unreadable":
+      return t("先修复 Codex 配置目录");
+    case "foreign":
+      return t("先处理上方提示的配置占用");
+    case "blocked":
+      return t("先处理上方提示的配置问题");
+    default:
+      return t("撤销接管后才能修改");
+  }
+}
+
+export function CodexSettingsForm({ draft, models, pluginModels, locked, lockReason = "restore", applied, onChange }: {
   draft: CodexSettings;
   models: Model[];
   /** 模型库里的插件模型：Codex 网关发布不了它们，界面上要说清为什么。 */
   pluginModels: PluginModelDescriptor[];
   locked: boolean;
+  /** 锁定原因决定提示动作；默认仍是可撤销场景，兼容既有调用。 */
+  lockReason?: CodexLockReason;
   applied: boolean;
   onChange: (settings: CodexSettings) => void;
 }) {
@@ -26,7 +43,7 @@ export function CodexSettingsForm({ draft, models, pluginModels, locked, applied
       <div>
         <strong>{t("启用 Codex 网关")}</strong>
         <small>{locked
-          ? t("撤销接管后才能修改")
+          ? codexLockHint(lockReason)
           : applied
             ? t("接管期间可增减可用模型；当前默认模型不能移除，其它设置需撤销接管后修改")
             : t("关闭时不监听端口")}</small>

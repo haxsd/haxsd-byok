@@ -5,6 +5,7 @@
     "profile_path": "C:\\Users\\me\\AppData\\Local\\Claude-3p\\configLibrary\\8f0c2a4e-1d3b-4f6e-9a7c-2b5d8e1f4a6c.json",
     "backup_path": "",
     "restorable": true,
+    "running": false,
     "conflicts": [],
     "guided": false
   }

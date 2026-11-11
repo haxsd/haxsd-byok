@@ -36,6 +36,23 @@ const ACTIVE_TASK_CALL: &str = "call-active-task";
 const ACTIVE_PARENT_CONVERSATION: &str = "active-parent-conversation";
 const ACTIVE_CHILD_CONVERSATION: &str = "active-child-conversation";
 
+/// F02 子代理取消用例的身份：`agent_id`（子会话身份）与 Task 的 `call_id` 刻意不同。
+const CANCEL_TASK_CALL: &str = "call-agent-cancel-task";
+const CANCEL_PARENT_CONVERSATION: &str = "agent-cancel-parent-conversation";
+const CANCEL_CHILD_CONVERSATION: &str = "agent-cancel-child-conversation";
+const CANCEL_STRANGER_CONVERSATION: &str = "agent-cancel-stranger-conversation";
+
+/// F02 所有权窗口用例：同一个子代理会话先属于父 A，随后被父 B resume 成新的 active run。
+const OWNERSHIP_TASK_CALL: &str = "call-ownership-task";
+const OWNERSHIP_PARENT_A_CONVERSATION: &str = "ownership-parent-a-conversation";
+const OWNERSHIP_PARENT_A_REQUEST: &str = "ownership-parent-a-request";
+const OWNERSHIP_CHILD_CONVERSATION: &str = "ownership-child-conversation";
+const OWNERSHIP_CHILD_A_REQUEST: &str = "ownership-child-a-request";
+const OWNERSHIP_PARENT_B_CONVERSATION: &str = "ownership-parent-b-conversation";
+const OWNERSHIP_PARENT_B_REQUEST: &str = "ownership-parent-b-request";
+const OWNERSHIP_CHILD_B_REQUEST: &str = "ownership-child-b-request";
+const OWNERSHIP_B_TASK_CALL: &str = "call-ownership-b-task";
+
 /// 父轮第一轮：派一个后台子代理。
 fn task_call_events(call_id: &str) -> Vec<ModelEvent> {
     vec![
@@ -139,6 +156,44 @@ fn kv_ack(id: u32) -> pb::AgentClientMessage {
             },
         )),
     }
+}
+
+/// 客户端取消子代理时用的是子代理身份（`agent_id`），不是 Task 的工具调用 id。
+fn cancel_subagent_action(agent_id: &str) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::ConversationAction(
+            pb::ConversationAction {
+                action: Some(pb::conversation_action::Action::CancelSubagentAction(
+                    pb::CancelSubagentAction {
+                        subagent_id: agent_id.into(),
+                    },
+                )),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+/// 另一个父会话回带的 checkpoint 声称同一个子代理属于它——归属核验必须拒绝。
+fn run_request_claiming_subagent(
+    conversation_id: &str,
+    request_id: &str,
+) -> pb::AgentClientMessage {
+    let mut request = run_request(conversation_id, request_id, "stranger-user", false);
+    if let Some(pb::agent_client_message::Message::RunRequest(run)) = &mut request.message {
+        run.conversation_state = Some(pb::ConversationStateStructure {
+            subagent_runs_by_parent_tool_call_id: std::collections::HashMap::from([(
+                CANCEL_TASK_CALL.to_owned(),
+                pb::SubagentRunState {
+                    parent_tool_call_id: CANCEL_TASK_CALL.into(),
+                    subagent_id: Some(CANCEL_CHILD_CONVERSATION.into()),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        });
+    }
+    request
 }
 
 fn frame_role(frame: &[u8]) -> Option<pb::AgentServerMessage> {
@@ -256,6 +311,11 @@ async fn a_background_subagent_wakes_the_parent_turn() {
                         }
                     }
                 });
+                // Append 只表示请求已入队，不能当成子 run 已登记。此用例要求先启动
+                // 有正确父关系的子 run，再给父轮回“已后台化”，否则父轮可能先收尾。
+                let _child_run_id =
+                    wait_for_child_run_under_parent(&store, CHILD_CONVERSATION, "parent-request")
+                        .await;
                 parent
                     .command(TransportCommand::Append {
                         seqno: parent_seqno,
@@ -401,6 +461,71 @@ async fn a_background_subagent_wakes_the_parent_turn() {
             == Some(format!("background-completed:BACKGROUND_TASK_KIND_SUBAGENT:{CHILD_CONVERSATION}:{TASK_CALL}").as_str())
             && matches!(&message.content, MessageContent::Parts { parts } if !parts.is_empty())
     }));
+}
+
+/// 回执一个 KV SET，并推进客户端 append seqno。
+async fn acknowledge(handle: &cursor_server::cursor::TransportHandle, seqno: &mut i64, id: u32) {
+    handle
+        .command(TransportCommand::Append {
+            seqno: *seqno,
+            message: Box::new(kv_ack(id)),
+        })
+        .await
+        .unwrap();
+    *seqno += 1;
+}
+
+/// 一直回执 KV，直到连接安静一段时间（用于让 gated 运行停在模型调用上）。
+async fn acknowledge_until_quiet(
+    handle: &cursor_server::cursor::TransportHandle,
+    output: &mut tokio::sync::mpsc::Receiver<bytes::Bytes>,
+    seqno: &mut i64,
+) {
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_millis(400), output.recv()).await {
+            Ok(Some(frame)) => {
+                let Some(server) = frame_role(&frame) else {
+                    return;
+                };
+                if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message
+                {
+                    acknowledge(handle, seqno, kv.id).await;
+                }
+            }
+            Ok(None) | Err(_) => return,
+        }
+    }
+}
+
+/// 等某个子会话出现唯一的、父请求为 `parent_request_id` 的 running run，返回它的 run id。
+async fn wait_for_child_run_under_parent(
+    store: &cursor_server::store::Store,
+    child_conversation: &str,
+    parent_request_id: &str,
+) -> String {
+    for _ in 0..400 {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT child.run_id, parent.cursor_request_id
+               FROM runs child
+               JOIN runs parent ON parent.run_id = child.parent_run_id
+              WHERE child.conversation_id = ?
+                AND child.status = 'running'
+                AND parent.cursor_request_id = ?
+              ORDER BY child.created_at_ms DESC",
+        )
+        .bind(child_conversation)
+        .bind(parent_request_id)
+        .fetch_all(store.pool())
+        .await
+        .unwrap();
+        match rows.as_slice() {
+            [(run_id, _)] => return run_id.clone(),
+            [] => {}
+            _ => panic!("同一父请求下出现多个 running 子 run，不能任意选择取消目标"),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("子 run 没有在超时内挂到父请求 {parent_request_id} 上");
 }
 
 /// 等某个 run 落到期望状态；超时就失败，避免用例挂死。
@@ -985,6 +1110,535 @@ async fn a_background_subagent_that_keeps_working_is_not_cut_off_by_a_fixed_dead
     // 让子代理正常结束，避免测试结束时还留着一条挂住的运行。
     finish_child.notify_one();
     wait_for_run_status(&store, "active-child-request", "completed").await;
+}
+
+/// F02：后台子代理的取消身份是 `agent_id`（与 Task 的 `call_id` 不同，且 Task 的终态
+/// 结果提交后 exec 已经移出 `execs`）。取消必须沿"父工具调用 → 子代理/子 run"的既有
+/// 关联定位到子会话并取消它的 run，而不是按 call id 扫活跃 exec。
+#[tokio::test]
+async fn cancel_subagent_action_stops_a_background_child_by_agent_identity() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(
+        CANCEL_PARENT_CONVERSATION,
+        task_call_events(CANCEL_TASK_CALL),
+    );
+    provider.push_for(
+        CANCEL_PARENT_CONVERSATION,
+        text_events("parent finished its turn"),
+    );
+    provider.push_for(
+        CANCEL_PARENT_CONVERSATION,
+        text_events("seeded parent turn"),
+    );
+    provider.push_for(CANCEL_STRANGER_CONVERSATION, text_events("stranger turn"));
+    // 子代理一直挂住：只有取消路径能让它收尾。
+    let _release_child = provider.push_gated_for(
+        CANCEL_CHILD_CONVERSATION,
+        text_events("child must never finish on its own"),
+    );
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let parent = registry
+        .get_or_create("agent-cancel-parent-request")
+        .await
+        .unwrap();
+    let mut parent_output = parent.subscribe();
+    parent
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                CANCEL_PARENT_CONVERSATION,
+                "agent-cancel-parent-request",
+                "agent-cancel-parent-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+
+    let mut parent_seqno = 1;
+    let child = loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), parent_output.recv())
+            .await
+            .expect("父轮没有派出后台子代理")
+            .expect("父轮的流提前关闭");
+        let Some(server) = frame_role(&frame) else {
+            panic!("父轮在派子代理之前就收尾了");
+        };
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await
+                    .unwrap();
+                parent_seqno += 1;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
+                let Some(pb::exec_server_message::Message::SubagentArgs(args)) = exec.message
+                else {
+                    continue;
+                };
+                assert_eq!(
+                    args.tool_call_id, CANCEL_TASK_CALL,
+                    "Task 发出的工具调用身份必须与取消里用的 agent 身份不同"
+                );
+                let handle = registry
+                    .get_or_create("agent-cancel-child-request")
+                    .await
+                    .unwrap();
+                handle
+                    .set_parent(TransportParent {
+                        request_id: Some("agent-cancel-parent-request".into()),
+                        tool_call_id: Some(CANCEL_TASK_CALL.into()),
+                    })
+                    .unwrap();
+                handle
+                    .command(TransportCommand::Append {
+                        seqno: 0,
+                        message: Box::new(run_request(
+                            CANCEL_CHILD_CONVERSATION,
+                            "agent-cancel-child-request",
+                            "agent-cancel-child-user",
+                            true,
+                        )),
+                    })
+                    .await
+                    .unwrap();
+                let child_handle = handle.clone();
+                let mut child_output = handle.subscribe();
+                tokio::spawn(async move {
+                    let mut seqno = 1;
+                    while let Some(frame) = child_output.recv().await {
+                        let Some(server) = frame_role(&frame) else {
+                            break;
+                        };
+                        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                            server.message
+                        {
+                            let _ = child_handle
+                                .command(TransportCommand::Append {
+                                    seqno,
+                                    message: Box::new(kv_ack(kv.id)),
+                                })
+                                .await;
+                            seqno += 1;
+                        }
+                    }
+                });
+                parent
+                    .command(TransportCommand::Append {
+                        seqno: parent_seqno,
+                        message: Box::new(task_result(exec.id, CANCEL_CHILD_CONVERSATION)),
+                    })
+                    .await
+                    .unwrap();
+                break handle;
+            }
+            _ => {}
+        }
+    };
+
+    // Task 的派发结果已经提交、它的 exec 已经移出活跃集合；子代理仍在跑。
+    wait_for_tool_call_completed(&store, CANCEL_TASK_CALL).await;
+    wait_for_run_status(&store, "agent-cancel-child-request", "running").await;
+
+    // 另一个父会话声称同一个子代理属于它：归属核验必须拒绝，不能按回带的假关联取消。
+    let stranger = registry
+        .get_or_create("agent-cancel-stranger-request")
+        .await
+        .unwrap();
+    let mut stranger_output = stranger.subscribe();
+    stranger
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request_claiming_subagent(
+                CANCEL_STRANGER_CONVERSATION,
+                "agent-cancel-stranger-request",
+            )),
+        })
+        .await
+        .unwrap();
+    stranger
+        .command(TransportCommand::Append {
+            seqno: 1,
+            message: Box::new(cancel_subagent_action(CANCEL_CHILD_CONVERSATION)),
+        })
+        .await
+        .unwrap();
+    let mut stranger_seqno = 2;
+    tokio::spawn(async move {
+        while let Some(frame) = stranger_output.recv().await {
+            let Some(server) = frame_role(&frame) else {
+                break;
+            };
+            if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+                let _ = stranger
+                    .command(TransportCommand::Append {
+                        seqno: stranger_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await;
+                stranger_seqno += 1;
+            }
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    let child_status: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM runs WHERE cursor_request_id = 'agent-cancel-child-request'",
+    )
+    .fetch_optional(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        child_status.as_deref(),
+        Some("running"),
+        "另一个父会话不能取消不属于它的子代理"
+    );
+
+    // 新 transport 只靠 checkpoint 里的"父调用 → 子代理"关联：actor 内存 map 为空，
+    // 必须在 start_generation 用 state 种子后才能按 agent id 取消。
+    let seeded = registry
+        .get_or_create("agent-cancel-seeded-request")
+        .await
+        .unwrap();
+    let mut seeded_request = run_request(
+        CANCEL_PARENT_CONVERSATION,
+        "agent-cancel-seeded-request",
+        "agent-cancel-seeded-user",
+        false,
+    );
+    if let Some(pb::agent_client_message::Message::RunRequest(request)) =
+        &mut seeded_request.message
+    {
+        request.conversation_state = Some(pb::ConversationStateStructure {
+            subagent_runs_by_parent_tool_call_id: std::collections::HashMap::from([(
+                CANCEL_TASK_CALL.to_owned(),
+                pb::SubagentRunState {
+                    parent_tool_call_id: CANCEL_TASK_CALL.into(),
+                    subagent_id: Some(CANCEL_CHILD_CONVERSATION.into()),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        });
+    }
+    let mut seeded_output = seeded.subscribe();
+    seeded
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(seeded_request),
+        })
+        .await
+        .unwrap();
+    seeded
+        .command(TransportCommand::Append {
+            seqno: 1,
+            message: Box::new(cancel_subagent_action(CANCEL_CHILD_CONVERSATION)),
+        })
+        .await
+        .unwrap();
+    let mut seeded_seqno = 2;
+    tokio::spawn(async move {
+        while let Some(frame) = seeded_output.recv().await {
+            let Some(server) = frame_role(&frame) else {
+                break;
+            };
+            if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+                let _ = seeded
+                    .command(TransportCommand::Append {
+                        seqno: seeded_seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await;
+                seeded_seqno += 1;
+            }
+        }
+    });
+
+    wait_for_run_status(&store, "agent-cancel-child-request", "cancelled").await;
+    let child_run: (Option<String>, String) = sqlx::query_as(
+        "SELECT parent_run_id, status FROM runs WHERE cursor_request_id = 'agent-cancel-child-request'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert!(
+        child_run.0.is_some(),
+        "被取消的必须是当前父会话派出的子 run"
+    );
+    assert_eq!(child_run.1, "cancelled");
+    drop(child);
+}
+
+/// F02 所有权窗口：历史 Task 属于父 A，但同一个子代理会话后来被父 B resume 成新的
+/// active run。父 A 的旧取消不能按历史 owner 命中后取消当前 active run。
+#[tokio::test]
+async fn an_old_parent_cannot_cancel_a_subagent_resumed_by_another_parent() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("cursor_server=debug")
+        .with_test_writer()
+        .try_init();
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    provider.push_for(
+        OWNERSHIP_PARENT_A_CONVERSATION,
+        task_call_events(OWNERSHIP_TASK_CALL),
+    );
+    let _hold_a = provider.push_gated_for(
+        OWNERSHIP_PARENT_A_CONVERSATION,
+        text_events("parent A stays active"),
+    );
+    let _hold_child_a = provider.push_gated_for(
+        OWNERSHIP_CHILD_CONVERSATION,
+        text_events("child A stays active"),
+    );
+    let _hold_b = provider.push_gated_for(
+        OWNERSHIP_PARENT_B_CONVERSATION,
+        text_events("parent B stays active"),
+    );
+    let _hold_child_b = provider.push_gated_for(
+        OWNERSHIP_CHILD_CONVERSATION,
+        text_events("child B stays active"),
+    );
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    // 1) 父 A 派出后台子代理；Task 结果提交后，子会话仍由 A 的子 run 占用。
+    let parent_a = registry
+        .get_or_create(OWNERSHIP_PARENT_A_REQUEST)
+        .await
+        .unwrap();
+    let mut a_output = parent_a.subscribe();
+    parent_a
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                OWNERSHIP_PARENT_A_CONVERSATION,
+                OWNERSHIP_PARENT_A_REQUEST,
+                "ownership-a-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut a_seqno = 1;
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), a_output.recv())
+            .await
+            .expect("父 A 没有派出后台子代理")
+            .expect("父 A 的流提前关闭");
+        let Some(server) = frame_role(&frame) else {
+            panic!("父 A 在派子代理之前就收尾了");
+        };
+        match server.message {
+            Some(pb::agent_server_message::Message::KvServerMessage(kv)) => {
+                acknowledge(&parent_a, &mut a_seqno, kv.id).await;
+            }
+            Some(pb::agent_server_message::Message::ExecServerMessage(exec)) => {
+                let Some(pb::exec_server_message::Message::SubagentArgs(args)) = exec.message
+                else {
+                    continue;
+                };
+                assert_eq!(args.tool_call_id, OWNERSHIP_TASK_CALL);
+                let child_a = registry
+                    .get_or_create(OWNERSHIP_CHILD_A_REQUEST)
+                    .await
+                    .unwrap();
+                child_a
+                    .set_parent(TransportParent {
+                        request_id: Some(OWNERSHIP_PARENT_A_REQUEST.into()),
+                        tool_call_id: Some(OWNERSHIP_TASK_CALL.into()),
+                    })
+                    .unwrap();
+                child_a
+                    .command(TransportCommand::Append {
+                        seqno: 0,
+                        message: Box::new(run_request(
+                            OWNERSHIP_CHILD_CONVERSATION,
+                            OWNERSHIP_CHILD_A_REQUEST,
+                            "ownership-child-a-user",
+                            true,
+                        )),
+                    })
+                    .await
+                    .unwrap();
+                let child_handle = child_a.clone();
+                let mut child_output = child_a.subscribe();
+                tokio::spawn(async move {
+                    let mut seqno = 1;
+                    while let Some(frame) = child_output.recv().await {
+                        let Some(server) = frame_role(&frame) else {
+                            break;
+                        };
+                        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) =
+                            server.message
+                        {
+                            let _ = child_handle
+                                .command(TransportCommand::Append {
+                                    seqno,
+                                    message: Box::new(kv_ack(kv.id)),
+                                })
+                                .await;
+                            seqno += 1;
+                        }
+                    }
+                });
+                parent_a
+                    .command(TransportCommand::Append {
+                        seqno: a_seqno,
+                        message: Box::new(task_result(exec.id, OWNERSHIP_CHILD_CONVERSATION)),
+                    })
+                    .await
+                    .unwrap();
+                a_seqno += 1;
+                break;
+            }
+            _ => {}
+        }
+    }
+    wait_for_tool_call_completed(&store, OWNERSHIP_TASK_CALL).await;
+    wait_for_run_status(&store, OWNERSHIP_CHILD_A_REQUEST, "running").await;
+    // 父 A 进入 gated 模型调用后保持 active；这里只把首轮 checkpoint 的 KV 回执清掉。
+    acknowledge_until_quiet(&parent_a, &mut a_output, &mut a_seqno).await;
+
+    // 2) 父 B 起一个活跃 run，并把同一个子代理会话 resume 成 B 的新 run。
+    let parent_b = registry
+        .get_or_create(OWNERSHIP_PARENT_B_REQUEST)
+        .await
+        .unwrap();
+    let mut b_output = parent_b.subscribe();
+    parent_b
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                OWNERSHIP_PARENT_B_CONVERSATION,
+                OWNERSHIP_PARENT_B_REQUEST,
+                "ownership-b-user",
+                false,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut b_seqno = 1;
+    acknowledge_until_quiet(&parent_b, &mut b_output, &mut b_seqno).await;
+    wait_for_run_status(&store, OWNERSHIP_PARENT_B_REQUEST, "running").await;
+
+    let child_b = registry
+        .get_or_create(OWNERSHIP_CHILD_B_REQUEST)
+        .await
+        .unwrap();
+    child_b
+        .set_parent(TransportParent {
+            request_id: Some(OWNERSHIP_PARENT_B_REQUEST.into()),
+            tool_call_id: Some(OWNERSHIP_B_TASK_CALL.into()),
+        })
+        .unwrap();
+    child_b
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(run_request(
+                OWNERSHIP_CHILD_CONVERSATION,
+                OWNERSHIP_CHILD_B_REQUEST,
+                "ownership-child-b-user",
+                true,
+            )),
+        })
+        .await
+        .unwrap();
+    let mut child_b_output = child_b.subscribe();
+    let child_b_handle = child_b.clone();
+    tokio::spawn(async move {
+        let mut seqno = 1;
+        while let Some(frame) = child_b_output.recv().await {
+            let Some(server) = frame_role(&frame) else {
+                break;
+            };
+            if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = server.message {
+                let _ = child_b_handle
+                    .command(TransportCommand::Append {
+                        seqno,
+                        message: Box::new(kv_ack(kv.id)),
+                    })
+                    .await;
+                seqno += 1;
+            }
+        }
+    });
+    let resumed_run_id = wait_for_child_run_under_parent(
+        &store,
+        OWNERSHIP_CHILD_CONVERSATION,
+        OWNERSHIP_PARENT_B_REQUEST,
+    )
+    .await;
+
+    // 3) 父 A 的旧取消：历史 Task 仍属于 A，但当前 active run 已属于 B，必须拒绝。
+    parent_a
+        .command(TransportCommand::Append {
+            seqno: a_seqno,
+            message: Box::new(cancel_subagent_action(OWNERSHIP_CHILD_CONVERSATION)),
+        })
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM runs WHERE run_id = ?")
+        .bind(&resumed_run_id)
+        .fetch_optional(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        status.as_deref(),
+        Some("running"),
+        "父 A 的旧取消不能取消父 B resume 出来的 active run"
+    );
+
+    // 同一个拒绝也必须覆盖"只给后台 Task call_id"的回退路径。
+    a_seqno += 1;
+    parent_a
+        .command(TransportCommand::Append {
+            seqno: a_seqno,
+            message: Box::new(cancel_subagent_action(OWNERSHIP_TASK_CALL)),
+        })
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    let status: Option<String> = sqlx::query_scalar("SELECT status FROM runs WHERE run_id = ?")
+        .bind(&resumed_run_id)
+        .fetch_optional(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        status.as_deref(),
+        Some("running"),
+        "父 A 按历史 Task call_id 回退也不能取消父 B 的 active run"
+    );
+    registry.shutdown().await;
 }
 
 // 边界说明：为什么这里没有"服务端已自行收尾之后客户端才断开"这条用例——

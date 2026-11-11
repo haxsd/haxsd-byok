@@ -30,7 +30,10 @@ use crate::{
         },
     },
     model::{ConversationId, ToolCall, ToolRoundId, Usage},
-    run::{CommandResult, CommitCause, RunEvent, RunFailure, RunHandle, RunOutcome, RunSession},
+    run::{
+        CommandResult, CommitCause, RunEvent, RunFailure, RunHandle, RunOutcome, RunPhase,
+        RunSession,
+    },
     store::Store,
     Error, Result,
 };
@@ -53,6 +56,9 @@ pub struct ConversationOutput {
     blob_sync: BlobSynchronizer,
     injection_ids: HashSet<String>,
     pending_injections: HashMap<String, PendingInjection>,
+    /// 带真实结果的 CancelAction 正在等这些调用提交：全部提交后再取消这一轮，避免
+    /// 取消抢在结果落库之前。
+    pending_cancel: Option<HashSet<String>>,
     deliveries: mpsc::UnboundedSender<InjectionDelivery>,
     superseded: CancellationToken,
     /// 当前 turn 已提交的 step 数,工具轮用它算 `UpdateCurrentStep` 的 `message_index`。
@@ -138,6 +144,7 @@ impl ConversationOutput {
             blob_sync: runtime.blob_sync,
             injection_ids: HashSet::new(),
             pending_injections: HashMap::new(),
+            pending_cancel: None,
             deliveries,
             superseded: runtime.superseded,
             turn_steps: TurnSteps::Unknown,
@@ -294,8 +301,18 @@ impl ConversationOutput {
                             action,
                             active_round.as_ref(),
                             &active_tool_calls,
-                            &completions,
+                            &mut completions,
                             &mut interrupted_rounds,
+                            &mut interrupted_tool_calls,
+                        )
+                        .await?;
+                    }
+                    RuntimeAction::Cancel(action) => {
+                        self.forward_cancel(
+                            action,
+                            active_round.as_ref(),
+                            &active_tool_calls,
+                            &mut completions,
                             &mut interrupted_tool_calls,
                         )
                         .await?;
@@ -644,6 +661,15 @@ impl ConversationOutput {
                                 presentation.tool_completed(&completion);
                             }
                             completed.insert(call_id.clone());
+                            if let Some(waiting) = self.pending_cancel.as_mut() {
+                                waiting.remove(call_id.as_str());
+                                if waiting.is_empty() {
+                                    self.pending_cancel = None;
+                                    // 结果已经落库，现在取消这一轮：客户端看到的仍是
+                                    // canceled 收尾，但历史保留了真实结果。
+                                    self.run.cancel();
+                                }
+                            }
                             // 收尾与否只认这一次提交自己报告的结果。轮状态是实时读的，
                             // 并行的工具结果可能已经全部落库，把这条非收尾提交误判成收尾。
                             tool_round_settled = *settled;
@@ -904,6 +930,15 @@ impl ConversationOutput {
             let blob_id = self.store.put_blob(&image.data, &[]).await?;
             completion.persist_read_image(&blob_id, &image)?;
         }
+        if let Some((agent_id, call_id)) =
+            crate::cursor::tools::runtime::task_identity_from_tool_call(completion.tool_call())
+        {
+            let agent_id = agent_id.to_owned();
+            let call_id = call_id.to_owned();
+            self.tool_runtime
+                .remember_subagent(&agent_id, &call_id)
+                .await;
+        }
         let result = completion.result();
         if result.call_id.is_empty() {
             return Err(Error::Protocol("tool result call_id is empty".into()));
@@ -937,13 +972,23 @@ impl ConversationOutput {
         action: pb::UserMessageAction,
         active_round: Option<&ToolRoundId>,
         active_tool_calls: &HashSet<String>,
-        completions: &HashMap<String, ToolCompletion>,
+        completions: &mut HashMap<String, ToolCompletion>,
         interrupted_rounds: &mut HashSet<ToolRoundId>,
         interrupted_tool_calls: &mut HashSet<String>,
     ) -> Result<()> {
         let user_message = action.user_message.clone().ok_or_else(|| {
             Error::Protocol("Cursor user message action has no UserMessage".into())
         })?;
+        // 客户端在被中断的调用上给出的真实结果先提交；随后通用打断只处理剩下的调用，
+        // 不会再用 "interrupted" 顶掉真实输出。
+        self.forward_resolutions(
+            action.interrupted_pending_tool_call_resolutions.as_ref(),
+            active_round,
+            active_tool_calls,
+            completions,
+            interrupted_tool_calls,
+        )
+        .await?;
         let injection_id = format!("user-message:{}", user_message.message_id);
         let message = compile_user_message_action(
             &action,
@@ -965,6 +1010,127 @@ impl ConversationOutput {
             },
         )
         .await
+    }
+
+    /// 把客户端随插话/取消动作带来的真实终态结果交给核心提交。
+    ///
+    /// 只在当前工具轮里、且调用尚未有结果时生效：这样通用打断只需处理剩下的调用，
+    /// 不会重复生成一条 generic interrupted 把真实输出顶掉。返回已送进命令通道的
+    /// call id（取消路径要等它们提交完再真正取消）。
+    async fn forward_resolutions(
+        &mut self,
+        resolutions: Option<&pb::InterruptedPendingToolCallResolutions>,
+        active_round: Option<&ToolRoundId>,
+        active_tool_calls: &HashSet<String>,
+        completions: &mut HashMap<String, ToolCompletion>,
+        interrupted_tool_calls: &mut HashSet<String>,
+    ) -> Result<HashSet<String>> {
+        let mut committed = HashSet::new();
+        let Some(resolutions) = resolutions else {
+            return Ok(committed);
+        };
+        if active_round.is_none() {
+            return Ok(committed);
+        }
+        for resolution in &resolutions.resolutions {
+            let call_id = resolution.tool_call_id.as_str();
+            if !active_tool_calls.contains(call_id) || completions.contains_key(call_id) {
+                continue;
+            }
+            let Some(message) = crate::cursor::tools::runtime::resolution_exec_message(resolution)
+            else {
+                continue;
+            };
+            let Some(exec_id) = self.tool_runtime.exec_id_for_call(call_id).await else {
+                continue;
+            };
+            let Some(pending_call) = self.tool_runtime.exec_call(exec_id).await else {
+                continue;
+            };
+            let matches = match (&message, pending_call.name.as_str()) {
+                (pb::exec_client_message::Message::ShellResult(_), name) => {
+                    name.eq_ignore_ascii_case("Shell") || name.eq_ignore_ascii_case("Bash")
+                }
+                (pb::exec_client_message::Message::SubagentResult(_), name) => {
+                    name.eq_ignore_ascii_case("Task")
+                }
+                _ => false,
+            };
+            if !matches {
+                continue;
+            }
+            if self.run.phase() != RunPhase::Running {
+                continue;
+            }
+            let Some(pending) = self.tool_runtime.take_exec(exec_id).await else {
+                continue;
+            };
+            match crate::cursor::tools::tool_call_result::from_exec(pending, &message) {
+                Ok(completion) => {
+                    if self
+                        .forward_completion(completion, completions, interrupted_tool_calls)
+                        .await?
+                        .is_some()
+                    {
+                        tracing::debug!(
+                            call_id,
+                            "interrupted tool resolution produced a follow-up completion"
+                        );
+                    }
+                    committed.insert(call_id.to_owned());
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        call_id,
+                        %error,
+                        "interrupted tool resolution was invalid; closing the call with a failure"
+                    );
+                    let completion = compat::failure_with_message(
+                        &pending_call,
+                        format!("Invalid interrupted tool result: {error}"),
+                    );
+                    if self
+                        .forward_completion(completion, completions, interrupted_tool_calls)
+                        .await?
+                        .is_some()
+                    {
+                        tracing::debug!(
+                            call_id,
+                            "invalid interrupted tool resolution produced a follow-up completion"
+                        );
+                    }
+                    committed.insert(call_id.to_owned());
+                }
+            }
+        }
+        Ok(committed)
+    }
+
+    /// `CancelAction`：先提交客户端给出的真实结果，等它们落库后再取消这一轮。
+    async fn forward_cancel(
+        &mut self,
+        action: pb::CancelAction,
+        active_round: Option<&ToolRoundId>,
+        active_tool_calls: &HashSet<String>,
+        completions: &mut HashMap<String, ToolCompletion>,
+        interrupted_tool_calls: &mut HashSet<String>,
+    ) -> Result<()> {
+        let waiting = self
+            .forward_resolutions(
+                action.interrupted_pending_tool_call_resolutions.as_ref(),
+                active_round,
+                active_tool_calls,
+                completions,
+                interrupted_tool_calls,
+            )
+            .await?;
+        if waiting.is_empty() {
+            self.pending_cancel = None;
+            self.run.cancel();
+        } else {
+            self.pending_cancel = Some(waiting);
+        }
+        Ok(())
     }
 
     async fn forward_injection(

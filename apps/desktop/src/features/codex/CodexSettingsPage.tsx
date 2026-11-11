@@ -13,11 +13,12 @@ import { PageActions } from "../../shell/PageActions";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
-import { CodexSettingsForm } from "./CodexSettingsForm";
+import { CodexSettingsForm, type CodexLockReason } from "./CodexSettingsForm";
 import { codexModelAvailability, codexModelSelectionBlocked } from "./codexModelOptions";
 import {
   codexActionGate,
   codexApplyNeedsSignInConfirm,
+  codexClientStage,
   codexConnectionView,
   codexLoginView,
   codexOutstandingSteps,
@@ -26,6 +27,28 @@ import {
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import { providerIcon, settingsIcon } from "../../shared/ui/icons";
 import styles from "./CodexSettingsPage.module.scss";
+
+/**
+ * 保存/应用/撤销共用的刷新语义：操作失败也要读取一次真实状态，避免卡片停在旧值；
+ * 刷新失败只保留/暴露原错误，不能把失败伪装成成功。
+ */
+export async function runCodexAction(
+  operation: () => Promise<void>,
+  onError: (cause: unknown) => void,
+): Promise<void> {
+  try {
+    await operation();
+    await appStore.refresh();
+  } catch (cause) {
+    onError(cause);
+    await appStore.refresh().catch(() => undefined);
+  }
+}
+
+/** 页面共用的一条错误提示；测试也通过它验证真实 A→B 失败文案。 */
+export function CodexErrorAlert({ cause }: { cause: unknown }) {
+  return <p className={styles.error} role="alert">{clientErrorText(cause)}</p>;
+}
 
 export function CodexSettingsPage() {
   const { models, plugins, codexStatus } = useAppStore();
@@ -49,19 +72,27 @@ export function CodexSettingsPage() {
   }, [reloadKey]);
   const view = codexConnectionView(codexStatus);
   const login = codexLoginView(codexStatus);
+  const clientStage = codexClientStage(codexStatus);
   const modelCount = saved?.model_hashes.length ?? 0;
   const modelAvailability = draft ? codexModelAvailability(models, pluginModels, draft.model_hashes) : null;
   const modelSelectionBlocked = modelAvailability ? codexModelSelectionBlocked(modelAvailability) : false;
   const steps = codexOutstandingSteps(codexStatus, modelCount, models.length);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
-  const applied = Boolean(codexStatus?.configured && !codexStatus?.config_conflict);
-  const locked = Boolean(codexStatus?.config_conflict);
+  const applied = Boolean(codexStatus?.configured && codexStatus.conflict_kind === "none");
+  const locked = Boolean(codexStatus && codexStatus.conflict_kind !== "none");
+  const lockReason: CodexLockReason = codexStatus?.conflict_kind === "unreadable"
+    ? "unreadable"
+    : codexStatus?.conflict_kind === "foreign_provider" && !codexStatus.restorable
+      ? "foreign"
+      : codexStatus?.restorable
+        ? "restore"
+        : "blocked";
   // 两个按钮的可用条件集中在 codexConnectionView 里：撤销看接管凭证（restorable），
-  // 应用只被「路由被别人占着」挡住，受管字段被改过不挡。
+  // 应用只允许在没有冲突/策略覆盖/半写状态时点击。
   const gate = codexActionGate(codexStatus, { dirty, enabled: Boolean(saved?.enabled) });
   const action = async (operation: () => Promise<void>) => {
     setBusy(true); setError(null);
-    try { await operation(); await appStore.refresh(); }
+    try { await runCodexAction(operation, setError); }
     catch (cause) { setError(cause); }
     finally { setBusy(false); }
   };
@@ -81,6 +112,7 @@ export function CodexSettingsPage() {
     void apply();
   };
   const restore = () => action(async () => { await api.restoreCodex(); message(t("Codex 配置已恢复")); });
+  const alertCause = error ?? codexStatus?.last_error ?? codexStatus?.managed_error;
   const content = <div className={styles.page}>
     <TitledCard
       title={t("接入状态")}
@@ -92,7 +124,7 @@ export function CodexSettingsPage() {
         title={view.label}
         description={codexVerdictDescription(view.state)}
         stages={[
-          { key: "codex", label: "Codex", detail: codexStatus?.configured ? t("指向本机网关") : t("未写入配置"), state: codexStatus?.configured ? "up" : "down" },
+          { key: "codex", label: "Codex", detail: clientStage.detail, state: clientStage.state },
           { key: "gateway", label: t("本机网关"), detail: codexStatus?.listening ? t("运行中") : t("未监听"), state: codexStatus?.listening ? "up" : "down" },
           { key: "models", label: t("模型库"), detail: modelCount ? t("{count} 个模型", { count: modelCount }) : t("未选择模型"), state: modelCount ? "up" : "unknown" },
         ]}
@@ -103,14 +135,15 @@ export function CodexSettingsPage() {
         footnotes={<div className={styles.facts}>
           <span>{t("已记录 {count} 次调用", { count: codexStatus?.calls ?? 0 })}</span>
           <span className={styles.home} title={codexStatus?.home}>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
+          {codexStatus && <span title={t("cloud/enterprise 策略未在本地核对")}>{t("受管要求：仅本地系统")}</span>}
         </div>}
       />
-      {(error || codexStatus?.last_error) && <p className={styles.error} role="alert">{clientErrorText(error ?? codexStatus?.last_error)}</p>}
+      {alertCause && <CodexErrorAlert cause={alertCause} />}
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
-        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} applied={applied} onChange={setDraft} />
+        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} lockReason={lockReason} applied={applied} onChange={setDraft} />
         : error
           ? <div className={styles.note}><span>{t("读取失败")}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
           : <p className={styles.note}>{t("加载中…")}</p>}

@@ -317,11 +317,28 @@ async fn health() -> impl IntoResponse {
     )
 }
 
+fn request_enveloped(parts: &axum::http::request::Parts) -> bool {
+    // Before decoding (disabled gateway, body/read or forwarding failure), the
+    // advertised transport and the known streaming method are all we have.
+    parts.uri.path().rsplit('/').next() == Some("GetChatMessage")
+        || parts
+            .headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .is_some_and(|value| {
+                value
+                    .trim()
+                    .eq_ignore_ascii_case("application/connect+proto")
+            })
+}
+
 async fn handle_request(
     State(state): State<GatewayState>,
     request: Request<Body>,
 ) -> Response<Body> {
     let (parts, body) = request.into_parts();
+    let enveloped = request_enveloped(&parts);
     if parts.method != Method::POST {
         return plain_error(
             StatusCode::METHOD_NOT_ALLOWED,
@@ -332,10 +349,17 @@ async fn handle_request(
 
     let settings = match state.store.devin_settings().await {
         Ok(settings) => settings,
-        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        Err(error) => {
+            return protocol_error(
+                enveloped,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+            )
+        }
     };
     if !settings.enabled {
         return connect_error_response(
+            enveloped,
             StatusCode::SERVICE_UNAVAILABLE,
             "failed_precondition",
             "Devin gateway is disabled",
@@ -365,7 +389,7 @@ async fn handle_request(
             }
         }
         if is_model_catalog_method(method) {
-            return forward_upstream(&state, &settings, parts, body).await;
+            return forward_upstream(&state, &settings, parts, body, enveloped).await;
         }
     }
 
@@ -378,7 +402,7 @@ async fn handle_request(
         && !is_model_catalog_method(method)
         && !is_locally_answered_capacity_method(method)
     {
-        return forward_upstream(&state, &settings, parts, body).await;
+        return forward_upstream(&state, &settings, parts, body, enveloped).await;
     }
     let mut candidates = settings
         .bindings
@@ -394,12 +418,18 @@ async fn handle_request(
         let models = match state.store.models().await {
             Ok(models) => models,
             Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                )
             }
         };
         match native_entries(&settings, &models) {
             Ok(entries) => candidates.extend(entries.into_iter().map(|entry| entry.uid)),
-            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+            Err(error) => {
+                return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string())
+            }
         }
     }
     // 一条启用绑定都没有时目录不是我们的东西：本地目录会是空的，而客户端只认这
@@ -408,7 +438,7 @@ async fn handle_request(
     if (is_model_catalog_method(method) || is_locally_answered_capacity_method(method))
         && candidates.is_empty()
     {
-        return forward_upstream(&state, &settings, parts, body).await;
+        return forward_upstream(&state, &settings, parts, body, enveloped).await;
     }
 
     let content_encoding = parts
@@ -421,7 +451,9 @@ async fn handle_request(
         .and_then(|value| value.to_str().ok());
     let body = match to_bytes(body, MAX_BODY_SIZE + 5).await {
         Ok(body) => body,
-        Err(error) => return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, error.to_string()),
+        Err(error) => {
+            return protocol_error(enveloped, StatusCode::PAYLOAD_TOO_LARGE, error.to_string())
+        }
     };
     // 响应封装照请求本身体判定，而"请求是不是 Connect 信封"只有解码后才知道：请求体
     // 可能是 gzip 的，拿压缩字节去嗅探必然误判，客户端会拿到裸 proto 响应。
@@ -441,20 +473,22 @@ async fn handle_request(
                 content_type = ?parts.headers.get(header::CONTENT_TYPE),
                 "cannot unwrap Devin request"
             );
-            return protocol_error(StatusCode::BAD_REQUEST, error.to_string());
+            return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string());
         }
     };
-    let enveloped = unwrapped.enveloped;
+    let enveloped = enveloped || unwrapped.enveloped;
     let payload = unwrapped.payload;
 
     let fields = match wire::parse_fields(&payload) {
         Ok(fields) => fields,
-        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        Err(error) => return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string()),
     };
     let session_id = if method == "GetChatMessage" {
         match super::request::string_field(&fields, 28) {
             Ok(session_id) => session_id,
-            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+            Err(error) => {
+                return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string())
+            }
         }
     } else {
         String::new()
@@ -466,10 +500,15 @@ async fn handle_request(
         match state.store.devin_session_model(&session_id).await {
             Ok(Some(selection)) => Some(selection),
             Ok(None) => {
-                return forward_upstream(&state, &settings, parts, Body::from(body)).await;
+                return forward_upstream(&state, &settings, parts, Body::from(body), enveloped)
+                    .await;
             }
             Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                )
             }
         }
     } else {
@@ -503,15 +542,18 @@ async fn handle_request(
         .collect::<Vec<_>>();
     let identity = match wire::serialize_fields(&identity_fields) {
         Ok(identity) => identity,
-        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        Err(error) => return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string()),
     };
     let reference =
         match find_model_reference(&identity, &parts.headers, &candidates, &state.assignments) {
             Ok(reference) => reference,
-            Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+            Err(error) => {
+                return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string())
+            }
         };
     if reference.ambiguous {
         return protocol_error(
+            enveloped,
             StatusCode::BAD_REQUEST,
             format!(
                 "Devin request contains multiple mapped model UIDs: {}",
@@ -524,6 +566,7 @@ async fn handle_request(
         .is_some_and(|uid| uid != &reference.uid)
     {
         return protocol_error(
+            enveloped,
             StatusCode::BAD_REQUEST,
             "Devin model does not match its assignment",
         );
@@ -536,16 +579,21 @@ async fn handle_request(
             _ => false,
         }) {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_REQUEST,
                 "Devin local model is not configured",
             );
         }
         if method == "GetChatMessage" {
             if let Err(error) = state.store.set_devin_session_model(&session_id, None).await {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                );
             }
         }
-        return forward_upstream(&state, &settings, parts, Body::from(body)).await;
+        return forward_upstream(&state, &settings, parts, Body::from(body), enveloped).await;
     }
 
     if method == "CheckChatCapacity" {
@@ -553,7 +601,11 @@ async fn handle_request(
             match wire::serialize_fields(&[wire::Field::varint(1, 1), wire::Field::varint(3, 0)]) {
                 Ok(response) => response,
                 Err(error) => {
-                    return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                    return protocol_error(
+                        enveloped,
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        error.to_string(),
+                    )
                 }
             };
         return protocol_success_response(enveloped, &response);
@@ -567,7 +619,11 @@ async fn handle_request(
         ]) {
             Ok(response) => response,
             Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                )
             }
         };
         return protocol_success_response(enveloped, &response);
@@ -576,7 +632,11 @@ async fn handle_request(
         let response = match wire::serialize_fields(&[]) {
             Ok(response) => response,
             Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                )
             }
         };
         return protocol_success_response(enveloped, &response);
@@ -585,12 +645,14 @@ async fn handle_request(
     if method == "AssignModel" {
         let Some(uid) = (!reference.uid.is_empty()).then_some(reference.uid) else {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_REQUEST,
                 "Devin AssignModel has no mapped model UID",
             );
         };
         if !candidates.contains(&uid) {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_REQUEST,
                 format!("Devin model is not assigned: {uid}"),
             );
@@ -600,7 +662,11 @@ async fn handle_request(
         let response = match assignment_token_response(&assignment, &harnesses) {
             Ok(response) => response,
             Err(error) => {
-                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+                return protocol_error(
+                    enveloped,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error.to_string(),
+                )
             }
         };
         return protocol_success_response(enveloped, &response);
@@ -608,7 +674,7 @@ async fn handle_request(
 
     let request = match parse_chat_request(&payload) {
         Ok(request) => request,
-        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        Err(error) => return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string()),
     };
     let mut request = request;
     if let Some(selection) = &inherited {
@@ -616,6 +682,7 @@ async fn handle_request(
     }
     if !request.requested_model.is_empty() && request.requested_model != reference.uid {
         return protocol_error(
+            enveloped,
             StatusCode::BAD_REQUEST,
             "Devin model does not match its assignment",
         );
@@ -627,6 +694,7 @@ async fn handle_request(
         Some(binding) => binding,
         None => {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_REQUEST,
                 format!("Devin model is not assigned: {}", request.requested_model),
             );
@@ -640,6 +708,7 @@ async fn handle_request(
         Ok(Some(model)) => model,
         Ok(None) => {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_REQUEST,
                 format!(
                     "the model bound to Devin model {} is no longer in the model library; \
@@ -648,14 +717,20 @@ async fn handle_request(
                 ),
             )
         }
-        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        Err(error) => {
+            return protocol_error(
+                enveloped,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+            )
+        }
     };
     let provider_type = model.provider_type();
     let fallback_input_tokens = request.context_tokens;
     let selected_uid = request.requested_model.clone();
     let mut invocation = match to_invocation(request, &binding, &model, inherited.is_some()) {
         Ok(invocation) => invocation,
-        Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
+        Err(error) => return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string()),
     };
     if let Some(selection) = inherited {
         invocation.request.model = selection.model;
@@ -670,7 +745,11 @@ async fn handle_request(
             .set_devin_session_model(&session_id, Some(&selection))
             .await
         {
-            return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+            return protocol_error(
+                enveloped,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error.to_string(),
+            );
         }
     }
     let model_uid = binding.model_uid.clone();
@@ -744,12 +823,13 @@ async fn forward_native_model_config(
     entries: &[super::directory::LocalModelEntry],
     method: &str,
 ) -> Response<Body> {
+    let enveloped = request_enveloped(&parts);
     let response_started = std::time::Instant::now();
     parts.headers.insert(
         header::ACCEPT_ENCODING,
         axum::http::HeaderValue::from_static("gzip"),
     );
-    let response = forward_upstream(state, settings, parts, body).await;
+    let response = forward_upstream(state, settings, parts, body, enveloped).await;
     let response = if response
         .headers()
         .get(header::CONTENT_ENCODING)
@@ -760,9 +840,13 @@ async fn forward_native_model_config(
         let decoded = match to_bytes(response_body, MAX_BODY_SIZE).await {
             Ok(bytes) => match wire::gunzip(&bytes) {
                 Ok(decoded) => decoded,
-                Err(error) => return protocol_error(StatusCode::BAD_GATEWAY, error.to_string()),
+                Err(error) => {
+                    return protocol_error(enveloped, StatusCode::BAD_GATEWAY, error.to_string())
+                }
             },
-            Err(error) => return protocol_error(StatusCode::BAD_GATEWAY, error.to_string()),
+            Err(error) => {
+                return protocol_error(enveloped, StatusCode::BAD_GATEWAY, error.to_string())
+            }
         };
         response_parts.headers.remove(header::CONTENT_ENCODING);
         response_parts.headers.remove(header::CONTENT_LENGTH);
@@ -815,6 +899,7 @@ async fn forward_native_model_config(
         Ok(bytes) => bytes,
         Err(error) => {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_GATEWAY,
                 format!("Devin user status could not be read: {error}"),
             )
@@ -904,6 +989,7 @@ async fn forward_upstream(
     settings: &DevinSettings,
     parts: axum::http::request::Parts,
     body: Body,
+    enveloped: bool,
 ) -> Response<Body> {
     let rpc_method = parts
         .uri
@@ -928,6 +1014,7 @@ async fn forward_upstream(
         Ok(client) => client,
         Err(error) => {
             return protocol_error(
+                enveloped,
                 StatusCode::BAD_GATEWAY,
                 format!("Devin upstream client could not be built: {error}"),
             )
@@ -935,7 +1022,9 @@ async fn forward_upstream(
     };
     let bytes = match to_bytes(body, MAX_BODY_SIZE + 5).await {
         Ok(bytes) => bytes,
-        Err(error) => return protocol_error(StatusCode::PAYLOAD_TOO_LARGE, error.to_string()),
+        Err(error) => {
+            return protocol_error(enveloped, StatusCode::PAYLOAD_TOO_LARGE, error.to_string())
+        }
     };
     // 本地网关的 `x-devin-router-token` 头不能跟着透传请求离开本机；其余头部保持原样
     // 转发——登录/账号/遥测请求会带上游需要、而我们不知道的头。
@@ -959,6 +1048,7 @@ async fn forward_upstream(
         Err(error) => {
             let Some(client) = outbound.rebuild_after(&error).await else {
                 return protocol_error(
+                    enveloped,
                     StatusCode::BAD_GATEWAY,
                     format!("Devin upstream request failed: {error}"),
                 );
@@ -967,6 +1057,7 @@ async fn forward_upstream(
                 Ok(response) => response,
                 Err(error) => {
                     return protocol_error(
+                        enveloped,
                         StatusCode::BAD_GATEWAY,
                         format!("Devin upstream request failed: {error}"),
                     )
@@ -1000,6 +1091,7 @@ async fn forward_upstream(
         .body(Body::from_stream(response.bytes_stream()))
         .unwrap_or_else(|error| {
             protocol_error(
+                enveloped,
                 StatusCode::BAD_GATEWAY,
                 format!("Devin upstream response could not be rebuilt: {error}"),
             )
@@ -1014,21 +1106,26 @@ fn plain_error(status: StatusCode, message: &str) -> Response<Body> {
         .expect("static Devin error response")
 }
 
-fn protocol_error(status: StatusCode, message: impl Into<String>) -> Response<Body> {
+fn protocol_error(
+    enveloped: bool,
+    status: StatusCode,
+    message: impl Into<String>,
+) -> Response<Body> {
     let code = match status {
         StatusCode::UNAUTHORIZED => "unauthenticated",
         StatusCode::PAYLOAD_TOO_LARGE => "resource_exhausted",
         StatusCode::SERVICE_UNAVAILABLE => "failed_precondition",
+        StatusCode::BAD_GATEWAY => "unavailable",
         StatusCode::INTERNAL_SERVER_ERROR => "internal",
         _ => "invalid_argument",
     };
-    connect_error_response(status, code, message)
+    connect_error_response(enveloped, status, code, message)
 }
 
 /// 成功响应：请求是 Connect 信封就按信封回，否则回裸 proto。
 ///
-/// `enveloped` 来自**解码后**的请求体（`wire::unwrap_request`），不是原始字节：原始
-/// 字节可能是 gzip 的，嗅探会失败。
+/// `enveloped` 保留请求声明的流式传输，并结合 `wire::unwrap_request` 解码后的
+/// 信封判定；不能直接嗅探可能经过 gzip 的原始字节。
 fn protocol_success_response(enveloped: bool, payload: &[u8]) -> Response<Body> {
     let (body, content_type) = if enveloped {
         let mut body =
@@ -1047,19 +1144,34 @@ fn protocol_success_response(enveloped: bool, payload: &[u8]) -> Response<Body> 
 }
 
 fn connect_error_response(
-    _status: StatusCode,
+    enveloped: bool,
+    status: StatusCode,
     code: &str,
     message: impl Into<String>,
 ) -> Response<Body> {
-    let frame = wire::end_frame(Some(ConnectError {
-        code: code.into(),
-        message: message.into(),
-    }));
+    let message = message.into();
+    let (status, content_type, body) = if enveloped {
+        (
+            StatusCode::OK,
+            "application/connect+proto",
+            wire::end_frame(Some(ConnectError {
+                code: code.into(),
+                message,
+            })),
+        )
+    } else {
+        (
+            status,
+            "application/json",
+            serde_json::to_vec(&serde_json::json!({"code": code, "message": message}))
+                .expect("Connect unary error JSON is serializable"),
+        )
+    };
     Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/connect+proto")
+        .status(status)
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, "no-store")
-        .body(Body::from(frame))
+        .body(Body::from(body))
         .expect("Devin protocol error response")
 }
 
@@ -1193,6 +1305,295 @@ mod tests {
     /// Neither the forwarded-method test nor the router wiring needs a provider
     /// that answers, so the double stays empty on purpose.
     struct IdleProvider;
+
+    async fn rpc_error_test_state(
+        enabled: bool,
+        upstream: &str,
+    ) -> (tempfile::TempDir, GatewayState) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::connect(&format!(
+            "sqlite://{}",
+            directory.path().join("rpc-errors.db").display()
+        ))
+        .await
+        .unwrap();
+        store
+            .set_devin_settings(DevinSettings {
+                enabled,
+                upstream_api_url: upstream.into(),
+                ..DevinSettings::default()
+            })
+            .await
+            .unwrap();
+        store
+            .set_proxy_settings(crate::store::ProxySettingsInput {
+                mode: crate::store::ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
+        let clients = NetworkClients::new(store.clone());
+        (
+            directory,
+            GatewayState {
+                store,
+                provider: Arc::new(IdleProvider),
+                assignments: Arc::new(AssignmentSessions::new()),
+                clients,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn unary_rpc_errors_are_json_even_when_the_http_request_is_gzipped() {
+        use tower::ServiceExt;
+
+        let (_directory, state) = rpc_error_test_state(true, "http://127.0.0.1:0").await;
+        let payload =
+            wire::serialize_fields(&[wire::Field::bytes(2, "haxsd-byok:deleted")]).unwrap();
+        for compressed in [false, true] {
+            let mut request = Request::builder()
+                .method(Method::POST)
+                .uri("/exa.api_server_pb.ApiServerService/AssignModel")
+                .header(header::CONTENT_TYPE, "application/proto");
+            let body = if compressed {
+                request = request.header(header::CONTENT_ENCODING, "gzip");
+                wire::gzip(&payload).unwrap()
+            } else {
+                payload.clone()
+            };
+            let response = DevinGateway::router(&state)
+                .oneshot(request.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(error["code"], "invalid_argument");
+            assert_eq!(error["message"], "Devin local model is not configured");
+            assert!(
+                error.get("error").is_none(),
+                "unary errors have no end-frame wrapper"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn streaming_rpc_errors_keep_end_frames_after_request_decompression() {
+        use tower::ServiceExt;
+
+        let (_directory, state) = rpc_error_test_state(true, "http://127.0.0.1:0").await;
+        let payload =
+            wire::serialize_fields(&[wire::Field::bytes(2, "haxsd-byok:deleted")]).unwrap();
+        // The frame, not the raw gzip bytes or the method name, determines the
+        // response shape once decoding has succeeded.
+        for (compressed, frame_compressed) in [(false, false), (true, false), (false, true)] {
+            let framed = wire::frame(&payload, frame_compressed).unwrap();
+            let mut request = Request::builder()
+                .method(Method::POST)
+                .uri("/exa.api_server_pb.ApiServerService/AssignModel")
+                .header(header::CONTENT_TYPE, "application/proto");
+            if frame_compressed {
+                request = request.header("connect-content-encoding", "gzip");
+            }
+            let body = if compressed {
+                request = request.header(header::CONTENT_ENCODING, "gzip");
+                wire::gzip(&framed).unwrap()
+            } else {
+                framed
+            };
+            let response = DevinGateway::router(&state)
+                .oneshot(request.body(Body::from(body)).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "application/connect+proto"
+            );
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            assert_eq!(body[0], 2);
+            assert_eq!(
+                u32::from_be_bytes(body[1..5].try_into().unwrap()) as usize,
+                body.len() - 5
+            );
+            let end: serde_json::Value = serde_json::from_slice(&body[5..]).unwrap();
+            assert_eq!(end["error"]["code"], "invalid_argument");
+            assert_eq!(
+                end["error"]["message"],
+                "Devin local model is not configured"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn disabled_rpc_errors_use_the_advertised_transport_before_reading_the_body() {
+        use tower::ServiceExt;
+
+        let (_directory, state) = rpc_error_test_state(false, "http://127.0.0.1:0").await;
+        for (method, content_type, streaming) in [
+            ("GetUserStatus", "application/proto", false),
+            ("GetChatMessage", "application/connect+proto", true),
+        ] {
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .header(header::CONTENT_TYPE, content_type)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                if streaming {
+                    StatusCode::OK
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                if streaming {
+                    "application/connect+proto"
+                } else {
+                    "application/json"
+                }
+            );
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            let error: serde_json::Value = if streaming {
+                assert_eq!(body[0], 2);
+                serde_json::from_slice::<serde_json::Value>(&body[5..]).unwrap()["error"].clone()
+            } else {
+                serde_json::from_slice(&body).unwrap()
+            };
+            assert_eq!(error["code"], "failed_precondition");
+            assert_eq!(error["message"], "Devin gateway is disabled");
+        }
+    }
+
+    #[tokio::test]
+    async fn unary_rpc_upstream_failures_preserve_a_readable_unavailable_error() {
+        use tower::ServiceExt;
+
+        // This test owns the failing endpoint. No real vendor or system proxy
+        // is contacted, and a different process cannot claim its port.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                drop(socket);
+            }
+        });
+        let (_directory, state) = rpc_error_test_state(true, &upstream).await;
+        for method in ["GetUserStatus", "GetCliTeamSettings"] {
+            let response = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                DevinGateway::router(&state).oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .header(header::CONTENT_TYPE, "application/proto")
+                        .body(Body::empty())
+                        .unwrap(),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(error["code"], "unavailable");
+            assert!(error["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("Devin upstream request failed:"));
+        }
+        // Once this local path has decoded a request, a later upstream failure
+        // must keep its frame transport even when the media type declares unary.
+        let payload = wire::serialize_fields(&[wire::Field::bytes(2, "official-model")]).unwrap();
+        let response = DevinGateway::router(&state)
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/exa.api_server_pb.ApiServerService/AssignModel")
+                    .header(header::CONTENT_TYPE, "application/proto")
+                    .body(Body::from(wire::frame(&payload, false).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers()[header::CONTENT_TYPE],
+            "application/connect+proto"
+        );
+        let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+        assert_eq!(body[0], 2);
+        let end: serde_json::Value = serde_json::from_slice(&body[5..]).unwrap();
+        assert_eq!(end["error"]["code"], "unavailable");
+        task.abort();
+        let _ = task.await;
+    }
+
+    #[tokio::test]
+    async fn malformed_gzip_rpc_errors_keep_the_advertised_transport() {
+        use tower::ServiceExt;
+
+        let (_directory, state) = rpc_error_test_state(true, "http://127.0.0.1:0").await;
+        for (method, content_type, streaming) in [
+            ("AssignModel", "application/proto", false),
+            ("GetChatMessage", "application/connect+proto", true),
+        ] {
+            let response = DevinGateway::router(&state)
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(format!("/exa.api_server_pb.ApiServerService/{method}"))
+                        .header(header::CONTENT_TYPE, content_type)
+                        .header(header::CONTENT_ENCODING, "gzip")
+                        .body(Body::from(vec![0x1f, 0x8b, 0x00]))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                if streaming {
+                    StatusCode::OK
+                } else {
+                    StatusCode::BAD_REQUEST
+                }
+            );
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                if streaming {
+                    "application/connect+proto"
+                } else {
+                    "application/json"
+                }
+            );
+            let body = to_bytes(response.into_body(), MAX_BODY_SIZE).await.unwrap();
+            let error: serde_json::Value = if streaming {
+                assert_eq!(body[0], 2);
+                serde_json::from_slice::<serde_json::Value>(&body[5..]).unwrap()["error"].clone()
+            } else {
+                serde_json::from_slice(&body).unwrap()
+            };
+            assert_eq!(error["code"], "invalid_argument");
+            assert!(error["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty()));
+        }
+    }
 
     struct InvocationProvider(Arc<parking_lot::Mutex<Vec<crate::model::ModelInvocation>>>);
 

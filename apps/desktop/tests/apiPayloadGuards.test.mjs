@@ -236,17 +236,81 @@ test("a devin status without its readiness flag reads as a failure, not as a fal
   });
 });
 
-test("a codex status without the new conflicts list reads as no conflicts", async () => {
+const completeCodexStatus = () => ({
+  enabled: true,
+  listening: true,
+  port: 43120,
+  configured: true,
+  config_conflict: false,
+  restorable: true,
+  conflicts: [],
+  conflict_kind: "none",
+  route_owned: true,
+  managed_conflicts: [],
+  managed_error: null,
+  managed_scope: "local_system_only",
+  chatgpt_signed_in: true,
+  home: "test-home",
+  calls: 0,
+  last_error: null,
+});
+
+test("a codex status missing any single current diagnostic field is rejected", async () => {
+  // 完整合法 payload 作基线；每次只删一项，避免旧字段先失败而掩盖新字段 guard。
+  for (const field of [
+    "conflict_kind",
+    "route_owned",
+    "managed_conflicts",
+    "managed_error",
+    "managed_scope",
+    "restorable",
+    "chatgpt_signed_in",
+  ]) {
+    const { backend } = installAppBackend();
+    const body = completeCodexStatus();
+    delete body[field];
+    backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body }));
+
+    const api = await loadApi();
+    await captureWarnings(async () => {
+      await assert.rejects(() => api.codexStatus(), /读取失败/, `missing ${field}`);
+    });
+  }
+});
+
+test("a complete current codex status is accepted", async () => {
   const { backend } = installAppBackend();
-  // 旧服务端没有 restorable / conflicts：缺 conflicts 时页面仍要能渲染（遍历它）。
-  backend.route("GET", `${API_ROOT}/codex/status`, () => ({
-    body: { enabled: true, listening: true, port: 43120, configured: true, config_conflict: false, home: "test-home", calls: 0, last_error: null },
-  }));
+  backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body: completeCodexStatus() }));
+  const api = await loadApi();
+  assert.equal((await api.codexStatus()).conflict_kind, "none");
+});
+
+test("a codex status with an unknown conflict kind is rejected", async () => {
+  const { backend } = installAppBackend();
+  const body = { ...completeCodexStatus(), conflict_kind: "something_else" };
+  backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body }));
 
   const api = await loadApi();
-  const status = await api.codexStatus();
-  assert.deepEqual(status.conflicts, [], "a missing conflicts field must not reach the renderer as undefined");
-  assert.equal(status.restorable, true, "without the new field the old configured rule decides the restore button");
+  await captureWarnings(async () => {
+    await assert.rejects(() => api.codexStatus(), /读取失败/);
+  });
+});
+
+test("a codex status with malformed managed conflicts is rejected", async () => {
+  const { backend } = installAppBackend();
+  const body = {
+    ...completeCodexStatus(),
+    conflict_kind: "managed",
+    configured: false,
+    config_conflict: true,
+    managed_conflicts: [{ field: "model_provider" }],
+  };
+  backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body }));
+
+  const api = await loadApi();
+  await captureWarnings(async () => {
+    await assert.rejects(() => api.codexStatus(), /读取失败/);
+  });
 });
 
 test("codex status drops conflict rows the card cannot render", async () => {
@@ -255,7 +319,9 @@ test("codex status drops conflict rows the card cannot render", async () => {
   backend.route("GET", `${API_ROOT}/codex/status`, () => ({
     body: {
       enabled: true, listening: true, port: 43120, configured: true, config_conflict: false,
-      restorable: true, conflicts: [null, { key: "web_search" }, valid], home: "test-home", calls: 0, last_error: null,
+      restorable: true, conflicts: [null, { key: "web_search" }, valid], managed_conflicts: [],
+      managed_error: null, managed_scope: "local_system_only", conflict_kind: "none", route_owned: true,
+      chatgpt_signed_in: true, home: "test-home", calls: 0, last_error: null,
     },
   }));
 

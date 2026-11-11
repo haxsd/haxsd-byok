@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use cursor_server::{
-    codex::{CodexGateway, CodexSettings},
+    codex::{CodexGateway, CodexSettings, RequirementsSource},
     model::{
         CallClient, CallPurpose, ContentPart, ModelConfigInput, ModelInvocation, ModelRequest,
         ModelSpec, ModelType, ProjectedContent, ProjectedMessage, PromptSpec, Role,
@@ -18,6 +18,7 @@ use cursor_server::{
     network::NetworkClients,
     plugin::{PluginRegistry, PluginRuntime},
     provider::{FinishReason, ModelEvent, Provider, ProviderRouter},
+    store::{ProxyMode, ProxySettingsInput},
 };
 use futures_util::StreamExt;
 use serde_json::{json, Value};
@@ -35,6 +36,22 @@ fn isolate_runtime() {
         std::env::set_var("HAXSD_BYOK_DATA_DIR", directory.path());
         directory
     });
+}
+
+/// 本组网络回归固定直连，避免读取真实 Windows 系统代理（HKCU Internet Settings）。
+async fn direct_temp_store() -> (tempfile::TempDir, cursor_server::store::Store) {
+    let (directory, store) = fixtures::temp_store().await;
+    store
+        .set_proxy_settings(ProxySettingsInput {
+            mode: ProxyMode::Direct,
+            address: String::new(),
+            auth_enabled: false,
+            username: String::new(),
+            password: None,
+        })
+        .await
+        .unwrap();
+    (directory, store)
 }
 
 fn model(protocol: &str, url: &str) -> ModelConfigInput {
@@ -125,7 +142,7 @@ async fn cursor_and_devin_provider_routes_keep_supported_values_and_adapt_reject
         for protocol in ["chat", "responses", "anthropic"] {
             for accepted in ["xhigh", "max"] {
                 let (url, seen, task) = upstream(protocol, accepted).await;
-                let (_directory, store) = fixtures::temp_store().await;
+                let (_directory, store) = direct_temp_store().await;
                 store.set_detailed_logging(true).await.unwrap();
                 let configured = store.create_model(&model(protocol, &url)).await.unwrap();
                 let plugins = PluginRegistry::managed(
@@ -212,7 +229,7 @@ async fn cursor_and_devin_provider_routes_keep_supported_values_and_adapt_reject
 
 #[tokio::test]
 async fn codex_configuration_errors_keep_the_same_code_in_the_client_and_call_record() {
-    let (directory, store) = fixtures::temp_store().await;
+    let (directory, store) = direct_temp_store().await;
     let mut input = model("responses", "http://127.0.0.1:1/model");
     input.custom_headers_enabled = true;
     input.custom_headers = json!({"bad header name":"fixture-value"});
@@ -228,7 +245,11 @@ async fn codex_configuration_errors_keep_the_same_code_in_the_client_and_call_re
         .await
         .unwrap();
     let token = store.codex_token().await.unwrap();
-    let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+    let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store.clone()),
+        RequirementsSource::unmanaged(),
+    );
     let response = gateway
         .router()
         .oneshot(
@@ -283,14 +304,18 @@ async fn codex_failures_keep_one_terminal_response_and_the_recorded_reference() 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/model", listener.local_addr().unwrap());
         let task = tokio::spawn(async move { axum::serve(listener, route).await.unwrap(); });
-        let (directory, store) = fixtures::temp_store().await;
+        let (directory, store) = direct_temp_store().await;
         let configured = store.create_model(&model("responses", &url)).await.unwrap();
         store.set_codex_settings(CodexSettings {
             enabled:true,model_hashes:vec![configured.model_hash.clone()],default_model_hash:Some(configured.model_hash.clone()),
             home:directory.path().join("codex-home").display().to_string(),..Default::default()
         }).await.unwrap();
         let token = store.codex_token().await.unwrap();
-        let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+        let gateway = CodexGateway::new(
+        store.clone(),
+        NetworkClients::new(store.clone()),
+        RequirementsSource::unmanaged(),
+    );
         let response = gateway.router().oneshot(Request::post("/v1/responses")
             .header("authorization", format!("Bearer {token}")).header("content-type","application/json")
             .body(Body::from(json!({"model":configured.model_hash,"input":"hello","stream":true}).to_string())).unwrap()).await.unwrap();
@@ -323,7 +348,7 @@ async fn codex_independent_chat_and_responses_routes_honor_the_client_before_mod
     for protocol in ["responses", "chat"] {
         for accepted in ["xhigh", "max"] {
             let (url, seen, task) = upstream(protocol, accepted).await;
-            let (directory, store) = fixtures::temp_store().await;
+            let (directory, store) = direct_temp_store().await;
             let configured = store.create_model(&model(protocol, &url)).await.unwrap();
             store
                 .set_codex_settings(CodexSettings {
@@ -336,7 +361,11 @@ async fn codex_independent_chat_and_responses_routes_honor_the_client_before_mod
                 .await
                 .unwrap();
             let token = store.codex_token().await.unwrap();
-            let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+            let gateway = CodexGateway::new(
+                store.clone(),
+                NetworkClients::new(store.clone()),
+                RequirementsSource::unmanaged(),
+            );
             let response = gateway.router().oneshot(Request::post("/v1/responses")
                 .header("authorization", format!("Bearer {token}")).header("content-type","application/json")
                 .body(Body::from(json!({"model":configured.model_hash,"input":"hello","stream":false,"reasoning":{"effort":"xhigh"}}).to_string())).unwrap()).await.unwrap();

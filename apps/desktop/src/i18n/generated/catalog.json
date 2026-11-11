@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 37,
+          "line": 54,
           "column": 25
         },
         {
@@ -36,7 +36,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 53,
+          "line": 71,
           "column": 50
         }
       ]
@@ -74,7 +74,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 137,
+          "line": 138,
           "column": 6
         }
       ]
@@ -122,7 +122,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 32,
+          "line": 34,
           "column": 76
         }
       ]
@@ -165,7 +165,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
+          "line": 129,
           "column": 66
         },
         {
@@ -252,7 +252,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 96,
+          "line": 128,
           "column": 36
         },
         {
@@ -262,7 +262,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 207,
+          "line": 208,
           "column": 36
         }
       ]
@@ -286,8 +286,8 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 21,
-          "column": 38
+          "line": 59,
+          "column": 92
         }
       ]
     },
@@ -322,7 +322,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 135,
+          "line": 136,
           "column": 15
         }
       ]
@@ -334,7 +334,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 137,
           "column": 18
         }
       ]
@@ -346,7 +346,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 111,
+          "line": 144,
           "column": 24
         }
       ]
@@ -531,7 +531,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 217,
+          "line": 218,
           "column": 13
         }
       ]
@@ -557,7 +557,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 213,
+          "line": 214,
           "column": 13
         }
       ]
@@ -753,6 +753,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 576,
           "column": 73
+        }
+      ]
+    },
+    "084845ea38eea237": {
+      "source": "已写入但模型/目录已变",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 146,
+          "column": 24
         }
       ]
     },
@@ -952,7 +964,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 134,
+          "line": 140,
           "column": 12
         }
       ]
@@ -1010,7 +1022,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 224,
+          "line": 225,
           "column": 24
         }
       ]
@@ -1039,7 +1051,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 118,
+          "line": 124,
           "column": 21
         }
       ]
@@ -1119,8 +1131,8 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 17,
-          "column": 43
+          "line": 44,
+          "column": 17
         }
       ]
     },
@@ -1187,12 +1199,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 27,
+          "line": 44,
           "column": 18
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 34,
+          "line": 51,
           "column": 22
         }
       ]
@@ -1307,7 +1319,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 205,
+          "line": 206,
           "column": 13
         }
       ]
@@ -1379,12 +1391,12 @@
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 92,
+          "line": 98,
           "column": 55
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 95,
+          "line": 101,
           "column": 56
         }
       ]
@@ -1401,7 +1413,7 @@
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 38,
+          "line": 55,
           "column": 52
         },
         {
@@ -1418,7 +1430,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 87,
+          "line": 85,
           "column": 32
         }
       ]
@@ -1545,7 +1557,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 138,
+          "line": 139,
           "column": 6
         }
       ]
@@ -1574,6 +1586,18 @@
         }
       ]
     },
+    "151d9ade3b85a74c": {
+      "source": "管理员 requirements 覆盖了路由；本机应用无法覆盖，请调整策略或撤销接管",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 55,
+          "column": 60
+        }
+      ]
+    },
     "155306a64c2a1976": {
       "source": "自动检测配置目录",
       "kind": "text",
@@ -1581,7 +1605,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 63,
+          "line": 80,
           "column": 110
         }
       ]
@@ -1598,12 +1622,12 @@
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 89,
+          "line": 87,
           "column": 21
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 96,
+          "line": 99,
           "column": 78
         }
       ]
@@ -1632,7 +1656,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 86,
+          "line": 118,
           "column": 14
         },
         {
@@ -1709,12 +1733,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 158,
+          "line": 161,
           "column": 27
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 52,
+          "line": 70,
           "column": 33
         },
         {
@@ -1741,7 +1765,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 61,
+          "line": 78,
           "column": 70
         }
       ]
@@ -1834,7 +1858,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 160,
+          "line": 161,
           "column": 12
         }
       ]
@@ -1976,7 +2000,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 198,
+          "line": 201,
           "column": 31
         }
       ]
@@ -1988,7 +2012,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 31,
+          "line": 48,
           "column": 15
         }
       ]
@@ -2000,7 +2024,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 53,
+          "line": 71,
           "column": 33
         },
         {
@@ -2130,7 +2154,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 97,
+          "line": 103,
           "column": 54
         }
       ]
@@ -2142,17 +2166,17 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 123,
+          "line": 124,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 152,
+          "line": 153,
           "column": 7
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 188,
+          "line": 189,
           "column": 13
         }
       ]
@@ -2178,7 +2202,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 58,
+          "line": 76,
           "column": 58
         }
       ]
@@ -2214,7 +2238,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 132,
+          "line": 129,
           "column": 47
         }
       ]
@@ -2288,7 +2312,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 46,
+          "line": 63,
           "column": 12
         }
       ]
@@ -2317,7 +2341,7 @@
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 61,
+          "line": 78,
           "column": 25
         },
         {
@@ -2334,7 +2358,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 95,
+          "line": 98,
           "column": 14
         }
       ]
@@ -2376,13 +2400,8 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/claudeConnectionView.ts",
-          "line": 65,
-          "column": 18
-        },
-        {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 96,
+          "line": 128,
           "column": 80
         },
         {
@@ -2404,7 +2423,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 209,
           "column": 34
         }
       ]
@@ -2455,7 +2474,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 91,
+          "line": 94,
           "column": 14
         }
       ]
@@ -2609,7 +2628,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 75,
+          "line": 93,
           "column": 32
         }
       ]
@@ -2674,6 +2693,18 @@
         }
       ]
     },
+    "22ee3e964f939f99": {
+      "source": "先撤销上次未完成的 Codex 配置更新，再应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 86,
+          "column": 94
+        }
+      ]
+    },
     "23206274c6a8daa8": {
       "source": "同一条映射里的候选路由不能重名。",
       "kind": "text",
@@ -2693,7 +2724,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 217,
+          "line": 220,
           "column": 26
         }
       ]
@@ -2722,6 +2753,18 @@
         }
       ]
     },
+    "23eac690d9d65ed3": {
+      "source": "Codex 仍指向本机网关，但模型或目录已被改动",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 61,
+          "column": 66
+        }
+      ]
+    },
     "2400fbd0aeab9e13": {
       "source": "已下载 {downloaded}",
       "kind": "template",
@@ -2738,6 +2781,18 @@
           "file": "features/plugins/PluginManagementPage.tsx",
           "line": 433,
           "column": 122
+        }
+      ]
+    },
+    "241a3e6596d64ede": {
+      "source": "管理员 requirements 限制了 Codex 路由；本机网关无法覆盖。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 84,
+          "column": 86
         }
       ]
     },
@@ -2810,7 +2865,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 58,
+          "line": 76,
           "column": 41
         }
       ]
@@ -2918,6 +2973,28 @@
         }
       ]
     },
+    "27ad7685cc9f825a": {
+      "source": "管理员策略限制",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 21,
+          "column": 7
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 55,
+          "column": 40
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 113,
+          "column": 55
+        }
+      ]
+    },
     "27c4433438a7b89b": {
       "source": "其他 {count} 个模型",
       "kind": "template",
@@ -2941,6 +3018,18 @@
           "file": "features/claude/ClaudeSettingsPage.tsx",
           "line": 125,
           "column": 11
+        }
+      ]
+    },
+    "27f9f59b03e802cf": {
+      "source": "本地路由由管理员 requirements 覆盖",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 34,
+          "column": 7
         }
       ]
     },
@@ -2975,7 +3064,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 84,
+          "line": 90,
           "column": 63
         }
       ]
@@ -3064,7 +3153,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 63,
+          "line": 81,
           "column": 39
         }
       ]
@@ -3127,6 +3216,18 @@
         }
       ]
     },
+    "2b0756296fdaf61f": {
+      "source": "无法读取管理员策略；本地路由状态暂时无法确认。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 97,
+          "column": 39
+        }
+      ]
+    },
     "2b5aa664ffb977b7": {
       "source": "Cursor 可留空；Codex 网关必须填写模型文档中的真实上限。",
       "kind": "text",
@@ -3170,7 +3271,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 138,
+          "line": 139,
           "column": 13
         }
       ]
@@ -3198,7 +3299,7 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 24,
+          "line": 67,
           "column": 12
         }
       ]
@@ -3434,7 +3535,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 211,
+          "line": 212,
           "column": 20
         }
       ]
@@ -3588,12 +3689,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 206,
+          "line": 209,
           "column": 57
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 124,
+          "line": 157,
           "column": 80
         },
         {
@@ -3634,7 +3735,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 237,
+          "line": 238,
           "column": 18
         }
       ]
@@ -3670,7 +3771,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 165,
+          "line": 166,
           "column": 13
         }
       ]
@@ -3714,7 +3815,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 215,
+          "line": 216,
           "column": 75
         }
       ]
@@ -3760,7 +3861,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 113,
+          "line": 116,
           "column": 15
         }
       ]
@@ -3772,12 +3873,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 150,
+          "line": 151,
           "column": 65
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 168,
+          "line": 169,
           "column": 80
         }
       ]
@@ -3873,12 +3974,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 158,
+          "line": 161,
           "column": 44
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 37,
+          "line": 54,
           "column": 42
         }
       ]
@@ -3890,7 +3991,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 153,
+          "line": 156,
           "column": 57
         }
       ]
@@ -3914,7 +4015,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 143,
+          "line": 140,
           "column": 61
         }
       ]
@@ -3952,7 +4053,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 72,
+          "line": 103,
           "column": 55
         }
       ]
@@ -3966,7 +4067,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 58,
+          "line": 75,
           "column": 12
         }
       ]
@@ -4000,27 +4101,27 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 82,
+          "line": 85,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 88,
+          "line": 91,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 92,
+          "line": 95,
           "column": 75
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 132,
+          "line": 135,
           "column": 72
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 220,
+          "line": 223,
           "column": 55
         },
         {
@@ -4035,12 +4136,17 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 87,
+          "line": 110,
           "column": 65
         },
         {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 142,
+          "column": 33
+        },
+        {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 105,
+          "line": 137,
           "column": 101
         },
         {
@@ -4080,12 +4186,12 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 131,
+          "line": 132,
           "column": 13
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 182,
+          "line": 183,
           "column": 7
         }
       ]
@@ -4097,12 +4203,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 136,
+          "line": 133,
           "column": 33
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 212,
+          "line": 215,
           "column": 22
         }
       ]
@@ -4114,7 +4220,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 104,
+          "line": 170,
           "column": 39
         }
       ]
@@ -4150,7 +4256,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 60,
+          "line": 78,
           "column": 61
         }
       ]
@@ -4182,7 +4288,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 197,
+          "line": 198,
           "column": 21
         }
       ]
@@ -4206,7 +4312,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 124,
+          "line": 125,
           "column": 17
         }
       ]
@@ -4218,7 +4324,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 224,
+          "line": 225,
           "column": 47
         }
       ]
@@ -4395,7 +4501,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 203,
+          "line": 204,
           "column": 16
         }
       ]
@@ -4467,7 +4573,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 241,
+          "line": 242,
           "column": 18
         }
       ]
@@ -4711,12 +4817,12 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 60,
+          "line": 78,
           "column": 39
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 123,
+          "line": 156,
           "column": 70
         }
       ]
@@ -4754,7 +4860,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 212,
+          "line": 213,
           "column": 12
         }
       ]
@@ -4881,7 +4987,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 192,
+          "line": 195,
           "column": 31
         }
       ]
@@ -4939,13 +5045,13 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 139,
-          "column": 60
+          "line": 136,
+          "column": 48
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 220,
-          "column": 28
+          "line": 168,
+          "column": 15
         }
       ]
     },
@@ -4980,7 +5086,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 103,
+          "line": 169,
           "column": 35
         }
       ]
@@ -5057,12 +5163,12 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 89,
+          "line": 128,
           "column": 98
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 91,
+          "line": 130,
           "column": 77
         }
       ]
@@ -5222,7 +5328,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 253,
+          "line": 254,
           "column": 18
         }
       ]
@@ -5260,7 +5366,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 109,
+          "line": 110,
           "column": 15
         }
       ]
@@ -5308,7 +5414,7 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 27,
+          "line": 71,
           "column": 31
         }
       ]
@@ -5320,7 +5426,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 135,
+          "line": 132,
           "column": 35
         },
         {
@@ -5378,12 +5484,17 @@
         },
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 16,
-          "column": 37
+          "line": 31,
+          "column": 17
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 88,
+          "line": 123,
+          "column": 55
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 127,
           "column": 79
         },
         {
@@ -5398,7 +5509,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 184,
+          "line": 185,
           "column": 9
         }
       ]
@@ -5452,7 +5563,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 215,
+          "line": 216,
           "column": 24
         }
       ]
@@ -5533,7 +5644,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 71,
+          "line": 89,
           "column": 29
         }
       ]
@@ -5569,7 +5680,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 206,
+          "line": 207,
           "column": 35
         }
       ]
@@ -5588,6 +5699,18 @@
           "file": "features/settings/PricingSettingsCard.tsx",
           "line": 55,
           "column": 65
+        }
+      ]
+    },
+    "47bf236808252789": {
+      "source": "Codex 仍指向本机网关，但模型或目录已被改动。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 96,
+          "column": 32
         }
       ]
     },
@@ -5622,7 +5745,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 208,
+          "line": 209,
           "column": 53
         }
       ]
@@ -5717,7 +5840,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 116,
+          "line": 149,
           "column": 41
         },
         {
@@ -5836,7 +5959,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 81,
+          "line": 84,
           "column": 44
         }
       ]
@@ -5980,7 +6103,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 104,
+          "line": 105,
           "column": 17
         }
       ]
@@ -6057,7 +6180,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 124,
+          "line": 127,
           "column": 20
         }
       ]
@@ -6269,8 +6392,8 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 16,
-          "column": 49
+          "line": 32,
+          "column": 17
         }
       ]
     },
@@ -6281,7 +6404,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 118,
+          "line": 121,
           "column": 15
         }
       ]
@@ -6352,6 +6475,40 @@
         }
       ]
     },
+    "4f6b17b307015042": {
+      "source": "上次应用未完成",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 27,
+          "column": 13
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 119,
+          "column": 64
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 148,
+          "column": 24
+        }
+      ]
+    },
+    "50031d5e06e18bf1": {
+      "source": "先处理上方提示的配置问题",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 18,
+          "column": 14
+        }
+      ]
+    },
     "5067e57c62fec53f": {
       "source": "还没有模型",
       "kind": "text",
@@ -6371,7 +6528,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 215,
+          "line": 218,
           "column": 26
         }
       ]
@@ -6447,12 +6604,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 138,
+          "line": 135,
           "column": 60
         },
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 214,
+          "line": 217,
           "column": 28
         }
       ]
@@ -6464,7 +6621,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 163,
+          "line": 166,
           "column": 35
         }
       ]
@@ -6531,6 +6688,18 @@
         }
       ]
     },
+    "52038c73816557b0": {
+      "source": "先处理上方提示的配置占用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 16,
+          "column": 14
+        }
+      ]
+    },
     "5228358a6db59fe7": {
       "source": "如：现在、2026-08-23 18:00",
       "kind": "text",
@@ -6550,7 +6719,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 200,
+          "line": 201,
           "column": 12
         }
       ]
@@ -6610,7 +6779,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 93,
+          "line": 132,
           "column": 52
         },
         {
@@ -6620,17 +6789,17 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 104,
+          "line": 105,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 156,
+          "line": 157,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 192,
+          "line": 193,
           "column": 17
         },
         {
@@ -6686,7 +6855,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 233,
+          "line": 234,
           "column": 52
         }
       ]
@@ -6734,8 +6903,20 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 29,
-          "column": 13
+          "line": 20,
+          "column": 14
+        }
+      ]
+    },
+    "544b983c305ea42b": {
+      "source": "无法确认管理员策略",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 152,
+          "column": 24
         }
       ]
     },
@@ -6852,7 +7033,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 179,
+          "line": 180,
           "column": 46
         }
       ]
@@ -6985,7 +7166,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 125,
+          "line": 126,
           "column": 15
         }
       ]
@@ -7031,7 +7212,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 129,
+          "line": 130,
           "column": 15
         }
       ]
@@ -7091,6 +7272,18 @@
         }
       ]
     },
+    "5ad66cfda9f16972": {
+      "source": "无法读取 Codex 管理员策略，已拒绝应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 85,
+          "column": 83
+        }
+      ]
+    },
     "5b17f59d33bde39e": {
       "source": "错误：{error}",
       "kind": "template",
@@ -7126,6 +7319,23 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 462,
           "column": 82
+        }
+      ]
+    },
+    "5ba66fb6aefcf017": {
+      "source": "本机路由已变化",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 23,
+          "column": 9
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 115,
+          "column": 59
         }
       ]
     },
@@ -7189,7 +7399,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 101,
+          "line": 102,
           "column": 9
         }
       ]
@@ -7299,7 +7509,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 108,
+          "line": 174,
           "column": 47
         }
       ]
@@ -7381,7 +7591,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 121,
+          "line": 122,
           "column": 15
         }
       ]
@@ -7405,7 +7615,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 139,
+          "line": 140,
           "column": 17
         }
       ]
@@ -7468,6 +7678,18 @@
         }
       ]
     },
+    "608f28be214805e3": {
+      "source": "Codex 配置或收据无法解析。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 99,
+          "column": 31
+        }
+      ]
+    },
     "609219a8b8352106": {
       "source": "一般保持默认即可。",
       "kind": "text",
@@ -7499,7 +7721,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 34,
+          "line": 36,
           "column": 80
         }
       ]
@@ -7511,7 +7733,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 201,
+          "line": 204,
           "column": 19
         },
         {
@@ -7643,7 +7865,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 126,
+          "line": 127,
           "column": 11
         }
       ]
@@ -7655,7 +7877,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 87,
+          "line": 90,
           "column": 35
         }
       ]
@@ -7711,22 +7933,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 981,
+          "line": 1008,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1080,
+          "line": 1150,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1105,
+          "line": 1175,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1230,
+          "line": 1300,
           "column": 29
         }
       ]
@@ -7750,7 +7972,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 99,
+          "line": 105,
           "column": 51
         }
       ]
@@ -7762,7 +7984,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 112,
+          "line": 113,
           "column": 13
         }
       ]
@@ -7841,7 +8063,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 108,
+          "line": 109,
           "column": 13
         }
       ]
@@ -8003,7 +8225,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 86,
+          "line": 92,
           "column": 62
         }
       ]
@@ -8093,7 +8315,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 134,
+          "line": 167,
           "column": 11
         }
       ]
@@ -8146,7 +8368,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 249,
+          "line": 250,
           "column": 18
         }
       ]
@@ -8186,7 +8408,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 161,
           "column": 14
         }
       ]
@@ -8210,7 +8432,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 115,
+          "line": 148,
           "column": 49
         },
         {
@@ -8250,27 +8472,27 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 129,
+          "line": 130,
           "column": 11
         },
         {
           "file": "shared/api.ts",
-          "line": 989,
+          "line": 1016,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1080,
+          "line": 1150,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1105,
+          "line": 1175,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1230,
+          "line": 1300,
           "column": 41
         }
       ]
@@ -8419,7 +8641,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 63,
+          "line": 81,
           "column": 67
         }
       ]
@@ -8431,7 +8653,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 75,
+          "line": 106,
           "column": 76
         }
       ]
@@ -8443,17 +8665,17 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 127,
+          "line": 128,
           "column": 11
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 154,
+          "line": 155,
           "column": 9
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 190,
+          "line": 191,
           "column": 15
         }
       ]
@@ -8523,7 +8745,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1484,
+          "line": 1554,
           "column": 23
         }
       ]
@@ -8559,7 +8781,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 137,
+          "line": 138,
           "column": 12
         }
       ]
@@ -8602,6 +8824,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 46,
           "column": 16
+        }
+      ]
+    },
+    "6ed52b86ec091811": {
+      "source": "检查 Codex 配置目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 63,
+          "column": 43
         }
       ]
     },
@@ -8722,7 +8956,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 99,
+          "line": 102,
           "column": 14
         }
       ]
@@ -8734,7 +8968,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 263,
+          "line": 264,
           "column": 13
         }
       ]
@@ -8806,7 +9040,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 55,
+          "line": 72,
           "column": 12
         }
       ]
@@ -8820,7 +9054,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 186,
+          "line": 189,
           "column": 31
         }
       ]
@@ -8887,6 +9121,18 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 45,
           "column": 52
+        }
+      ]
+    },
+    "765e94e897c1bf50": {
+      "source": "由管理员策略覆盖",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 150,
+          "column": 24
         }
       ]
     },
@@ -9065,8 +9311,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 100,
+          "line": 106,
           "column": 84
+        }
+      ]
+    },
+    "79e4e9c8b86f5a43": {
+      "source": "撤销会清理这次可能写入的本机路由，然后可重新应用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 59,
+          "column": 72
         }
       ]
     },
@@ -9089,7 +9347,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1471,
+          "line": 1541,
           "column": 43
         }
       ]
@@ -9140,7 +9398,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 164,
+          "line": 165,
           "column": 20
         }
       ]
@@ -9152,7 +9410,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 52,
+          "line": 69,
           "column": 12
         }
       ]
@@ -9193,7 +9451,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 89,
+          "line": 90,
           "column": 13
         }
       ]
@@ -9286,6 +9544,18 @@
           "file": "features/claude/claudeTakeoverPlan.ts",
           "line": 96,
           "column": 31
+        }
+      ]
+    },
+    "7d731fab183ef66a": {
+      "source": "仍指向本机网关，但模型或目录已变",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 36,
+          "column": 9
         }
       ]
     },
@@ -9431,7 +9701,7 @@
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 156,
+          "line": 157,
           "column": 193
         },
         {
@@ -9448,7 +9718,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 116,
+          "line": 117,
           "column": 17
         }
       ]
@@ -9489,7 +9759,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 165,
+          "line": 166,
           "column": 118
         }
       ]
@@ -9564,8 +9834,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 96,
+          "line": 102,
           "column": 85
+        }
+      ]
+    },
+    "80d2f2dbcb36b05b": {
+      "source": "先修复 Codex 配置目录",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 14,
+          "column": 14
         }
       ]
     },
@@ -9576,7 +9858,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 933,
+          "line": 960,
           "column": 11
         },
         {
@@ -9644,7 +9926,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 152,
+          "line": 153,
           "column": 52
         }
       ]
@@ -9656,8 +9938,20 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 200,
+          "line": 201,
           "column": 49
+        }
+      ]
+    },
+    "82aa8ea8a31281ac": {
+      "source": "Codex 仍指向本机网关，但模型或目录已被改动；撤销接管会收回本机路由。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 55,
+          "column": 38
         }
       ]
     },
@@ -9673,7 +9967,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 96,
+          "line": 128,
           "column": 91
         }
       ]
@@ -9697,7 +9991,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 142,
+          "line": 143,
           "column": 13
         }
       ]
@@ -9721,7 +10015,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 84,
+          "line": 85,
           "column": 12
         }
       ]
@@ -9733,7 +10027,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 107,
+          "line": 110,
           "column": 16
         }
       ]
@@ -9847,7 +10141,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 182,
+          "line": 185,
           "column": 54
         },
         {
@@ -9866,6 +10160,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 64,
           "column": 74
+        }
+      ]
+    },
+    "84a69e3fa39c9f01": {
+      "source": "由其他程序占用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 154,
+          "column": 24
         }
       ]
     },
@@ -9915,7 +10221,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 32,
+          "line": 34,
           "column": 42
         }
       ]
@@ -9994,7 +10300,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 113,
+          "line": 114,
           "column": 15
         }
       ]
@@ -10080,7 +10386,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 106,
+          "line": 172,
           "column": 51
         }
       ]
@@ -10159,6 +10465,18 @@
         }
       ]
     },
+    "892cff9d227fe8f5": {
+      "source": "配置文件或收据无法解析；修复后刷新状态",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 63,
+          "column": 69
+        }
+      ]
+    },
     "899f46a688862517": {
       "source": "模型库里的一项配置就是一个可用的模型：服务器地址、API Key、模型 ID。接入模块共用这一份。",
       "kind": "text",
@@ -10166,7 +10484,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 85,
+          "line": 86,
           "column": 13
         }
       ]
@@ -10327,7 +10645,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1424,
+          "line": 1494,
           "column": 23
         }
       ]
@@ -10353,7 +10671,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 174,
+          "line": 177,
           "column": 41
         }
       ]
@@ -10372,6 +10690,18 @@
           "file": "features/settings/settingsNavigation.ts",
           "line": 14,
           "column": 27
+        }
+      ]
+    },
+    "8d63382e287c9b6d": {
+      "source": "Codex 仍指向本机网关，但模型或目录已变化；撤销后可重新应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 87,
+          "column": 109
         }
       ]
     },
@@ -10447,7 +10777,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 87,
+          "line": 93,
           "column": 56
         }
       ]
@@ -10471,7 +10801,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 56,
+          "line": 74,
           "column": 40
         }
       ]
@@ -10564,7 +10894,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 72,
+          "line": 90,
           "column": 29
         }
       ]
@@ -10624,12 +10954,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 149,
+          "line": 152,
           "column": 21
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 209,
+          "line": 212,
           "column": 21
         }
       ]
@@ -10692,7 +11022,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 87,
+          "line": 76,
+          "column": 46
+        },
+        {
+          "file": "features/claude/ClaudeDesktopTab.tsx",
+          "line": 90,
           "column": 23
         }
       ]
@@ -10784,7 +11119,7 @@
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 186,
+          "line": 187,
           "column": 11
         }
       ]
@@ -10796,13 +11131,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 117,
+          "line": 120,
           "column": 16
         },
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 194,
-          "column": 19
+          "line": 197,
+          "column": 21
         }
       ]
     },
@@ -11027,7 +11362,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 85,
+          "line": 91,
           "column": 62
         }
       ]
@@ -11097,8 +11432,24 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 90,
+          "line": 96,
           "column": 99
+        }
+      ]
+    },
+    "97c64d973eab2c88": {
+      "source": "{field}：管理员要求 {required}，本机发布 {published}",
+      "kind": "template",
+      "placeholders": [
+        "field",
+        "required",
+        "published"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 62,
+          "column": 12
         }
       ]
     },
@@ -11171,7 +11522,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 62,
+          "line": 79,
           "column": 48
         }
       ]
@@ -11195,7 +11546,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 146,
+          "line": 147,
           "column": 14
         }
       ]
@@ -11267,6 +11618,18 @@
         }
       ]
     },
+    "99e8672793c5efba": {
+      "source": "撤销后重新应用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 61,
+          "column": 46
+        }
+      ]
+    },
     "9a5316ad01ad2956": {
       "source": "连通性测试已取消：成功 {successful}，失败 {failed}，未开始 {skipped}",
       "kind": "template",
@@ -11314,7 +11677,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 946,
+          "line": 973,
           "column": 11
         }
       ]
@@ -11326,7 +11689,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 201,
+          "line": 202,
           "column": 13
         }
       ]
@@ -11374,7 +11737,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 105,
+          "line": 137,
           "column": 68
         }
       ]
@@ -11391,6 +11754,18 @@
         }
       ]
     },
+    "9bade86b5884d0fb": {
+      "source": "无法读取管理员 requirements；本地路由状态暂时无法确认；撤销接管仍可用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 56,
+          "column": 45
+        }
+      ]
+    },
     "9bb63745df8f62cb": {
       "source": "未选择模型",
       "kind": "text",
@@ -11398,7 +11773,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
+          "line": 129,
           "column": 108
         }
       ]
@@ -11487,7 +11862,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 144,
+          "line": 141,
           "column": 64
         }
       ]
@@ -11583,12 +11958,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 163,
+          "line": 166,
           "column": 57
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 97,
+          "line": 129,
           "column": 35
         },
         {
@@ -11693,7 +12068,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 56,
+          "line": 74,
           "column": 57
         }
       ]
@@ -11860,7 +12235,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 87,
+          "line": 88,
           "column": 75
         }
       ]
@@ -11877,6 +12252,18 @@
         }
       ]
     },
+    "a0a5e94ec81fb611": {
+      "source": "配置可能已写入，但最终收据没有保存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 40,
+          "column": 13
+        }
+      ]
+    },
     "a0bc61d7924cd690": {
       "source": "配置已就绪，点击「应用到 Codex」。",
       "kind": "text",
@@ -11884,7 +12271,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 73,
+          "line": 91,
           "column": 34
         }
       ]
@@ -11900,6 +12287,18 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 337,
           "column": 22
+        }
+      ]
+    },
+    "a0ca2b58b29c3bc3": {
+      "source": "仅核对本地系统 requirements；cloud/enterprise 策略未验证。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 70,
+          "column": 25
         }
       ]
     },
@@ -12016,7 +12415,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 122,
+          "line": 155,
           "column": 115
         },
         {
@@ -12083,7 +12482,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 200,
+          "line": 201,
           "column": 24
         }
       ]
@@ -12111,6 +12510,18 @@
           "file": "features/calls/CallFacts.tsx",
           "line": 117,
           "column": 17
+        }
+      ]
+    },
+    "a36912303552136b": {
+      "source": "上次应用没有完成；配置可能已写入，也可能没有。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 98,
+          "column": 38
         }
       ]
     },
@@ -12169,7 +12580,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 171,
+          "line": 174,
           "column": 15
         }
       ]
@@ -12181,7 +12592,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 107,
+          "line": 108,
           "column": 12
         }
       ]
@@ -12241,6 +12652,18 @@
         }
       ]
     },
+    "a4f8fa8787750b9d": {
+      "source": "Codex 配置无法读取，无法确认 ChatGPT 登录状态",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 38,
+          "column": 75
+        }
+      ]
+    },
     "a56bbe8c9cb02625": {
       "source": "ChatGPT 未登录",
       "kind": "text",
@@ -12248,7 +12671,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 36,
+          "line": 40,
           "column": 44
         }
       ]
@@ -12366,6 +12789,18 @@
         }
       ]
     },
+    "a692c534801e2b47": {
+      "source": "上次应用没有完成；配置可能已写入，也可能没有；撤销接管会清理这次未完成的应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 57,
+          "column": 44
+        }
+      ]
+    },
     "a693d69af48bfe48": {
       "source": "保存并测试",
       "kind": "text",
@@ -12385,7 +12820,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 100,
+          "line": 103,
           "column": 76
         }
       ]
@@ -12416,12 +12851,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 133,
+          "line": 136,
           "column": 40
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 136,
+          "line": 139,
           "column": 33
         }
       ]
@@ -12477,7 +12912,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 117,
+          "line": 118,
           "column": 15
         }
       ]
@@ -12554,7 +12989,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 112,
+          "line": 113,
           "column": 17
         }
       ]
@@ -12566,7 +13001,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 81,
+          "line": 84,
           "column": 72
         }
       ]
@@ -12628,6 +13063,18 @@
           "file": "features/calls/CallDetails.tsx",
           "line": 48,
           "column": 12
+        }
+      ]
+    },
+    "a9798e45ccf5575d": {
+      "source": "受管要求：仅本地系统",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 138,
+          "column": 73
         }
       ]
     },
@@ -12708,7 +13155,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 128,
+          "line": 129,
           "column": 17
         }
       ]
@@ -12804,7 +13251,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 96,
+          "line": 97,
           "column": 17
         }
       ]
@@ -12881,6 +13328,18 @@
         }
       ]
     },
+    "ac8ca42d0fc4f854": {
+      "source": "网关设置已变化，或接管时使用的模型已被删除；客户端仍指向旧配置，请重新应用接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeConflictList.tsx",
+          "line": 22,
+          "column": 15
+        }
+      ]
+    },
     "acd09edd02b0234f": {
       "source": "模型库里已不存在",
       "kind": "text",
@@ -12898,6 +13357,18 @@
         }
       ]
     },
+    "acf3fab3846eb8f6": {
+      "source": "配置无法读取",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 29,
+          "column": 15
+        }
+      ]
+    },
     "ad20454970cf9ad6": {
       "source": "先看错误信息：401/403 多半是 Key 或套餐不匹配（有些厂商的编程套餐 Key 与普通 Key 不通用），404 多半是地址写错了（多写或少写了路径），超时多半是网络或代理问题。模型卡上的「测试」会用一次真实请求验证，成功后会显示 tokens/s。",
       "kind": "text",
@@ -12905,7 +13376,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 97,
+          "line": 98,
           "column": 15
         }
       ]
@@ -12965,8 +13436,20 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 83,
+          "line": 114,
           "column": 80
+        }
+      ]
+    },
+    "ae5882f620923720": {
+      "source": "Codex 配置已恢复，但最终收据无法清理；请重试撤销。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 89,
+          "column": 102
         }
       ]
     },
@@ -13083,7 +13566,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 219,
+          "line": 222,
           "column": 28
         }
       ]
@@ -13109,6 +13592,18 @@
           "file": "features/harness/HarnessCapabilities.tsx",
           "line": 58,
           "column": 7
+        }
+      ]
+    },
+    "afc40054ce2146a8": {
+      "source": "先撤销上次未完成的应用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 59,
+          "column": 48
         }
       ]
     },
@@ -13194,7 +13689,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 106,
+          "line": 109,
           "column": 79
         }
       ]
@@ -13266,7 +13761,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 218,
+          "line": 221,
           "column": 29
         }
       ]
@@ -13278,7 +13773,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 91,
+          "line": 97,
           "column": 79
         }
       ]
@@ -13316,12 +13811,12 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 216,
+          "line": 219,
           "column": 28
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 74,
+          "line": 92,
           "column": 31
         }
       ]
@@ -13359,7 +13854,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 133,
+          "line": 130,
           "column": 47
         }
       ]
@@ -13398,12 +13893,12 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 155,
+          "line": 156,
           "column": 24
         },
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 262,
+          "line": 263,
           "column": 101
         }
       ]
@@ -13427,7 +13922,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 88,
+          "line": 120,
           "column": 77
         },
         {
@@ -13519,7 +14014,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 99,
+          "line": 100,
           "column": 7
         }
       ]
@@ -13531,7 +14026,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 38,
+          "line": 55,
           "column": 69
         }
       ]
@@ -13555,7 +14050,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 125,
+          "line": 128,
           "column": 19
         }
       ]
@@ -13598,7 +14093,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 104,
+          "line": 136,
           "column": 18
         }
       ]
@@ -13610,7 +14105,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 103,
+          "line": 104,
           "column": 11
         }
       ]
@@ -13766,7 +14261,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 215,
+          "line": 216,
           "column": 48
         }
       ]
@@ -13809,7 +14304,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 36,
+          "line": 40,
           "column": 83
         }
       ]
@@ -13821,7 +14316,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 233,
+          "line": 234,
           "column": 24
         }
       ]
@@ -13867,7 +14362,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 115,
+          "line": 148,
           "column": 133
         },
         {
@@ -13981,7 +14476,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 136,
+          "line": 137,
           "column": 6
         }
       ]
@@ -14005,18 +14500,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 103,
           "column": 48
-        }
-      ]
-    },
-    "ba126f77d95fc37d": {
-      "source": "网关设置已变化，客户端仍指向旧地址/令牌，请重新应用接管。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 22,
-          "column": 15
         }
       ]
     },
@@ -14102,7 +14585,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 105,
+          "line": 171,
           "column": 41
         }
       ]
@@ -14262,7 +14745,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1495,
+          "line": 1565,
           "column": 43
         }
       ]
@@ -14348,7 +14831,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 34,
+          "line": 36,
           "column": 43
         }
       ]
@@ -14360,7 +14843,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 76,
+          "line": 94,
           "column": 29
         }
       ]
@@ -14459,7 +14942,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 137,
+          "line": 138,
           "column": 23
         }
       ]
@@ -14586,7 +15069,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 204,
+          "line": 205,
           "column": 22
         }
       ]
@@ -14718,6 +15201,28 @@
         }
       ]
     },
+    "c1c63828eaac7350": {
+      "source": "无法读取管理员策略",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 25,
+          "column": 11
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 57,
+          "column": 39
+        },
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 117,
+          "column": 65
+        }
+      ]
+    },
     "c1e98892a77f7a19": {
       "source": "{count} 条/页",
       "kind": "template",
@@ -14751,12 +15256,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 148,
+          "line": 151,
           "column": 22
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 208,
+          "line": 211,
           "column": 22
         }
       ]
@@ -14792,7 +15297,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 108,
+          "line": 109,
           "column": 17
         }
       ]
@@ -14830,7 +15335,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 140,
+          "line": 173,
           "column": 15
         }
       ]
@@ -14883,7 +15388,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 134,
+          "line": 135,
           "column": 6
         }
       ]
@@ -14924,8 +15429,20 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 103,
+          "line": 109,
           "column": 64
+        }
+      ]
+    },
+    "c47120f364e04da4": {
+      "source": "Codex 配置或收据无法解析；请检查配置目录。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 58,
+          "column": 37
         }
       ]
     },
@@ -14994,7 +15511,7 @@
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 32,
+          "line": 49,
           "column": 15
         }
       ]
@@ -15190,7 +15707,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 163,
+          "line": 164,
           "column": 14
         }
       ]
@@ -15267,7 +15784,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 245,
+          "line": 246,
           "column": 18
         }
       ]
@@ -15291,7 +15808,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 89,
+          "line": 95,
           "column": 53
         }
       ]
@@ -15308,7 +15825,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 102,
+          "line": 168,
           "column": 26
         },
         {
@@ -15432,6 +15949,18 @@
         }
       ]
     },
+    "cbf2d66fcdd53def": {
+      "source": "配置无法解析",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 156,
+          "column": 24
+        }
+      ]
+    },
     "cc5cb36c0c99ead1": {
       "source": "云端浏览器与厂商托管工具",
       "kind": "text",
@@ -15475,7 +16004,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 119,
+          "line": 185,
           "column": 24
         }
       ]
@@ -15513,6 +16042,18 @@
           "file": "features/models/CursorGates.tsx",
           "line": 34,
           "column": 9
+        }
+      ]
+    },
+    "cd7fb9467dcc2d13": {
+      "source": "检查 requirements 文件权限或内容后刷新；撤销接管仍可用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 57,
+          "column": 61
         }
       ]
     },
@@ -15569,6 +16110,18 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 493,
           "column": 13
+        }
+      ]
+    },
+    "ce79285d8f6ba2ff": {
+      "source": "本地路由状态暂时无法确认",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 38,
+          "column": 11
         }
       ]
     },
@@ -15656,7 +16209,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 134,
+          "line": 135,
           "column": 23
         }
       ]
@@ -15680,7 +16233,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 139,
+          "line": 140,
           "column": 6
         }
       ]
@@ -15692,7 +16245,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 120,
+          "line": 121,
           "column": 17
         }
       ]
@@ -15716,7 +16269,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 161,
+          "line": 162,
           "column": 13
         }
       ]
@@ -15745,7 +16298,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 92,
+          "line": 131,
           "column": 81
         }
       ]
@@ -15795,7 +16348,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 105,
+          "line": 106,
           "column": 15
         }
       ]
@@ -15886,12 +16439,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 65,
+          "line": 82,
           "column": 25
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 65,
+          "line": 82,
           "column": 65
         }
       ]
@@ -15903,7 +16456,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 79,
+          "line": 82,
           "column": 14
         }
       ]
@@ -15981,7 +16534,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 133,
+          "line": 134,
           "column": 15
         }
       ]
@@ -16017,12 +16570,12 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 88,
+          "line": 94,
           "column": 47
         },
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 98,
+          "line": 104,
           "column": 42
         }
       ]
@@ -16297,7 +16850,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 87,
+          "line": 88,
           "column": 30
         }
       ]
@@ -16386,7 +16939,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 52,
+          "line": 70,
           "column": 50
         }
       ]
@@ -16634,7 +17187,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 138,
+          "line": 139,
           "column": 18
         }
       ]
@@ -16759,7 +17312,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 49,
+          "line": 66,
           "column": 12
         }
       ]
@@ -16807,7 +17360,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 101,
+          "line": 102,
           "column": 15
         }
       ]
@@ -16819,7 +17372,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 100,
+          "line": 101,
           "column": 17
         }
       ]
@@ -16881,6 +17434,30 @@
           "file": "features/claude/ClaudeGatewayCard.tsx",
           "line": 67,
           "column": 18
+        }
+      ]
+    },
+    "dece992c66d95e31": {
+      "source": "配置或收据无法解析",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 42,
+          "column": 15
+        }
+      ]
+    },
+    "df11619761c48a02": {
+      "source": "登录状态未知",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 38,
+          "column": 41
         }
       ]
     },
@@ -17062,7 +17639,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 131,
+          "line": 128,
           "column": 56
         }
       ]
@@ -17263,6 +17840,18 @@
         }
       ]
     },
+    "e27409dcbd5e6471": {
+      "source": "管理员策略覆盖了 Codex 路由，本机网关无法应用。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 95,
+          "column": 28
+        }
+      ]
+    },
     "e2a3db756eccc232": {
       "source": "启用 Claude 网关",
       "kind": "text",
@@ -17287,7 +17876,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 93,
+          "line": 99,
           "column": 63
         }
       ]
@@ -17402,7 +17991,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 86,
+          "line": 84,
           "column": 26
         }
       ]
@@ -17426,7 +18015,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 85,
+          "line": 88,
           "column": 14
         },
         {
@@ -17518,7 +18107,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 147,
+          "line": 148,
           "column": 13
         }
       ]
@@ -17547,7 +18136,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 207,
+          "line": 208,
           "column": 55
         }
       ]
@@ -17561,6 +18150,18 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 299,
           "column": 43
+        }
+      ]
+    },
+    "e5ed049840868b45": {
+      "source": "配置读取失败",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 121,
+          "column": 57
         }
       ]
     },
@@ -17585,7 +18186,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 157,
+          "line": 158,
           "column": 11
         }
       ]
@@ -17597,7 +18198,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 141,
+          "line": 138,
           "column": 20
         }
       ]
@@ -17694,7 +18295,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 122,
+          "line": 125,
           "column": 57
         }
       ]
@@ -17743,6 +18344,18 @@
         }
       ]
     },
+    "e8c07989d71e5e51": {
+      "source": "管理员 requirements 要求不同的 provider/目录，本机网关无法覆盖；请调整策略或撤销接管。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexConflictCard.tsx",
+          "line": 54,
+          "column": 34
+        }
+      ]
+    },
     "e9554e112a01940a": {
       "source": "这是什么",
       "kind": "text",
@@ -17750,7 +18363,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 145,
+          "line": 146,
           "column": 47
         }
       ]
@@ -17786,8 +18399,8 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 196,
-          "column": 21
+          "line": 195,
+          "column": 19
         }
       ]
     },
@@ -17822,7 +18435,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 155,
+          "line": 158,
           "column": 20
         }
       ]
@@ -17846,7 +18459,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 135,
+          "line": 136,
           "column": 6
         }
       ]
@@ -17925,7 +18538,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 162,
           "column": 21
         }
       ]
@@ -18056,7 +18669,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 215,
+          "line": 216,
           "column": 29
         }
       ]
@@ -18080,7 +18693,7 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 88,
+          "line": 86,
           "column": 35
         }
       ]
@@ -18152,6 +18765,18 @@
         }
       ]
     },
+    "ee9a0958bbc65273": {
+      "source": "cloud/enterprise 策略未在本地核对",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 138,
+          "column": 40
+        }
+      ]
+    },
     "eec6bf2dad677b9f": {
       "source": "发放时间：{time}",
       "kind": "template",
@@ -18209,8 +18834,20 @@
       "refs": [
         {
           "file": "features/claude/claudeConnectionView.ts",
-          "line": 134,
+          "line": 131,
           "column": 58
+        }
+      ]
+    },
+    "f0522aa2b7b7798a": {
+      "source": "Codex 配置已恢复，但待提交收据无法清理；删掉残留后重试撤销。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/harnessErrorText.ts",
+          "line": 88,
+          "column": 102
         }
       ]
     },
@@ -18223,7 +18860,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 138,
+          "line": 141,
           "column": 55
         }
       ]
@@ -18249,7 +18886,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 161,
+          "line": 164,
           "column": 20
         }
       ]
@@ -18273,7 +18910,7 @@
       "refs": [
         {
           "file": "features/tutorial/onboarding.ts",
-          "line": 134,
+          "line": 135,
           "column": 15
         }
       ]
@@ -18285,7 +18922,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 156,
+          "line": 157,
           "column": 74
         }
       ]
@@ -18309,7 +18946,7 @@
       "refs": [
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 107,
+          "line": 173,
           "column": 31
         }
       ]
@@ -18676,9 +19313,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 95,
-          "column": 77
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 143,
+          "column": 43
         }
       ]
     },
@@ -18711,7 +19348,7 @@
         },
         {
           "file": "features/codex/codexConnectionView.ts",
-          "line": 90,
+          "line": 129,
           "column": 73
         },
         {
@@ -18766,8 +19403,8 @@
       "refs": [
         {
           "file": "features/codex/CodexConflictCard.tsx",
-          "line": 17,
-          "column": 60
+          "line": 45,
+          "column": 17
         }
       ]
     },
@@ -18815,9 +19452,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 95,
-          "column": 91
+          "file": "features/codex/codexConnectionView.ts",
+          "line": 158,
+          "column": 24
         }
       ]
     },
@@ -18852,7 +19489,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 156,
+          "line": 159,
           "column": 19
         }
       ]
@@ -18910,7 +19547,7 @@
       "refs": [
         {
           "file": "features/harness/harnessErrorText.ts",
-          "line": 101,
+          "line": 107,
           "column": 70
         }
       ]
@@ -19218,12 +19855,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 62,
+          "line": 79,
           "column": 25
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 63,
+          "line": 80,
           "column": 32
         }
       ]
@@ -19235,7 +19872,7 @@
       "refs": [
         {
           "file": "features/tutorial/TutorialPage.tsx",
-          "line": 261,
+          "line": 262,
           "column": 14
         },
         {

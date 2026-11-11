@@ -12,6 +12,7 @@ use cursor_server::{
         protocol::{connect, proto::agent::v1 as pb},
         TransportCommand, TransportRegistry,
     },
+    model::ProjectedContent,
     model::ToolRoundId,
     provider::{FinishReason, ModelEvent},
     store::{BlobEdge, BlobId},
@@ -679,4 +680,359 @@ async fn acknowledge(handle: &cursor_server::cursor::TransportHandle, seqno: &mu
         .await
         .unwrap();
     *seqno += 1;
+}
+
+/// C01：ResumeAction 自己携带的请求上下文（parts 不提供）必须作为一条新的、带稳定
+/// 身份的 `request-context:*` 事件追加在历史尾部；旧前缀逐字节不变，同一 resume 重试
+/// 不重复追加，checkpoint 编解码后身份仍在。
+#[tokio::test]
+async fn resume_action_context_appends_one_stable_event_without_rewriting_the_prefix() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    for text in ["first turn", "resumed turn", "retried resume", "round trip"] {
+        provider.push(vec![
+            ModelEvent::Start {
+                model_call_id: format!("call-{text}"),
+            },
+            ModelEvent::TextStart,
+            ModelEvent::TextDelta(text.into()),
+            ModelEvent::TextEnd,
+            ModelEvent::Done(FinishReason::Stop),
+        ]);
+    }
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let (settled, _) = run_request_to_end(
+        &registry,
+        "context-first-run",
+        start_request_with_context(request_context("context-a")),
+    )
+    .await;
+    assert!(
+        provider.requests()[0]
+            .history
+            .iter()
+            .any(|message| contains_text(message, "context-a")),
+        "第一轮必须携带上下文 A"
+    );
+
+    let (resumed_checkpoint, _) = run_request_to_end(
+        &registry,
+        "context-resume-run",
+        resume_request_with_context(
+            settled.clone(),
+            "context-resume-run",
+            request_context("context-b"),
+        ),
+    )
+    .await;
+
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    let first = &requests[0].history;
+    let second = &requests[1].history;
+    assert_eq!(
+        first.as_slice(),
+        &second[..first.len()],
+        "Resume 追加新上下文时，旧历史必须逐字节保持前缀"
+    );
+    assert_eq!(
+        context_occurrences(second, "context-b"),
+        1,
+        "ResumeAction.request_context 必须作为一条新的 request-context 事件进入历史"
+    );
+
+    // 同一条 resume 按原请求重试（客户端回带的仍是追加前的状态）：不得再追加一份 B。
+    let (_, _) = run_request_to_end(
+        &registry,
+        "context-resume-retry",
+        resume_request_with_context(
+            settled,
+            "context-resume-retry",
+            request_context("context-b"),
+        ),
+    )
+    .await;
+    let retried = &provider.requests()[2].history;
+    assert_eq!(
+        first.as_slice(),
+        &retried[..first.len()],
+        "重试同样不能改写旧前缀"
+    );
+    assert_eq!(
+        context_occurrences(retried, "context-b"),
+        1,
+        "同一 resume 重试必须按事件身份去重，而不是再追加一条"
+    );
+
+    // checkpoint round-trip：服务端发回的 checkpoint 里带着这条上下文的 wire 身份，
+    // 下一次不带上下文的 Resume 仍应原样看到它。
+    let (_, _) = run_request_to_end(
+        &registry,
+        "context-round-trip",
+        resume_request_on_context(resumed_checkpoint, "context-round-trip"),
+    )
+    .await;
+    let round_tripped = &provider.requests()[3].history;
+    assert_eq!(
+        context_occurrences(round_tripped, "context-b"),
+        1,
+        "request-context 的 wire 身份必须跨 checkpoint 编解码存活"
+    );
+    assert_eq!(
+        first.as_slice(),
+        &round_tripped[..first.len()],
+        "round-trip 之后旧前缀仍然不变"
+    );
+}
+
+/// C01：no-state/空-state Resume 的 base 是当前 checkpoint，但去重历史不能是空数组，
+/// 否则同一份 context 每次重试都会再追加一条。A→B→A 仍应留下三个事件。
+#[tokio::test]
+async fn a_no_state_resume_context_is_deduplicated_against_the_current_chain() {
+    let (_directory, store) = fixtures::temp_store().await;
+    let provider = fake_provider::FakeProvider::default();
+    for text in ["first", "resume", "retry", "a-again"] {
+        provider.push(vec![
+            ModelEvent::Start {
+                model_call_id: format!("call-{text}"),
+            },
+            ModelEvent::TextStart,
+            ModelEvent::TextDelta(text.into()),
+            ModelEvent::TextEnd,
+            ModelEvent::Done(FinishReason::Stop),
+        ]);
+    }
+    let assets = PromptAssets::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("prompt/cursor")
+            .as_path(),
+    )
+    .unwrap();
+    let registry = TransportRegistry::new(
+        store,
+        Arc::new(provider.clone()),
+        PromptCompiler::new(assets),
+    );
+
+    let _ = run_request_to_end(
+        &registry,
+        "no-state-first",
+        start_request_with_context(request_context("context-a")),
+    )
+    .await;
+    let _ = run_request_to_end(
+        &registry,
+        "no-state-resume",
+        resume_request_without_state("no-state-resume", request_context("context-b")),
+    )
+    .await;
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        context_occurrences(&requests[1].history, "context-b"),
+        1,
+        "no-state Resume 也必须追加 B"
+    );
+
+    // 同一 resume 不带 state 重试：当前链里已经有 B，不能因为 history 为空再追加。
+    let _ = run_request_to_end(
+        &registry,
+        "no-state-retry",
+        resume_request_without_state("no-state-retry", request_context("context-b")),
+    )
+    .await;
+    let retried = &provider.requests()[2].history;
+    assert_eq!(
+        context_occurrences(retried, "context-b"),
+        1,
+        "no-state Retry 必须按当前链去重，不能重复追加 B"
+    );
+
+    // A→B→A：最新是 B，回到 A 必须追加第三个事件；旧 B 只保留一份。
+    let _ = run_request_to_end(
+        &registry,
+        "no-state-a-again",
+        resume_request_without_state("no-state-a-again", request_context("context-a")),
+    )
+    .await;
+    let again = &provider.requests()[3].history;
+    assert_eq!(
+        context_occurrences(again, "context-b"),
+        1,
+        "A→B→A 不能重复 B"
+    );
+    assert_eq!(
+        context_occurrences(again, "context-a"),
+        2,
+        "A→B→A 应保留初始 A 和回到 A 的新事件"
+    );
+}
+
+async fn run_request_to_end(
+    registry: &cursor_server::cursor::TransportRegistry,
+    request_id: &str,
+    request: pb::AgentClientMessage,
+) -> (pb::ConversationStateStructure, Vec<pb::AgentServerMessage>) {
+    let handle = registry.get_or_create(request_id).await.unwrap();
+    let mut output = handle.subscribe();
+    handle
+        .command(TransportCommand::Append {
+            seqno: 0,
+            message: Box::new(request),
+        })
+        .await
+        .unwrap();
+    let mut append_seqno = 1;
+    let mut state = None;
+    let mut seen = Vec::new();
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(10), output.recv())
+            .await
+            .unwrap()
+            .expect("RunSSE closed before EndStream");
+        let (flags, payload) = connect::decode_frames(&frame).unwrap().pop().unwrap();
+        if flags & connect::END_STREAM_FLAG != 0 {
+            assert_eq!(payload.as_ref(), b"{}", "run must end successfully");
+            return (state.expect("run ended without a checkpoint"), seen);
+        }
+        let server = pb::AgentServerMessage::decode(payload).unwrap();
+        if let Some(pb::agent_server_message::Message::ConversationCheckpointUpdate(update)) =
+            &server.message
+        {
+            state = Some(update.clone());
+        }
+        if let Some(pb::agent_server_message::Message::KvServerMessage(kv)) = &server.message {
+            acknowledge(&handle, &mut append_seqno, kv.id).await;
+        }
+        seen.push(server);
+    }
+}
+
+fn request_context(marker: &str) -> pb::RequestContext {
+    // 不用 env：`compile_context` 的 user_info 会带当前日期，跨午夜会让同一份上下文的
+    // 编译文本变化，去重测试变成偶发 flake。rule 文本没有日期，是稳定的上下文载体。
+    pb::RequestContext {
+        non_file_rules: vec![pb::CursorRule {
+            content: marker.into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+fn resume_request_without_state(
+    request_id: &str,
+    context: pb::RequestContext,
+) -> pb::AgentClientMessage {
+    let mut request = resume_request(pb::ConversationStateStructure::default());
+    if let Some(pb::agent_client_message::Message::RunRequest(request)) = &mut request.message {
+        request.conversation_state = None;
+        request.conversation_id = Some("context-conversation".into());
+        request.run_id = Some(request_id.into());
+        request.action = Some(pb::ConversationAction {
+            action: Some(pb::conversation_action::Action::ResumeAction(
+                pb::ResumeAction {
+                    request_context: Some(context),
+                },
+            )),
+            ..Default::default()
+        });
+    }
+    request
+}
+
+fn start_request_with_context(context: pb::RequestContext) -> pb::AgentClientMessage {
+    pb::AgentClientMessage {
+        message: Some(pb::agent_client_message::Message::RunRequest(
+            pb::AgentRunRequest {
+                action: Some(pb::ConversationAction {
+                    action: Some(pb::conversation_action::Action::UserMessageAction(
+                        pb::UserMessageAction {
+                            user_message: Some(pb::UserMessage {
+                                text: "start".into(),
+                                message_id: "context-user-1".into(),
+                                mode: pb::AgentMode::Agent as i32,
+                                ..Default::default()
+                            }),
+                            request_context: Some(context),
+                            ..Default::default()
+                        },
+                    )),
+                    ..Default::default()
+                }),
+                conversation_id: Some("context-conversation".into()),
+                run_id: Some("context-first-run".into()),
+                requested_model: Some(pb::RequestedModel {
+                    model_id: "test-model".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        )),
+    }
+}
+
+fn resume_request_with_context(
+    state: pb::ConversationStateStructure,
+    request_id: &str,
+    context: pb::RequestContext,
+) -> pb::AgentClientMessage {
+    let mut request = resume_request(state);
+    if let Some(pb::agent_client_message::Message::RunRequest(request)) = &mut request.message {
+        request.run_id = Some(request_id.into());
+        request.conversation_id = Some("context-conversation".into());
+        request.action = Some(pb::ConversationAction {
+            action: Some(pb::conversation_action::Action::ResumeAction(
+                pb::ResumeAction {
+                    request_context: Some(context),
+                },
+            )),
+            ..Default::default()
+        });
+    }
+    request
+}
+
+fn resume_request_on_context(
+    state: pb::ConversationStateStructure,
+    request_id: &str,
+) -> pb::AgentClientMessage {
+    let mut request = resume_request(state);
+    if let Some(pb::agent_client_message::Message::RunRequest(request)) = &mut request.message {
+        request.run_id = Some(request_id.into());
+        request.conversation_id = Some("context-conversation".into());
+    }
+    request
+}
+
+fn context_occurrences(history: &[cursor_server::model::ProjectedMessage], needle: &str) -> usize {
+    history
+        .iter()
+        .filter(|message| {
+            matches!(&message.content, ProjectedContent::Parts(_))
+                && contains_text(message, needle)
+                && message.message_id.contains("request-context")
+        })
+        .count()
+}
+
+fn contains_text(message: &cursor_server::model::ProjectedMessage, needle: &str) -> bool {
+    match &message.content {
+        ProjectedContent::Parts(parts) => parts.iter().any(|part| match part {
+            cursor_server::model::ContentPart::Text { text } => text.contains(needle),
+            _ => false,
+        }),
+        _ => false,
+    }
 }

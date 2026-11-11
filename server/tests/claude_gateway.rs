@@ -29,7 +29,7 @@ use cursor_server::{
     network::NetworkClients,
     plugin::{PluginRegistry, PluginRuntime},
     provider::{FinishReason, ModelEvent, ProviderRouter},
-    store::Store,
+    store::{ProxyMode, ProxySettingsInput, Store},
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -39,6 +39,21 @@ fn free_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
+}
+
+/// 测试专属 store：显式直连，避免默认 `ProxyMode::Default` 在真实
+/// `ProviderRouter` 构造 `NetworkClients` 时查询系统代理（Windows 上是
+/// HKCU Internet Settings）。不读取、不记录任何真实代理值。
+async fn temp_store_direct() -> (tempfile::TempDir, Store) {
+    let (directory, store) = fixtures::temp_store().await;
+    store
+        .set_proxy_settings(ProxySettingsInput {
+            mode: ProxyMode::Direct,
+            ..ProxySettingsInput::default()
+        })
+        .await
+        .unwrap();
+    (directory, store)
 }
 
 async fn claude_model(store: &Store, base_url: String, full_url: bool) -> String {
@@ -121,7 +136,7 @@ fn parse_sse(body: &[u8]) -> Vec<(String, Value)> {
 
 #[tokio::test]
 async fn the_client_receives_the_complete_anthropic_event_sequence() {
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = temp_store_direct().await;
     let hash = claude_model(&store, "https://api.anthropic.com".into(), false).await;
     let settings = enabled_settings(hash);
     store.set_claude_settings(settings).await.unwrap();
@@ -292,7 +307,7 @@ fn isolate_managed_data() {
 #[tokio::test]
 async fn the_production_router_records_the_call_as_claude() {
     isolate_managed_data();
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = temp_store_direct().await;
     let (upstream, captured) = fake_anthropic_upstream().await;
     let hash = claude_model(&store, upstream, true).await;
     store
@@ -369,13 +384,55 @@ async fn the_production_router_records_the_call_as_claude() {
     );
 }
 
+#[tokio::test]
+async fn a_deleted_exact_model_is_rejected_and_never_reaches_the_default_provider() {
+    let (_directory, store) = temp_store_direct().await;
+    let default = claude_model(&store, "https://api.anthropic.com".into(), false).await;
+    let removed = claude_model(&store, "https://api.anthropic.com/removed".into(), false).await;
+    assert_ne!(default, removed);
+    store
+        .set_claude_settings(enabled_settings(default))
+        .await
+        .unwrap();
+    let token = store.claude_token().await.unwrap();
+    store.delete_model(&removed).await.unwrap();
+
+    let provider = fake_provider::FakeProvider::default();
+    let gateway = ClaudeGateway::new(
+        store.clone(),
+        Arc::new(provider.clone()),
+        NetworkClients::new(store.clone()),
+    );
+    let response = gateway
+        .router()
+        .oneshot(message_request(&token, &format!("claude-{removed}")))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let error: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["type"], "error");
+    assert_eq!(error["error"]["type"], "not_found_error");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no longer exists"),
+        "{error}"
+    );
+    assert!(
+        provider.requests().is_empty(),
+        "被删除的精确模型不能静默落到默认模型的 provider"
+    );
+}
+
 /// 上游按停止序列收尾：`message_delta` 必须带 `stop_reason: "stop_sequence"` 与命中
 /// 的那段文本。适配器把 `delta.stop_sequence` 单独交付，网关才能把它翻回协议字段，
 /// 而不是把所有正常结束都折成 `end_turn`。
 #[tokio::test]
 async fn an_upstream_stop_sequence_reaches_the_client() {
     isolate_managed_data();
-    let (_directory, store) = fixtures::temp_store().await;
+    let (_directory, store) = temp_store_direct().await;
     let (upstream, _captured) =
         fake_anthropic_upstream_ending_with("stop_sequence", Some("STOP")).await;
     let hash = claude_model(&store, upstream, true).await;

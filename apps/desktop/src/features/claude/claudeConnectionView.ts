@@ -1,11 +1,11 @@
 import type {
   ClaudeConfigSource,
   ClaudeDesktopTakeover,
-  ClaudeDesktopTakeoverState,
   ClaudeSettings,
   ClaudeStatus,
   ClaudeTakeover,
   ClaudeTakeoverConflict,
+  ClaudeTakeoverState,
 } from "../../shared/api";
 import type { EntryStatus } from "../../shell/connectionStatus";
 import type { StatusTone } from "../../shared/ui/StatusPill";
@@ -49,33 +49,31 @@ export function claudeConnectionView(
   if (!status.listening) return { state: "unavailable", tone: "bad", label: t("网关不可用") };
   if (state === "applied") return { state: "taken-over", tone: "ok", label: t("已接管") };
   if (state === "managed") return { state: "managed", tone: "warn", label: t("受管配置") };
-  if (state === "ready" || state === "running") {
+  if (state === "ready") {
     return { state: "pending-apply", tone: "warn", label: t("待应用配置") };
   }
   return { state: "idle", tone: "idle", label: t("未检测到客户端") };
 }
 
-const takeoverLabels: Record<ClaudeDesktopTakeoverState, () => string> = {
+const takeoverLabels: Record<ClaudeTakeoverState, () => string> = {
   missing: () => t("未检测到"),
   ready: () => t("待接管"),
   applied: () => t("已接管"),
   stale: () => t("配置已过期"),
   conflict: () => t("配置冲突"),
   managed: () => t("受管配置"),
-  running: () => t("运行中"),
 };
 
-export function claudeTakeoverStateLabel(state: ClaudeDesktopTakeoverState): string {
+export function claudeTakeoverStateLabel(state: ClaudeTakeoverState): string {
   return takeoverLabels[state]();
 }
 
-export function claudeTakeoverStateTone(state: ClaudeDesktopTakeoverState): StatusTone {
+export function claudeTakeoverStateTone(state: ClaudeTakeoverState): StatusTone {
   switch (state) {
     case "applied": return "ok";
     case "conflict": return "bad";
     case "stale":
     case "ready":
-    case "running":
     case "managed": return "warn";
     default: return "idle";
   }
@@ -120,7 +118,7 @@ export interface ClaudeGateInput {
 export function claudeActionGate(input: ClaudeGateInput): ClaudeActionGate {
   const takeover = input.takeover;
   const entry = takeover?.desktop;
-  const undo = Boolean(entry?.restorable);
+  const undo = Boolean(entry?.restorable) && !entry?.running;
   const blocked = (reason: string): ClaudeActionGate => ({
     apply: false,
     undo,
@@ -135,7 +133,7 @@ export function claudeActionGate(input: ClaudeGateInput): ClaudeActionGate {
   if (!takeover) return blocked(t("正在读取接管状态…"));
 
   if (takeover.desktop.state === "missing") return blocked(t("没有检测到 Claude Desktop。"));
-  if (takeover.desktop.state === "running") return blocked(t("Claude Desktop 正在运行，请先完全退出。"));
+  if (takeover.desktop.running) return blocked(t("Claude Desktop 正在运行，请先完全退出。"));
   if (takeover.desktop.guided || takeover.desktop.state === "managed") {
     return blocked(t("Claude Desktop 需要按引导手工填写，本应用不写入配置。"));
   }
@@ -158,13 +156,19 @@ export interface ClaudeTokenRotationGate {
 /**
  * 令牌轮换的按钮门槛。
  *
- * Desktop 接管处于 applied/stale/running 时服务端直接拒绝轮换（400）：新的令牌写不回
- * 正在生效的 Desktop 配置，客户端会立刻失效。必须先撤销 Desktop 接管；运行中还要先
- * 完全退出客户端。
+ * Desktop 接管处于 applied/stale 时服务端直接拒绝轮换（400）：新的令牌写不回正在
+ * 生效的 Desktop 配置，客户端会立刻失效。必须先撤销 Desktop 接管。运行中还要先
+ * 完全退出客户端：这时连撤销和恢复都不写文件。
  */
 export function claudeTokenRotationGate(takeover: ClaudeTakeover | null): ClaudeTokenRotationGate {
-  const state = takeover?.desktop.state;
-  if (state === "applied" || state === "stale" || state === "running") {
+  const desktop = takeover?.desktop;
+  if (desktop?.running) {
+    return {
+      allowed: false,
+      reason: t("Claude Desktop 正在运行，请先完全退出。"),
+    };
+  }
+  if (desktop?.state === "applied" || desktop?.state === "stale") {
     return {
       allowed: false,
       reason: t("先撤销 Claude Desktop 接管（运行中先完全退出）再轮换令牌。"),
@@ -207,7 +211,7 @@ export function claudeUndoKept(conflicts: ClaudeTakeoverConflict[]): ClaudeTakeo
 }
 
 /** 客户端状态的一句话说明；放在状态卡里，不重复页面用途。 */
-export function claudeTakeoverDescription(state: ClaudeDesktopTakeoverState | null): string {
+export function claudeTakeoverDescription(state: ClaudeTakeoverState | null): string {
   if (!state) return t("正在读取接管状态…");
   switch (state) {
     case "missing": return t("没有检测到 Claude Desktop。");
@@ -216,6 +220,5 @@ export function claudeTakeoverDescription(state: ClaudeDesktopTakeoverState | nu
     case "stale": return t("客户端仍指向旧的网关配置。");
     case "conflict": return t("配置里已有本应用之外的内容，先处理冲突。");
     case "managed": return t("配置由系统策略托管，本应用不会改写它。");
-    case "running": return t("Claude Desktop 正在运行，请先完全退出。");
   }
 }

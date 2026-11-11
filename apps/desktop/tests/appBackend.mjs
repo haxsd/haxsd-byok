@@ -119,7 +119,24 @@ export function installAppBackend(overrides = {}) {
       last_call_success: null,
       last_call_at_ms: null,
     },
-    codexStatus: { enabled: false, listening: false, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], home: "test-home", calls: 0, last_error: null },
+    codexStatus: {
+      enabled: false,
+      listening: false,
+      port: 43120,
+      configured: false,
+      config_conflict: false,
+      restorable: false,
+      conflicts: [],
+      managed_conflicts: [],
+      conflict_kind: "none",
+      route_owned: false,
+      managed_error: null,
+      managed_scope: "local_system_only",
+      chatgpt_signed_in: false,
+      home: "test-home",
+      calls: 0,
+      last_error: null,
+    },
     claudeStatus: { enabled: false, listening: false, port: 43121, base_url: "http://127.0.0.1:43121", token: "test-token", models: 0, default_model_hash: null, calls: 0, last_error: null },
     claudeTakeover: {
       cli: {
@@ -133,6 +150,7 @@ export function installAppBackend(overrides = {}) {
       },
       desktop: {
         state: "missing",
+        running: false,
         config_source: "none",
         profile_path: "",
         backup_path: "",

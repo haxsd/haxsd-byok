@@ -175,19 +175,25 @@ fn restore_devin_settings() -> bool {
 /// 指向一个没人监听的端口——用户在这期间跑 Codex CLI，每个请求都连接失败，而应用根本
 /// 没在跑，界面与提示都不可达。这里按收据还原，与「撤掉 Cursor 接管」同一个决策点。
 async fn restore_codex_routing() -> Result<bool> {
-    restore_codex_routing_at(&crate::config::Config::desktop()?.database_url).await
+    restore_codex_routing_at(
+        &crate::config::Config::desktop()?.database_url,
+        &crate::codex::RequirementsSource::system(),
+    )
+    .await
 }
 
-/// 只在收据显示"受管字段确实是我们写下的那一份"时还原；读不到设置、没有收据、或配置
-/// 被外部改过都什么都不做——不能证明是我们的东西就不碰（`codex::config::restore`
-/// 自身也按收据判断，`inspect().applied` 是它的前置条件）。
-async fn restore_codex_routing_at(database_url: &str) -> Result<bool> {
+/// 只在端点仍属于本机网关时还原：目录/模型漂移不阻止收回，但别家 provider、端点或
+/// 令牌接管后什么都不做。有效收据是恢复基线；`restore` 自身还会再按收据校验。
+async fn restore_codex_routing_at(
+    database_url: &str,
+    requirements: &crate::codex::RequirementsSource,
+) -> Result<bool> {
     let store = Store::connect(database_url).await?;
     let home = store.codex_settings().await?.resolved_home()?;
-    if !crate::codex::config::inspect(&home)?.applied {
+    if !crate::codex::config::owned_route_active(&home)? {
         return Ok(false);
     }
-    crate::codex::config::restore(&home)?;
+    crate::codex::config::restore(&home, requirements)?;
     tracing::info!(home = %home.display(), "exit cleanup restored the Codex route");
     Ok(true)
 }
@@ -336,7 +342,12 @@ mod tests {
         write_codex_settings(&database_url, &home).await;
 
         assert!(
-            !restore_codex_routing_at(&database_url).await.unwrap(),
+            !restore_codex_routing_at(
+                &database_url,
+                &crate::codex::RequirementsSource::unmanaged(),
+            )
+            .await
+            .unwrap(),
             "还没有收据（路由不是我们写的）时什么都不做"
         );
         assert_eq!(
@@ -344,19 +355,114 @@ mod tests {
             original
         );
 
-        crate::codex::config::apply(&home, &route(&home)).unwrap();
-        assert!(crate::codex::config::inspect(&home).unwrap().applied);
+        crate::codex::config::apply(
+            &home,
+            &route(&home),
+            &crate::codex::RequirementsSource::unmanaged(),
+        )
+        .unwrap();
+        assert!(
+            crate::codex::config::inspect(&home, &crate::codex::RequirementsSource::unmanaged())
+                .unwrap()
+                .applied
+        );
 
         assert!(
-            restore_codex_routing_at(&database_url).await.unwrap(),
+            restore_codex_routing_at(
+                &database_url,
+                &crate::codex::RequirementsSource::unmanaged(),
+            )
+            .await
+            .unwrap(),
             "收据在，路由必须还原"
         );
-        assert!(!crate::codex::config::inspect(&home).unwrap().applied);
+        assert!(
+            !crate::codex::config::inspect(&home, &crate::codex::RequirementsSource::unmanaged())
+                .unwrap()
+                .applied
+        );
         assert_eq!(
             std::fs::read_to_string(home.join("config.toml")).unwrap(),
             original,
             "把用户原来的 config.toml 一字不动地还回去"
         );
+    }
+
+    /// 强杀后最终收据有效、残留 pending 损坏：助手仍要按最终收据收回。
+    #[tokio::test]
+    async fn the_janitor_ignores_a_corrupt_pending_when_final_receipt_is_valid() {
+        let directory = tempfile::tempdir().unwrap();
+        let database_url = format!(
+            "sqlite://{}",
+            directory.path().join("haxsd-byok.db").display()
+        );
+        let home = directory.path().join("codex-home");
+        std::fs::create_dir_all(&home).unwrap();
+        write_codex_settings(&database_url, &home).await;
+        crate::codex::config::apply(
+            &home,
+            &route(&home),
+            &crate::codex::RequirementsSource::unmanaged(),
+        )
+        .unwrap();
+        let pending = home.join(".haxsd-byok-routing.pending.json");
+        std::fs::write(&pending, "not json").unwrap();
+
+        assert!(
+            restore_codex_routing_at(
+                &database_url,
+                &crate::codex::RequirementsSource::unmanaged(),
+            )
+            .await
+            .unwrap(),
+            "最终收据有效时，损坏 pending 不能阻断助手收回"
+        );
+        assert!(!home.join("config.toml").exists());
+        assert!(!pending.exists());
+    }
+
+    /// 强杀后目录/模型漂移：端点仍指向本机网关时，助手也要收回。
+    #[tokio::test]
+    async fn the_janitor_restores_a_route_whose_catalog_drifted_but_endpoint_is_ours() {
+        let directory = tempfile::tempdir().unwrap();
+        let database_url = format!(
+            "sqlite://{}",
+            directory.path().join("haxsd-byok.db").display()
+        );
+        let home = directory.path().join("codex-home");
+        std::fs::create_dir_all(&home).unwrap();
+        write_codex_settings(&database_url, &home).await;
+        crate::codex::config::apply(
+            &home,
+            &route(&home),
+            &crate::codex::RequirementsSource::unmanaged(),
+        )
+        .unwrap();
+
+        let path = home.join("config.toml");
+        let mut doc = std::fs::read_to_string(&path)
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+        doc["model_catalog_json"] =
+            toml_edit::value(home.join("drifted-catalog.json").to_string_lossy().as_ref());
+        std::fs::write(&path, doc.to_string()).unwrap();
+        assert!(
+            !crate::codex::config::inspect(&home, &crate::codex::RequirementsSource::unmanaged())
+                .unwrap()
+                .applied
+        );
+
+        assert!(
+            restore_codex_routing_at(
+                &database_url,
+                &crate::codex::RequirementsSource::unmanaged(),
+            )
+            .await
+            .unwrap(),
+            "端点仍归本机时，异常退出兜底必须收回"
+        );
+        assert!(!path.exists(), "首次接管写入的路由必须被清掉");
     }
 
     /// 往设置表里写一份"Codex 网关已启用、home 在临时目录"的记录：助手就是从这里

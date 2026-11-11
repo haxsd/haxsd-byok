@@ -1,6 +1,7 @@
 //! Codex 独立回环监听与配置生命周期；读状态不写用户文件。
 use super::{
     config::{self, ConfigRoute},
+    requirements::RequirementsSource,
     CodexSettings, CodexStatus,
 };
 use crate::{network::NetworkClients, store::Store, Error, Result};
@@ -39,6 +40,9 @@ struct Inner {
     /// 网关令牌在库里只生成一次；`store.codex_token()` 每次都要拿全局写锁，而
     /// 校验请求只需要读它，所以取到之后常驻内存。
     token: tokio::sync::OnceCell<String>,
+    /// 管理员 requirements 的明确来源；不缓存文件内容，管理员改策略后下一次
+    /// inspect/apply 就能看到。测试注入临时文件，生产在装配边界解析系统路径。
+    requirements: RequirementsSource,
 }
 
 /// 客户端正文的体积上限，以及从连接上读完它的时限。
@@ -65,10 +69,11 @@ impl Drop for ActiveRequest {
 }
 
 impl CodexGateway {
-    pub fn new(store: Store, clients: NetworkClients) -> Self {
+    pub fn new(store: Store, clients: NetworkClients, requirements: RequirementsSource) -> Self {
         Self::with_timeouts(
             store,
             clients,
+            requirements,
             Duration::from_secs(3600),
             Duration::from_secs(1800),
         )
@@ -77,6 +82,7 @@ impl CodexGateway {
     pub fn with_timeouts(
         store: Store,
         clients: NetworkClients,
+        requirements: RequirementsSource,
         request_timeout: Duration,
         idle_timeout: Duration,
     ) -> Self {
@@ -91,6 +97,7 @@ impl CodexGateway {
                 request_timeout,
                 idle_timeout,
                 token: tokio::sync::OnceCell::new(),
+                requirements,
             }),
         }
     }
@@ -128,7 +135,7 @@ impl CodexGateway {
         // 旧版本把默认模型的窗口写成全局覆盖；启动时清一次，客户端界面不必等到
         // 下一次模型编辑或重新应用才显示逐模型窗口。
         if let Ok(home) = settings.resolved_home() {
-            if config::inspect(&home).is_ok_and(|status| status.applied) {
+            if config::inspect(&home, &self.inner.requirements).is_ok_and(|status| status.applied) {
                 if let Err(error) = config::drop_global_limits(&home) {
                     tracing::warn!(%error, "Codex global context limit cleanup failed");
                 }
@@ -220,7 +227,7 @@ impl CodexGateway {
         // 接管期间只有可用模型目录可以增减：它不改变客户端已写入的网关路由；
         // 端口、目录、开关和默认模型仍要撤销后重新应用。
         if settings != previous
-            && config::inspect(&previous.resolved_home()?)?.applied
+            && config::inspect(&previous.resolved_home()?, &self.inner.requirements)?.applied
             && !only_model_catalog_changed(&previous, &settings)
         {
             return Err(Error::Config(
@@ -235,7 +242,7 @@ impl CodexGateway {
         }
         // 每次保存都核对一次已发布目录：第一次刷新失败后 retry 的 model_hashes 已经和
         // 库里相同，只看"这次有没有换列表"会永远跳过重试。未接管时这里会快速 no-op。
-        if config::inspect(&saved.resolved_home()?)?.applied {
+        if config::inspect(&saved.resolved_home()?, &self.inner.requirements)?.applied {
             if let Err(error) = self
                 .publish_current_catalog(&saved.resolved_home()?, &saved)
                 .await
@@ -253,26 +260,47 @@ impl CodexGateway {
     pub async fn status(&self) -> Result<CodexStatus> {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
-        let inspected = config::inspect(&home);
-        let (configured, conflict, restorable, conflicts, chatgpt_signed_in, config_error) =
-            match inspected {
-                Ok(status) => (
-                    status.applied,
-                    status.conflict,
-                    status.restorable,
-                    status.conflicts,
-                    status.chatgpt_signed_in,
-                    None,
-                ),
-                Err(error) => (
-                    false,
-                    true,
-                    false,
-                    Vec::new(),
-                    false,
-                    Some(error.to_string()),
-                ),
-            };
+        let inspected = config::inspect(&home, &self.inner.requirements);
+        let (
+            configured,
+            conflict,
+            restorable,
+            conflicts,
+            managed_conflicts,
+            conflict_kind,
+            route_owned,
+            managed_error,
+            managed_scope,
+            chatgpt_signed_in,
+            config_error,
+        ) = match inspected {
+            Ok(status) => (
+                status.applied,
+                status.conflict,
+                status.restorable,
+                status.conflicts,
+                status.managed_conflicts,
+                status.conflict_kind,
+                status.route_owned,
+                status.managed_error,
+                status.managed_scope,
+                status.chatgpt_signed_in,
+                None,
+            ),
+            Err(error) => (
+                false,
+                true,
+                false,
+                Vec::new(),
+                Vec::new(),
+                "unreadable",
+                false,
+                None,
+                config::MANAGED_SCOPE,
+                false,
+                Some(error.to_string()),
+            ),
+        };
         let runtime = self.inner.runtime.lock().await;
         let listening = runtime
             .as_ref()
@@ -289,6 +317,11 @@ impl CodexGateway {
             config_conflict: conflict,
             restorable,
             conflicts,
+            managed_conflicts,
+            conflict_kind,
+            route_owned,
+            managed_error,
+            managed_scope,
             chatgpt_signed_in,
             home: home.display().to_string(),
             calls: calls.max(0) as usize,
@@ -316,9 +349,23 @@ impl CodexGateway {
             ));
         }
         let home = settings.resolved_home()?;
-        if config::inspect(&home)?.conflict {
+        let inspected = config::inspect(&home, &self.inner.requirements)?;
+        if inspected.conflict {
             return Err(Error::Config(
-                "Codex routing conflicts with external configuration".into(),
+                match inspected.conflict_kind {
+                    "incomplete_update" => {
+                        "restore the interrupted Codex configuration update before applying"
+                    }
+                    "policy_unavailable" => {
+                        "Codex requirements could not be read; refusing to apply"
+                    }
+                    "managed" => "Codex routing is constrained by administrator requirements",
+                    "local_drift" => {
+                        "Codex configuration still points at this gateway but its catalog or model changed"
+                    }
+                    _ => "Codex routing conflicts with external configuration",
+                }
+                .into(),
             ));
         }
         self.sync_listener(&settings).await?;
@@ -344,6 +391,7 @@ impl CodexGateway {
                 token: self.inner.store.codex_token().await?,
                 catalog_path,
             },
+            &self.inner.requirements,
         )?;
         self.status().await
     }
@@ -387,9 +435,10 @@ impl CodexGateway {
         settings: &CodexSettings,
     ) -> Result<()> {
         let path = home.to_path_buf();
+        let requirements = self.inner.requirements.clone();
         let applied = tokio::task::spawn_blocking({
             let path = path.clone();
-            move || config::applied_catalog(&path)
+            move || config::applied_catalog(&path, &requirements)
         })
         .await
         .map_err(|error| Error::Store(format!("catalog read task failed: {error}")))??;
@@ -416,17 +465,21 @@ impl CodexGateway {
             ));
         }
         let settings = self.inner.store.codex_settings().await?;
-        config::restore(&settings.resolved_home()?)?;
+        config::restore(&settings.resolved_home()?, &self.inner.requirements)?;
         self.status().await
     }
 
     pub async fn shutdown(&self) -> Result<()> {
         let _operation = self.inner.operations.lock().await;
         let settings = self.inner.store.codex_settings().await?;
-        let restored = match config::inspect(&settings.resolved_home()?) {
-            Ok(status) if status.applied => config::restore(&settings.resolved_home()?).map(|_| ()),
-            Ok(_) => Ok(()),
-            Err(error) => Err(error),
+        let home = settings.resolved_home()?;
+        // 只按"请求出口是否仍属于本机网关"决定收回：目录指针或 model 被客户端改过时
+        // 配置仍指向本应用即将停止的端口，应当收回；provider/端点/令牌已被别家接管时
+        // 不碰别人的配置。
+        let restored = if config::owned_route_active(&home)? {
+            config::restore(&home, &self.inner.requirements).map(|_| ())
+        } else {
+            Ok(())
         };
         let disabled = CodexSettings {
             enabled: false,
@@ -585,6 +638,7 @@ pub(super) fn protocol_failure(
 mod tests {
     use super::*;
     use crate::model::{ModelConfigInput, ModelType};
+    use crate::store::{ProxyMode, ProxySettingsInput};
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
@@ -613,6 +667,17 @@ mod tests {
         ))
         .await
         .unwrap();
+        // 本组网络回归固定直连，避免读取真实 Windows 系统代理。
+        store
+            .set_proxy_settings(ProxySettingsInput {
+                mode: ProxyMode::Direct,
+                address: String::new(),
+                auth_enabled: false,
+                username: String::new(),
+                password: None,
+            })
+            .await
+            .unwrap();
         let model = store
             .create_model(&ModelConfigInput {
                 sort_order: 0,
@@ -649,14 +714,18 @@ mod tests {
             .set_codex_settings(CodexSettings {
                 enabled: true,
                 port,
+                home: directory.path().join("codex-home").display().to_string(),
                 model_hashes: vec![model.model_hash.clone()],
                 default_model_hash: Some(model.model_hash.clone()),
-                ..CodexSettings::default()
             })
             .await
             .unwrap();
         let token = store.codex_token().await.unwrap();
-        let gateway = CodexGateway::new(store.clone(), NetworkClients::new(store.clone()));
+        let gateway = CodexGateway::new(
+            store.clone(),
+            NetworkClients::new(store.clone()),
+            RequirementsSource::unmanaged(),
+        );
         (directory, store, gateway, token)
     }
 
@@ -700,7 +769,9 @@ mod tests {
         store.set_codex_settings(settings.clone()).await.unwrap();
         gateway.apply().await.unwrap();
         let home = std::path::PathBuf::from(&settings.home);
-        let before = config::applied_catalog(&home).unwrap().unwrap();
+        let before = config::applied_catalog(&home, &RequirementsSource::unmanaged())
+            .unwrap()
+            .unwrap();
 
         let model = store
             .model(&settings.model_hashes[0])
@@ -721,7 +792,9 @@ mod tests {
             .await
             .unwrap();
 
-        let after = config::applied_catalog(&home).unwrap().unwrap();
+        let after = config::applied_catalog(&home, &RequirementsSource::unmanaged())
+            .unwrap()
+            .unwrap();
         assert_eq!(
             after["models"][0]["display_name"], "Renamed Model",
             "改名后目录没刷新"

@@ -3,19 +3,37 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { API_ROOT, FakeBackend, installBrowserDoubles, startModuleLoader } from "./harness.mjs";
+import { installAppBackend } from "./appBackend.mjs";
 
 const loader = await startModuleLoader();
 await loader.load("/src/shared/ui/Controls.module.scss");
 installBrowserDoubles();
 test.after(() => loader.close());
-const state = { enabled: true, listening: true, port: 43120, configured: false, config_conflict: false, restorable: false, conflicts: [], chatgpt_signed_in: true, home: "test-home", calls: 0, last_error: null };
+const state = {
+  enabled: true,
+  listening: true,
+  port: 43120,
+  configured: false,
+  config_conflict: false,
+  restorable: false,
+  conflicts: [],
+  conflict_kind: "none",
+  route_owned: false,
+  managed_conflicts: [],
+  managed_error: null,
+  managed_scope: "local_system_only",
+  chatgpt_signed_in: true,
+  home: "test-home",
+  calls: 0,
+  last_error: null,
+};
 
 test("a listening Codex gateway is not presented as applied client configuration", async () => {
   const { codexConnectionView } = await loader.load("/src/features/codex/codexConnectionView.ts");
   assert.equal(codexConnectionView(state).state, "pending-apply");
   assert.equal(codexConnectionView({ ...state, configured: true }).state, "taken-over");
   assert.equal(codexConnectionView({ ...state, configured: true, listening: false }).state, "unavailable");
-  assert.equal(codexConnectionView({ ...state, configured: true, config_conflict: true }).state, "conflict");
+  assert.equal(codexConnectionView({ ...state, configured: true, config_conflict: true, conflict_kind: "foreign_provider" }).state, "conflict");
 });
 
 test("a managed field the client changed is not a routing conflict and keeps both actions usable", async () => {
@@ -72,6 +90,7 @@ test("a route held by another provider blocks apply but not the restore", async 
     ...state,
     restorable: true,
     config_conflict: true,
+    conflict_kind: "foreign_provider",
     conflicts: [{ key: "model_provider", applied: "\"haxsd-byok\"", current: "\"openai\"" }],
   };
 
@@ -109,6 +128,7 @@ test("the conflict card explains a route held by another provider", async () => 
       ...state,
       restorable: true,
       config_conflict: true,
+      conflict_kind: "foreign_provider",
       conflicts: [{ key: "model_provider", applied: "\"haxsd-byok\"", current: "\"openai\"" }],
     },
   }));
@@ -359,7 +379,256 @@ test("the status card lists at most two next actions and shorter descriptions", 
   );
   assert.equal(codexOutstandingSteps({ ...pending, configured: true }, 0, 0).length, 0, "已接管后不再列步骤");
 
-  for (const stateName of ["checking", "disabled", "pending-apply", "taken-over", "unavailable", "conflict"]) {
-    assert.ok(codexVerdictDescription(stateName).length <= 30, `${stateName} 的状态说明要短`);
+  for (const stateName of ["checking", "disabled", "pending-apply", "taken-over", "unavailable", "conflict", "managed", "local-drift", "policy-unavailable", "incomplete-update", "unreadable"]) {
+    assert.ok(codexVerdictDescription(stateName).length <= 60, `${stateName} 的状态说明要短`);
   }
+});
+
+const managedStatus = {
+  ...state,
+  configured: false,
+  config_conflict: true,
+  restorable: true,
+  conflict_kind: "managed",
+  route_owned: true,
+  managed_conflicts: [{ field: "model_provider", required: "openai", published: "haxsd-byok" }],
+};
+
+const localDriftStatus = {
+  ...state,
+  configured: false,
+  config_conflict: true,
+  restorable: true,
+  conflict_kind: "local_drift",
+  route_owned: true,
+  conflicts: [{ key: "model_catalog_json", applied: "\"a.json\"", current: "\"b.json\"" }],
+};
+
+const policyUnavailableStatus = {
+  ...state,
+  configured: false,
+  config_conflict: true,
+  restorable: true,
+  conflict_kind: "policy_unavailable",
+  route_owned: true,
+  managed_error: "invalid Codex requirements TOML",
+};
+
+const incompleteUpdateStatus = {
+  ...state,
+  configured: false,
+  config_conflict: true,
+  restorable: true,
+  conflict_kind: "incomplete_update",
+  route_owned: true,
+};
+
+test("managed requirements read as administrator policy, never as another program", async () => {
+  const { codexConnectionView, codexActionGate, codexVerdictDescription } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexConnectionView(managedStatus).state, "managed");
+  assert.match(codexVerdictDescription("managed"), /管理员策略/);
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: managedStatus }));
+  assert.match(markup, /管理员策略限制/);
+  assert.match(markup, /模型供应商：管理员要求 openai，本机发布 haxsd-byok/);
+  assert.match(markup, /仅核对本地系统 requirements；cloud\/enterprise 策略未验证/);
+  assert.doesNotMatch(markup, /其他程序占用|别人写的 provider/);
+
+  const gate = codexActionGate(managedStatus, { dirty: false, enabled: true });
+  assert.equal(gate.apply, false, "受管策略不能被本机应用覆盖");
+  assert.equal(gate.restore, true, "有有效收据仍允许撤销");
+});
+
+test("local drift is distinguished from a foreign provider", async () => {
+  const { codexConnectionView, codexActionGate, codexClientStage, codexVerdictDescription } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexConnectionView(localDriftStatus).state, "local-drift");
+  assert.match(codexVerdictDescription("local-drift"), /本机网关/);
+  assert.equal(codexClientStage(localDriftStatus).detail, "已写入但模型/目录已变");
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: localDriftStatus }));
+  assert.match(markup, /本机路由已变化/);
+  assert.doesNotMatch(markup, /其他程序占用|别人写的 provider/);
+
+  const gate = codexActionGate(localDriftStatus, { dirty: false, enabled: true });
+  assert.equal(gate.apply, false);
+  assert.equal(gate.restore, true);
+});
+
+test("unreadable policy keeps restore available and states the local-only scope", async () => {
+  const { codexConnectionView, codexActionGate } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexConnectionView(policyUnavailableStatus).state, "policy-unavailable");
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: policyUnavailableStatus }));
+  assert.match(markup, /无法读取管理员策略/);
+  assert.match(markup, /仅核对本地系统 requirements；cloud\/enterprise 策略未验证/);
+  assert.doesNotMatch(markup, /其他程序占用/);
+
+  const gate = codexActionGate(policyUnavailableStatus, { dirty: false, enabled: true });
+  assert.equal(gate.apply, false);
+  assert.equal(gate.restore, true, "策略不可读不能锁死安全撤销");
+});
+
+test("an interrupted apply asks for restore before another apply", async () => {
+  const { codexConnectionView, codexActionGate, codexOutstandingSteps, codexClientStage } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexConnectionView(incompleteUpdateStatus).state, "incomplete-update");
+  assert.equal(codexClientStage(incompleteUpdateStatus).detail, "上次应用未完成");
+  assert.deepEqual(
+    codexOutstandingSteps(incompleteUpdateStatus, 1, 1).map((step) => step.label),
+    ["先撤销上次未完成的应用"],
+  );
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: incompleteUpdateStatus }));
+  assert.match(markup, /上次应用未完成/);
+  assert.doesNotMatch(markup, /其他程序占用/);
+
+  const gate = codexActionGate(incompleteUpdateStatus, { dirty: false, enabled: true });
+  assert.equal(gate.apply, false);
+  assert.equal(gate.restore, true);
+});
+
+const unreadableStatus = {
+  ...state,
+  configured: false,
+  config_conflict: true,
+  restorable: false,
+  conflict_kind: "unreadable",
+  route_owned: false,
+  chatgpt_signed_in: false,
+  last_error: "Codex config could not be read",
+};
+
+test("unreadable config says login is unknown and gives actionable lock guidance", async () => {
+  const { codexConnectionView, codexActionGate, codexClientStage, codexLoginState, codexLoginView } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.equal(codexConnectionView(unreadableStatus).state, "unreadable");
+  assert.equal(codexClientStage(unreadableStatus).detail, "配置无法解析");
+  assert.equal(codexLoginState(unreadableStatus), "unknown");
+  assert.match(codexLoginView(unreadableStatus).label, /登录状态未知/);
+  assert.doesNotMatch(codexLoginView(unreadableStatus).label, /未登录/);
+
+  const gate = codexActionGate(unreadableStatus, { dirty: false, enabled: true });
+  assert.equal(gate.apply, false);
+  assert.equal(gate.restore, false, "unreadable 没有收据时撤销不可用");
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: unreadableStatus }));
+  assert.match(markup, /配置无法读取/);
+  assert.doesNotMatch(markup, /其他程序占用/);
+
+  const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
+  const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
+  const form = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
+    draft: { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash" },
+    models: [], pluginModels: [], locked: true, lockReason: "unreadable", onChange: () => {},
+  })));
+  assert.match(form, /先修复 Codex 配置目录/);
+  assert.doesNotMatch(form, /撤销接管后才能修改/);
+ });
+
+test("a foreign provider without a receipt does not tell the user to undo an unavailable action", async () => {
+  const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
+  const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
+  const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
+    draft: { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash" },
+    models: [], pluginModels: [], locked: true, lockReason: "foreign", onChange: () => {},
+  })));
+  assert.match(markup, /先处理上方提示的配置占用/);
+  assert.doesNotMatch(markup, /撤销接管后才能修改/);
+});
+
+test("an interrupted apply does not claim the config was definitely written", async () => {
+  const { codexVerdictDescription } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  assert.match(codexVerdictDescription("incomplete-update"), /可能已写入/);
+  assert.doesNotMatch(codexVerdictDescription("incomplete-update"), /写入了配置/);
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: incompleteUpdateStatus }));
+  assert.match(markup, /配置可能已写入/);
+  assert.doesNotMatch(markup, /配置已写入/);
+});
+
+test("an apply failure refreshes the real local-drift state and keeps the accurate error", async () => {
+  const { backend, state: backendState } = installAppBackend();
+  const applied = {
+    ...backendState.codexStatus,
+    enabled: true,
+    listening: true,
+    configured: true,
+    restorable: true,
+    route_owned: true,
+    conflict_kind: "none",
+    conflicts: [],
+  };
+  const drift = {
+    ...applied,
+    configured: false,
+    config_conflict: true,
+    conflict_kind: "local_drift",
+    conflicts: [{ key: "model_catalog_json", applied: "\"a.json\"", current: "\"b.json\"" }],
+  };
+  backendState.codexStatus = applied;
+  backend.route("POST", `${API_ROOT}/codex/apply`, () => {
+    backendState.codexStatus = drift;
+    return {
+      status: 409,
+      body: { message: "Codex configuration still points at this gateway but its catalog or model changed" },
+    };
+  });
+
+  const { appStore } = await loader.load("/src/shared/store/appStore.ts");
+  await appStore.refresh();
+  const { api } = await loader.load("/src/shared/api.ts");
+  const { runCodexAction } = await loader.load("/src/features/codex/CodexSettingsPage.tsx");
+  let captured;
+  await runCodexAction(
+    async () => { await api.applyCodex(); },
+    (cause) => { captured = cause; },
+  );
+
+  assert.ok(captured, "失败必须保留服务端真实错误");
+  assert.match(captured.message, /still points at this gateway/);
+  assert.equal(appStore.getSnapshot().codexStatus.conflict_kind, "local_drift", "失败后必须刷新真实状态");
+
+  const { CodexErrorAlert } = await loader.load("/src/features/codex/CodexSettingsPage.tsx");
+  const alert = renderToStaticMarkup(createElement(CodexErrorAlert, { cause: captured }));
+  assert.match(alert, /仍指向本机网关/);
+  assert.doesNotMatch(alert, /其他程序|已有其他 provider/);
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: appStore.getSnapshot().codexStatus }));
+  assert.match(markup, /本机路由已变化/);
+  assert.doesNotMatch(markup, /其他程序占用|别人写的 provider/);
+});
+
+test("a refresh failure after apply does not replace the real error with success", async () => {
+  const { backend, state: backendState } = installAppBackend();
+  backendState.codexStatus = { ...state, enabled: true, listening: true, configured: true, restorable: true, route_owned: true };
+  backend.route("GET", `${API_ROOT}/codex/status`, () => ({ status: 500, body: { message: "refresh unavailable" } }));
+
+  const { appStore } = await loader.load("/src/shared/store/appStore.ts");
+  const { runCodexAction } = await loader.load("/src/features/codex/CodexSettingsPage.tsx");
+  let captured;
+  await runCodexAction(
+    async () => { throw new Error("Codex configuration still points at this gateway but its catalog or model changed"); },
+    (cause) => { captured = cause; },
+  );
+
+  assert.match(captured.message, /still points at this gateway/);
+  assert.match(appStore.getSnapshot().error ?? "", /部分数据刷新失败/);
+  const { CodexErrorAlert } = await loader.load("/src/features/codex/CodexSettingsPage.tsx");
+  assert.match(renderToStaticMarkup(createElement(CodexErrorAlert, { cause: captured })), /仍指向本机网关/);
+});
+
+test("only a foreign provider says another program owns the route", async () => {
+  const { codexConnectionView, codexClientStage } = await loader.load("/src/features/codex/codexConnectionView.ts");
+  const foreign = { ...state, config_conflict: true, conflict_kind: "foreign_provider" };
+  assert.equal(codexConnectionView(foreign).state, "conflict");
+  assert.equal(codexClientStage(foreign).detail, "由其他程序占用");
+
+  const { CodexConflictCard } = await loader.load("/src/features/codex/CodexConflictCard.tsx");
+  const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: foreign }));
+  assert.match(markup, /其他程序占用/);
 });
