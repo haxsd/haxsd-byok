@@ -10,7 +10,7 @@
 
 ## 客户端行为变更前置
 
-- 修改 Cursor、Devin、Codex、Claude Desktop 的接管、协议、模型目录或客户端行为前，先读私有记录仓库 `haxsd/haxsd-dev-records` 中的 `haxsd-byok/reverse/README.md`，再按 `haxsd-byok/docs/product-change.md` 定位对应版本的官方实现与本产品依赖。
+- 修改 Cursor、Devin、Codex、Claude Desktop 的接管、协议、模型目录或客户端行为前，先读私有记录仓库 `haxsd/haxsd-dev-records` 中的 `haxsd-byok/docs/reverse/README.md`，再按 `haxsd-byok/docs/product-change.md` 定位对应版本的官方实现与本产品依赖。
 - 资料不可访问、版本不适用或证据不足时，先说明缺口并定向补证；不得用旧版偏移、字符串存在、第三方补丁或本产品测试结果替代官方实现证据。
 - 修复先复现并核实完整因果链，优化先确定基线和指标；再选择最小改动及回归范围，按用户可见结果验收。
 - 官方实现与版本证据回写私有逆向区；产品方案、代码映射、测试和交付状态写产品记录区。区分静态核对、自动化检查与真实客户端验证，不把未运行项记为通过。
