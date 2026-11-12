@@ -152,7 +152,7 @@ CA 私钥应和 API Key 一样保管。更换证书后需重新打开 Cursor。
 
 ### 订阅账号（可选）
 
-在「插件配置」页使用内置插件 `claude-code-auth`，它把 Claude Pro/Max 订阅的 OAuth 授权当作模型来源；登录后模型出现在模型库，可以像普通模型一样绑给 Claude 网关。完整说明、已核实事实和排查表见 [Claude 订阅账号接入](./claude-account.md)。
+在「插件配置」页使用内置插件 `claude-code-auth`，它把 Claude Pro/Max 订阅的 OAuth 授权当作模型来源；登录后模型出现在模型库，可以像普通模型一样绑给 Claude 网关。完整说明与排查表见 [Claude 订阅账号接入](./claude-account.md)。
 
 - 优先使用 Anthropic API Key：订阅 OAuth 用于第三方客户端可能违反 Anthropic 的消费者条款，可能被限流或封号，上游也可能直接拒绝。
 - 插件不伪装 Claude Code 的 User-Agent、计费头或设备指纹；登录成功不代表调用一定成功。

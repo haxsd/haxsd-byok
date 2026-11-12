@@ -227,7 +227,7 @@ async fn post_rpc(port: u16, method: &str, body: Vec<u8>) -> (u16, String) {
 
 /// `AssignModel` 属于模型流量,必须在本地分支回答:它不在白名单里时整条本地令牌链路
 /// (`assignment.rs` 的签发 + 会话表)就是死代码,而且客户端显式调用会被送到厂商上游,
-/// 与 `docs/devin-integration.md` 写的行为相反。未知 method 则一律透传上游,不再本地 404。
+/// 与 `docs/devin-go-live.md` 写的行为相反。未知 method 则一律透传上游,不再本地 404。
 #[tokio::test]
 async fn model_assignment_is_answered_locally_and_unknown_methods_go_upstream() {
     let (_directory, store) = fixtures::temp_store().await;

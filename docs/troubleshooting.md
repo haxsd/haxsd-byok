@@ -18,7 +18,7 @@
 
 - 先安装并完整启动一次 Devin，让自动探测能读到默认数据目录和扩展文件，再点「重新检查」。
 - 安装位置不是默认值时，展开「高级」，在「Devin 安装目录」填安装根目录，或其中 `extension.js` 的完整路径；「Devin 设置文件路径」可填 Devin 数据目录或 `User\settings.json`。两处都必须填绝对路径且实际存在；无效路径会明确报错，不会静默换回别的安装。
-- Devin 升级可能改变扩展哈希。当前版本只支持 Devin `3.11.216`；状态显示“版本暂不支持”或哈希不匹配时，不要手工替换或强行覆盖文件，先保留原文件并反馈版本信息。
+- Devin 升级可能改变扩展结构。本产品按端点设置函数的结构识别补丁，不锁定客户端版本；结构变化时写入会被拒绝，不要手工替换或强行覆盖文件，先保留原文件并反馈客户端版本。
 
 ### 保存提示没有默认模型
 
@@ -138,9 +138,8 @@
 
 ### 状态与注意
 
-- 可恢复，但根因尚未最终确认（主要嫌疑是较老版本的 Npcap 与当前 Windows 版本的组合）；改端口不属于已验证的修复手段。
+- 可恢复，但根因尚未最终确认（主要嫌疑是较老版本的 Npcap 与当前 Windows 版本的组合）；换端口和重载驱动属于规避手段，不是已验证的根因修复。
 - 不要把 Cursor 的 `http.proxy` 指向 Clash 等外部代理来绕开该错误，那会使 BYOK 的本地接管失效。
-- 详细证据链、时间线与复现步骤见本机记录（未纳入仓库）。
 
 ## Cursor 里看不到官方模型，或账号显示成「本地账号」
 
@@ -180,61 +179,3 @@
   「自定义」并填一个能出境的地址。
 - 只用本机模型：保持「直连」即可，页面不会再提示。
 - 顺带注意：「自定义」只支持一个地址、不按域名分流；填了境外节点，国内模型的请求也会绕出去。
-
-## `cargo test --workspace --all-targets` 在桌面 crate 上失败（`0xc0000139`）
-
-### 现象
-
-`cargo test --workspace --all-targets` 走到最后一个目标时失败：
-
-```
-Running unittests src\lib.rs (target\debug\deps\haxsd_byok_desktop-<hash>.exe)
-error: test failed, to rerun pass `-p haxsd-byok-desktop --lib`
-  process didn't exit successfully: ... (exit code: 0xc0000139, STATUS_ENTRYPOINT_NOT_FOUND)
-```
-
-其余所有目标（`cursor-server` 的 11 个套件、`semble-*`）全部通过，失败只发生在
-`haxsd-byok-desktop` 的单元测试二进制上。
-
-### 已排除的原因
-
-| 假设 | 证据 |
-| --- | --- |
-| 构建产物过期/损坏 | `cargo clean` 后全量重编（23.8 GiB 清空重建），新二进制仍然报同一个错 |
-| 重链接即可 | 删掉该 exe 触发单独重链接，哈希变化，报错不变 |
-| 缺少 `libmcfgthread-2.dll` | 用 C 写探针 `LoadLibrary` + `GetProcAddress`，8 个待解析符号全部返回有效地址；exe 所在目录放置该 DLL 也无效 |
-| 缺别的 DLL | 逐个核对导入表：KERNEL32 203 项、ntdll、user32、ucrtbase 系、crypt32 等 0 缺失 |
-| PATH / 工作目录 | 净化 PATH、换工作目录、把 DLL 放到 exe 旁，全部一致报错 |
-| PE 导入表损坏 | `objdump -p` 的导入描述符、导入名表、导出表结构均正常；那 8 个名字在当前 DLL 里都存在且序号一致 |
-
-### 已知线索
-
-该 exe 的导入 hint 序号比当前 DLL 的导出序号小 1~2（例如 import hint 25 / DLL 里是 26），
-说明链接它的静态库是在另一套 MCF 头文件下编出来的。按名字解析本应忽略 hint，
-所以这解释不了报错，但这是目前唯一未对齐的地方。
-
-### 结论：本机 GNU 工具链的问题，不是代码问题
-
-同一份代码、同一个测试二进制，在 CI 的 MSVC runner 上正常加载并运行：
-
-```
-running 1 test
-test startup::tests::fatal_report_includes_the_complete_error_chain ... ok
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-```
-
-（CI 运行 `35567454874`，`Desktop Rust (windows-latest)` 的
-「Run the desktop unit tests on MSVC」步骤。）
-
-Windows 桌面单元测试现已在 CI 中默认执行，不再依赖仓库变量启用。检查具体版本时仍应核对该步骤实际执行结果，不能把编译检查或被跳过的测试视为通过。
-
-### 处理
-
-- Windows 开发与验证使用 MSVC 工具链及对应的 Visual Studio Build Tools。已经安装该工具链时，可显式运行：
-
-```powershell
-cargo +stable-x86_64-pc-windows-msvc test --locked --workspace --all-targets
-```
-
-- GNU 环境的原生依赖错误应单独定位；排除桌面后的测试只能证明被执行的部分，不能代替桌面测试。
-- 前端验证运行 `npm --prefix apps/desktop run check`，包含类型检查、行为测试与生产构建。

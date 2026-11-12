@@ -10,6 +10,8 @@
 
 [Download for Windows](https://github.com/haxsd/haxsd-byok/releases/latest) · [User guide](./docs/user-guide.md) · [Troubleshooting](./docs/troubleshooting.md) · English · [简体中文](./README.md) · [Русский](./README-RU.md)
 
+The linked guides are currently Chinese-only.
+
 </div>
 
 ![haxsd byok main window](./images/en-home-1.png)
