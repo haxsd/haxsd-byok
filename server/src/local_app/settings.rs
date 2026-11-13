@@ -30,6 +30,14 @@ const KEYS: [&str; 5] = [
 /// left exactly as it is.
 const MANAGED_MARKER_KEY: &str = "haxsd-byok.managedProxy";
 
+/// Records the user's original `http.proxy` that we restored on withdraw.
+///
+/// Without this, the restored file is "a proxy without our managed marker", which
+/// `is_foreign_configuration` cannot tell apart from another product's takeover.
+/// The next launch then refuses to converge and the UI reports a false conflict.
+/// This key only identifies a value we returned; it is not an ownership marker.
+const RESTORED_PROXY_MARKER_KEY: &str = "haxsd-byok.restoredProxy";
+
 /// 接管期间由我们替用户保管的原始代理设置：`用户键 -> 保管键`。
 ///
 /// 这六个键接管时都必须让位：`http.noProxy` 里的例外会让 Cursor 绕过本机代理直连厂商
@@ -168,6 +176,7 @@ fn write_proxy_settings_at(path: &Path, proxy_url: &str) -> Result<()> {
     }
     let mut settings = settings;
     take_custody(&mut settings);
+    settings.remove(RESTORED_PROXY_MARKER_KEY);
     settings.insert(KEYS[0].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[1].into(), Value::String(proxy_url.into()));
     settings.insert(KEYS[2].into(), Value::String("on".into()));
@@ -197,7 +206,7 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
     for key in KEYS
         .into_iter()
         .chain(CUSTODY_KEYS.iter().map(|(_, custody)| *custody))
-        .chain([MANAGED_MARKER_KEY, NO_PROXY_KEY])
+        .chain([MANAGED_MARKER_KEY, RESTORED_PROXY_MARKER_KEY, NO_PROXY_KEY])
     {
         if let Some(value) = settings.get(key) {
             entries.insert(key.to_owned(), value.clone());
@@ -255,13 +264,15 @@ pub fn settings_match(proxy_url: &str) -> Result<bool> {
 
 /// 文件里现在的代理配置是不是**别人写的**。
 ///
-/// 判据只看一项：`http.proxy` 与我们留下的标记是否一致。
+/// 判据是 `http.proxy` 与我们留下的两类记录是否一致：
 ///
 /// - 没有 `http.proxy`：谁都没占用，可以写；
-/// - 标记与它一致：这是我们自己写的（值可能已经过期，比如代理换了端口），可以改写；
-/// - 没有标记，或标记与它不一致：有人在我们之后动过这几个键。同一个代码库分叉出来的
-///   兄弟产品就在同一台机器上，它写的是同样的五个键，而且会**保留不认识的键**（我们的
-///   标记），所以「标记还在」不等于「值还是我们的」——必须比较两者的当前值。
+/// - managed 标记与它一致：这是我们自己写的（值可能已经过期，比如代理换了端口），可以改写；
+/// - 没有 managed 标记，但 restored 标记与它一致：这是撤回时还给用户的原始代理，不是
+///   另一个产品刚写进来的配置，可以重新接管；
+/// - 其余情况：有人在我们之后动过这几个键。同一个代码库分叉出来的兄弟产品就在同一台
+///   机器上，它写的是同样的五个键，而且会**保留不认识的键**（我们的标记），所以「标记还在」
+///   不等于「值还是我们的」——必须比较两者的当前值。
 ///
 /// 认出这种情况后调用方会停手：两个软件轮流覆盖同一份配置，只会让用户的两条链路
 /// 都不稳定，该由用户自己决定留哪一个。
@@ -273,7 +284,13 @@ fn is_foreign_configuration(settings: &BTreeMap<String, Value>) -> bool {
     let Some(proxy) = settings.get(KEYS[0]) else {
         return false;
     };
-    !matches!(settings.get(MANAGED_MARKER_KEY), Some(marker) if marker == proxy)
+    if let Some(marker) = settings.get(MANAGED_MARKER_KEY) {
+        return marker != proxy;
+    }
+    if let Some(restored) = settings.get(RESTORED_PROXY_MARKER_KEY) {
+        return restored != proxy;
+    }
+    true
 }
 
 fn is_our_configuration(settings: &BTreeMap<String, Value>, proxy_url: &str) -> bool {
@@ -308,15 +325,24 @@ fn take_custody(settings: &mut BTreeMap<String, Value>) {
 /// 撤回配置时把保管的用户原值原样还回去。
 ///
 /// 文件里已经有这个键时不还：那是接管之后写的值，归用户，我们只把自己的保管记录丢掉。
+/// 归还 `http.proxy` 时额外留下 restored 记录：下一次启动必须能认出这份代理是用户自己的，
+/// 而不是另一个产品刚写进来的 foreign 配置。
 fn give_back_custody(settings: &mut BTreeMap<String, Value>) {
+    let mut restored_proxy = None;
     for (key, custody) in CUSTODY_KEYS {
         let held = settings.remove(custody);
         if settings.contains_key(key) {
             continue;
         }
         if let Some(value) = held {
+            if key == KEYS[0] {
+                restored_proxy = Some(value.clone());
+            }
             settings.insert(key.into(), value);
         }
+    }
+    if let Some(proxy) = restored_proxy {
+        settings.insert(RESTORED_PROXY_MARKER_KEY.into(), proxy);
     }
 }
 
@@ -499,6 +525,76 @@ mod tests {
         assert!(!is_foreign_configuration(&read_from(&path).unwrap()));
     }
 
+    /// 退出/启动清理会把用户原来自己的 `http.proxy` 还回去。那不是“别人写的配置”：
+    /// 本地模式下次启动应当能继续接管，而不是被 foreign 判定挡住。
+    #[test]
+    fn a_restored_user_proxy_is_not_foreign() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(
+            &path,
+            r#"{"http.proxy": "http://corp-proxy.example.com:8080", "editor.fontSize": 14}"#,
+        )
+        .unwrap();
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+        clear_proxy_settings_at(&path).unwrap();
+
+        let settings = read_from(&path).unwrap();
+        assert_eq!(
+            settings["http.proxy"],
+            json!("http://corp-proxy.example.com:8080")
+        );
+        assert!(
+            !is_foreign_configuration(&settings),
+            "归还给用户的代理不是外来接管"
+        );
+    }
+
+    /// 归还之后代理被改成另一个值，仍然必须按 foreign 停手；否则会覆盖用户或兄弟产品
+    /// 的新配置。
+    #[test]
+    fn a_proxy_changed_after_the_restore_is_foreign_again() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(
+            &path,
+            r#"{"http.proxy": "http://corp-proxy.example.com:8080"}"#,
+        )
+        .unwrap();
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+        clear_proxy_settings_at(&path).unwrap();
+
+        let mut settings = read_from(&path).unwrap();
+        settings.insert(KEYS[0].into(), json!("http://other-proxy.example.com:9090"));
+        write_to(&path, &settings).unwrap();
+
+        assert!(is_foreign_configuration(&read_from(&path).unwrap()));
+    }
+
+    /// 已经归还给用户的代理不能再被第二次清理删掉：restored 记录只是“这份值是我们还的”，
+    /// 不是所有权标记。
+    #[test]
+    fn a_second_clear_leaves_the_restored_proxy_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(
+            &path,
+            r#"{"http.proxy": "http://corp-proxy.example.com:8080"}"#,
+        )
+        .unwrap();
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+        clear_proxy_settings_at(&path).unwrap();
+
+        assert!(!clear_proxy_settings_at(&path).unwrap());
+        assert_eq!(
+            read(&path)["http.proxy"],
+            json!("http://corp-proxy.example.com:8080")
+        );
+    }
+
     /// 接管期间另一个同类软件改写了那五个键（我们的标记被它原样留下）：退出时不能
     /// 把这些键删掉，否则它的 Cursor 配置会当场消失，客户端只能直连厂商。
     #[test]
@@ -671,7 +767,50 @@ mod tests {
 
         clear_proxy_settings_at(&path).unwrap();
 
-        assert_eq!(read(&path), original, "撤回后用户原来的设置一字不动地回来");
+        let mut restored = read(&path);
+        assert_eq!(
+            restored
+                .as_object_mut()
+                .unwrap()
+                .remove(RESTORED_PROXY_MARKER_KEY),
+            Some(original["http.proxy"].clone()),
+            "归还 http.proxy 时要留下 restored 记录，供下一次启动识别"
+        );
+        assert_eq!(
+            restored, original,
+            "除 restored 记录外，用户原来的设置一字不动地回来"
+        );
+    }
+
+    /// 再次接管要清掉 restored 记录：它只用于识别“上一次还给用户的代理”，
+    /// 不能一直留在用户文件里，也不能在后续 foreign 判定里被当成当前所有权。
+    #[test]
+    fn taking_over_again_drops_the_restored_proxy_marker() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_path(&directory);
+        fs::write(
+            &path,
+            r#"{"http.proxy": "http://corp-proxy.example.com:8080"}"#,
+        )
+        .unwrap();
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1634").unwrap();
+        clear_proxy_settings_at(&path).unwrap();
+        assert!(
+            read_from(&path)
+                .unwrap()
+                .contains_key(RESTORED_PROXY_MARKER_KEY),
+            "撤回后应有 restored 记录"
+        );
+
+        write_proxy_settings_at(&path, "http://127.0.0.1:1635").unwrap();
+
+        let settings = read_from(&path).unwrap();
+        assert!(
+            !settings.contains_key(RESTORED_PROXY_MARKER_KEY),
+            "再次接管后 restored 记录必须消失"
+        );
+        assert!(!is_foreign_configuration(&settings));
     }
 
     /// 我们改写的那五个键在接管期间归我们：接管之后被写进来的值不参与"文件里已经有就
