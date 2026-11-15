@@ -9,7 +9,6 @@ use serde::Serialize;
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tracing::warn;
@@ -294,7 +293,7 @@ fn codex_profile() -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn codex_running() -> bool {
-    let output = Command::new("tasklist")
+    let output = std::process::Command::new("tasklist")
         .args(["/FI", "IMAGENAME eq ChatGPT.exe", "/FO", "CSV", "/NH"])
         .output();
     output
@@ -308,6 +307,7 @@ fn codex_running() -> bool {
     false
 }
 
+#[cfg(windows)]
 fn tasklist_contains_codex(output: &str) -> bool {
     output.lines().any(|line| {
         let line = line.to_ascii_lowercase();
@@ -386,6 +386,7 @@ mod tests {
         assert!(!has_cache(&local));
     }
 
+    #[cfg(windows)]
     #[test]
     fn tasklist_output_is_parsed_without_matching_the_no_tasks_message() {
         assert!(tasklist_contains_codex(
