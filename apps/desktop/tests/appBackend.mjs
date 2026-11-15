@@ -137,6 +137,12 @@ export function installAppBackend(overrides = {}) {
       calls: 0,
       last_error: null,
     },
+    codexUiCache: {
+      state: "ready",
+      cache_present: true,
+      backup_present: true,
+      codex_running: false,
+    },
     claudeStatus: { enabled: false, listening: false, port: 43121, base_url: "http://127.0.0.1:43121", token: "test-token", models: 0, default_model_hash: null, calls: 0, last_error: null },
     claudeTakeover: {
       cli: {
@@ -166,6 +172,11 @@ export function installAppBackend(overrides = {}) {
   };
 
   backend.route("GET", `${API_ROOT}/codex/status`, () => ({ body: state.codexStatus }));
+  backend.route("GET", `${API_ROOT}/codex/ui-cache`, () => ({ body: state.codexUiCache }));
+  backend.route("POST", `${API_ROOT}/codex/ui-cache/repair`, () => {
+    state.codexUiCache = { state: "ready", cache_present: true, backup_present: true, codex_running: false };
+    return { body: state.codexUiCache };
+  });
   backend.route("GET", `${API_ROOT}/claude/status`, () => ({ body: state.claudeStatus }));
   backend.route("GET", `${API_ROOT}/claude/takeover`, () => ({ body: state.claudeTakeover }));
   backend.route("GET", `${API_ROOT}/models`, () => ({ body: state.models }));

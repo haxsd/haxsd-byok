@@ -54,6 +54,34 @@
   font-size: type.$font-size-xs;
 }
 
+/* Codex 界面缓存说明：解释官方 Statsig 行为，并与“接管冲突”明确分开。 */
+.cacheNote {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.cacheNote p {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
+.cacheState {
+  color: var(--vscode-foreground) !important;
+}
+
+.cacheAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cacheHint {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+}
+
 /* 冲突条目是「字段：接管时 X → 现在 Y」的清单：用列表缩进，别和上下说明混成一段。 */
 .conflictList {
   display: grid;

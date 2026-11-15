@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod config;
 pub mod gateway;
 pub mod requirements;
+pub mod ui_cache;
 mod upstream;
 
 use crate::{Error, Result};

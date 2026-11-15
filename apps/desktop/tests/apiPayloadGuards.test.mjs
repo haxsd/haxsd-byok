@@ -345,3 +345,17 @@ test("a saved devin settings response with a broken shape reports a save failure
     );
   });
 });
+
+test("Codex UI cache status must carry a complete state object", async () => {
+  const { backend } = installAppBackend();
+  const valid = { state: "ready", cache_present: true, backup_present: true, codex_running: false };
+  backend.route("GET", `${API_ROOT}/codex/ui-cache`, () => ({ body: valid }));
+
+  const api = await loadApi();
+  assert.deepEqual(await api.codexUiCache(), valid);
+
+  backend.route("GET", `${API_ROOT}/codex/ui-cache`, () => ({
+    body: { state: "ready", cache_present: true, backup_present: true },
+  }));
+  await assert.rejects(() => api.codexUiCache(), /读取失败/);
+});

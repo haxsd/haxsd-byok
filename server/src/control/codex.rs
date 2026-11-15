@@ -28,6 +28,11 @@ pub fn router(gateway: CodexGateway, store: Store) -> Router {
     Router::new()
         .route("/__byok-api__/api/codex/settings", get(settings).put(save))
         .route("/__byok-api__/api/codex/status", get(status))
+        .route("/__byok-api__/api/codex/ui-cache", get(ui_cache))
+        .route(
+            "/__byok-api__/api/codex/ui-cache/repair",
+            post(repair_ui_cache),
+        )
         .route("/__byok-api__/api/codex/apply", post(apply))
         .route("/__byok-api__/api/codex/restore", post(restore))
         .with_state(CodexControl { gateway, store })
@@ -53,6 +58,12 @@ async fn save(
 }
 async fn status(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
     Ok(Json(state.gateway.status().await?))
+}
+async fn ui_cache() -> Json<crate::codex::ui_cache::UiCacheStatus> {
+    Json(crate::codex::ui_cache::ensure())
+}
+async fn repair_ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
+    Ok(Json(crate::codex::ui_cache::repair()?))
 }
 async fn apply(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
     Ok(Json(state.gateway.apply().await?))

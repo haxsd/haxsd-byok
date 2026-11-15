@@ -6,6 +6,7 @@ import type {
   ClaudeTakeover,
   CodexSettings,
   CodexStatus,
+  CodexUiCacheStatus,
   CompactionSettings,
   CursorHarnessStatus,
   CursorMode,
@@ -114,6 +115,10 @@ function codexStatus(): CodexStatus {
     managed_scope: "local_system_only",
     chatgpt_signed_in: true,
     home: codexSettings.home || "~/.codex", calls: 0, last_error: null };
+}
+
+function codexUiCacheStatus(): CodexUiCacheStatus {
+  return { state: "ready", cache_present: true, backup_present: true, codex_running: false };
 }
 
 let claudeSettings: ClaudeSettings = {
@@ -285,6 +290,8 @@ export function installDemoApi() {
       return json(harnessStatus);
     }
     if (path === "/codex/status") return json(codexStatus());
+    if (path === "/codex/ui-cache") return json(codexUiCacheStatus());
+    if (path === "/codex/ui-cache/repair" && method === "POST") return json(codexUiCacheStatus());
     if (path === "/codex/settings" && method === "GET") return json(codexSettings);
     if (path === "/codex/settings" && method === "PUT") {
       // 原句、前缀与状态码都照抄服务端（server/src/error.rs:12 的 `configuration error: {0}` +

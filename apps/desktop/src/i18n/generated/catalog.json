@@ -165,7 +165,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 153,
           "column": 66
         },
         {
@@ -252,7 +252,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 152,
           "column": 36
         },
         {
@@ -346,7 +346,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 144,
+          "line": 169,
           "column": 24
         }
       ]
@@ -1027,6 +1027,18 @@
         }
       ]
     },
+    "0bf1eb927297add0": {
+      "source": "Codex 界面缓存已恢复",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 120,
+          "column": 41
+        }
+      ]
+    },
     "0bf7f72f356a18f4": {
       "source": "Tab 补全",
       "kind": "text",
@@ -1574,6 +1586,18 @@
         }
       ]
     },
+    "141ebda3993ff952": {
+      "source": "恢复界面缓存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 31,
+          "column": 31
+        }
+      ]
+    },
     "146da2e2a991493e": {
       "source": "获取中…",
       "kind": "text",
@@ -1656,7 +1680,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 118,
+          "line": 142,
           "column": 14
         },
         {
@@ -1898,6 +1922,18 @@
           "file": "features/settings/UpdateCard.tsx",
           "line": 146,
           "column": 31
+        }
+      ]
+    },
+    "19ae61220eece2ca": {
+      "source": "当前没有可恢复的缓存。请先开启代理并启动一次 Codex，等正常界面出现后再退出。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 44,
+          "column": 28
         }
       ]
     },
@@ -2401,7 +2437,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 152,
           "column": 80
         },
         {
@@ -3694,7 +3730,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 157,
+          "line": 182,
           "column": 80
         },
         {
@@ -4053,7 +4089,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 103,
+          "line": 127,
           "column": 55
         }
       ]
@@ -4146,7 +4182,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 137,
+          "line": 161,
           "column": 101
         },
         {
@@ -4822,7 +4858,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 156,
+          "line": 181,
           "column": 70
         }
       ]
@@ -5395,6 +5431,18 @@
         }
       ]
     },
+    "43e3583f117ce254": {
+      "source": "当前无法定位 Codex 的界面缓存；请在代理可用时启动一次 Codex。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 45,
+          "column": 32
+        }
+      ]
+    },
     "44022b9af7a07f02": {
       "source": "Kimi Code 编程套餐页获取 API Key（api.kimi.com/coding 端点）",
       "kind": "text",
@@ -5840,7 +5888,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 149,
+          "line": 174,
           "column": 41
         },
         {
@@ -5961,6 +6009,18 @@
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 84,
           "column": 44
+        }
+      ]
+    },
+    "4a1bf2bffe361ee9": {
+      "source": "本产品会在正常界面出现后备份 Codex 的本地缓存，并在 Codex 完全退出时恢复。首次安装或升级后，请先在代理可用的情况下启动一次 Codex；看到正常界面后再退出，之后代理晚开也能优先使用缓存。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 26,
+          "column": 11
         }
       ]
     },
@@ -6230,6 +6290,18 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 179,
           "column": 207
+        }
+      ]
+    },
+    "4c76dd0c9088fc4c": {
+      "source": "当前已有可用的本地缓存。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 41,
+          "column": 26
         }
       ]
     },
@@ -7147,6 +7219,18 @@
         }
       ]
     },
+    "57979ffd76167d9e": {
+      "source": "当前缓存缺失，但已保存的备份可以恢复。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 42,
+          "column": 31
+        }
+      ]
+    },
     "57a2553509e41d6a": {
       "source": "添加自选模型",
       "kind": "text",
@@ -7933,22 +8017,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1008,
+          "line": 1018,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1150,
+          "line": 1178,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1175,
+          "line": 1203,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1300,
+          "line": 1328,
           "column": 29
         }
       ]
@@ -8315,7 +8399,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 167,
+          "line": 192,
           "column": 11
         }
       ]
@@ -8408,7 +8492,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 161,
+          "line": 186,
           "column": 14
         }
       ]
@@ -8432,7 +8516,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 148,
+          "line": 173,
           "column": 49
         },
         {
@@ -8477,22 +8561,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1016,
+          "line": 1026,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1150,
+          "line": 1178,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1175,
+          "line": 1203,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1300,
+          "line": 1328,
           "column": 41
         }
       ]
@@ -8653,7 +8737,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 106,
+          "line": 130,
           "column": 76
         }
       ]
@@ -8745,7 +8829,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1554,
+          "line": 1584,
           "column": 23
         }
       ]
@@ -9347,7 +9431,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1541,
+          "line": 1571,
           "column": 43
         }
       ]
@@ -9858,7 +9942,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 960,
+          "line": 970,
           "column": 11
         },
         {
@@ -9967,7 +10051,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 128,
+          "line": 152,
           "column": 91
         }
       ]
@@ -10403,6 +10487,18 @@
         }
       ]
     },
+    "88114ea3bce4abda": {
+      "source": "Codex 的侧栏、语言和 Work/聊天布局由官方 Statsig 开关决定。国内网络下，如果 Codex 启动时连不上官方服务、本机又没有可用缓存，就会回退到旧版界面：没有左侧图标栏、显示英文、进入聊天模式。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 25,
+          "column": 11
+        }
+      ]
+    },
     "882c74b6c0ad8a8c": {
       "source": "一次导入的总大小不能超过 {limit}；请分批导入。",
       "kind": "template",
@@ -10522,6 +10618,18 @@
           "file": "features/settings/CompactionSettingsCard.tsx",
           "line": 126,
           "column": 90
+        }
+      ]
+    },
+    "8a5f59aa8232597f": {
+      "source": "请先完全退出 Codex，再恢复界面缓存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 121,
+          "column": 48
         }
       ]
     },
@@ -10645,7 +10753,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1494,
+          "line": 1524,
           "column": 23
         }
       ]
@@ -11677,7 +11785,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 973,
+          "line": 983,
           "column": 11
         }
       ]
@@ -11737,7 +11845,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 137,
+          "line": 161,
           "column": 68
         }
       ]
@@ -11773,7 +11881,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 153,
           "column": 108
         }
       ]
@@ -11963,7 +12071,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 129,
+          "line": 153,
           "column": 35
         },
         {
@@ -12415,7 +12523,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 155,
+          "line": 180,
           "column": 115
         },
         {
@@ -13073,7 +13181,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 138,
+          "line": 162,
           "column": 73
         }
       ]
@@ -13268,6 +13376,18 @@
         }
       ]
     },
+    "abf1999ca4058306": {
+      "source": "Codex 正在运行，无法安全替换它的缓存。请完全退出 Codex 后再恢复。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 43,
+          "column": 28
+        }
+      ]
+    },
     "ac1cf895a0f8ec17": {
       "source": "完成后会启用增量页回收，以后清理数据时会在空闲维护窗口小步归还。",
       "kind": "text",
@@ -13436,7 +13556,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 114,
+          "line": 138,
           "column": 80
         }
       ]
@@ -13922,7 +14042,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 120,
+          "line": 144,
           "column": 77
         },
         {
@@ -14004,6 +14124,30 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 498,
           "column": 19
+        }
+      ]
+    },
+    "b2a28bef4819e527": {
+      "source": "请先完全退出 Codex",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 30,
+          "column": 74
+        }
+      ]
+    },
+    "b2c6681019cd09dd": {
+      "source": "完全退出 Codex 后即可恢复。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 33,
+          "column": 57
         }
       ]
     },
@@ -14093,7 +14237,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 136,
+          "line": 160,
           "column": 18
         }
       ]
@@ -14362,7 +14506,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 148,
+          "line": 173,
           "column": 133
         },
         {
@@ -14404,6 +14548,18 @@
           "file": "shell/AppErrorBoundary.tsx",
           "line": 64,
           "column": 50
+        }
+      ]
+    },
+    "b87f56603287dcde": {
+      "source": "恢复中…",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 31,
+          "column": 19
         }
       ]
     },
@@ -14466,6 +14622,18 @@
           "file": "features/calls/CallTable.tsx",
           "line": 86,
           "column": 38
+        }
+      ]
+    },
+    "b9748ead75331180": {
+      "source": "Codex 旧版界面说明",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexUiCacheNote.tsx",
+          "line": 23,
+          "column": 29
         }
       ]
     },
@@ -14745,7 +14913,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1565,
+          "line": 1595,
           "column": 43
         }
       ]
@@ -15335,7 +15503,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 173,
+          "line": 198,
           "column": 15
         }
       ]
@@ -18538,7 +18706,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 162,
+          "line": 187,
           "column": 21
         }
       ]
@@ -18772,7 +18940,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 138,
+          "line": 162,
           "column": 40
         }
       ]

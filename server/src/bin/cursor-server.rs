@@ -10,6 +10,9 @@ use tracing_subscriber::prelude::*;
 async fn main() -> Result<()> {
     // 名字不能是 `_`：`WorkerGuard` 一被 drop 就结束写入线程并落盘，`_` 会立刻吃掉它。
     let _log_guard = install_logging();
+    // 在 Codex 启动前尽量恢复它上次正常界面的 Statsig 缓存；已运行时只做备份，
+    // 不会碰它正打开的 LevelDB。页面上的状态与“恢复”按钮仍走管理 API。
+    cursor_server::codex::ui_cache::ensure();
     App::new(Config::from_env()?).await?.serve().await
 }
 

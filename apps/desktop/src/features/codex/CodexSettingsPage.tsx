@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, configuredPluginModels, type CodexSettings } from "../../shared/api";
+import { api, configuredPluginModels, type CodexSettings, type CodexUiCacheStatus } from "../../shared/api";
+import { useI18n } from "../../i18n/store";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
@@ -13,6 +14,7 @@ import { PageActions } from "../../shell/PageActions";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
+import { CodexUiCacheNote } from "./CodexUiCacheNote";
 import { CodexSettingsForm, type CodexLockReason } from "./CodexSettingsForm";
 import { codexModelAvailability, codexModelSelectionBlocked } from "./codexModelOptions";
 import {
@@ -52,11 +54,14 @@ export function CodexErrorAlert({ cause }: { cause: unknown }) {
 
 export function CodexSettingsPage() {
   const { models, plugins, codexStatus } = useAppStore();
+  const { locale } = useI18n();
   const navigate = useNavigate();
   const [saved, setSaved] = useState<CodexSettings | null>(null);
   const [draft, setDraft] = useState<CodexSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [uiCache, setUiCache] = useState<CodexUiCacheStatus | null>(null);
+  const [uiCacheError, setUiCacheError] = useState<unknown>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // 未登录 ChatGPT 时点「应用到 Codex」先确认：Work 界面可能无法新建任务。
   const [confirmApply, setConfirmApply] = useState(false);
@@ -70,6 +75,19 @@ export function CodexSettingsPage() {
       .catch(cause => { if (!disposed) setError(cause); });
     return () => { disposed = true; };
   }, [reloadKey]);
+  useEffect(() => {
+    // 这是国内网络下 Codex 官方 Statsig 开关的界面回退说明，只在中文界面显示。
+    if (locale !== "zh-CN") {
+      setUiCache(null);
+      setUiCacheError(null);
+      return;
+    }
+    let disposed = false;
+    setUiCacheError(null);
+    void api.codexUiCache().then(status => { if (!disposed) setUiCache(status); })
+      .catch(cause => { if (!disposed) setUiCacheError(cause); });
+    return () => { disposed = true; };
+  }, [locale, reloadKey]);
   const view = codexConnectionView(codexStatus);
   const login = codexLoginView(codexStatus);
   const clientStage = codexClientStage(codexStatus);
@@ -96,6 +114,12 @@ export function CodexSettingsPage() {
     catch (cause) { setError(cause); }
     finally { setBusy(false); }
   };
+  const repairUiCache = () => action(async () => {
+    const next = await api.repairCodexUiCache();
+    setUiCache(next);
+    if (next.state === "ready") message(t("Codex 界面缓存已恢复"));
+    else if (next.state === "blocked") message(t("请先完全退出 Codex，再恢复界面缓存"));
+  });
   const save = () => {
     if (!draft || modelSelectionBlocked) return;
     return action(async () => {
@@ -141,6 +165,7 @@ export function CodexSettingsPage() {
       {alertCause && <CodexErrorAlert cause={alertCause} />}
     </TitledCard>
     <CodexConflictCard status={codexStatus} />
+    {locale === "zh-CN" && <CodexUiCacheNote status={uiCache} busy={busy} error={uiCacheError} onRepair={() => void repairUiCache()} />}
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
         ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} lockReason={lockReason} applied={applied} onChange={setDraft} />

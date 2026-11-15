@@ -244,6 +244,16 @@ export interface CodexStatus {
   last_error: string | null;
 }
 
+/** Codex 桌面界面的 Statsig 本地缓存状态；与接管配置无关。 */
+export type CodexUiCacheState = "ready" | "restorable" | "blocked" | "missing" | "unsupported";
+
+export interface CodexUiCacheStatus {
+  state: CodexUiCacheState;
+  cache_present: boolean;
+  backup_present: boolean;
+  codex_running: boolean;
+}
+
 export interface DevinGatewayPorts {
   api: number;
   inference: number;
@@ -1085,6 +1095,27 @@ function codexManagedConflicts(value: unknown): CodexManagedConflict[] {
 }
 
 /**
+ * Codex 界面缓存状态只来自本机目录/进程探测；字段不完整时按读取失败处理，页面不能
+ * 把未知状态误当成“已有缓存”。
+ */
+function usableCodexUiCache(payload: unknown): CodexUiCacheStatus {
+  const status = payload as Record<string, unknown> | null;
+  const states: readonly CodexUiCacheState[] = ["ready", "restorable", "blocked", "missing", "unsupported"];
+  if (
+    typeof status !== "object"
+    || status === null
+    || typeof status.state !== "string"
+    || !states.includes(status.state as CodexUiCacheState)
+    || typeof status.cache_present !== "boolean"
+    || typeof status.backup_present !== "boolean"
+    || typeof status.codex_running !== "boolean"
+  ) {
+    throw unusableRead("Codex 界面缓存");
+  }
+  return status as unknown as CodexUiCacheStatus;
+}
+
+/**
  * Codex 状态里的可用部分。
  *
  * 当前服务端总会返回诊断字段；缺失/非法按一次读取失败处理，不把缺失字段默认成
@@ -1483,6 +1514,8 @@ export const api = {
   codexSettings: () => request<unknown>("/codex/settings").then(settings => usableCodexSettings(settings, false)),
   setCodexSettings: (settings: CodexSettings) => request<unknown>("/codex/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableCodexSettings(saved, true)),
   codexStatus: (signal?: AbortSignal) => request<unknown>("/codex/status", { signal }).then(usableCodexStatus),
+  codexUiCache: (signal?: AbortSignal) => request<unknown>("/codex/ui-cache", { signal }).then(usableCodexUiCache),
+  repairCodexUiCache: () => request<unknown>("/codex/ui-cache/repair", { method: "POST" }).then(usableCodexUiCache),
   applyCodex: () => request<unknown>("/codex/apply", { method: "POST" }).then(usableCodexStatus),
   restoreCodex: () => request<unknown>("/codex/restore", { method: "POST" }).then(usableCodexStatus),
   claudeSettings: () => request<unknown>("/claude/settings").then(settings => usableClaudeSettings(settings, false)),

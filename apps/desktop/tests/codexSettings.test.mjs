@@ -632,3 +632,36 @@ test("only a foreign provider says another program owns the route", async () => 
   const markup = renderToStaticMarkup(createElement(CodexConflictCard, { status: foreign }));
   assert.match(markup, /其他程序占用/);
 });
+
+test("Codex UI cache note explains the legacy interface and offers restore only when possible", async () => {
+  const { CodexUiCacheNote } = await loader.load("/src/features/codex/CodexUiCacheNote.tsx");
+  const restorable = { state: "restorable", cache_present: false, backup_present: true, codex_running: false };
+  const markup = renderToStaticMarkup(createElement(CodexUiCacheNote, {
+    status: restorable,
+    busy: false,
+    error: null,
+    onRepair: () => undefined,
+  }));
+  assert.match(markup, /Statsig/);
+  assert.match(markup, /旧版界面/);
+  assert.match(markup, /恢复界面缓存/);
+  assert.match(markup, /缓存缺失/);
+
+  const blocked = renderToStaticMarkup(createElement(CodexUiCacheNote, {
+    status: { ...restorable, state: "blocked", codex_running: true },
+    busy: false,
+    error: null,
+    onRepair: () => undefined,
+  }));
+  assert.match(blocked, /恢复界面缓存/);
+  assert.doesNotMatch(blocked, /disabled/);
+  assert.match(blocked, /完全退出 Codex/);
+
+  const ready = renderToStaticMarkup(createElement(CodexUiCacheNote, {
+    status: { ...restorable, state: "ready", cache_present: true },
+    busy: false,
+    error: null,
+    onRepair: () => undefined,
+  }));
+  assert.doesNotMatch(ready, /恢复界面缓存/);
+});
