@@ -39,7 +39,13 @@ const SESSION_BRANCH_PATTERN: &str = concat!(
     r#"if\(void 0!==(?P<defined>[A-Za-z_$][A-Za-z0-9_$]*)&&""!==(?P<nonempty>[A-Za-z_$][A-Za-z0-9_$]*)\)return\{value:(?P<returned>[A-Za-z_$][A-Za-z0-9_$]*),source:"auth_session"\}\}"#,
 );
 const DEPLOYMENT_VALUE_PATTERN: &str = r#"\{value:[A-Za-z_$][A-Za-z0-9_$]*\((?P<key>[A-Za-z_$][A-Za-z0-9_$]*)\),source:"deployment_default"\}"#;
+const LOCAL_ACCOUNT_BRANCH_PATTERN: &str = concat!(
+    r#"if\((?P<session_key>[A-Za-z_$][A-Za-z0-9_$]*)===[A-Za-z_$][A-Za-z0-9_$]*\.API_SERVER_URL\)\{"#,
+    r#"const (?P<value>[A-Za-z_$][A-Za-z0-9_$]*)=\(0,[A-Za-z_$][A-Za-z0-9_$]*\.getLocalAccount\)\(\)\?\.apiServerUrl;"#,
+    r#"if\(void 0!==(?P<defined>[A-Za-z_$][A-Za-z0-9_$]*)&&""!==(?P<nonempty>[A-Za-z_$][A-Za-z0-9_$]*)\)return\{value:(?P<returned>[A-Za-z_$][A-Za-z0-9_$]*),source:"local_account"\}\}"#,
+);
 const LS_RESTART_WINDOW: usize = 800;
+const LS_METHOD_RESTART_WINDOW: usize = 4_096;
 const LS_VENDOR_RESTART_PATTERN: &str = concat!(
     r#"await async function\(e\)\{let t;try\{t=(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\}catch\{return\}"#,
     r#"e!==t\.apiServerUrl&&await t\.restart\(e\)\}\(t\)"#,
@@ -49,6 +55,12 @@ const LS_PATCHED_RESTART_PATTERN: &str = concat!(
     r#"const n=\(0,(?P<diagnostics>[A-Za-z_$][A-Za-z0-9_$]*)\.getApiServerUrlDiagnostics\)\(\),i="user_setting"===n\.source\?\(0,(?P<config>[A-Za-z_$][A-Za-z0-9_$]*)\.getConfig\)\((?P<config_again>[A-Za-z_$][A-Za-z0-9_$]*)\.Config\.API_SERVER_URL\):e;"#,
     r#"i!==t\.apiServerUrl&&await t\.restart\(i\)\}\(t\)"#,
 );
+const LS_METHOD_VENDOR_RESTART_PATTERN: &str = concat!(
+    r#"async restartLanguageServerIfNeeded\((?P<arg>[A-Za-z_$][A-Za-z0-9_$]*)\)\{\("#,
+    r#"0,(?P<isstring>[A-Za-z_$][A-Za-z0-9_$]*)\.isString\)\((?P<arg2>[A-Za-z_$][A-Za-z0-9_$]*)\)&&!\("#,
+    r#"0,(?P<isempty>[A-Za-z_$][A-Za-z0-9_$]*)\.isEmpty\)\((?P<arg3>[A-Za-z_$][A-Za-z0-9_$]*)\)&&(?P<arg4>[A-Za-z_$][A-Za-z0-9_$]*)!==(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.apiServerUrl&&await\s*(?P<client2>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.restart\((?P<arg5>[A-Za-z_$][A-Za-z0-9_$]*)\)\}"#,
+);
+const LS_METHOD_PATCHED_RESTART_PATTERN: &str = r#"i!==(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.apiServerUrl&&await\s*(?P<client2>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.restart\(i\)"#;
 const GATE_CONTEXT_ANCHORS: [&str; 7] = [
     "deployment_default",
     "getConfiguration",
@@ -265,24 +277,26 @@ fn inspect_existing(path: &Path) -> GateStatus {
     // `patched` also preserves restoration of a verified earlier patch. Only
     // `compatible && patched` means that this build honors endpoint settings.
     let patched = clean_count == 0 && patched_count == 1;
-    let session_update = if clean || patched {
+    let pre_setting_update = if clean || patched {
         let (range, fallback) = clean_gates.first().or(patched_gates.first()).unwrap();
-        session_fallback_update(content, range.start, fallback)
+        pre_setting_fallback_update(content, range.start, fallback)
     } else {
         Ok(None)
     };
     let restart_update = language_server_restart_update(content);
     let needs_refresh = patched
-        && (matches!(&session_update, Ok(Some(_))) || matches!(&restart_update, Ok(Some(_))));
-    let compatible =
-        (clean || patched) && session_update.is_ok() && restart_update.is_ok() && !needs_refresh;
+        && (matches!(&pre_setting_update, Ok(Some(_))) || matches!(&restart_update, Ok(Some(_))));
+    let compatible = (clean || patched)
+        && pre_setting_update.is_ok()
+        && restart_update.is_ok()
+        && !needs_refresh;
     let message = if needs_refresh {
         format!(
-            "Devin {version} endpoint settings patch needs refresh: the signed-in API address \
-             still overrides an explicit setting or the language server; restore the existing \
-             integration before applying it again"
+            "Devin {version} endpoint settings patch needs refresh: a local-account or signed-in \
+             API address still overrides an explicit setting or the language server; restore the \
+             existing integration before applying it again"
         )
-    } else if let Err(error) = &session_update {
+    } else if let Err(error) = &pre_setting_update {
         error.to_string()
     } else if let Err(error) = &restart_update {
         error.to_string()
@@ -353,36 +367,49 @@ fn product_version(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-/// Keep the logged-in endpoint as the default, after the vendor's existing
-/// trusted/untrusted setting selection. This recognizes both the vendor prefix
-/// and its single transformed form; unfamiliar code is never rewritten.
-fn session_fallback_update(
+/// Keep a signed-in/local-account endpoint as the fallback after the vendor's
+/// trusted/untrusted setting selection. This recognizes both the old session
+/// branch and 3.12.59's local-account branch; unfamiliar code is never rewritten.
+fn fallback_update(
     content: &str,
     gate_start: usize,
     fallback: &str,
+    branch_pattern: &str,
+    getter: &str,
+    source: &str,
+    allow_dead_branch: bool,
 ) -> Result<Option<(std::ops::Range<usize>, String)>> {
     let mut from = gate_start.saturating_sub(GATE_CONTEXT_WINDOW);
     while !content.is_char_boundary(from) {
         from -= 1;
     }
     let prefix = &content[from..gate_start];
-    if !prefix.contains("getSessionApiServerUrl") && !prefix.contains("source:\"auth_session\"") {
-        return Ok(None);
+    let has_getter = prefix.contains(getter);
+    let has_source = prefix.contains(&format!("source:\"{source}\""));
+    if !has_getter {
+        if !has_source {
+            return Ok(None);
+        }
+        if allow_dead_branch && prefix.contains("const e=null;") {
+            return Ok(None);
+        }
+        return Err(Error::Config(format!(
+            "Devin endpoint settings {source} fallback is unrecognized or inconsistent; patch refused"
+        )));
     }
 
     let before = Regex::new(&format!(
-        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\((?P<default>{DEPLOYMENT_VALUE_PATTERN})\);(?P<session>{SESSION_BRANCH_PATTERN})$"
+        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\((?P<default>{DEPLOYMENT_VALUE_PATTERN})\);(?P<session>{branch_pattern})$"
     ))
-    .expect("static session endpoint prefix regex");
+    .expect("static endpoint prefix regex");
     let after = Regex::new(&format!(
-        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\{{(?P<session>{SESSION_BRANCH_PATTERN})return(?P<default>{DEPLOYMENT_VALUE_PATTERN})\}};$"
+        r"(?P<fallback>{JS_IDENTIFIER})=\(\)=>\{{(?P<session>{branch_pattern})return(?P<default>{DEPLOYMENT_VALUE_PATTERN})\}};$"
     ))
-    .expect("static session endpoint fallback regex");
+    .expect("static endpoint fallback regex");
     let refusal = || {
-        Error::Config(
-            "Devin endpoint settings session fallback is unrecognized or inconsistent; patch refused"
-                .into(),
-        )
+        Error::Config(format!(
+            "Devin endpoint settings {source} fallback is unrecognized or inconsistent; patch refused"
+        ))
     };
     let (captures, reorder) = if let Some(captures) = before.captures(prefix) {
         (captures, true)
@@ -412,58 +439,172 @@ fn session_fallback_update(
     )))
 }
 
-/// A signed-in session restarts the language server with its own API address.
-/// An explicit user setting must win; without one, the session address stays.
+fn pre_setting_fallback_update(
+    content: &str,
+    gate_start: usize,
+    fallback: &str,
+) -> Result<Option<(std::ops::Range<usize>, String)>> {
+    let mut from = gate_start.saturating_sub(GATE_CONTEXT_WINDOW);
+    while !content.is_char_boundary(from) {
+        from -= 1;
+    }
+    let prefix = &content[from..gate_start];
+    let has_session =
+        prefix.contains("getSessionApiServerUrl") || prefix.contains("source:\"auth_session\"");
+    let has_local =
+        prefix.contains("getLocalAccount") || prefix.contains("source:\"local_account\"");
+    if has_session && has_local {
+        return Err(Error::Config(
+            "Devin endpoint settings has both session and local-account overrides; patch refused"
+                .into(),
+        ));
+    }
+    if has_session {
+        fallback_update(
+            content,
+            gate_start,
+            fallback,
+            SESSION_BRANCH_PATTERN,
+            "getSessionApiServerUrl",
+            "auth_session",
+            false,
+        )
+    } else if has_local {
+        fallback_update(
+            content,
+            gate_start,
+            fallback,
+            LOCAL_ACCOUNT_BRANCH_PATTERN,
+            "getLocalAccount",
+            "local_account",
+            true,
+        )
+    } else {
+        Ok(None)
+    }
+}
+
+/// A signed-in session or local account restarts the language server with its
+/// own API address. An explicit user setting must win; without one, the
+/// signed-in/local-account address stays.
 fn language_server_restart_update(
     content: &str,
 ) -> Result<Option<(std::ops::Range<usize>, String)>> {
-    let vendor =
+    let vendor_old =
         Regex::new(LS_VENDOR_RESTART_PATTERN).expect("static language-server restart regex");
-    let patched =
-        Regex::new(LS_PATCHED_RESTART_PATTERN).expect("static language-server restart patch regex");
-    let vendor_matches = vendor.captures_iter(content).collect::<Vec<_>>();
-    let patched_matches = patched
+    let patched_old = Regex::new(LS_PATCHED_RESTART_PATTERN)
+        .expect("static patched language-server restart regex");
+    let vendor_new = Regex::new(LS_METHOD_VENDOR_RESTART_PATTERN)
+        .expect("static language-server method restart regex");
+    let patched_new = Regex::new(LS_METHOD_PATCHED_RESTART_PATTERN)
+        .expect("static patched language-server method restart regex");
+
+    let vendor_old_matches = vendor_old.captures_iter(content).collect::<Vec<_>>();
+    let patched_old_matches = patched_old
         .captures_iter(content)
         .filter(|captures| {
             captures["diagnostics"] == captures["config"]
                 && captures["config"] == captures["config_again"]
         })
         .collect::<Vec<_>>();
-    if vendor_matches.len() + patched_matches.len() > 1 {
+    let vendor_new_matches = vendor_new
+        .captures_iter(content)
+        .filter(|captures| {
+            ["arg", "arg2", "arg3", "arg4", "arg5"]
+                .iter()
+                .all(|name| captures[*name] == captures["arg"])
+                && captures["client"] == captures["client2"]
+        })
+        .collect::<Vec<_>>();
+    let patched_new_matches = patched_new
+        .captures_iter(content)
+        .filter(|captures| captures["client"] == captures["client2"])
+        .collect::<Vec<_>>();
+
+    let matches = vendor_old_matches.len()
+        + patched_old_matches.len()
+        + vendor_new_matches.len()
+        + patched_new_matches.len();
+    if matches > 1 {
         return Err(Error::Config(
             "Devin language-server API restart is ambiguous; patch refused".into(),
         ));
     }
-    let Some(captures) = vendor_matches.first() else {
-        return Ok(None);
-    };
-    let matched = captures.get(0).expect("language-server restart match");
-    let mut from = matched.start().saturating_sub(LS_RESTART_WINDOW);
-    while !content.is_char_boundary(from) {
-        from -= 1;
+
+    if let Some(captures) = vendor_old_matches.first() {
+        let matched = captures.get(0).expect("language-server restart match");
+        let mut from = matched.start().saturating_sub(LS_RESTART_WINDOW);
+        while !content.is_char_boundary(from) {
+            from -= 1;
+        }
+        let config = Regex::new(&format!(
+            r"\(0,(?P<config>{JS_IDENTIFIER})\.getConfig\)\((?P<config_again>{JS_IDENTIFIER})\.Config\.API_SERVER_URL\)"
+        ))
+        .expect("static API config binding regex");
+        let Some(config) = config
+            .captures_iter(&content[from..matched.start()])
+            .filter(|captures| captures["config"] == captures["config_again"])
+            .last()
+        else {
+            return Err(Error::Config(
+                "Devin language-server API restart has no recognizable settings binding; patch refused"
+                    .into(),
+            ));
+        };
+        let client = &captures["client"];
+        let config = &config["config"];
+        return Ok(Some((
+            matched.range(),
+            format!(
+                "await async function(e){{let t;try{{t={client}.LanguageServerClient.getInstance()}}catch{{return}}const n=(0,{config}.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,{config}.getConfig)({config}.Config.API_SERVER_URL):e;i!==t.apiServerUrl&&await t.restart(i)}}(t)"
+            ),
+        )));
     }
-    let config = Regex::new(&format!(
-        r"\(0,(?P<config>{JS_IDENTIFIER})\.getConfig\)\((?P<config_again>{JS_IDENTIFIER})\.Config\.API_SERVER_URL\)"
-    ))
-    .expect("static API config binding regex");
-    let Some(config) = config
-        .captures_iter(&content[from..matched.start()])
-        .filter(|captures| captures["config"] == captures["config_again"])
-        .last()
-    else {
+
+    if let Some(captures) = vendor_new_matches.first() {
+        let matched = captures
+            .get(0)
+            .expect("language-server method restart match");
+        let mut from = matched.start().saturating_sub(LS_METHOD_RESTART_WINDOW);
+        while !content.is_char_boundary(from) {
+            from -= 1;
+        }
+        let config = Regex::new(&format!(
+            r"\(0,(?P<config>{JS_IDENTIFIER})\.getConfig\)\((?P<config_again>{JS_IDENTIFIER})\.Config\.API_SERVER_URL\)"
+        ))
+        .expect("static API config binding regex");
+        let Some(config) = config
+            .captures_iter(&content[from..matched.start()])
+            .filter(|captures| captures["config"] == captures["config_again"])
+            .last()
+        else {
+            return Err(Error::Config(
+                "Devin language-server method restart has no recognizable settings binding; patch refused"
+                    .into(),
+            ));
+        };
+        let arg = &captures["arg"];
+        let isstring = &captures["isstring"];
+        let isempty = &captures["isempty"];
+        let client = &captures["client"];
+        let config = &config["config"];
+        return Ok(Some((
+            matched.range(),
+            format!(
+                "async restartLanguageServerIfNeeded({arg}){{const n=(0,{config}.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,{config}.getConfig)({config}.Config.API_SERVER_URL):{arg};(0,{isstring}.isString)(i)&&!(0,{isempty}.isEmpty)(i)&&i!=={client}.LanguageServerClient.getInstance().apiServerUrl&&await {client}.LanguageServerClient.getInstance().restart(i)}}"
+            ),
+        )));
+    }
+
+    if content.contains("restartLanguageServerIfNeeded")
+        && vendor_new_matches.is_empty()
+        && patched_new_matches.is_empty()
+    {
         return Err(Error::Config(
-            "Devin language-server API restart has no recognizable settings binding; patch refused"
-                .into(),
+            "Devin language-server restart method is unrecognized; patch refused".into(),
         ));
-    };
-    let client = &captures["client"];
-    let config = &config["config"];
-    Ok(Some((
-        matched.range(),
-        format!(
-            "await async function(e){{let t;try{{t={client}.LanguageServerClient.getInstance()}}catch{{return}}const n=(0,{config}.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,{config}.getConfig)({config}.Config.API_SERVER_URL):e;i!==t.apiServerUrl&&await t.restart(i)}}(t)"
-        ),
-    )))
+    }
+    Ok(None)
 }
 
 fn patch_content(content: &str) -> Result<String> {
@@ -474,10 +615,10 @@ fn patch_content(content: &str) -> Result<String> {
         ));
     }
     let (range, return_name) = &gates[0];
-    let session_update = session_fallback_update(content, range.start, return_name)?;
+    let pre_setting_update = pre_setting_fallback_update(content, range.start, return_name)?;
     let restart_update = language_server_restart_update(content)?;
     let mut edits = vec![(range.clone(), format!("if(!1)return {return_name}();"))];
-    if let Some(update) = session_update {
+    if let Some(update) = pre_setting_update {
         edits.push(update);
     }
     if let Some(update) = restart_update {
@@ -491,7 +632,7 @@ fn patch_content(content: &str) -> Result<String> {
     let patched_gates = gate_occurrences(&patched, PATCHED_GATE_PATTERN);
     if patched_gates.len() != 1
         || !gate_occurrences(&patched, CLEAN_GATE_PATTERN).is_empty()
-        || session_fallback_update(&patched, patched_gates[0].0.start, return_name)?.is_some()
+        || pre_setting_fallback_update(&patched, patched_gates[0].0.start, return_name)?.is_some()
         || language_server_restart_update(&patched)?.is_some()
     {
         return Err(Error::Config(
@@ -726,6 +867,20 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
             .replace("source:\"local_account\"", "source:\"auth_session\"")
     }
 
+    fn local_account_fixture() -> String {
+        fixture().replace(
+            "const e=null;",
+            "const e=(0,l.getLocalAccount)()?.apiServerUrl;",
+        )
+    }
+
+    fn local_account_restart_fixture() -> String {
+        format!(
+            "{}\nclass Auth{{static getSessionsSecretKey(){{return(0,T.isStaging)((0,_.getConfig)(_.Config.API_SERVER_URL))?\"a\":\"b\"}}async restartLanguageServerIfNeeded(e){{(0,u.isString)(e)&&!(0,u.isEmpty)(e)&&e!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(e)}}}}",
+            local_account_fixture()
+        )
+    }
+
     #[test]
     fn logged_in_api_is_only_a_fallback_after_explicit_settings() {
         let original = logged_in_fixture();
@@ -791,6 +946,80 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
         assert!(!backup_path(&path).exists());
         assert!(!receipt_path(&path).exists());
+    }
+
+    #[test]
+    fn local_account_and_new_language_server_restart_are_patched() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original = local_account_restart_fixture();
+        fs::write(&path, &original).unwrap();
+
+        let receipt = apply(&path).unwrap();
+        let patched = fs::read_to_string(&path).unwrap();
+        assert!(
+            patched.contains(
+                "i=()=>{if(e===m.API_SERVER_URL){const e=(0,l.getLocalAccount)()?.apiServerUrl;if(void 0!==e&&\"\"!==e)return{value:e,source:\"local_account\"}}return{value:C(e),source:\"deployment_default\"}};"
+            ),
+            "{patched}"
+        );
+        assert!(
+            patched.contains("_.getApiServerUrlDiagnostics"),
+            "{patched}"
+        );
+        assert!(
+            !patched.contains(
+                "e!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(e)"
+            ),
+            "{patched}"
+        );
+        let status = inspect(Some(&path));
+        assert!(status.patched && status.compatible, "{}", status.message);
+        assert!(status.restore_receipt.is_some());
+
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert!(inspect(Some(&path)).clean);
+    }
+
+    #[test]
+    fn gate_only_local_account_build_needs_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original = local_account_restart_fixture();
+        let gate_only = original.replace(CLEAN_GATE, PATCHED_GATE);
+        fs::write(&path, &gate_only).unwrap();
+
+        let status = inspect(Some(&path));
+        assert!(status.patched);
+        assert!(!status.compatible, "{}", status.message);
+        assert!(status.message.contains("restore"), "{}", status.message);
+        assert!(apply(&path).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), gate_only);
+    }
+
+    #[test]
+    fn unrecognized_local_account_or_new_restart_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+
+        let local = directory.path().join("local.js");
+        let unknown_local = local_account_fixture().replace("getLocalAccount", "getOtherAccount");
+        fs::write(&local, &unknown_local).unwrap();
+        assert!(!inspect(Some(&local)).compatible);
+        assert!(apply(&local).is_err());
+        assert_eq!(fs::read_to_string(&local).unwrap(), unknown_local);
+        assert!(!backup_path(&local).exists());
+        assert!(!receipt_path(&local).exists());
+
+        let restart = directory.path().join("restart.js");
+        let unknown_restart = format!(
+            "{}\nclass Auth{{async restartLanguageServerIfNeeded(e){{e&&await A.LanguageServerClient.getInstance().restart(e)}}}}",
+            local_account_fixture()
+        );
+        fs::write(&restart, &unknown_restart).unwrap();
+        assert!(!inspect(Some(&restart)).compatible);
+        assert!(apply(&restart).is_err());
+        assert_eq!(fs::read_to_string(&restart).unwrap(), unknown_restart);
     }
 
     #[test]
@@ -1014,13 +1243,19 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         assert!(patched.compatible, "{}", patched.message);
         assert!(patched.restore_receipt.is_some());
         let patched_text = String::from_utf8(fs::read(&path).unwrap()).unwrap();
+        let old_patched = patched_text.contains("i!==t.apiServerUrl&&await t.restart(i)");
+        let new_patched = patched_text.contains(
+            "i!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(i)",
+        );
         assert!(
-            patched_text.contains("\"user_setting\"===n.source")
-                && patched_text.contains("i!==t.apiServerUrl&&await t.restart(i)"),
+            patched_text.contains("\"user_setting\"===n.source") && (old_patched || new_patched),
             "real bundle restart did not prefer an explicit user setting"
         );
         assert!(
-            !patched_text.contains("e!==t.apiServerUrl&&await t.restart(e)"),
+            !patched_text.contains("e!==t.apiServerUrl&&await t.restart(e)")
+                && !patched_text.contains(
+                    "e!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(e)"
+                ),
             "vendor session restart remained"
         );
         assert_ne!(patched_text.as_bytes(), original.as_slice());
@@ -1028,5 +1263,25 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         restore(&receipt).unwrap();
         assert_eq!(fs::read(&path).unwrap(), original);
         assert!(inspect(Some(&path)).clean);
+    }
+
+    #[test]
+    #[ignore = "requires HAXSD_BYOK_DEVIN_GATE_ONLY_EXTENSION pointing at a disposable gate-only copy"]
+    fn gate_only_real_extension_is_not_reported_compatible() {
+        let path = std::env::var_os("HAXSD_BYOK_DEVIN_GATE_ONLY_EXTENSION")
+            .map(PathBuf::from)
+            .expect("HAXSD_BYOK_DEVIN_GATE_ONLY_EXTENSION must point at a gate-only copy");
+        let status = inspect(Some(&path));
+        assert!(status.patched, "{}", status.message);
+        assert!(
+            !status.compatible,
+            "gate-only 3.12.59 must not be compatible: {}",
+            status.message
+        );
+        assert!(
+            status.message.contains("needs refresh"),
+            "{}",
+            status.message
+        );
     }
 }
