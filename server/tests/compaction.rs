@@ -52,25 +52,17 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         .unwrap();
     let provider = fake_provider::FakeProvider::default();
     provider.push(text_response("old answer", 4_000, 12));
-    provider.push(vec![
-        ModelEvent::Start {
-            model_call_id: "summary-call".into(),
-        },
-        ModelEvent::TextStart,
-        ModelEvent::TextDelta("Durable ".into()),
-        ModelEvent::TextDelta("summary".into()),
-        ModelEvent::TextEnd,
-        ModelEvent::Usage(Usage {
-            input_tokens: Some(4_012),
-            context_input_tokens: Some(4_012),
-            output_tokens: Some(9),
-            total_tokens: Some(4_021),
-            ..Default::default()
-        }),
-        ModelEvent::Done(FinishReason::Stop),
-    ]);
+    provider.push(text_response(
+        &handover_summary("Durable summary"),
+        4_012,
+        9,
+    ));
     provider.push(text_response("new answer", 900, 5));
-    provider.push(text_response("Detailed second summary", 1_100, 20));
+    provider.push(text_response(
+        &handover_summary("Detailed second summary"),
+        1_100,
+        20,
+    ));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("prompt/cursor")
@@ -107,7 +99,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     )
     .await;
     assert_eq!(compacted.summary_started, 1);
-    assert_eq!(compacted.summary, "Durable summary");
+    assert!(compacted.summary.contains("Durable summary"));
     assert_eq!(compacted.summary_completed, 1);
     assert_eq!(compacted.turn_ended, 1);
     assert_eq!(compacted.token_delta, 0);
@@ -125,14 +117,14 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
     let summary_id = compacted_state.summary.as_ref().unwrap();
     let summary = pb::ConversationSummary::decode(compacted.blobs[summary_id].as_slice()).unwrap();
     assert!(
-        summary.summary.starts_with("Durable summary"),
+        summary.summary.contains("Durable summary"),
         "the model summary is preserved; deterministic anchors may be appended: {}",
         summary.summary
     );
     let archive_id = compacted_state.summary_archive.as_ref().unwrap();
     let archive =
         pb::ConversationSummaryArchive::decode(compacted.blobs[archive_id].as_slice()).unwrap();
-    assert!(archive.summary.starts_with("Durable summary"));
+    assert!(archive.summary.contains("Durable summary"));
     assert_eq!(archive.window_tail, 0);
     assert_eq!(archive.summarized_messages, old_roots[1..]);
     assert_eq!(
@@ -151,7 +143,7 @@ async fn summarize_replaces_model_history_and_preserves_cursor_history() {
         &stored[0].content,
         MessageContent::Parts { parts }
             if matches!(parts.as_slice(), [ContentPart::Text { text }]
-                if text.starts_with("<conversation_summary>\nDurable summary"))
+                if text.starts_with("<conversation_summary>\n## Goal") && text.contains("Durable summary"))
     ));
 
     let after = run(
@@ -640,7 +632,11 @@ async fn provider_overflow_refusal_compacts_and_retries_once() {
          1000000 maximum\"}}"
             .into(),
     ));
-    provider.push(text_response("durable summary", 3_000, 20));
+    provider.push(text_response(
+        &detailed_summary("durable summary", 2_000),
+        3_000,
+        20,
+    ));
     provider.push(text_response("answer after compaction", 500, 20));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -736,7 +732,11 @@ async fn a_length_stop_that_filled_the_window_compacts_and_retries() {
         }),
         ModelEvent::Done(FinishReason::Length),
     ]);
-    provider.push(text_response("durable summary", 3_000, 20));
+    provider.push(text_response(
+        &detailed_summary("durable summary", 2_000),
+        3_000,
+        20,
+    ));
     provider.push(text_response("answer after compaction", 500, 20));
     let assets = PromptAssets::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1094,7 +1094,7 @@ async fn explicit_summarize_keeps_recent_turns_and_points_the_archive_at_the_sum
         ),
     )
     .await;
-    assert!(compacted.summary.starts_with("Durable summary"));
+    assert!(compacted.summary.contains("Durable summary"));
     let state = compacted.checkpoints.last().unwrap();
     let archive = archive_of(&compacted, state);
     assert!(
@@ -1199,7 +1199,7 @@ async fn a_short_explicit_summary_is_regenerated_with_the_detail_contract() {
     )
     .await;
 
-    assert!(compacted.summary.starts_with("DETAILED-MANUAL-SUMMARY"));
+    assert!(compacted.summary.contains("DETAILED-MANUAL-SUMMARY"));
     assert!(!compacted.summary.contains("too short"));
     assert_eq!(compacted.summary_started, 1);
     assert_eq!(compacted.summary_completed, 1);
@@ -1427,7 +1427,11 @@ async fn a_compaction_resets_the_file_state_baseline() {
          1000000 maximum\"}}"
             .into(),
     ));
-    compacting.push(text_response("durable summary", 3_000, 20));
+    compacting.push(text_response(
+        &detailed_summary("durable summary", 2_000),
+        3_000,
+        20,
+    ));
     compacting.push(text_response("answer after compaction", 500, 20));
     let compacting_registry = registry(store.clone(), &compacting);
     let first = run(
@@ -1937,10 +1941,18 @@ fn text_response(text: &str, input: u64, output: u64) -> Vec<ModelEvent> {
 
 fn detailed_summary(marker: &str, minimum_chars: usize) -> String {
     const LINE: &str =
-        "Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+        "- Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+    let padding = LINE.repeat(minimum_chars.div_ceil(LINE.len()));
     format!(
-        "{marker}\n{}",
-        LINE.repeat(minimum_chars.div_ceil(LINE.len()))
+        "## Goal\n- {marker}\n## Done and Verified\n- {marker}\n{padding}## In Flight\n- (none)\n## Next Action\n- continue\n## Constraints and Decisions\n- (none)\n## Key Files, Commands, Values\n- (none)\n## Open Errors / Unfinished Work\n- (none)"
+    )
+}
+
+/// A short handover that satisfies the same machine contract. Tests that need
+/// only a usable summary use this instead of prose that the contract rejects.
+fn handover_summary(marker: &str) -> String {
+    format!(
+        "## Goal\n- {marker}\n## Done and Verified\n- {marker}\n## In Flight\n- (none)\n## Next Action\n- continue\n## Constraints and Decisions\n- (none)\n## Key Files, Commands, Values\n- (none)\n## Open Errors / Unfinished Work\n- (none)"
     )
 }
 
@@ -2045,7 +2057,11 @@ async fn raising_the_reserve_percent_makes_the_same_history_compact() {
         1_000,
     ));
     provider.push(text_response("second answer", 60_000, 20));
-    provider.push(text_response("reserve summary", 40_000, 20));
+    provider.push(text_response(
+        &detailed_summary("reserve summary", 2_000),
+        40_000,
+        20,
+    ));
     provider.push(text_response("third answer", 20_000, 20));
     let registry = registry(store.clone(), &provider);
 
