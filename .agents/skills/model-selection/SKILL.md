@@ -60,7 +60,7 @@ Multiple owner value: string[]
 - Multiple mode supports toggling, clearing, selecting all, and selecting none.
 - In multiple mode, every supplier header has a checkbox: unchecked means none selected, checked means all selected, and indeterminate means some selected. Toggling it selects or clears that supplier.
 - Indent child model rows relative to their supplier header so hierarchy remains visible.
-- Commit always uses single mode and includes both configured built-in and configured plugin models. Its `直连` option has value `""`, belongs to the `Cursor` group, and is the first option.
+- Commit always uses single mode and includes both configured built-in and configured plugin models. Its `官方` option has value `""`, belongs to the `Cursor` group, and is the first option.
 - Commit settings follow the settings-card edit-state pattern: read mode shows the persisted model, Edit creates a local draft, selection only changes that draft, Cancel restores the persisted value, and Save persists once before returning to read mode.
 - Persist the stable plugin model `id` unchanged. Commit generation validates that identifier through `PluginRegistry`, then lets `ProviderRouter` dispatch it; do not query the built-in model table for plugin IDs.
 - Overview filtering uses multiple mode.
@@ -81,6 +81,6 @@ Also apply the project `floating-ui` and `frontend` skills:
 - Confirm all configured-model selectors import `shared/ui/ModelSelect`.
 - Confirm no feature implements checkbox selection, supplier grouping, portal positioning, or bulk actions independently.
 - Confirm single/multiple value types cannot be mixed.
-- Confirm Commit has `直连` first and cannot select multiple values.
+- Confirm Commit has `官方` first and cannot select multiple values.
 - Confirm supplier labels are based on supplier identity, not request protocol type.
 - Follow the user's validation instruction; when automated tests are not requested, report manual checks without running test or build commands.

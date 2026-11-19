@@ -20,7 +20,6 @@ pub struct TokenPrice {
     pub input_per_million: f64,
     pub output_per_million: f64,
     pub cache_read_per_million: f64,
-    pub cache_write_per_million: f64,
 }
 
 impl TokenPrice {
@@ -30,7 +29,6 @@ impl TokenPrice {
             input_per_million: 0.0,
             output_per_million: 0.0,
             cache_read_per_million: 0.0,
-            cache_write_per_million: 0.0,
         }
     }
 }
@@ -118,7 +116,6 @@ impl ModelTokenPricing {
                     ("input_per_million", price.input_per_million),
                     ("output_per_million", price.output_per_million),
                     ("cache_read_per_million", price.cache_read_per_million),
-                    ("cache_write_per_million", price.cache_write_per_million),
                 ] {
                     if !value.is_finite() || value < 0.0 {
                         return Err(crate::Error::Config(format!(

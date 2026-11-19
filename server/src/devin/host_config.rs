@@ -115,11 +115,15 @@ pub fn inspect(path: &Path) -> Result<HostStatus> {
 }
 
 pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
+    apply_with_force(path, ports, false)
+}
+
+pub fn apply_with_force(path: &Path, ports: DevinHostPorts, force: bool) -> Result<HostReceipt> {
     recover_displaced(path);
     let ports = ports.validate()?;
     let current = read_current(path)?;
     let status = inspect_current(path, current.as_deref())?;
-    if status.configured {
+    if status.configured && !force {
         let detail = status
             .ports
             .map(|ports| format!(" for ports {} / {}", ports.api_port, ports.inference_port))
@@ -129,7 +133,7 @@ pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
              before applying this configuration"
         )));
     }
-    if !status.compatible || !status.unconfigured {
+    if !status.compatible || (!status.unconfigured && !force) {
         return Err(Error::Config(refusal_message(&status)));
     }
 
@@ -150,13 +154,18 @@ pub fn apply(path: &Path, ports: DevinHostPorts) -> Result<HostReceipt> {
     }
 
     let backup_path = backup_path(path);
-    let original_sha256 = if path.is_file() {
-        ensure_backup(&backup_path, &original)?;
-        Some(sha256(&original))
+    let mut original_sha256 = None;
+    if path.is_file() {
+        if force {
+            // 强制接管把当前的外部配置当成新的原值；撤销时回到这份内容。
+            atomic_replace(&backup_path, &original)?;
+        } else {
+            ensure_backup(&backup_path, &original)?;
+        }
+        original_sha256 = Some(sha256(&original));
     } else {
         remove_if_exists(&backup_path)?;
-        None
-    };
+    }
     let receipt = HostReceipt {
         path: path.to_owned(),
         backup_path,
@@ -1154,6 +1163,34 @@ mod tests {
         );
         assert!(!receipt_path(&path).exists());
         assert!(receipt.backup_path.exists());
+    }
+
+    #[test]
+    fn a_forced_takeover_replaces_an_old_backup_with_the_current_foreign_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = settings_file(&directory, Some("{\n}\n"));
+        let first = apply(&path, ports()).unwrap();
+        restore(&first).unwrap();
+        assert!(first.backup_path.exists(), "撤销后备份仍然保留");
+
+        let foreign = r#"{
+  "codeium.apiServerUrl": "http://127.0.0.1:9000",
+  "codeium.inferenceApiServerUrl": "http://127.0.0.1:9001"
+}
+"#;
+        fs::write(&path, foreign).unwrap();
+        let receipt = apply_with_force(&path, ports(), true).unwrap();
+        assert_eq!(
+            fs::read_to_string(&receipt.backup_path).unwrap(),
+            foreign,
+            "强制接管的撤销基线必须是当前这份外部配置"
+        );
+
+        restore(&receipt).unwrap();
+        let values: serde_json::Value =
+            json5::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(values[API_SERVER_KEY], "http://127.0.0.1:9000");
+        assert_eq!(values[INFERENCE_API_SERVER_KEY], "http://127.0.0.1:9001");
     }
 
     #[test]

@@ -19,7 +19,7 @@ export function normalizeTabDraft(draft: TabSettings): TabSettings {
 export function CursorToolsSettings() {
   const message = useMessage();
   const [settings, setSettings] = useState<TabSettings | null>(null);
-  const [draft, setDraft] = useState<TabSettings>({ mode: "public", address: "" });
+  const [draft, setDraft] = useState<TabSettings>({ mode: "direct", address: "" });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   /** 读取失败的原因：行内展示，重试就地再读一次。 */

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useKeepAliveContext } from "keepalive-for-react";
 import { pluginText, type Overview, type OverviewTokenUsageBucket } from "../../shared/api";
 import { requestRangeOverview } from "./overview/rangeOverviewRequest";
 import { ContributionCalendarChart } from "./charts/ContributionCalendarChart";
@@ -75,7 +76,7 @@ export function HomePage() {
   const { locale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
-  const [preset, setPreset] = useState<OverviewRangePreset>("month");
+  const [preset, setPreset] = useState<OverviewRangePreset>("today");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -92,6 +93,19 @@ export function HomePage() {
   const [pricingSeries, setPricingSeries] = useState<OverviewTokenUsageBucket[] | null>(null);
   const [pricingSource, setPricingSource] = useState<TimeRange | null>(null);
   const [pricingFailure, setPricingFailure] = useState<"range" | "read" | null>(null);
+  // 概览的默认范围不是持久化偏好：每次从其它页面切回来都重新从「今日」开始。
+  // 页面被 keepalive 缓存，仅靠 useState 初值只在进程启动时生效，所以盯住 active 的上升沿。
+  const { active } = useKeepAliveContext();
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) {
+      setPreset("today");
+      setQuick(null);
+      setCustomRange(null);
+      setCustomOpen(false);
+    }
+    wasActive.current = active;
+  }, [active]);
   const selectedRange = preset === "custom" ? customRange : presetRange(preset);
 
   useEffect(() => {

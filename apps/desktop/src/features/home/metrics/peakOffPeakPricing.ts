@@ -6,7 +6,7 @@ const CHUNK_HOURS = 1320;
 const MAX_LOOKBACK_DAYS = 660;
 
 export type PricingPeriod = "peak" | "off_peak";
-export type CostBreakdown = { input: number; output: number; cacheRead: number; cacheWrite: number };
+export type CostBreakdown = { input: number; output: number; cacheRead: number };
 export type ModelCostRow = {
   key: string;
   label: string;
@@ -38,7 +38,7 @@ export function priceAt(pricing: CurrencyPricing, epochMs: number): TokenPrice {
 
 /** One estimate owns the tile, time trend and model rows. Never price merged tokens. */
 export function sumHourlyCost(series: OverviewTokenUsageBucket[], pricing: TokenPricingSettings, currency: Currency): PricingEstimate {
-  const result: PricingEstimate = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, totalTokens: 0, unpricedTokens: 0, models: [], hours: [] };
+  const result: PricingEstimate = { input: 0, output: 0, cacheRead: 0, total: 0, totalTokens: 0, unpricedTokens: 0, models: [], hours: [] };
   const rows = new Map<string, ModelCostRow>();
   for (const bucket of series) {
     let hourlyCost = 0;
@@ -56,12 +56,10 @@ export function sumHourlyCost(series: OverviewTokenUsageBucket[], pricing: Token
         const input = priceTokens(model.input_tokens, price.input_per_million);
         const output = priceTokens(model.output_tokens, price.output_per_million);
         const cacheRead = priceTokens(model.cache_read_tokens, price.cache_read_per_million);
-        const cacheWrite = priceTokens(model.cache_write_tokens, price.cache_write_per_million);
-        const cost = input + output + cacheRead + cacheWrite;
+        const cost = input + output + cacheRead;
         result.input += input;
         result.output += output;
         result.cacheRead += cacheRead;
-        result.cacheWrite += cacheWrite;
         row.cost = (row.cost ?? 0) + cost;
         hourlyCost += cost;
       } else {

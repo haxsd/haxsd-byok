@@ -89,7 +89,7 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
   const pricedModels = estimate?.models.filter(row => row.cost !== null && row.tokens > 0) ?? [];
   const unpricedModels = estimate?.models.filter(row => row.cost === null && row.tokens > 0) ?? [];
   const totalCost = estimate?.total ?? 0;
-  const cacheCost = (estimate?.cacheRead ?? 0) + (estimate?.cacheWrite ?? 0);
+  const cacheCost = estimate?.cacheRead ?? 0;
   // 标题用全口径的「价值估算」，不再出现「已定价小计」这种半口径措辞：后者在一个
   // 模型都没定价时，标题说"有小计"、数值说"没有"，自己和自己打脸。金额只覆盖已定价
   // 部分时，由下面的说明写清有多少模型、多少 Token 未计入。
@@ -111,7 +111,7 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
         ? t("正在按模型读取用量")
         : unpricedModels.length > 0
           ? t("{count} 个模型未定价，{tokens} Token 未计入金额", { count: unpricedModels.length, tokens: formatCompactInteger(estimate?.unpricedTokens ?? 0) })
-          : t("缓存读写 {cost}", { cost: formatCost(cacheCost, currency) });
+          : t("缓存读取 {cost}", { cost: formatCost(cacheCost, currency) });
 
   const cacheTooltip = developerMode
     ? [
@@ -152,7 +152,6 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
       t("输入估算：{cost}", { cost: formatMoney(estimate.input, currency) }),
       t("输出估算：{cost}", { cost: formatMoney(estimate.output, currency) }),
       t("缓存读取估算：{cost}", { cost: formatMoney(estimate.cacheRead, currency) }),
-      t("缓存写入估算：{cost}", { cost: formatMoney(estimate.cacheWrite, currency) }),
     ] : []),
     costHint,
     t("已计入金额：{cost}", { cost: pricedModels.length > 0 ? formatCost(totalCost, currency) : "—" }),

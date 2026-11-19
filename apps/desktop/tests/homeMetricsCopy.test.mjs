@@ -94,7 +94,6 @@ function pricingEstimate(rows, patch = {}) {
     input: 0,
     output: 0,
     cacheRead: 0,
-    cacheWrite: 0,
     total: rows.reduce((sum, row) => sum + (row.cost ?? 0), 0),
     totalTokens: rows.reduce((sum, row) => sum + row.tokens, 0),
     unpricedTokens: rows.reduce((sum, row) => sum + (row.cost === null ? row.tokens : 0), 0),
@@ -175,12 +174,12 @@ test("全部模型都已定价时，数值是完整估算", async () => {
   const text = await renderCostTile({
     estimate: pricingEstimate(
       [modelRow("GPT-X", 4_000_000, 1.56), modelRow("Claude-Y", 3_000_000, 0.12)],
-      { cacheRead: 0.1, cacheWrite: 0.02 },
+      { cacheRead: 0.12 },
     ),
   });
   assertTitleAgreesWithValue(text);
   assert.match(text, /^价值估算 ¥1\.68/);
-  assert.match(text, /缓存读写 ¥0\.12/);
+  assert.match(text, /缓存读取 ¥0\.12/);
   assert.doesNotMatch(text, /未定价/, "没有未定价用量时不要提未定价");
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ClaudeDesktopTakeover, type ClaudeSettings, type ClaudeTakeoverConflict } from "../../shared/api";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { TitledCard } from "../../shared/ui/TitledCard";
@@ -41,6 +42,7 @@ export function ClaudeSettingsPage() {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [error, setError] = useState<{ scope: ErrorScope; cause: unknown } | null>(null);
   const [busy, setBusy] = useState<Busy | null>(null);
+  const [confirmForce, setConfirmForce] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const desktopInitialized = useRef(false);
   const message = useMessage();
@@ -111,7 +113,7 @@ export function ClaudeSettingsPage() {
     void run({ scope: "desktop", action: "apply" }, async () => {
       await api.applyClaudeDesktop(desktopModels.map((model_hash) => ({ model_hash })));
       setDesktopKept([]);
-      message(t("Claude Desktop 接管已应用，请重新打开 Claude Desktop"));
+      message(t("Claude 接管已应用，请重新打开 Claude"));
     });
   };
 
@@ -122,7 +124,16 @@ export function ClaudeSettingsPage() {
       setDesktopKept(kept);
       message(kept.length
         ? t("已撤销；保留了 {count} 项接管后的改动", { count: kept.length })
-        : t("Claude Desktop 接管已撤销"));
+        : t("Claude 接管已撤销"));
+    });
+  };
+
+  const forceDesktop = () => {
+    setConfirmForce(false);
+    void run({ scope: "desktop", action: "apply" }, async () => {
+      await api.applyClaudeDesktop(desktopModels.map((model_hash) => ({ model_hash })), true);
+      setDesktopKept([]);
+      message(t("已强制接管 Claude，请重新打开 Claude"));
     });
   };
 
@@ -150,8 +161,8 @@ export function ClaudeSettingsPage() {
       rotateBlockedReason={rotation.reason}
     />
     <TitledCard
-      title={t("接管 Claude Desktop")}
-      description={t("只写 Desktop 自己的第三方推理 profile；网关设置共用")}
+      title={t("接管 Claude")}
+      description={t("只写 Claude 自己的第三方推理 profile；网关设置共用")}
       icon={terminalIcon}
       action={busy?.scope === "gateway"
         ? <StatusPill tone="warn">{t("保存中…")}</StatusPill>
@@ -186,17 +197,33 @@ export function ClaudeSettingsPage() {
         disabled={busy !== null || !gate.apply}
         title={gate.applyBlockedReason ?? undefined}
         onClick={applyDesktop}
-      >{t("应用到 Claude Desktop")}</Button>
+      >{t("应用到 Claude")}</Button>
+      {claudeTakeover?.desktop.state === "conflict" && <Button
+        disabled={busy !== null || claudeTakeover.desktop.running}
+        onClick={() => setConfirmForce(true)}
+      >{t("强制接管")}</Button>}
       <Button
         disabled={busy !== null || !gate.undo}
         onClick={undoDesktop}
-      >{t("撤销 Claude Desktop 接管")}</Button>
+      >{t("撤销 Claude 接管")}</Button>
     </PageActions>
+    <ConfirmDialog
+      open={confirmForce}
+      destructive
+      title={t("强制接管 Claude？")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("覆盖并接管")}
+      busy={busy !== null}
+      onCancel={() => setConfirmForce(false)}
+      onConfirm={forceDesktop}
+    >
+      <p>{t("这会覆盖被改动的 Claude 接管 profile，并保留原配置备份；撤销接管时恢复。请先完全退出 Claude。")}</p>
+    </ConfirmDialog>
     <PageContent
       title={<PageTitle
         title="Claude"
         status={<StatusPill tone={view.tone}>{view.label}</StatusPill>}
-        meta={t("把 Claude Desktop 的模型请求接到本机网关")}
+        meta={t("把 Claude 的模型请求接到本机网关")}
       />}
       sections={[{ key: "claude", estimatedHeight: 1080, content }]}
     />

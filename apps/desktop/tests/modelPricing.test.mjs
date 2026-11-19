@@ -8,7 +8,7 @@ test.after(() => loader.close());
 const { sumHourlyCost, fetchHourlyUsage } = await loader.load("/src/features/home/metrics/peakOffPeakPricing.ts");
 const monday = Date.UTC(2026, 9, 12, 2);
 const saturday = Date.UTC(2026, 9, 17, 2);
-const price = (input, output = 0, read = 0, write = 0) => ({ input_per_million: input, output_per_million: output, cache_read_per_million: read, cache_write_per_million: write });
+const price = (input, output = 0, read = 0) => ({ input_per_million: input, output_per_million: output, cache_read_per_million: read });
 const rule = (mode, peak, offPeak = peak) => ({ mode, cny: { fixed: peak, peak, off_peak: offPeak }, usd: { fixed: price(100), peak: price(100), off_peak: price(50) } });
 const deepseek = rule("peak_off_peak", price(2, 8, 0.04), price(1, 4, 0.02));
 const gpt = rule("fixed", price(10, 40, 1));

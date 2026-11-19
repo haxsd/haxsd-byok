@@ -79,6 +79,9 @@ const SUMMARY_DETAIL_CEILING_CHARS: usize = 12_000;
 /// older bytes remain searchable in the compaction archives.
 const CARRIED_SUMMARY_LIMIT_CHARS: usize = 64_000;
 
+/// Upper bound on deterministic evidence lines appended to a handover.
+const MAX_EVIDENCE_LINES: usize = 16;
+
 /// The active handover may use at most this share of the space left after the
 /// static prompt and the current request. The rest is left for request context
 /// and retained turns.
@@ -120,7 +123,7 @@ pub(super) fn instructions() -> &'static str {
 /// The full compaction specification is already in `PromptSpec::instructions`;
 /// repeating it here wastes context and can worsen instruction dilution.
 const SUMMARY_TAIL_INSTRUCTION: &str =
-    "Produce the complete engineering handover now, following the system instructions exactly.";
+    "Produce the handover delta now, following the system instructions exactly.";
 
 /// Summary slot content when the summarizer produced nothing usable.
 ///
@@ -963,6 +966,241 @@ pub(super) fn minimum_summary_chars(compactable: &[CanonicalMessage]) -> usize {
 
 pub(super) fn summary_needs_expansion(summary: &str, minimum_chars: usize) -> bool {
     minimum_chars > 0 && summary.trim().chars().count() < minimum_chars
+}
+
+/// Headings the handover contract requires, in order.
+const HANDOVER_SECTIONS: [&str; 7] = [
+    "## Goal",
+    "## Done and Verified",
+    "## In Flight",
+    "## Next Action",
+    "## Constraints and Decisions",
+    "## Key Files, Commands, Values",
+    "## Open Errors / Unfinished Work",
+];
+
+/// Sections this application appends after validation (or carries forward from a
+/// previous handover). A model may copy one of them; they are not part of the
+/// model contract and must not turn a good handover into a retry.
+const HANDOVER_AUXILIARY: [&str; 7] = [
+    "## Exact Evidence",
+    "## Context Anchors",
+    "## Archived History",
+    "## Recent Exact Entries",
+    "## Earlier Compacted Context (Historical)",
+    "## Current Compacted Context (Authoritative)",
+    "## Detail Retry",
+];
+
+/// Facts the validator needs about the span being summarized.
+pub(super) struct HandoverContext {
+    pub has_files: bool,
+    pub has_errors: bool,
+}
+
+/// What the handover must be able to survive: a machine checks structure, not
+/// prose quality. A model that returns a plausible-looking narrative without
+/// the seven sections is rejected before it replaces real history.
+pub(super) fn validate_handover(
+    summary: &str,
+    context: &HandoverContext,
+) -> std::result::Result<(), String> {
+    let trimmed = summary.trim_start();
+    if !trimmed.starts_with(HANDOVER_SECTIONS[0]) {
+        return Err("handover must start with '## Goal'".into());
+    }
+    let mut cursor = 0_usize;
+    for section in HANDOVER_SECTIONS {
+        let Some(offset) = trimmed[cursor..].find(section) else {
+            return Err(format!("missing handover section: {section}"));
+        };
+        cursor += offset + section.len();
+    }
+
+    let mut current: Option<&str> = None;
+    let mut bullets: Vec<&str> = Vec::new();
+    let mut none_marked = false;
+    let mut sections: Vec<(&str, Vec<&str>, bool)> = Vec::new();
+    for line in trimmed.lines() {
+        let line = line.trim_end();
+        if HANDOVER_SECTIONS.contains(&line) {
+            if let Some(name) = current.replace(line) {
+                sections.push((name, std::mem::take(&mut bullets), none_marked));
+                none_marked = false;
+            }
+            continue;
+        }
+        let Some(_) = current else { continue };
+        if line.trim().is_empty() {
+            continue;
+        }
+        if HANDOVER_AUXILIARY
+            .iter()
+            .any(|heading| line.trim_start().starts_with(heading))
+        {
+            if let Some(name) = current.take() {
+                sections.push((name, std::mem::take(&mut bullets), none_marked));
+                none_marked = false;
+            }
+            continue;
+        }
+        if line.trim() == "(none)" || line.trim() == "- (none)" {
+            none_marked = true;
+            continue;
+        }
+        if !line.starts_with("- ") {
+            return Err(format!(
+                "handover section '{}' contains a non-bullet line: {}",
+                current.unwrap_or(""),
+                truncate_chars_middle(line, 120)
+            ));
+        }
+        if line.chars().count() > 1_200 {
+            return Err(format!(
+                "handover bullet is too long ({} chars): {}",
+                line.chars().count(),
+                truncate_chars_middle(line, 120)
+            ));
+        }
+        bullets.push(line);
+    }
+    if let Some(name) = current {
+        sections.push((name, bullets, none_marked));
+    }
+
+    for (name, items, none) in &sections {
+        if items.is_empty() && !*none {
+            return Err(format!(
+                "handover section '{name}' is empty; write '(none)' or facts"
+            ));
+        }
+        if *name == "## Next Action" && items.len() != 1 {
+            return Err(format!(
+                "handover must contain exactly one Next Action bullet, found {}",
+                items.len()
+            ));
+        }
+    }
+
+    let key_files = sections
+        .iter()
+        .find(|(name, _, _)| *name == "## Key Files, Commands, Values")
+        .map(|(_, items, _)| items.as_slice())
+        .unwrap_or_default();
+    if context.has_files
+        && !key_files
+            .iter()
+            .any(|item| item.contains('/') || item.contains('\\'))
+    {
+        return Err("handover omits the exact file paths used in this span".into());
+    }
+    let open_errors = sections
+        .iter()
+        .find(|(name, _, _)| *name == "## Open Errors / Unfinished Work")
+        .map(|(_, items, none)| (items.as_slice(), *none))
+        .unwrap_or((&[], false));
+    if context.has_errors && (open_errors.0.is_empty() || open_errors.1) {
+        return Err("handover omits the observed tool errors".into());
+    }
+    Ok(())
+}
+
+/// Extra instruction for the single regeneration after a structurally invalid
+/// handover.
+pub(super) fn structure_retry_instructions(problem: &str) -> String {
+    format!(
+        "\n\n## Structure Retry\nThe previous handover failed the machine contract: {problem}. Regenerate it with exactly the seven required headings in order, one fact per '- ' bullet, exactly one Next Action bullet, and exact paths/errors from the conversation. Do not describe the retry itself."
+    )
+}
+
+/// Whether the span carries file paths or observed errors, for the validator.
+pub(super) fn handover_context(messages: &[CanonicalMessage]) -> HandoverContext {
+    HandoverContext {
+        has_files: !context_anchor_paths(messages).is_empty(),
+        has_errors: messages.iter().any(|message| match &message.content {
+            MessageContent::ToolResult(result) => {
+                result.is_error || first_error_line(&result.content).is_some()
+            }
+            _ => false,
+        }),
+    }
+}
+
+/// A line that is evidence of a real failure, not prose that happens to contain
+/// the word "error". The tool result's `is_error` flag is the primary signal;
+/// this is the fallback for providers that report failures in the body only.
+fn result_line_looks_like_error(content: &str) -> bool {
+    content.lines().any(|line| {
+        let lowered = line.trim().to_ascii_lowercase();
+        lowered.starts_with("error:")
+            || lowered.contains("error: ")
+            || lowered.contains("traceback (most recent call last)")
+            || lowered.starts_with("panic")
+            || lowered.contains("panic:")
+            || lowered.contains("fatal:")
+            || lowered.contains("exit code: 1")
+            || lowered.contains("exit code 1")
+            || lowered.contains("failed with")
+    })
+}
+
+/// Deterministic evidence that must survive the lossy summary: commands and
+/// error lines. Paths already come from `with_context_anchors`; these two are
+/// the next most expensive facts to rediscover.
+pub(super) fn with_exact_evidence(summary: &str, messages: &[CanonicalMessage]) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for message in messages.iter().rev() {
+        if let MessageContent::Assistant { tool_calls, .. } = &message.content {
+            for call in tool_calls.iter().rev() {
+                if let Some(command) = command_of(&call.arguments) {
+                    let line = format!("- command: {command}");
+                    if !summary.contains(&command) && !lines.iter().any(|item| item == &line) {
+                        lines.push(line);
+                    }
+                }
+            }
+        }
+        if let MessageContent::ToolResult(result) = &message.content {
+            if let Some(error) = first_error_line(&result.content) {
+                let line = format!("- error: {error}");
+                if !summary.contains(&error) && !lines.iter().any(|item| item == &line) {
+                    lines.push(line);
+                }
+            }
+        }
+        if lines.len() >= MAX_EVIDENCE_LINES {
+            break;
+        }
+    }
+    if lines.is_empty() {
+        return summary.to_string();
+    }
+    lines.truncate(MAX_EVIDENCE_LINES);
+    lines.reverse();
+    format!(
+        "{summary}\n\n## Exact Evidence\n- Recovered from tool calls and results; re-run or grep these first:\n{}",
+        lines.join("\n")
+    )
+}
+
+fn command_of(arguments: &serde_json::Value) -> Option<String> {
+    for key in ["command", "cmd", "script"] {
+        if let Some(value) = arguments.get(key).and_then(|value| value.as_str()) {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(truncate_chars_middle(value, 300));
+            }
+        }
+    }
+    None
+}
+
+fn first_error_line(content: &str) -> Option<String> {
+    content
+        .lines()
+        .find(|line| result_line_looks_like_error(line))
+        .map(|line| truncate_chars_middle(line.trim(), 300))
+        .filter(|line| !line.is_empty())
 }
 
 /// Extra instruction for the single regeneration after an unusably short
@@ -2328,17 +2566,21 @@ mod tests {
             "the summary prompt must not optimize for a short handover"
         );
         assert!(
-            instructions.contains("2,000") && instructions.contains("6,000"),
+            instructions.contains("1,500") && instructions.contains("4,000"),
             "a long coding session needs an explicit detail target"
         );
         assert!(
-            !instructions.contains("short handover state"),
-            "the old brevity instruction caused 153-token summaries"
+            instructions.contains("Machine contract") && instructions.contains("Incremental rules"),
+            "the prompt must state the machine contract and the delta rules"
         );
         assert!(
-            instructions.contains("historical context")
-                && instructions.contains("newest handover is authoritative"),
-            "an older summary must not be mistaken for the current state"
+            instructions.contains("exactly one bullet")
+                || instructions.contains("exactly one Next Action bullet"),
+            "Next Action must be a single machine-checkable bullet"
+        );
+        assert!(
+            instructions.contains("A prior handover may already be retained"),
+            "the model must not rewrite facts the carried handover already holds"
         );
     }
 
@@ -2846,5 +3088,156 @@ mod tests {
             Some("handover")
         );
         assert_eq!(summary_text(&summary_message("summary:empty", "   ")), None);
+    }
+
+    fn valid_handover() -> String {
+        "## Goal\n- ship the change\n\
+         ## Done and Verified\n- cargo test passed\n\
+         ## In Flight\n- (none)\n\
+         ## Next Action\n- build the installer\n\
+         ## Constraints and Decisions\n- do not bump the version\n\
+         ## Key Files, Commands, Values\n- server/src/run/compaction.rs\n\
+         ## Open Errors / Unfinished Work\n- (none)"
+            .to_string()
+    }
+
+    #[test]
+    fn a_machine_readable_handover_passes_the_structure_contract() {
+        assert!(validate_handover(
+            &valid_handover(),
+            &HandoverContext {
+                has_files: true,
+                has_errors: false
+            }
+        )
+        .is_ok());
+
+        // Appended anchors and carried-history headings are not part of the
+        // model contract; copying one must not force a regeneration.
+        let with_anchors = format!(
+            "{}\n\n## Context Anchors\n- server/src/run/compaction.rs\n\n## Exact Evidence\n- command: cargo test",
+            valid_handover()
+        );
+        assert!(validate_handover(
+            &with_anchors,
+            &HandoverContext {
+                has_files: true,
+                has_errors: false
+            }
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn narrative_without_the_required_sections_is_rejected() {
+        let problem = validate_handover(
+            "We discussed the change and everything looks fine.",
+            &HandoverContext {
+                has_files: false,
+                has_errors: false,
+            },
+        )
+        .unwrap_err();
+        assert!(problem.contains("must start with '## Goal'"), "{problem}");
+
+        let missing = valid_handover().replace("## In Flight\n- (none)\n", "");
+        let problem = validate_handover(
+            &missing,
+            &HandoverContext {
+                has_files: true,
+                has_errors: false,
+            },
+        )
+        .unwrap_err();
+        assert!(problem.contains("missing handover section"), "{problem}");
+    }
+
+    #[test]
+    fn the_handover_needs_exactly_one_next_action() {
+        let two = valid_handover().replace(
+            "## Next Action\n- build the installer",
+            "## Next Action\n- build the installer\n- then install it",
+        );
+        let problem = validate_handover(
+            &two,
+            &HandoverContext {
+                has_files: true,
+                has_errors: false,
+            },
+        )
+        .unwrap_err();
+        assert!(problem.contains("exactly one Next Action"), "{problem}");
+    }
+
+    #[test]
+    fn the_handover_must_keep_paths_and_observed_errors() {
+        let no_path =
+            valid_handover().replace("- server/src/run/compaction.rs", "- the compression module");
+        let problem = validate_handover(
+            &no_path,
+            &HandoverContext {
+                has_files: true,
+                has_errors: false,
+            },
+        )
+        .unwrap_err();
+        assert!(problem.contains("file paths"), "{problem}");
+
+        let problem = validate_handover(
+            &valid_handover(),
+            &HandoverContext {
+                has_files: true,
+                has_errors: true,
+            },
+        )
+        .unwrap_err();
+        assert!(problem.contains("tool errors"), "{problem}");
+    }
+
+    #[test]
+    fn exact_evidence_is_appended_when_the_summary_omits_it() {
+        let mut messages = vec![canonical_assistant("a1", "working")];
+        messages.push(CanonicalMessage {
+            message_id: "a2".into(),
+            role: Role::Assistant,
+            origin: Origin::Runtime,
+            content: MessageContent::Assistant {
+                text: String::new(),
+                thinking: String::new(),
+                tool_round_id: Some(crate::model::ToolRoundId::new("round")),
+                replay_state: None,
+                tool_calls: vec![ToolCallContent {
+                    index: 0,
+                    call_id: "call-1".into(),
+                    name: "Shell".into(),
+                    arguments: serde_json::json!({"command": "cargo test --lib"}),
+                }],
+            },
+            runtime_event_id: None,
+        });
+        messages.push(CanonicalMessage {
+            message_id: "t1".into(),
+            role: Role::Tool,
+            origin: Origin::Tool,
+            content: MessageContent::ToolResult(ToolResultContent {
+                call_id: "call-1".into(),
+                name: "Shell".into(),
+                content: "error: test failed\nat src/lib.rs:10".into(),
+                is_error: true,
+                image: None,
+                provider_parts: Vec::new(),
+            }),
+            runtime_event_id: None,
+        });
+        let summary = with_exact_evidence("## Goal\n- finish", &messages);
+        assert!(summary.contains("## Exact Evidence"), "{summary}");
+        assert!(summary.contains("- command: cargo test --lib"), "{summary}");
+        assert!(summary.contains("- error: error: test failed"), "{summary}");
+
+        let already_present = with_exact_evidence("cargo test --lib", &messages);
+        assert!(
+            !already_present.contains("- command: cargo test --lib"),
+            "a command already quoted by the summary must not be duplicated"
+        );
     }
 }

@@ -64,7 +64,7 @@ export function ClaudeGatewayCard({
 
   return <TitledCard
     title={t("本机网关")}
-    description={t("Claude Desktop 使用这个网关")}
+    description={t("Claude 使用这个网关")}
     icon={providerIcon}
     badge={status
       ? <StatusPill tone={listening ? "ok" : status.enabled ? "warn" : "idle"}>

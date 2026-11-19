@@ -534,7 +534,7 @@ export interface OutboundStatus {
   system_proxy_bypassed: boolean;
 }
 
-export type TabMode = "public" | "direct" | "custom";
+export type TabMode = "direct" | "custom";
 
 export interface TabSettings {
   mode: TabMode;
@@ -613,7 +613,6 @@ export interface TokenPrice {
   output_per_million: number;
   /** 输入价格（缓存命中）。 */
   cache_read_per_million: number;
-  cache_write_per_million: number;
 }
 
 /** 单一币种下的整套价格。 */
@@ -1468,10 +1467,11 @@ function devinHostQuery(path?: string, installRoot?: string): string {
   return query ? `?${query}` : "";
 }
 
-function devinHostBody(path?: string, installRoot?: string): string {
-  const body: { path?: string; install_root?: string } = {};
+function devinHostBody(path?: string, installRoot?: string, force = false): string {
+  const body: { path?: string; install_root?: string; force?: boolean } = {};
   if (path?.trim()) body.path = path.trim();
   if (installRoot?.trim()) body.install_root = installRoot.trim();
+  if (force) body.force = true;
   return JSON.stringify(body);
 }
 
@@ -1516,7 +1516,7 @@ export const api = {
   codexStatus: (signal?: AbortSignal) => request<unknown>("/codex/status", { signal }).then(usableCodexStatus),
   codexUiCache: (signal?: AbortSignal) => request<unknown>("/codex/ui-cache", { signal }).then(usableCodexUiCache),
   repairCodexUiCache: () => request<unknown>("/codex/ui-cache/repair", { method: "POST" }).then(usableCodexUiCache),
-  applyCodex: () => request<unknown>("/codex/apply", { method: "POST" }).then(usableCodexStatus),
+  applyCodex: (force = false) => request<unknown>("/codex/apply", { method: "POST", body: JSON.stringify({ force }) }).then(usableCodexStatus),
   restoreCodex: () => request<unknown>("/codex/restore", { method: "POST" }).then(usableCodexStatus),
   claudeSettings: () => request<unknown>("/claude/settings").then(settings => usableClaudeSettings(settings, false)),
   setClaudeSettings: (settings: ClaudeSettings) => request<unknown>("/claude/settings", { method: "PUT", body: JSON.stringify(settings) }).then(saved => usableClaudeSettings(saved, true)),
@@ -1530,7 +1530,7 @@ export const api = {
   }),
   claudeTakeover: (signal?: AbortSignal) => request<unknown>("/claude/takeover", { signal }).then(usableClaudeTakeover),
   // 应用/撤销都返回服务端状态：撤销结果可能保留用户改动，页面要显示服务端实际做了什么。
-  applyClaudeDesktop: (models: ClaudeDesktopModel[]) => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "apply", models }) }).then(usableClaudeDesktopTakeover),
+  applyClaudeDesktop: (models: ClaudeDesktopModel[], force = false) => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "apply", models, ...(force ? { force: true } : {}) }) }).then(usableClaudeDesktopTakeover),
   undoClaudeDesktop: () => request<unknown>("/claude/takeover/desktop", { method: "PUT", body: JSON.stringify({ action: "undo", models: [] }) }).then(usableClaudeDesktopTakeover),
   devinSettings: () => request<unknown>("/devin/settings").then(settings => usableDevinSettings(settings, false)),
   devinStatus: (signal?: AbortSignal) => request<unknown>("/devin/status", { signal }).then(requireDevinStatus),
@@ -1539,7 +1539,7 @@ export const api = {
   devinHostStatus: (path?: string, installRoot?: string, signal?: AbortSignal) => request<DevinHostStatus>(`/harness/devin/host/status${devinHostQuery(path, installRoot)}`, { signal }),
   /** The identifiers Devin itself asks for, read from the installed client. */
   devinModelUids: (installRoot?: string) => request<DevinModelUids>(`/harness/devin/model-uids${devinHostQuery(undefined, installRoot)}`),
-  applyDevinHostConfiguration: (path?: string, installRoot?: string) => request<DevinHostApplyResult>("/harness/devin/host/apply", { method: "POST", body: devinHostBody(path, installRoot) }),
+  applyDevinHostConfiguration: (path?: string, installRoot?: string, force = false) => request<DevinHostApplyResult>("/harness/devin/host/apply", { method: "POST", body: devinHostBody(path, installRoot, force) }),
   restoreDevinHostConfiguration: (path?: string, installRoot?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: devinHostBody(path, installRoot) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   plugins: (signal?: AbortSignal) => request<unknown>("/plugins", { signal }).then(rows => usableRows<PluginDescriptor>(
@@ -1599,7 +1599,7 @@ export const api = {
     const { invoke } = await import("@tauri-apps/api/core");
     await invoke("open_log_directory");
   },
-  setCursorMode: (mode: CursorMode) => request<CursorHarnessStatus>("/harness/cursor/mode", { method: "PUT", body: JSON.stringify({ mode }) }),
+  setCursorMode: (mode: CursorMode, force = false) => request<CursorHarnessStatus>("/harness/cursor/mode", { method: "PUT", body: JSON.stringify({ mode, force }) }),
   calls: (signal?: AbortSignal) => request<unknown>("/llm-calls?limit=200", { signal }).then(rows => usableRows<LlmCall>(rows, "call_id", "调用记录")),
   /**
    * 一次调用的完整记录。

@@ -42,7 +42,7 @@ impl<'de> Deserialize<'de> for CommitPromptLocale {
 
 /// User preferences for Git commit message generation.
 ///
-/// Empty `model_id` means 直连: forward the original Cursor RPC unchanged.
+/// Empty `model_id` means 官方: forward the original Cursor RPC unchanged.
 /// A non-empty value is the stable identifier of a configured built-in or
 /// plugin model, and the request is generated locally through that model.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

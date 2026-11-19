@@ -289,12 +289,13 @@ async fn takeover_desktop(
                 token: facts.status.token.clone(),
                 models,
             };
-            claude_desktop::apply(
+            claude_desktop::apply_with_force(
                 &paths,
                 &state_dir,
                 &policy,
                 state.takeover.desktop_running().await,
                 &route,
+                request.force,
             )?
         }
         TakeoverAction::Undo => claude_desktop::undo(
@@ -334,6 +335,9 @@ struct DesktopTakeoverRequest {
     action: TakeoverAction,
     #[serde(default)]
     models: Vec<DesktopModelRequest>,
+    /// 覆盖被动过的 profile 并重新接管；原配置仍由 backup_once 保留。
+    #[serde(default)]
+    force: bool,
 }
 
 #[derive(Debug, Deserialize)]

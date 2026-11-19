@@ -13,11 +13,11 @@ import { currencyOf, currencySymbol, formatPrice, pricingFor, type Currency } fr
 import { useMessage } from "../../shared/ui/message";
 import styles from "./PricingSettingsCard.module.scss";
 
-type PriceDraft = { input_per_million: string; output_per_million: string; cache_read_per_million: string; cache_write_per_million: string };
+type PriceDraft = { input_per_million: string; output_per_million: string; cache_read_per_million: string };
 type PricingDraft = { mode: PricingMode; fixed: PriceDraft; peak: PriceDraft; offPeak: PriceDraft };
 const emptyRule = (): ModelTokenPricing => ({ mode: "fixed", cny: null, usd: null });
 function toPriceDraft(price?: TokenPrice): PriceDraft {
-  return { input_per_million: price ? String(price.input_per_million) : "", output_per_million: price ? String(price.output_per_million) : "", cache_read_per_million: price ? String(price.cache_read_per_million) : "", cache_write_per_million: price ? String(price.cache_write_per_million) : "" };
+  return { input_per_million: price ? String(price.input_per_million) : "", output_per_million: price ? String(price.output_per_million) : "", cache_read_per_million: price ? String(price.cache_read_per_million) : "" };
 }
 function toDraft(rule: ModelTokenPricing, currency: Currency): PricingDraft {
   const book = pricingFor(rule, currency);
@@ -30,7 +30,7 @@ function toPrice(draft: PriceDraft, group: string): TokenPrice {
     if (!value.trim() || !Number.isFinite(price) || price < 0) throw new Error(t("{label}必须是非负数", { label: `${group} · ${label}` }));
     return price;
   };
-  return { input_per_million: parse("input_per_million", t("输入价格（缓存未命中）")), output_per_million: parse("output_per_million", t("输出价格")), cache_read_per_million: parse("cache_read_per_million", t("缓存读取价格（缓存命中）")), cache_write_per_million: parse("cache_write_per_million", t("缓存写入价格")) };
+  return { input_per_million: parse("input_per_million", t("输入价格（缓存未命中）")), output_per_million: parse("output_per_million", t("输出价格")), cache_read_per_million: parse("cache_read_per_million", t("缓存读取价格（缓存命中）")) };
 }
 function toSettings(draft: PricingDraft, base: ModelTokenPricing, currency: Currency): ModelTokenPricing {
   // Unused time-period fields share the explicitly entered fixed price, not a
@@ -47,12 +47,11 @@ function PriceFields({ draft, unit, onChange }: { draft: PriceDraft; unit: strin
     {field("input_per_million", t("输入价格（缓存未命中，{unit}/1M）", { unit }))}
     {field("output_per_million", t("输出价格（{unit}/1M）", { unit }))}
     {field("cache_read_per_million", t("缓存读取价格（缓存命中，{unit}/1M）", { unit }))}
-    {field("cache_write_per_million", t("缓存写入价格（{unit}/1M）", { unit }))}
   </>;
 }
 function PriceRows({ price, unit }: { price: TokenPrice; unit: string }) {
   const row = (label: string, value: number) => <div className={styles.row}><strong>{label}</strong><span className={styles.value}>{`${unit}${formatPrice(value)}`}</span></div>;
-  return <>{row(t("输入价格（缓存未命中）"), price.input_per_million)}{row(t("输出价格"), price.output_per_million)}{row(t("缓存读取价格（缓存命中）"), price.cache_read_per_million)}{row(t("缓存写入价格"), price.cache_write_per_million)}</>;
+  return <>{row(t("输入价格（缓存未命中）"), price.input_per_million)}{row(t("输出价格"), price.output_per_million)}{row(t("缓存读取价格（缓存命中）"), price.cache_read_per_million)}</>;
 }
 
 export function PricingSettingsCard() {

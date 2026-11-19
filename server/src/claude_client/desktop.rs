@@ -423,6 +423,17 @@ pub fn apply(
     running: bool,
     route: &DesktopRoute,
 ) -> Result<DesktopTakeoverStatus> {
+    apply_with_force(paths, state_dir, policy, running, route, false)
+}
+
+pub fn apply_with_force(
+    paths: &DesktopPaths,
+    state_dir: &Path,
+    policy: &super::ownership::DesktopPolicy,
+    running: bool,
+    route: &DesktopRoute,
+    force: bool,
+) -> Result<DesktopTakeoverStatus> {
     if !paths.installed {
         return Err(Error::Config(
             "Claude Desktop is not installed; install it and sign in once before applying".into(),
@@ -486,7 +497,7 @@ pub fn apply(
     let before_profile = read_optional(&profile_path)?;
     if let Some(receipt) = &previous {
         if let Some(text) = &before_profile {
-            if content_hash(text) != receipt.applied_profile_hash {
+            if !force && content_hash(text) != receipt.applied_profile_hash {
                 return Err(Error::Config(
                     "the gateway profile was modified after the takeover; undo before applying again"
                         .into(),

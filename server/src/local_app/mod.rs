@@ -134,6 +134,9 @@ pub struct CursorHarnessStatus {
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub struct SetMode {
     pub mode: CursorMode,
+    /// 强制接管：即使检测到外部代理配置也覆盖它，原配置由保管键完整保存。
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Clone)]
@@ -329,7 +332,7 @@ impl CursorHarness {
     /// 读不动）时库里仍是上一个模式，界面不会留下一张开着的开关和一条没被接管的链路。
     /// 反过来先写库的话，报错之后每一次状态刷新都会拿着新模式重试，用户只能自己再切
     /// 一次才能对齐——这正是"看起来正常、实际没生效"。
-    pub async fn set_mode(&self, mode: CursorMode) -> Result<CursorHarnessStatus> {
+    pub async fn set_mode(&self, mode: CursorMode, force: bool) -> Result<CursorHarnessStatus> {
         {
             // 副作用整段互斥（见 `Inner::transition`）：读状态的补齐可能与这次切换并发，
             // 交错会把配置与库里的模式写成两份互相矛盾的记录。
@@ -340,7 +343,7 @@ impl CursorHarness {
                 // Cursor 重新读取代理配置的方式（它只在启动时读一次）。
                 self.apply_takeover(
                     mode,
-                    TakeoverRequest::user_choice(previous == CursorMode::Official),
+                    TakeoverRequest::user_choice(previous == CursorMode::Official || force, force),
                 )
                 .await?;
             } else {
@@ -398,7 +401,10 @@ impl CursorHarness {
         // 另一个软件在管 Cursor 的代理配置：读状态时先生手——不写、不启动代理、不碰进程。
         // 两个软件轮流覆盖同一份配置，只会让用户两条链路都不稳定；要不要抢过来，由用户
         // 在那个开关上决定（那时才走下面这段）。
-        if !request.may_terminate_cursor && settings::proxy_configuration_is_foreign()? {
+        if !request.force
+            && !request.may_terminate_cursor
+            && settings::proxy_configuration_is_foreign()?
+        {
             return Ok(());
         }
         let backend_addr = self
@@ -564,6 +570,8 @@ struct TakeoverRequest {
     may_terminate_cursor: bool,
     /// 账号注入失败是否让这次调用失败。
     account_failure_is_fatal: bool,
+    /// 外部配置存在时是否允许覆盖（原配置由保管键保存）。
+    force: bool,
 }
 
 impl TakeoverRequest {
@@ -575,14 +583,16 @@ impl TakeoverRequest {
     const STATUS_REFRESH: Self = Self {
         may_terminate_cursor: false,
         account_failure_is_fatal: false,
+        force: false,
     };
 
     /// 用户在界面上选定的模式：注入是本地模式的前置条件，失败要让这次切换失败——否则
     /// 用户拿到的是"看起来切过去了、其实什么都通不了"。
-    fn user_choice(may_terminate_cursor: bool) -> Self {
+    fn user_choice(may_terminate_cursor: bool, force: bool) -> Self {
         Self {
             may_terminate_cursor,
             account_failure_is_fatal: true,
+            force,
         }
     }
 
@@ -660,11 +670,20 @@ mod tests {
         assert!(!refresh.should_terminate_cursor(false));
         assert!(!refresh.should_terminate_cursor(true));
         // 用户按开关并确认过：配置还不是我们的，结束 Cursor 让它重新读取。
-        assert!(TakeoverRequest::user_choice(true).should_terminate_cursor(false));
+        assert!(TakeoverRequest::user_choice(true, false).should_terminate_cursor(false));
         // 配置已经指向本机，再杀一次只有代价。
-        assert!(!TakeoverRequest::user_choice(true).should_terminate_cursor(true));
+        assert!(!TakeoverRequest::user_choice(true, false).should_terminate_cursor(true));
         // 用户选了模式，但不是"从官方跨回来"的那一步：也不许结束进程。
-        assert!(!TakeoverRequest::user_choice(false).should_terminate_cursor(false));
+        assert!(!TakeoverRequest::user_choice(false, false).should_terminate_cursor(false));
+        // 强制接管是显式用户动作，允许结束进程让 Cursor 重新读取配置。
+        assert!(TakeoverRequest::user_choice(true, true).should_terminate_cursor(false));
+    }
+
+    /// 用户明确选择的接管可以要求强制覆盖；状态刷新本身没有这个权限。
+    #[test]
+    fn a_user_choice_can_request_force() {
+        assert!(TakeoverRequest::user_choice(false, true).force);
+        assert!(TakeoverRequest::user_choice(true, true).force);
     }
 
     /// 账号注入失败的口径：用户明确切换模式时要报出来（本地模式靠这个账号才通），
@@ -672,8 +691,8 @@ mod tests {
     #[test]
     fn only_the_users_choice_makes_an_account_failure_fatal() {
         const _: () = assert!(!TakeoverRequest::STATUS_REFRESH.account_failure_is_fatal);
-        assert!(TakeoverRequest::user_choice(false).account_failure_is_fatal);
-        assert!(TakeoverRequest::user_choice(true).account_failure_is_fatal);
+        assert!(TakeoverRequest::user_choice(false, false).account_failure_is_fatal);
+        assert!(TakeoverRequest::user_choice(true, false).account_failure_is_fatal);
     }
 
     /// 退出流程开始后，状态刷新不许再收敛：`disable()` 撤掉的接管不能被并发刷新补回来。

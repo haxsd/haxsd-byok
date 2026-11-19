@@ -1,4 +1,5 @@
 import type { CodexStatus } from "../../shared/api";
+import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { alertIcon } from "../../shared/ui/icons";
 import { codexConflictRows, codexManagedConflictRows } from "./codexConnectionView";
@@ -10,7 +11,11 @@ import styles from "./CodexSettingsPage.module.scss";
  * 只在需要处理时出现：标题 + 一行说明 + 字段清单 + 一句怎么做。不同冲突类型
  * 必须分开说，不能把所有 `config_conflict` 都说成"别的程序"。
  */
-export function CodexConflictCard({ status }: { status: CodexStatus | null }) {
+export function CodexConflictCard({ status, onForce, forceBusy }: {
+  status: CodexStatus | null;
+  onForce?: () => void;
+  forceBusy?: boolean;
+}) {
   if (!status) return null;
   const rows = codexConflictRows(status.conflicts);
   const managedRows = codexManagedConflictRows(status.managed_conflicts);
@@ -44,6 +49,8 @@ export function CodexConflictCard({ status }: { status: CodexStatus | null }) {
               ? t("路由被其他程序占用")
               : t("{count} 个字段已变化", { count: rows.length });
   const showScope = kind === "managed" || kind === "policy_unavailable" || managedRows.length > 0;
+  const forceable = status.config_conflict
+    && (kind === "local_drift" || kind === "foreign_provider" || kind === "none");
 
   return <TitledCard
     title={title}
@@ -70,5 +77,8 @@ export function CodexConflictCard({ status }: { status: CodexStatus | null }) {
       {showScope && <p>{t("仅核对本地系统 requirements；cloud/enterprise 策略未验证。")}</p>}
       {rows.length > 0 && <p>{t("撤销接管会还原这些字段；要继续使用本机网关，再应用一次。")}</p>}
     </div>
+    {forceable && onForce && <div className={styles.notes}>
+      <Button size="small" disabled={forceBusy} onClick={onForce}>{t("强制接管")}</Button>
+    </div>}
   </TitledCard>;
 }

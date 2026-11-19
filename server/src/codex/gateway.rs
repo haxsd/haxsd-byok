@@ -336,6 +336,10 @@ impl CodexGateway {
     }
 
     pub async fn apply(&self) -> Result<CodexStatus> {
+        self.apply_with_force(false).await
+    }
+
+    pub async fn apply_with_force(&self, force: bool) -> Result<CodexStatus> {
         let _operation = self.inner.operations.lock().await;
         let settings = self.inner.store.codex_settings().await?;
         if !settings.enabled {
@@ -351,22 +355,28 @@ impl CodexGateway {
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home, &self.inner.requirements)?;
         if inspected.conflict {
-            return Err(Error::Config(
-                match inspected.conflict_kind {
-                    "incomplete_update" => {
-                        "restore the interrupted Codex configuration update before applying"
+            let blocking = matches!(
+                inspected.conflict_kind,
+                "incomplete_update" | "policy_unavailable" | "managed"
+            );
+            if !force || blocking {
+                return Err(Error::Config(
+                    match inspected.conflict_kind {
+                        "incomplete_update" => {
+                            "restore the interrupted Codex configuration update before applying"
+                        }
+                        "policy_unavailable" => {
+                            "Codex requirements could not be read; refusing to apply"
+                        }
+                        "managed" => "Codex routing is constrained by administrator requirements",
+                        "local_drift" => {
+                            "Codex configuration still points at this gateway but its catalog or model changed"
+                        }
+                        _ => "Codex routing conflicts with external configuration",
                     }
-                    "policy_unavailable" => {
-                        "Codex requirements could not be read; refusing to apply"
-                    }
-                    "managed" => "Codex routing is constrained by administrator requirements",
-                    "local_drift" => {
-                        "Codex configuration still points at this gateway but its catalog or model changed"
-                    }
-                    _ => "Codex routing conflicts with external configuration",
-                }
-                .into(),
-            ));
+                    .into(),
+                ));
+            }
         }
         self.sync_listener(&settings).await?;
         // 目录正文与自愈发布共用同一份序列化，两边不会漂移。
@@ -383,7 +393,7 @@ impl CodexGateway {
             .await?
             .ok_or_else(|| Error::Config(format!("unknown Codex model: {default}")))?;
         let catalog_path = config::write_catalog(&home, &catalog)?;
-        config::apply(
+        config::apply_with_force(
             &home,
             &ConfigRoute {
                 model: default.model_hash.clone(),
@@ -392,6 +402,7 @@ impl CodexGateway {
                 catalog_path,
             },
             &self.inner.requirements,
+            force,
         )?;
         self.status().await
     }
@@ -767,7 +778,7 @@ mod tests {
         settings.home = directory.path().join("home").display().to_string();
         std::fs::create_dir_all(&settings.home).unwrap();
         store.set_codex_settings(settings.clone()).await.unwrap();
-        gateway.apply().await.unwrap();
+        gateway.apply_with_force(false).await.unwrap();
         let home = std::path::PathBuf::from(&settings.home);
         let before = config::applied_catalog(&home, &RequirementsSource::unmanaged())
             .unwrap()
@@ -819,7 +830,7 @@ mod tests {
             "[desktop]\nconversationDetailMode = \"STEPS_COMMANDS\"\n",
         )
         .unwrap();
-        gateway.apply().await.unwrap();
+        gateway.apply_with_force(false).await.unwrap();
         // 旧版本留下的 marker 也不能触发任何界面模式回滚。
         std::fs::write(
             std::path::Path::new(&settings.home).join(".haxsd-byok-client-mode.json"),

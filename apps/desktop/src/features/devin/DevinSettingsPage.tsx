@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type DevinHostStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
 import { Combobox } from "../../shared/ui/Select";
@@ -118,6 +119,7 @@ export function DevinSettingsPage() {
   const [hostFailure, setHostFailure] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
   const [hostNeedsInspect, setHostNeedsInspect] = useState(false);
+  const [confirmForceHost, setConfirmForceHost] = useState(false);
   const hostPathSaveTimer = useRef<number | null>(null);
   const hostInstallRootSaveTimer = useRef<number | null>(null);
   // Which mapping rows are showing their optional fields. Collapsed by default: the
@@ -368,10 +370,10 @@ export function DevinSettingsPage() {
       setHostNeedsInspect(false);
     }
   };
-  const applyHostConfiguration = async () => {
+  const applyHostConfiguration = async (force = false) => {
     setHostBusy(true);
     try {
-      const outcome = await applyDevinHostConfiguration(hostPath, hostInstallRoot);
+      const outcome = await applyDevinHostConfiguration(hostPath, hostInstallRoot, {}, force);
       if (outcome.kind === "write-failed") {
         // 设置没写下去：文件保持原样，"写入设置"仍然可用。
         const text = writeFailureText(outcome.cause);
@@ -686,8 +688,21 @@ export function DevinSettingsPage() {
     <PageActions>
       <Button disabled={loading || Boolean(loadError) || saving || hostBusy || !view.pendingChanges || Boolean(defaultMissingReason)} onClick={save}>{saving ? t("保存中…") : t("保存")}</Button>
       <Button disabled={connectDisabled} onClick={() => void applyHostConfiguration()}>{t("应用到 Devin")}</Button>
+      {hostStatus?.configured && !hostIntegrated && !hostStatus.extension.patched && <Button disabled={saving || hostBusy} onClick={() => setConfirmForceHost(true)}>{t("强制接管")}</Button>}
       <Button disabled={saving || hostBusy || hostNeedsInspect || !hostRestorable} onClick={() => void restoreHostConfiguration()}>{t("撤销接管")}</Button>
     </PageActions>
+    <ConfirmDialog
+      open={confirmForceHost}
+      destructive
+      title={t("强制接管 Devin？")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("覆盖并接管")}
+      busy={hostBusy}
+      onCancel={() => setConfirmForceHost(false)}
+      onConfirm={() => { setConfirmForceHost(false); void applyHostConfiguration(true); }}
+    >
+      <p>{t("Devin 的设置里已经有一组外部端点。强制接管会覆盖它们并保留备份；撤销接管时恢复。请先完全退出 Devin。")}</p>
+    </ConfirmDialog>
     <PageContent
     title={<PageTitle
       title="Devin"

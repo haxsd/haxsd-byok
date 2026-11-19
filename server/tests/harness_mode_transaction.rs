@@ -32,7 +32,7 @@ async fn a_failed_mode_switch_leaves_the_saved_mode_unchanged() {
 
     // 隔离数据目录下不许接管 Cursor：这一步必须失败，而且不能把新模式写进库。
     let error = harness
-        .set_mode(cursor_server::store::CursorMode::Local)
+        .set_mode(cursor_server::store::CursorMode::Local, false)
         .await
         .expect_err("isolated data directory must refuse the takeover");
     assert!(

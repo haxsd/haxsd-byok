@@ -22,5 +22,10 @@ pub async fn set_mode(
     State(service): State<ControlService>,
     Json(input): Json<SetMode>,
 ) -> Result<Json<CursorHarnessStatus>> {
-    Ok(Json(service.cursor_harness().set_mode(input.mode).await?))
+    Ok(Json(
+        service
+            .cursor_harness()
+            .set_mode(input.mode, input.force)
+            .await?,
+    ))
 }

@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../shared/api";
 import type { CursorMode } from "../../shared/api";
 import { CursorCaGate } from "./CursorGates";
 import { startCursorCaWaitPoll } from "./caWaitPoll";
 import { CursorToolsSettings } from "../cursor/CursorToolsSettings";
-import { cursorSettingsSection, TOOLS_SECTION, type CursorSettingsSection } from "../cursor/toolsSection";
+import { cursorSettingsSection, TOOLS_SECTION } from "../cursor/toolsSection";
 import styles from "./CursorSettings.module.scss";
 import { PageActions } from "../../shell/PageActions";
 import { PageContent } from "../../shell/layout/PageContent";
@@ -30,12 +30,12 @@ const CA_READY_POLL_INTERVAL_MS = 2_000;
 const CA_READY_POLL_ATTEMPTS = 15;
 
 /**
- * Cursor's own surface, split in two sections on one page.
+ * Cursor's own surface on one page.
  *
- * 「接入」is the model source mode, the local proxy and the CA that makes HTTPS
- * interception possible. 「功能设置」is what Cursor's own features need from us:
- * the TAB completion endpoint and the commit-message model. The section lives in
- * the URL, so the settings page can link straight to the tools.
+ * The model source mode, the local proxy and the CA come first; the TAB
+ * completion endpoint and the commit-message model follow as ordinary cards.
+ * Settings search links to `?section=tools`, which scrolls to that block instead
+ * of switching a tab that no longer exists.
  *
  * Model configuration is not here. Models are shared with Devin, so they live in
  * the model library; Cursor and Devin stay parallel modules that meet only in that
@@ -50,6 +50,7 @@ export function CursorSettingsPage() {
   const [caCommand, setCaCommand] = useState<string | null>(null);
   const [waitingForCaRefresh, setWaitingForCaRefresh] = useState(false);
   const [pendingMode, setPendingMode] = useState<CursorMode | null>(null);
+  const [pendingForce, setPendingForce] = useState(false);
 
   const mode: CursorMode = cursorHarness?.mode ?? "official";
   const account = cursorHarness?.account;
@@ -65,15 +66,16 @@ export function CursorSettingsPage() {
     && catalog.last_failure_ms != null
     && (catalog.last_success_ms == null || catalog.last_failure_ms > catalog.last_success_ms);
   // 运行中的 Cursor 内存里还指着本机代理：跨官方边界必须结束它才能重新读取。
-  const pendingEndsCursor = pendingMode != null && (mode === "official" || pendingMode === "official");
+  const pendingEndsCursor = pendingMode != null && (pendingForce || mode === "official" || pendingMode === "official");
   const windows = cursorHarness?.platform === "windows";
-  // 分区写在 URL 上：设置页的「Tab 补全」「提交信息模型」直达 ?section=tools，刷新也留在原分区。
-  const [params, setParams] = useSearchParams();
+  // 设置页的「Tab 补全」「提交信息模型」链接带 ?section=tools：滚动到功能设置块，
+  // 不再用标签页切换。
+  const [params] = useSearchParams();
   const section = cursorSettingsSection(params);
-  const selectSection = (next: CursorSettingsSection) => setParams(
-    next === TOOLS_SECTION ? { section: TOOLS_SECTION } : {},
-    { replace: true },
-  );
+  const toolsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (section === TOOLS_SECTION) toolsRef.current?.scrollIntoView({ block: "start" });
+  }, [section]);
 
   useEffect(() => {
     if (caCommand) void api.copyCursorText(caCommand);
@@ -124,6 +126,40 @@ export function CursorSettingsPage() {
       return;
     }
     void appStore.setCursorMode(next);
+  };
+  /** 显式应用当前选择的接管模式；官方模式下没有可应用的东西，先引导选模式。 */
+  const applyTakeover = () => {
+    if (!caReady) {
+      message(t("先初始化并信任本地 CA，再切换到本地或混合模式。"));
+      return;
+    }
+    if (mode === "official") {
+      setPendingForce(false);
+      setPendingMode("local");
+      return;
+    }
+    void appStore.setCursorMode(mode);
+  };
+  /** 撤销接管：回到官方模式。 */
+  const revokeTakeover = () => {
+    if (mode === "official") return;
+    setPendingForce(false);
+    setPendingMode("official");
+  };
+  /** 外部配置挡路时，明确覆盖它；原配置由保管键保存，撤销时恢复。 */
+  const forceTakeover = () => {
+    if (!caReady) {
+      message(t("先初始化并信任本地 CA，再切换到本地或混合模式。"));
+      return;
+    }
+    if (mode === "official") {
+      // 官方模式下也可能残留外部配置：强制的含义就是切到本地并覆盖它。
+      setPendingForce(true);
+      setPendingMode("local");
+      return;
+    }
+    setPendingForce(true);
+    setPendingMode(mode);
   };
   const switchWarning = pendingMode === "official"
     ? t("切换到官方模式会结束所有正在运行的 Cursor 进程（未保存的编辑会丢失），并清除本应用注入的本地账号，之后 Cursor 直连官方。请先保存工作。")
@@ -359,18 +395,15 @@ export function CursorSettingsPage() {
   </>;
 
   const content = <div className={styles.page}>
-    <div className={styles.section} hidden={section !== "access"}>{accessCards}</div>
-    <div className={styles.section} hidden={section !== "tools"}><CursorToolsSettings /></div>
+    {accessCards}
+    <div ref={toolsRef} className={styles.section}><CursorToolsSettings /></div>
   </div>;
 
   return <>
     <PageActions>
-      <Segmented<CursorSettingsSection>
-        value={section}
-        ariaLabel={t("Cursor 设置分区")}
-        options={[{ value: "access", label: t("接入") }, { value: "tools", label: t("功能设置") }]}
-        onChange={selectSection}
-      />
+      {foreignConfiguration && <Button size="small" disabled={cursorBusy} onClick={forceTakeover}>{t("强制接管")}</Button>}
+      <Button size="small" disabled={cursorBusy} onClick={applyTakeover}>{t("应用接管")}</Button>
+      <Button size="small" disabled={cursorBusy || mode === "official"} onClick={revokeTakeover}>{t("撤销接管")}</Button>
     </PageActions>
     <PageContent
       title={<PageTitle
@@ -378,22 +411,31 @@ export function CursorSettingsPage() {
         status={<StatusPill tone={!takesOver ? "idle" : connected ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>}
         meta={t("选择模型来源，让 Cursor 用你自己的模型")}
       />}
-      sections={[{ key: "cursor-settings", estimatedHeight: section === "tools" ? 420 : 920, content }]}
+      sections={[{ key: "cursor-settings", estimatedHeight: 1340, content }]}
     />
     <ConfirmDialog
       open={pendingMode !== null}
       destructive={pendingEndsCursor}
-      title={t("切换模型来源？")}
+      title={pendingForce ? t("强制接管？") : t("切换模型来源？")}
       cancelLabel={t("取消")}
-      confirmLabel={pendingEndsCursor ? t("结束并切换") : t("切换")}
-      onCancel={() => setPendingMode(null)}
+      confirmLabel={pendingForce
+        ? t("结束并强制接管")
+        : pendingEndsCursor ? t("结束并切换") : t("切换")}
+      onCancel={() => {
+        setPendingMode(null);
+        setPendingForce(false);
+      }}
       onConfirm={() => {
         const next = pendingMode;
+        const force = pendingForce;
         setPendingMode(null);
-        if (next) void appStore.setCursorMode(next);
+        setPendingForce(false);
+        if (next) void appStore.setCursorMode(next, force);
       }}
     >
-      <p>{switchWarning}</p>
+      <p>{pendingForce
+        ? t("检测到其它工具留下的代理配置。强制接管会覆盖它，并在撤销时恢复原配置；同时会结束正在运行的 Cursor，未保存的编辑会丢失。")
+        : switchWarning}</p>
     </ConfirmDialog>
     <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
       <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{windows

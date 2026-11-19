@@ -7,7 +7,7 @@ export type HostConfigurationOutcome =
   | { kind: "status-unreadable" };
 
 export type HostConfigurationDeps = {
-  apply?: (path: string, installRoot: string) => Promise<unknown>;
+  apply?: (path: string, installRoot: string, force: boolean) => Promise<unknown>;
   readStatus?: (path: string, installRoot: string) => Promise<DevinHostStatus>;
 };
 
@@ -22,12 +22,12 @@ export function canRestoreDevinHost(status: DevinHostStatus | null): boolean {
  *   否则用户会重复写一次。界面据此清掉旧状态并指向「检查设置」。
  * - 都成功 → `applied`：带着状态回去，成功提示只在此时发。
  */
-export async function applyDevinHostConfiguration(hostPath: string, installRoot = "", deps: HostConfigurationDeps = {}): Promise<HostConfigurationOutcome> {
-  const apply = deps.apply ?? ((path: string, root: string) => api.applyDevinHostConfiguration(path, root));
+export async function applyDevinHostConfiguration(hostPath: string, installRoot = "", deps: HostConfigurationDeps = {}, force = false): Promise<HostConfigurationOutcome> {
+  const apply = deps.apply ?? ((path: string, root: string, force: boolean) => api.applyDevinHostConfiguration(path, root, force));
   const readStatus = deps.readStatus ?? ((path: string, root: string) => api.devinHostStatus(path, root));
 
   try {
-    await apply(hostPath, installRoot);
+    await apply(hostPath, installRoot, force);
   } catch (cause) {
     return { kind: "write-failed", cause };
   }

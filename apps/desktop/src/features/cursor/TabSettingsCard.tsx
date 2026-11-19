@@ -37,8 +37,7 @@ export function TabSettingsCard({
   onRetry: () => void;
 }) {
   const modeLabel = (mode: TabMode) => {
-    if (mode === "public") return t("使用公益服务");
-    if (mode === "direct") return t("直连");
+    if (mode === "direct") return t("官方");
     return t("自定义");
   };
   const action = editing ? (
@@ -65,8 +64,7 @@ export function TabSettingsCard({
             value={draft.mode}
             ariaLabel={t("TAB 选择")}
             options={[
-              { value: "public", label: t("使用公益服务") },
-              { value: "direct", label: t("直连") },
+              { value: "direct", label: t("官方") },
               { value: "custom", label: t("自定义") },
             ]}
             onChange={(mode) => onDraftChange({ ...draft, mode: mode as TabMode })}

@@ -80,7 +80,7 @@ export function CommitSettingsCard() {
   }, [view, locale, message]);
 
   const modelOptions = useMemo(() => {
-    const options: ModelSelectOption[] = [{ value: "", label: t("直连"), group: "Cursor" }];
+    const options: ModelSelectOption[] = [{ value: "", label: t("官方"), group: "Cursor" }];
     const seen = new Set<string>();
     for (const model of models) {
       seen.add(model.model_hash);

@@ -65,6 +65,7 @@ export function CodexSettingsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   // 未登录 ChatGPT 时点「应用到 Codex」先确认：Work 界面可能无法新建任务。
   const [confirmApply, setConfirmApply] = useState(false);
+  const [confirmForce, setConfirmForce] = useState(false);
   const message = useMessage();
   // 模型库里的插件模型只是为了让设置页说清「为什么它们不能选」，不进入 Codex 目录。
   const pluginModels = configuredPluginModels(plugins);
@@ -136,6 +137,10 @@ export function CodexSettingsPage() {
     void apply();
   };
   const restore = () => action(async () => { await api.restoreCodex(); message(t("Codex 配置已恢复")); });
+  const forceApply = () => action(async () => {
+    await api.applyCodex(true);
+    message(t("已强制接管 Codex 配置。请完全退出 Codex 后重开。"));
+  });
   const alertCause = error ?? codexStatus?.last_error ?? codexStatus?.managed_error;
   const content = <div className={styles.page}>
     <TitledCard
@@ -164,7 +169,7 @@ export function CodexSettingsPage() {
       />
       {alertCause && <CodexErrorAlert cause={alertCause} />}
     </TitledCard>
-    <CodexConflictCard status={codexStatus} />
+    <CodexConflictCard status={codexStatus} onForce={() => setConfirmForce(true)} forceBusy={busy} />
     {locale === "zh-CN" && <CodexUiCacheNote status={uiCache} busy={busy} error={uiCacheError} onRepair={() => void repairUiCache()} />}
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
@@ -181,6 +186,18 @@ export function CodexSettingsPage() {
       <Button disabled={busy || !gate.apply} onClick={requestApply}>{t("应用到 Codex")}</Button>
       <Button disabled={busy || !gate.restore} onClick={() => void restore()}>{t("撤销接管")}</Button>
     </PageActions>
+    <ConfirmDialog
+      open={confirmForce}
+      destructive
+      title={t("强制接管 Codex？")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("覆盖并接管")}
+      busy={busy}
+      onCancel={() => setConfirmForce(false)}
+      onConfirm={() => { setConfirmForce(false); void forceApply(); }}
+    >
+      <p>{t("这会覆盖 Codex 当前的 provider 与模型路由，并保留一份可恢复基线；撤销接管时会还原。现有 Codex 进程不会被结束。")}</p>
+    </ConfirmDialog>
     <ConfirmDialog
       open={confirmApply}
       title={t("还没登录 ChatGPT")}

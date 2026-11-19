@@ -65,11 +65,21 @@ async fn ui_cache() -> Json<crate::codex::ui_cache::UiCacheStatus> {
 async fn repair_ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
     Ok(Json(crate::codex::ui_cache::repair()?))
 }
-async fn apply(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
-    Ok(Json(state.gateway.apply().await?))
+async fn apply(
+    State(state): State<CodexControl>,
+    request: Option<Json<ApplyRequest>>,
+) -> Result<Json<CodexStatus>> {
+    let force = request.map(|Json(request)| request.force).unwrap_or(false);
+    Ok(Json(state.gateway.apply_with_force(force).await?))
 }
 async fn restore(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
     Ok(Json(state.gateway.restore().await?))
+}
+
+#[derive(Default, serde::Deserialize)]
+struct ApplyRequest {
+    #[serde(default)]
+    force: bool,
 }
 
 #[cfg(test)]

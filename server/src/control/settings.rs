@@ -109,7 +109,7 @@ pub async fn update_desktop(
     Ok(Json(service.update_desktop_settings(patch).await?))
 }
 
-/// Settings view for commit message generation. Empty `model_id` means 直连
+/// Settings view for commit message generation. Empty `model_id` means 官方
 /// (forward the original Cursor RPC). A non-empty value is a configured
 /// built-in or plugin model identifier. Empty `prompt` means "use the built-in default".
 #[derive(Serialize)]

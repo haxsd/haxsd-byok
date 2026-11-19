@@ -93,3 +93,11 @@ test("switching from the custom popover to a preset keeps the chosen model filte
   const body = source.slice(start, source.indexOf("};", start));
   assert.match(body, /setAppliedModels\(selectedModels\)/, "预设切换必须把弹窗里的最新选择同步到请求口径");
 });
+
+test("the overview defaults to today on launch and on every re-entry", async () => {
+  const source = await readFile(new URL("../src/features/home/HomePage.tsx", import.meta.url), "utf8");
+  assert.match(source, /useState<OverviewRangePreset>\("today"\)/, "默认范围必须是今天");
+  assert.doesNotMatch(source, /useState<OverviewRangePreset>\("month"\)/, "不得再默认 30 天");
+  assert.match(source, /active && !wasActive\.current/, "keepalive 页面重新激活时要重置范围");
+  assert.match(source, /setPreset\("today"\)/, "重新进入时要回到今天");
+});

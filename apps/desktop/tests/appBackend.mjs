@@ -25,7 +25,7 @@ export function emptyOverview() {
 }
 
 export function defaultModelPricing() {
-  const price = { input_per_million: 2, output_per_million: 8, cache_read_per_million: 0.04, cache_write_per_million: 0 };
+  const price = { input_per_million: 2, output_per_million: 8, cache_read_per_million: 0.04 };
   return { mode: "peak_off_peak", cny: { fixed: price, peak: price, off_peak: price }, usd: { fixed: price, peak: price, off_peak: price } };
 }
 

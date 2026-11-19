@@ -323,9 +323,9 @@ export const appStore = {
       update({ plugins: await api.plugins() });
     });
   },
-  async setCursorMode(mode: CursorMode) {
+  async setCursorMode(mode: CursorMode, force = false) {
     update({ cursorBusy: true, error: null });
-    try { update({ cursorHarness: await api.setCursorMode(mode) }); }
+    try { update({ cursorHarness: await api.setCursorMode(mode, force) }); }
     catch (cause) { update({ error: cause instanceof Error ? cause.message : String(cause) }); }
     finally { update({ cursorBusy: false }); }
   },

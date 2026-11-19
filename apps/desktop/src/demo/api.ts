@@ -181,7 +181,6 @@ const demoTokenPrice = {
   input_per_million: 3,
   output_per_million: 15,
   cache_read_per_million: 0.3,
-  cache_write_per_million: 3.75,
 };
 const demoCurrency = { fixed: demoTokenPrice, peak: demoTokenPrice, off_peak: demoTokenPrice };
 let pricingSettings: TokenPricingSettings = {
@@ -199,7 +198,7 @@ let proxySettings: ProxySettings = {
   username: "",
   has_password: false,
 };
-let tabSettings: TabSettings = { mode: "public", address: "" };
+let tabSettings: TabSettings = { mode: "direct", address: "" };
 let compactionSettings: CompactionSettings = {
   auto: true,
   summary_model_hash: "",

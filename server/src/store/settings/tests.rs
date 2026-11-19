@@ -572,7 +572,6 @@ fn fixed_rule(input_per_million: f64) -> ModelTokenPricing {
                 input_per_million,
                 output_per_million: input_per_million * 4.0,
                 cache_read_per_million: 0.0,
-                cache_write_per_million: 0.0,
             },
             ..CurrencyPricing::zero()
         }),
@@ -711,7 +710,7 @@ async fn negative_and_non_finite_rates_are_rejected() {
         ModelTokenPricing {
             usd: Some(CurrencyPricing {
                 off_peak: TokenPrice {
-                    cache_write_per_million: f64::INFINITY,
+                    input_per_million: f64::INFINITY,
                     ..TokenPrice::zero()
                 },
                 ..CurrencyPricing::zero()
@@ -886,7 +885,6 @@ fn the_wire_shape_is_a_map_of_model_rules() {
                         input_per_million: 1.0,
                         output_per_million: 8.0,
                         cache_read_per_million: 0.04,
-                        cache_write_per_million: 0.0,
                     },
                     ..CurrencyPricing::zero()
                 }),
@@ -902,20 +900,17 @@ fn the_wire_shape_is_a_map_of_model_rules() {
                     "fixed": {
                         "input_per_million": 1.0,
                         "output_per_million": 8.0,
-                        "cache_read_per_million": 0.04,
-                        "cache_write_per_million": 0.0
+                        "cache_read_per_million": 0.04
                     },
                     "peak": {
                         "input_per_million": 0.0,
                         "output_per_million": 0.0,
-                        "cache_read_per_million": 0.0,
-                        "cache_write_per_million": 0.0
+                        "cache_read_per_million": 0.0
                     },
                     "off_peak": {
                         "input_per_million": 0.0,
                         "output_per_million": 0.0,
-                        "cache_read_per_million": 0.0,
-                        "cache_write_per_million": 0.0
+                        "cache_read_per_million": 0.0
                     }
                 },
                 "usd": null

@@ -634,6 +634,15 @@ pub fn apply(
     route: &ConfigRoute,
     requirements: &RequirementsSource,
 ) -> Result<ConfigStatus> {
+    apply_with_force(home, route, requirements, false)
+}
+
+pub fn apply_with_force(
+    home: &Path,
+    route: &ConfigRoute,
+    requirements: &RequirementsSource,
+    force: bool,
+) -> Result<ConfigStatus> {
     absolute(home)?;
     absolute(&route.catalog_path)?;
     let url = url::Url::parse(&route.base_url).map_err(|e| Error::Config(e.to_string()))?;
@@ -668,7 +677,7 @@ pub fn apply(
         let current = inspect(home, requirements)?;
         if current.applied {
             let desired_provider = doc["model_providers"][PROVIDER].clone();
-            if desired_provider.get("base_url").and_then(Item::as_str)
+            let route_changed = desired_provider.get("base_url").and_then(Item::as_str)
                 != Some(route.base_url.as_str())
                 || doc["model"].as_str() != Some(route.model.as_str())
                 || doc["model_catalog_json"].as_str()
@@ -676,35 +685,55 @@ pub fn apply(
                 || desired_provider
                     .get("experimental_bearer_token")
                     .and_then(Item::as_str)
-                    != Some(route.token.as_str())
-            {
+                    != Some(route.token.as_str());
+            if route_changed && !force {
                 return Err(Error::Config(
                     "restore the existing Codex route before changing it".into(),
                 ));
             }
-            // 旧版本把默认模型的窗口写成了全局覆盖：这里顺手清掉，让已接管的用户
-            // 不必先撤销再应用就能拿到逐模型的窗口。
-            drop_global_limits(home)?;
-            return inspect(home, requirements);
+            if !route_changed && !force {
+                // 旧版本把默认模型的窗口写成了全局覆盖：这里顺手清掉，让已接管的用户
+                // 不必先撤销再应用就能拿到逐模型的窗口。
+                drop_global_limits(home)?;
+                return inspect(home, requirements);
+            }
+            // 强制接管要更新路由，但撤销基线必须仍是接管前的受管字段原值。
+            rebased_original = Some(rebase_original(
+                original.as_deref().unwrap_or(""),
+                original_text(&receipt),
+            )?);
         }
-        if !route_matches(&doc, &parse(original_text(&receipt).unwrap_or(""))?) {
+        if !current.applied
+            && !force
+            && !route_matches(&doc, &parse(original_text(&receipt).unwrap_or(""))?)
+        {
             return Err(Error::Config(
                 "Codex managed configuration was modified; refusing to overwrite".into(),
             ));
         }
-        // 路由已经回到原样，但受管字段里可能还留着我们的值（撤销的短路分支过去只删收据）。
-        // 新收据的原值基线要沿用旧收据，否则这些残留会被当成用户的原值。
-        if let Some(current_text) = original.as_deref() {
-            rebased_original = Some(rebase_original(current_text, original_text(&receipt))?);
+        if !current.applied && !force {
+            // 路由已经回到原样，但受管字段里可能还留着我们的值；新收据的原值基线要
+            // 沿用旧收据，否则这些残留会被当成用户的原值。
+            if let Some(current_text) = original.as_deref() {
+                rebased_original = Some(rebase_original(current_text, original_text(&receipt))?);
+            }
+        }
+        if !current.applied && force {
+            // 另一款工具改过的配置就是新的“用户原值”：撤销时回到这里，而不是旧收据。
+            rebased_original = Some(original.clone().unwrap_or_default());
         }
         // 旧收据保留到新收据成功写入：后面的 external 检查、并发修改检查或备份写入
         // 都可能拒绝这次应用；先删收据会让一次无副作用的拒绝丢掉撤销基线。
     }
-    if external(&doc) {
+    if !force && external(&doc) {
         return Err(Error::Config(
             "Codex already selects another provider, base URL or profile; refusing to overwrite"
                 .into(),
         ));
+    }
+    if force && external(&doc) && rebased_original.is_none() {
+        // 外部 provider 在覆盖前先留一份可恢复基线。
+        rebased_original = Some(original.clone().unwrap_or_default());
     }
     doc["model"] = value(route.model.as_str());
     doc["web_search"] = value("disabled");
@@ -1009,6 +1038,10 @@ mod tests {
         super::apply(home, route, &RequirementsSource::unmanaged())
     }
 
+    fn apply_force(home: &Path, route: &ConfigRoute) -> Result<ConfigStatus> {
+        super::apply_with_force(home, route, &RequirementsSource::unmanaged(), true)
+    }
+
     fn restore(home: &Path) -> Result<ConfigStatus> {
         super::restore(home, &RequirementsSource::unmanaged())
     }
@@ -1281,6 +1314,30 @@ mod tests {
 
         restore(directory.path()).unwrap();
         assert_eq!(config_text(directory.path()), original);
+    }
+
+    /// 另一款工具写回了自己的路由：普通 apply 拒绝，force 覆盖并在撤销时还回那份配置。
+    #[test]
+    fn a_forced_takeover_overwrites_another_tools_route_and_restores_it() {
+        let directory = applied_home(None);
+        edit(directory.path(), |doc| {
+            doc["model_provider"] = value("other");
+            doc["model_providers"]["other"]["base_url"] = value("https://elsewhere.example/v1");
+        });
+        let foreign = config_text(directory.path());
+        let error = apply(directory.path(), &route(directory.path())).unwrap_err();
+        assert!(
+            error.to_string().contains("another provider")
+                || error.to_string().contains("was modified"),
+            "{error}"
+        );
+
+        let status = apply_force(directory.path(), &route(directory.path())).unwrap();
+        assert!(status.applied, "{}", status.message);
+        assert!(status.conflict_kind == "none", "{}", status.message);
+
+        restore(directory.path()).unwrap();
+        assert_eq!(config_text(directory.path()), foreign);
     }
 
     /// 已经接管的旧配置：再应用一次只清掉全局键，路由仍然是我们的，不需要先撤销。

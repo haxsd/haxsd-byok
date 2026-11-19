@@ -5,10 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::store::{now_ms, Store};
 use crate::Result;
 
-use super::{
-    CURSOR_MODE_KEY, LEGACY_CURSOR_TAKEOVER_KEY, PORT_SETTINGS_KEY, PUBLIC_TAB_SERVICE_URL,
-    TAB_SETTINGS_KEY,
-};
+use super::{CURSOR_MODE_KEY, LEGACY_CURSOR_TAKEOVER_KEY, PORT_SETTINGS_KEY, TAB_SETTINGS_KEY};
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct PortSettings {
@@ -53,7 +50,7 @@ impl CursorMode {
 #[serde(rename_all = "snake_case")]
 pub enum TabMode {
     #[default]
-    Public,
+    #[serde(alias = "public")]
     Direct,
     Custom,
 }
@@ -67,7 +64,7 @@ pub struct TabSettings {
 impl TabSettings {
     pub fn service_url(&self) -> Option<&str> {
         match self.mode {
-            TabMode::Public => Some(PUBLIC_TAB_SERVICE_URL),
+            // 官方通道：不指定服务地址，由代理转发到 Cursor 上游。
             TabMode::Direct => None,
             TabMode::Custom => Some(&self.address),
         }
@@ -250,4 +247,28 @@ pub(crate) async fn migrate_cursor_mode(pool: &sqlx::SqlitePool) -> Result<()> {
         .await?;
     transaction.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_legacy_public_choice_reads_as_the_official_channel() {
+        assert_eq!(
+            serde_json::from_str::<TabMode>("\"public\"").unwrap(),
+            TabMode::Direct
+        );
+        assert_eq!(TabSettings::default().mode, TabMode::Direct);
+        assert!(TabSettings::default().service_url().is_none());
+    }
+
+    #[test]
+    fn a_custom_tab_service_keeps_its_address() {
+        let settings = TabSettings {
+            mode: TabMode::Custom,
+            address: "https://tab.example.test".into(),
+        };
+        assert_eq!(settings.service_url(), Some("https://tab.example.test"));
+    }
 }

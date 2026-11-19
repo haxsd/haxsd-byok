@@ -65,8 +65,6 @@ pub const DEFAULT_COMMIT_PROMPT_ZH_CN: &str =
 pub const DEFAULT_COMMIT_PROMPT_EN_US: &str =
     include_str!("../../../prompt/cursor/commit/en-US.md");
 
-pub const PUBLIC_TAB_SERVICE_URL: &str = "https://tab.leokun.cn";
-
 #[cfg(test)]
 use crate::store::Store;
 

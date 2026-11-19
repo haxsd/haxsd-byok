@@ -1212,6 +1212,15 @@ impl RunEngine {
                         "explicit compaction summary is still short; added exact recent entries"
                     );
                     super::compaction::short_summary_addendum(&summary, &messages)
+                } else if let Err(problem) = super::compaction::validate_handover(
+                    &summary,
+                    &super::compaction::handover_context(&messages),
+                ) {
+                    tracing::warn!(
+                        %problem,
+                        "explicit compaction handover failed the structure contract; added exact recent entries"
+                    );
+                    super::compaction::short_summary_addendum(&summary, &messages)
                 } else {
                     summary
                 };
@@ -1233,6 +1242,7 @@ impl RunEngine {
                 );
                 let event_id = format!("summary:{}", prepared.run_id);
                 let summary = super::compaction::with_context_anchors(&summary, &messages);
+                let summary = super::compaction::with_exact_evidence(&summary, &messages);
                 let archive = crate::model::archive_compaction_history(
                     &prepared.conversation_id.to_string(),
                     &prepared.run_id.to_string(),
@@ -1890,6 +1900,7 @@ impl RunEngine {
             let mut summary_usage: Option<Usage> = None;
             let mut summary_call_index: Option<u64> = None;
             let mut short_summary: Option<String> = None;
+            let handover_context = super::compaction::handover_context(&compactable);
             let mut attempts = 0_u8;
             // 下一次重试是否收紧重放：只有"提示超长"需要，瞬时故障原样重试。
             let mut tighten = false;
@@ -2042,6 +2053,36 @@ impl RunEngine {
                             );
                             break 'summary (summary, summary_usage);
                         }
+                        if let Err(problem) =
+                            super::compaction::validate_handover(&summary, &handover_context)
+                        {
+                            let summary_chars = summary.chars().count();
+                            short_summary = Some(summary);
+                            if attempts < 2 {
+                                summary_prompt.instructions = format!(
+                                    "{base_summary_instructions}{}",
+                                    super::compaction::structure_retry_instructions(&problem)
+                                );
+                                summary_input.prompt_tokens =
+                                    crate::model::estimate_context_tokens(&summary_prompt, &[]);
+                                tracing::warn!(
+                                    summary_chars,
+                                    %problem,
+                                    "automatic compaction handover failed the structure contract; regenerating once"
+                                );
+                                continue 'summary;
+                            }
+                            let summary = super::compaction::short_summary_addendum(
+                                short_summary.as_deref().unwrap_or_default(),
+                                &compactable,
+                            );
+                            tracing::warn!(
+                                summary_chars,
+                                %problem,
+                                "automatic compaction handover is still invalid; added exact recent entries"
+                            );
+                            break 'summary (summary, summary_usage);
+                        }
                         break 'summary (summary, summary_usage);
                     }
                     Ok(cycle) => {
@@ -2120,6 +2161,7 @@ impl RunEngine {
             super::compaction::summary_slot_token_budget(prepared, calibration, settings),
         );
         let summary = super::compaction::with_context_anchors(&summary, messages);
+        let summary = super::compaction::with_exact_evidence(&summary, messages);
         let summary = super::compaction::with_archive_anchor(&summary, archive.as_deref());
         let summary_message = super::compaction::summary_message(&event_id, &summary);
         let summary_message_id = summary_message.message_id.clone();

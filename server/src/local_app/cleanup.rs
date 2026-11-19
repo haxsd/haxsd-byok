@@ -355,10 +355,11 @@ mod tests {
             original
         );
 
-        crate::codex::config::apply(
+        crate::codex::config::apply_with_force(
             &home,
             &route(&home),
             &crate::codex::RequirementsSource::unmanaged(),
+            false,
         )
         .unwrap();
         assert!(
@@ -399,10 +400,11 @@ mod tests {
         let home = directory.path().join("codex-home");
         std::fs::create_dir_all(&home).unwrap();
         write_codex_settings(&database_url, &home).await;
-        crate::codex::config::apply(
+        crate::codex::config::apply_with_force(
             &home,
             &route(&home),
             &crate::codex::RequirementsSource::unmanaged(),
+            false,
         )
         .unwrap();
         let pending = home.join(".haxsd-byok-routing.pending.json");
@@ -432,10 +434,11 @@ mod tests {
         let home = directory.path().join("codex-home");
         std::fs::create_dir_all(&home).unwrap();
         write_codex_settings(&database_url, &home).await;
-        crate::codex::config::apply(
+        crate::codex::config::apply_with_force(
             &home,
             &route(&home),
             &crate::codex::RequirementsSource::unmanaged(),
+            false,
         )
         .unwrap();
 

@@ -72,6 +72,18 @@ pub struct HostPathInput {
     pub install_root: Option<String>,
 }
 
+/// Apply accepts an explicit override: a stale endpoint block left by another
+/// tool is exactly what "force takeover" is for. The backup still holds it.
+#[derive(Debug, Deserialize)]
+pub struct HostApplyInput {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub install_root: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+}
+
 /// 设置文件与扩展补丁缺一不可：设置给出本机端点，补丁让打包版 Devin 真正读取它们。
 #[derive(Debug, Serialize)]
 pub struct HostStatus {
@@ -193,12 +205,13 @@ fn apply_host(
     path: &Path,
     extension_path: Option<&Path>,
     ports: DevinHostPorts,
+    force: bool,
 ) -> Result<HostApplyResult> {
     let settings = host_config::inspect(path)?;
     if !settings.compatible {
         return Err(Error::Config(settings.message));
     }
-    if !settings.unconfigured {
+    if !settings.unconfigured && !force {
         return Err(Error::Config(format!(
             "Devin settings at {} already point somewhere else; restore them before applying \
              this configuration",
@@ -228,7 +241,7 @@ fn apply_host(
     }
 
     let extension_receipt = host_patch::apply(extension_path)?;
-    match host_config::apply(path, ports) {
+    match host_config::apply_with_force(path, ports, force) {
         Ok(settings_receipt) => Ok(HostApplyResult {
             settings: settings_receipt,
             extension: extension_receipt,
@@ -319,18 +332,19 @@ pub async fn model_uids(Query(input): Query<HostPathInput>) -> Result<Json<Model
 
 pub async fn host_apply(
     State(service): State<ControlService>,
-    Json(input): Json<HostPathInput>,
+    Json(input): Json<HostApplyInput>,
 ) -> Result<Json<HostApplyResult>> {
     let settings = service.devin_settings().await?;
     let ports = host_config_precheck(&settings, service.devin_bound_ports().bound_ports())?;
     ensure_devin_closed().await?;
     let settings_input = input.path;
     let install_input = input.install_root;
+    let force = input.force;
     Ok(Json(
         on_blocking_pool(move || {
             let path = resolve_settings_path(settings_input.as_deref())?;
             let extension = resolve_extension_path(install_input.as_deref())?;
-            apply_host(&path, extension.as_deref(), ports)
+            apply_host(&path, extension.as_deref(), ports, force)
         })
         .await?,
     ))
@@ -481,13 +495,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
         std::fs::write(&path, "{\n}\n").unwrap();
-        host_config::apply(
+        host_config::apply_with_force(
             &path,
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
                 local_api_port: Some(43_112),
             },
+            false,
         )
         .unwrap();
 
@@ -539,13 +554,14 @@ mod tests {
         let path = directory.path().join("settings.json");
         let original = "{\n  // keep\n}\n";
         std::fs::write(&path, original).unwrap();
-        host_config::apply(
+        host_config::apply_with_force(
             &path,
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
                 local_api_port: Some(43_112),
             },
+            false,
         )
         .unwrap();
 
@@ -569,13 +585,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
         std::fs::write(&path, "{\n}\n").unwrap();
-        host_config::apply(
+        host_config::apply_with_force(
             &path,
             DevinHostPorts {
                 api_port: 43_110,
                 inference_port: 43_111,
                 local_api_port: Some(43_112),
             },
+            false,
         )
         .unwrap();
         let changed = std::fs::read_to_string(&path).unwrap().replacen(
