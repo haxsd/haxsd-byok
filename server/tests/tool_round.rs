@@ -814,10 +814,10 @@ async fn unknown_exec_id_is_ignored() {
 
 fn detailed_summary(marker: &str, minimum_chars: usize) -> String {
     const LINE: &str =
-        "Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+        "- Verified detail: preserve exact paths, commands, values, decisions, and unfinished work.\n";
+    let padding = LINE.repeat(minimum_chars.div_ceil(LINE.len()));
     format!(
-        "{marker}\n{}",
-        LINE.repeat(minimum_chars.div_ceil(LINE.len()))
+        "## Goal\n- {marker}\n## Done and Verified\n- {marker}\n{padding}## In Flight\n- (none)\n## Next Action\n- continue\n## Constraints and Decisions\n- (none)\n## Key Files, Commands, Values\n- /tmp/large.txt\n## Open Errors / Unfinished Work\n- (none)"
     )
 }
 
