@@ -61,6 +61,15 @@ const LS_METHOD_VENDOR_RESTART_PATTERN: &str = concat!(
     r#"0,(?P<isempty>[A-Za-z_$][A-Za-z0-9_$]*)\.isEmpty\)\((?P<arg3>[A-Za-z_$][A-Za-z0-9_$]*)\)&&(?P<arg4>[A-Za-z_$][A-Za-z0-9_$]*)!==(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.apiServerUrl&&await\s*(?P<client2>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.restart\((?P<arg5>[A-Za-z_$][A-Za-z0-9_$]*)\)\}"#,
 );
 const LS_METHOD_PATCHED_RESTART_PATTERN: &str = r#"i!==(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.apiServerUrl&&await\s*(?P<client2>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\.restart\(i\)"#;
+const LS_VENDOR_RESTART_TERNARY_PATTERN: &str = concat!(
+    r#"await async function\(e\)\{let t;try\{t=(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\}catch\{return\}"#,
+    r#"e!==t\.apiServerUrl\?await t\.restart\(e\):await t\.whenProcessReplaced\(\)\}\(t\)"#,
+);
+const LS_PATCHED_RESTART_TERNARY_PATTERN: &str = concat!(
+    r#"await async function\(e\)\{let t;try\{t=(?P<client>[A-Za-z_$][A-Za-z0-9_$]*)\.LanguageServerClient\.getInstance\(\)\}catch\{return\}"#,
+    r#"const n=\(0,(?P<diagnostics>[A-Za-z_$][A-Za-z0-9_$]*)\.getApiServerUrlDiagnostics\)\(\),i="user_setting"===n\.source\?\(0,(?P<config>[A-Za-z_$][A-Za-z0-9_$]*)\.getConfig\)\((?P<config_again>[A-Za-z_$][A-Za-z0-9_$]*)\.Config\.API_SERVER_URL\):e;"#,
+    r#"i!==t\.apiServerUrl\?await t\.restart\(i\):await t\.whenProcessReplaced\(\)\}\(t\)"#,
+);
 const GATE_CONTEXT_ANCHORS: [&str; 7] = [
     "deployment_default",
     "getConfiguration",
@@ -189,34 +198,70 @@ fn apply_with(path: &Path) -> Result<GateReceipt> {
     let content = std::str::from_utf8(&current)
         .map_err(|_| Error::Config("Devin extension is not UTF-8; patch refused".into()))?;
     let status = inspect_existing(path);
-    if !status.clean || !status.compatible {
+    let (base, original, repair) = if status.clean && status.compatible {
+        (content.to_owned(), current.clone(), false)
+    } else if status.patched {
+        let receipt = status
+            .restore_receipt
+            .clone()
+            .ok_or_else(|| Error::Config(refusal_message(&status)))?;
+        let backup = fs::read(&receipt.backup_path).map_err(|error| {
+            Error::Config(format!(
+                "Devin extension backup {} is unavailable ({error}); restore refused; backup: {}",
+                receipt.backup_path.display(),
+                receipt.backup_path.display()
+            ))
+        })?;
+        if sha256(&backup) != receipt.original_sha256
+            || !is_clean_bytes(&backup, &receipt.original_sha256)
+        {
+            return Err(Error::Config(format!(
+                "Devin extension backup {} does not match the verified clean file; restore \
+                 refused; backup: {}",
+                receipt.backup_path.display(),
+                receipt.backup_path.display()
+            )));
+        }
+        let base = std::str::from_utf8(&backup).map_err(|_| {
+            Error::Config("Devin extension backup is not UTF-8; patch refused".into())
+        })?;
+        (base.to_owned(), backup, true)
+    } else {
         return Err(Error::Config(refusal_message(&status)));
-    }
+    };
 
-    let patched = patch_content(content)?;
+    let patched = patch_content(&base)?;
     let backup_path = backup_path(path);
-    ensure_backup(&backup_path, &current)?;
+    if repair {
+        // A gate-only or partially applied patch is repaired from its verified
+        // clean backup. Put the clean file back before writing the new patch
+        // so a failure leaves a usable client, never another half-patch.
+        atomic_replace(path, &original)?;
+        let _ = fs::remove_file(receipt_path(path));
+    }
+    ensure_backup(&backup_path, &original)?;
     let receipt = GateReceipt {
         path: path.to_owned(),
         backup_path,
         version: status.version,
-        original_sha256: sha256(&current),
+        original_sha256: sha256(&original),
         patched_sha256: sha256(patched.as_bytes()),
     };
     write_receipt(&receipt)?;
     if let Err(error) = atomic_replace(path, patched.as_bytes()) {
         if !fs::read(path).is_ok_and(|bytes| bytes == patched.as_bytes()) {
-            discard_failed_receipt(path, &current);
+            discard_failed_receipt(path, &original);
             return Err(error);
         }
     }
 
     let verified = inspect_existing(path);
-    if verified.patched && verified.current_sha256 == receipt.patched_sha256 {
+    if verified.patched && verified.compatible && verified.current_sha256 == receipt.patched_sha256
+    {
         Ok(receipt)
     } else {
-        let _ = atomic_replace(path, &current);
-        discard_failed_receipt(path, &current);
+        let _ = atomic_replace(path, &original);
+        discard_failed_receipt(path, &original);
         Err(Error::Config(format!(
             "Devin extension patch verification failed: {}",
             verified.message
@@ -484,6 +529,28 @@ fn pre_setting_fallback_update(
     }
 }
 
+fn api_server_config_binding(content: &str, match_start: usize, window: usize) -> Result<String> {
+    let mut from = match_start.saturating_sub(window);
+    while !content.is_char_boundary(from) {
+        from -= 1;
+    }
+    let config = Regex::new(&format!(
+        r"\(0,(?P<config>{JS_IDENTIFIER})\.getConfig\)\((?P<config_again>{JS_IDENTIFIER})\.Config\.API_SERVER_URL\)"
+    ))
+    .expect("static API config binding regex");
+    config
+        .captures_iter(&content[from..match_start])
+        .filter(|captures| captures["config"] == captures["config_again"])
+        .last()
+        .map(|captures| captures["config"].to_string())
+        .ok_or_else(|| {
+            Error::Config(
+                "Devin language-server API restart has no recognizable settings binding; patch refused"
+                    .into(),
+            )
+        })
+}
+
 /// A signed-in session or local account restarts the language server with its
 /// own API address. An explicit user setting must win; without one, the
 /// signed-in/local-account address stays.
@@ -498,6 +565,10 @@ fn language_server_restart_update(
         .expect("static language-server method restart regex");
     let patched_new = Regex::new(LS_METHOD_PATCHED_RESTART_PATTERN)
         .expect("static patched language-server method restart regex");
+    let vendor_ternary = Regex::new(LS_VENDOR_RESTART_TERNARY_PATTERN)
+        .expect("static language-server ternary restart regex");
+    let patched_ternary = Regex::new(LS_PATCHED_RESTART_TERNARY_PATTERN)
+        .expect("static patched language-server ternary restart regex");
 
     let vendor_old_matches = vendor_old.captures_iter(content).collect::<Vec<_>>();
     let patched_old_matches = patched_old
@@ -520,15 +591,39 @@ fn language_server_restart_update(
         .captures_iter(content)
         .filter(|captures| captures["client"] == captures["client2"])
         .collect::<Vec<_>>();
+    let vendor_ternary_matches = vendor_ternary.captures_iter(content).collect::<Vec<_>>();
+    let patched_ternary_matches = patched_ternary
+        .captures_iter(content)
+        .filter(|captures| {
+            captures["diagnostics"] == captures["config"]
+                && captures["config"] == captures["config_again"]
+        })
+        .collect::<Vec<_>>();
 
     let matches = vendor_old_matches.len()
         + patched_old_matches.len()
         + vendor_new_matches.len()
-        + patched_new_matches.len();
+        + patched_new_matches.len()
+        + vendor_ternary_matches.len()
+        + patched_ternary_matches.len();
     if matches > 1 {
         return Err(Error::Config(
             "Devin language-server API restart is ambiguous; patch refused".into(),
         ));
+    }
+
+    if let Some(captures) = vendor_ternary_matches.first() {
+        let matched = captures
+            .get(0)
+            .expect("language-server ternary restart match");
+        let config = api_server_config_binding(content, matched.start(), LS_RESTART_WINDOW)?;
+        let client = &captures["client"];
+        return Ok(Some((
+            matched.range(),
+            format!(
+                "await async function(e){{let t;try{{t={client}.LanguageServerClient.getInstance()}}catch{{return}}const n=(0,{config}.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,{config}.getConfig)({config}.Config.API_SERVER_URL):e;i!==t.apiServerUrl?await t.restart(i):await t.whenProcessReplaced()}}(t)"
+            ),
+        )));
     }
 
     if let Some(captures) = vendor_old_matches.first() {
@@ -596,9 +691,15 @@ fn language_server_restart_update(
         )));
     }
 
-    if content.contains("restartLanguageServerIfNeeded")
+    let has_restart =
+        content.contains("LanguageServerClient.getInstance") && content.contains(".restart(");
+    if has_restart
+        && vendor_old_matches.is_empty()
+        && patched_old_matches.is_empty()
         && vendor_new_matches.is_empty()
         && patched_new_matches.is_empty()
+        && vendor_ternary_matches.is_empty()
+        && patched_ternary_matches.is_empty()
     {
         return Err(Error::Config(
             "Devin language-server restart method is unrecognized; patch refused".into(),
@@ -881,6 +982,16 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         )
     }
 
+    const VENDOR_TERNARY_RESTART: &str = "await async function(e){let t;try{t=A.LanguageServerClient.getInstance()}catch{return}e!==t.apiServerUrl?await t.restart(e):await t.whenProcessReplaced()}(t)";
+    const PATCHED_TERNARY_RESTART: &str = "await async function(e){let t;try{t=A.LanguageServerClient.getInstance()}catch{return}const n=(0,_.getApiServerUrlDiagnostics)(),i=\"user_setting\"===n.source?(0,_.getConfig)(_.Config.API_SERVER_URL):e;i!==t.apiServerUrl?await t.restart(i):await t.whenProcessReplaced()}(t)";
+
+    fn ternary_restart_fixture() -> String {
+        format!(
+            "{}\nconst api=(0,_.getConfig)(_.Config.API_SERVER_URL);class Auth{{async apply(){{{VENDOR_TERNARY_RESTART}}}}}",
+            logged_in_fixture()
+        )
+    }
+
     #[test]
     fn logged_in_api_is_only_a_fallback_after_explicit_settings() {
         let original = logged_in_fixture();
@@ -896,6 +1007,72 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
                 .as_str()
         ));
         assert_eq!(patched.matches("getSessionApiServerUrl").count(), 1);
+    }
+
+    #[test]
+    fn ternary_language_server_restart_is_patched_and_compatible() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original = ternary_restart_fixture();
+        fs::write(&path, &original).unwrap();
+
+        let receipt = apply(&path).unwrap();
+        let patched = fs::read_to_string(&path).unwrap();
+        assert!(patched.contains(PATCHED_TERNARY_RESTART), "{patched}");
+        assert!(!patched.contains(VENDOR_TERNARY_RESTART), "{patched}");
+        let status = inspect(Some(&path));
+        assert!(status.patched && status.compatible, "{}", status.message);
+
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn a_gate_only_ternary_patch_is_repaired_from_its_clean_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original = ternary_restart_fixture();
+        let full = patch_content(&original).unwrap();
+        let previous_patch = full.replace(PATCHED_TERNARY_RESTART, VENDOR_TERNARY_RESTART);
+        assert_ne!(previous_patch, full);
+        fs::write(&path, &previous_patch).unwrap();
+        fs::write(backup_path(&path), &original).unwrap();
+        let previous_receipt = GateReceipt {
+            path: path.clone(),
+            backup_path: backup_path(&path),
+            version: "unknown".into(),
+            original_sha256: sha256(original.as_bytes()),
+            patched_sha256: sha256(previous_patch.as_bytes()),
+        };
+        write_receipt(&previous_receipt).unwrap();
+
+        let status = inspect(Some(&path));
+        assert!(status.patched);
+        assert!(!status.compatible);
+        assert!(status.message.contains("refresh"), "{}", status.message);
+        assert_eq!(status.restore_receipt, Some(previous_receipt));
+
+        let receipt = apply(&path).unwrap();
+        let status = inspect(Some(&path));
+        assert!(status.patched && status.compatible, "{}", status.message);
+        assert_eq!(fs::read_to_string(&path).unwrap(), full);
+
+        restore(&receipt).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn an_unrecognized_language_server_restart_is_refused() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("extension.js");
+        let original =
+            ternary_restart_fixture().replace("whenProcessReplaced", "whenProcessReplacedX");
+        fs::write(&path, &original).unwrap();
+
+        assert!(!inspect(Some(&path)).compatible);
+        assert!(apply(&path).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert!(!backup_path(&path).exists());
     }
 
     #[test]
@@ -1247,14 +1424,20 @@ function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment
         let new_patched = patched_text.contains(
             "i!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(i)",
         );
+        let ternary_patched = patched_text
+            .contains("i!==t.apiServerUrl?await t.restart(i):await t.whenProcessReplaced()");
         assert!(
-            patched_text.contains("\"user_setting\"===n.source") && (old_patched || new_patched),
+            patched_text.contains("\"user_setting\"===n.source")
+                && (old_patched || new_patched || ternary_patched),
             "real bundle restart did not prefer an explicit user setting"
         );
         assert!(
             !patched_text.contains("e!==t.apiServerUrl&&await t.restart(e)")
                 && !patched_text.contains(
                     "e!==A.LanguageServerClient.getInstance().apiServerUrl&&await A.LanguageServerClient.getInstance().restart(e)"
+                )
+                && !patched_text.contains(
+                    "e!==t.apiServerUrl?await t.restart(e):await t.whenProcessReplaced()"
                 ),
             "vendor session restart remained"
         );
