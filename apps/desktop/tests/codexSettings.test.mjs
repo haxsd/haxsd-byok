@@ -13,6 +13,7 @@ const state = {
   enabled: true,
   listening: true,
   port: 43120,
+  mode: "local",
   configured: false,
   config_conflict: false,
   restorable: false,
@@ -319,7 +320,7 @@ test("a selected model that left the library is called out instead of silently k
   const { CodexSettingsForm } = await loader.load("/src/features/codex/CodexSettingsForm.tsx");
   const { TooltipProvider } = await loader.load("/src/shared/ui/Tooltip.tsx");
   const markup = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(CodexSettingsForm, {
-    draft: { enabled: true, port: 43120, home: "", model_hashes: ["gone2222"], default_model_hash: "gone2222" },
+    draft: { enabled: true, port: 43120, home: "", model_hashes: ["gone2222"], default_model_hash: "gone2222", mode: "local" },
     models: [libraryModel("hash", "GPT")],
     pluginModels: [],
     locked: false,
@@ -329,7 +330,7 @@ test("a selected model that left the library is called out instead of silently k
 });
 
 test("Codex settings and explicit apply/restore stay on the shared management HTTP boundary", async () => {
-  const settings = { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash" };
+  const settings = { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash", mode: "local" };
   const backend = new FakeBackend()
     .route("GET", `${API_ROOT}/codex/settings`, () => ({ body: settings }))
     .route("PUT", `${API_ROOT}/codex/settings`, ({ body }) => ({ body }))

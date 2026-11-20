@@ -4,7 +4,7 @@ use cursor_server::codex::{
         apply as apply_with, inspect as inspect_with, restore as restore_with, ConfigRoute,
         ConfigStatus,
     },
-    RequirementsSource,
+    CodexMode, RequirementsSource,
 };
 
 /// 既有用例只覆盖本地文件所有权：明确注入"没有受管来源"，不触发系统探测。
@@ -26,6 +26,7 @@ fn route(home: &std::path::Path) -> ConfigRoute {
         base_url: "http://127.0.0.1:43120/v1".into(),
         token: "local-test-token".into(),
         catalog_path: home.join("models.json"),
+        mode: CodexMode::Local,
     }
 }
 
@@ -730,4 +731,48 @@ fn invalid_requirements_errors_do_not_echo_source_values() {
         apply_with(dir.path(), &route(dir.path()), &source).unwrap_err(),
         "apply",
     );
+}
+
+fn hybrid_route(home: &std::path::Path) -> ConfigRoute {
+    ConfigRoute {
+        mode: CodexMode::Hybrid,
+        ..route(home)
+    }
+}
+
+fn chatgpt_auth(home: &std::path::Path) {
+    std::fs::write(
+        home.join("auth.json"),
+        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh","id_token":"id"}}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn hybrid_apply_requires_chatgpt_login_and_preserves_official_auth() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "model = 'old'\n").unwrap();
+
+    assert!(apply(dir.path(), &hybrid_route(dir.path())).is_err());
+    assert!(!inspect(dir.path()).unwrap().restorable);
+
+    chatgpt_auth(dir.path());
+    assert!(apply(dir.path(), &hybrid_route(dir.path())).unwrap().applied);
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("name = \"OpenAI\""), "{text}");
+    assert!(text.contains("requires_openai_auth = true"), "{text}");
+    assert!(text.contains("x-haxsd-gateway = \"local-test-token\""), "{text}");
+    assert!(!text.contains("experimental_bearer_token"), "{text}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("auth.json")).unwrap(),
+        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh","id_token":"id"}}"#
+    );
+
+    let status = inspect(dir.path()).unwrap();
+    assert!(status.applied, "{}", status.message);
+    assert!(status.route_owned, "{}", status.message);
+
+    restore(dir.path()).unwrap();
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "model = 'old'\n");
 }

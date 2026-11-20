@@ -1,6 +1,7 @@
-import type { CodexSettings, Model, PluginModelDescriptor } from "../../shared/api";
+import type { CodexMode, CodexSettings, Model, PluginModelDescriptor } from "../../shared/api";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
+import { Segmented } from "../../shared/ui/Segmented";
 import { portInputValue } from "../../shared/utils/portInput";
 import { Switch } from "../../shared/ui/Switch";
 import { codexModelAvailability } from "./codexModelOptions";
@@ -21,7 +22,7 @@ function codexLockHint(reason: CodexLockReason): string {
   }
 }
 
-export function CodexSettingsForm({ draft, models, pluginModels, locked, lockReason = "restore", applied, onChange }: {
+export function CodexSettingsForm({ draft, models, pluginModels, locked, lockReason = "restore", applied, hybridNeedsLogin = false, onChange }: {
   draft: CodexSettings;
   models: Model[];
   /** 模型库里的插件模型：Codex 网关发布不了它们，界面上要说清为什么。 */
@@ -30,6 +31,8 @@ export function CodexSettingsForm({ draft, models, pluginModels, locked, lockRea
   /** 锁定原因决定提示动作；默认仍是可撤销场景，兼容既有调用。 */
   lockReason?: CodexLockReason;
   applied: boolean;
+  /** 混合模式需要官方登录；没有登录时明确说清，而不是让应用按钮报错。 */
+  hybridNeedsLogin?: boolean;
   onChange: (settings: CodexSettings) => void;
 }) {
   const availability = codexModelAvailability(models, pluginModels, draft.model_hashes);
@@ -51,6 +54,21 @@ export function CodexSettingsForm({ draft, models, pluginModels, locked, lockRea
       <Switch label={t("启用 Codex 网关")} checked={draft.enabled} disabled={locked || applied} onChange={enabled => onChange({ ...draft, enabled })} />
     </div>
     <div className={styles.fields}>
+      <FormField label={t("接入模式")} hint={t("混合模式同时发布官方模型和自有模型")}>
+        <Segmented<CodexMode>
+          value={draft.mode}
+          ariaLabel={t("Codex 接入模式")}
+          disabled={locked || applied}
+          options={[
+            { value: "local", label: t("本地模式"), title: t("只使用自有模型") },
+            { value: "hybrid", label: t("混合模式"), title: t("官方 ChatGPT 模型 + 自有模型") },
+          ]}
+          onChange={mode => onChange({ ...draft, mode })}
+        />
+        {draft.mode === "hybrid" && (hybridNeedsLogin
+          ? <small className={styles.fieldError} role="alert">{t("混合模式需要先登录 ChatGPT，再应用接管。")}</small>
+          : <small className={styles.fieldNote}>{t("官方模型会使用你的 ChatGPT 账号；自有模型仍走本机网关。")}</small>)}
+      </FormField>
       <FormField label={t("可用模型")} hint={t("来自共享模型库")}>
         <ModelSelect mode="multiple" emptySummary={t("未选择")} label={t("选择 Codex 可用模型")} options={availability.options} value={draft.model_hashes} disabled={locked}
           onChange={model_hashes => {

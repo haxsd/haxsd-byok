@@ -185,6 +185,9 @@ export interface DevinSettings {
   default_model_uid: string | null;
 }
 
+/** Codex 的接入模式：本地只发布自有模型；混合同时发布官方模型与自有模型。 */
+export type CodexMode = "local" | "hybrid";
+
 /** Reported by the server: the gateway ports belong to another origin, so the page cannot probe them. */
 export interface CodexSettings {
   enabled: boolean;
@@ -192,6 +195,7 @@ export interface CodexSettings {
   home: string;
   model_hashes: string[];
   default_model_hash: string | null;
+  mode: CodexMode;
 }
 
 /** 一个受管字段与接管快照的差异：`applied`/`current` 是 TOML 值的渲染文本（未设置时是空串）。 */
@@ -221,6 +225,7 @@ export interface CodexStatus {
   enabled: boolean;
   listening: boolean;
   port: number;
+  mode: CodexMode;
   configured: boolean;
   config_conflict: boolean;
   /** 有接管凭证：撤销接管随时可用，哪怕受管字段被外部改过。 */
@@ -1157,6 +1162,7 @@ function usableCodexStatus(payload: unknown): CodexStatus {
   const managed_conflicts = codexManagedConflicts(status.managed_conflicts);
   return {
     ...status,
+    mode: status.mode === "hybrid" ? "hybrid" : "local",
     conflicts,
     managed_conflicts,
   };
@@ -1189,7 +1195,7 @@ function usableCodexSettings(payload: unknown, write: boolean): CodexSettings {
   if (hashes.length !== settings.model_hashes.length) {
     console.warn(`[api] Codex 设置：丢弃了 ${settings.model_hashes.length - hashes.length} 个非字符串模型标识`);
   }
-  return { ...settings, model_hashes: hashes };
+  return { ...settings, model_hashes: hashes, mode: settings.mode === "hybrid" ? "hybrid" : "local" };
 }
 
 /** 模型哈希字段：空串与 null 都按"没选"处理，避免界面显示一个空选项。 */

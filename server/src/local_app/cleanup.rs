@@ -224,7 +224,7 @@ async fn wait_for_lock(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex::{config::ConfigRoute, CodexSettings};
+    use crate::codex::{config::ConfigRoute, CodexMode, CodexSettings};
 
     #[tokio::test]
     async fn waiting_ends_when_the_running_instance_releases_the_lock() {
@@ -478,6 +478,7 @@ mod tests {
             home: home.display().to_string(),
             model_hashes: vec!["test-model".into()],
             default_model_hash: Some("test-model".into()),
+            mode: Default::default(),
         };
         sqlx::query(
             "INSERT INTO service_settings(setting_key, value_json, updated_at_ms) \
@@ -495,6 +496,7 @@ mod tests {
             base_url: "http://127.0.0.1:43120/v1".into(),
             token: "haxsd-test-token".into(),
             catalog_path: home.join("catalog.json"),
+            mode: CodexMode::Local,
         }
     }
 }

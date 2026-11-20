@@ -2,6 +2,7 @@
 use super::requirements::{
     ManagedRequirementConflict, ManagedRequirements, PublishedRoute, RequirementsSource,
 };
+use super::CodexMode;
 use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,7 +10,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
 };
-use toml_edit::{value, DocumentMut, Item};
+use toml_edit::{value, DocumentMut, InlineTable, Item};
 const RECEIPT: &str = ".haxsd-byok-routing.json";
 /// 待提交收据：最终收据落盘前先写这份。配置已写但最终收据失败/进程中断时，
 /// 仍能凭它恢复接管前的原值。
@@ -54,6 +55,7 @@ pub struct ConfigRoute {
     pub base_url: String,
     pub token: String,
     pub catalog_path: PathBuf,
+    pub mode: CodexMode,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct ConfigStatus {
@@ -287,9 +289,8 @@ fn route_owned(doc: &DocumentMut, applied: &DocumentMut) -> bool {
         && provider_value(current_provider, "base_url").is_some()
         && provider_value(current_provider, "base_url")
             == provider_value(applied_provider, "base_url")
-        && provider_value(current_provider, "experimental_bearer_token").is_some()
-        && provider_value(current_provider, "experimental_bearer_token")
-            == provider_value(applied_provider, "experimental_bearer_token")
+        && provider_local_token(current_provider).is_some()
+        && provider_local_token(current_provider) == provider_local_token(applied_provider)
 }
 
 /// Codex 的 auth 存储位置：只有 `file`（默认）时 `auth.json` 才代表登录态。
@@ -503,10 +504,7 @@ fn published_route(applied: &DocumentMut) -> Option<PublishedRoute> {
             .get("base_url")
             .and_then(Item::as_str)?
             .to_owned(),
-        token: provider_item
-            .get("experimental_bearer_token")
-            .and_then(Item::as_str)?
-            .to_owned(),
+        token: provider_local_token(Some(provider_item))?.to_owned(),
     })
 }
 
@@ -526,6 +524,19 @@ fn provider_value<'a>(provider: Option<&'a Item>, key: &str) -> Option<&'a str> 
         .and_then(|provider| provider.get(key))
         .and_then(Item::as_str)
         .filter(|value| !value.is_empty())
+}
+
+/// 本机网关令牌在 provider 表里的位置：
+/// - 本地模式：`experimental_bearer_token`；
+/// - 混合模式：`http_headers.x-haxsd-gateway`（客户端同时带官方 `Authorization`）。
+fn provider_local_token(provider: Option<&Item>) -> Option<&str> {
+    provider_value(provider, "experimental_bearer_token").or_else(|| {
+        provider
+            .and_then(|provider| provider.get("http_headers"))
+            .and_then(|headers| headers.get("x-haxsd-gateway"))
+            .and_then(Item::as_str)
+            .filter(|value| !value.is_empty())
+    })
 }
 
 pub fn inspect(home: &Path, requirements: &RequirementsSource) -> Result<ConfigStatus> {
@@ -653,6 +664,11 @@ pub fn apply_with_force(
     {
         return Err(Error::Config("invalid local Codex route".into()));
     }
+    if route.mode == CodexMode::Hybrid && !chatgpt_signed_in(home) {
+        return Err(Error::Config(
+            "sign in to ChatGPT before enabling Codex hybrid mode".into(),
+        ));
+    }
     // 管理员要求无法通过写用户配置覆盖；在动任何文件之前就拒绝，避免留下一条
     // 看似成功、实际由管理员路由接管的配置。
     let managed = requirements.load()?;
@@ -677,15 +693,24 @@ pub fn apply_with_force(
         let current = inspect(home, requirements)?;
         if current.applied {
             let desired_provider = doc["model_providers"][PROVIDER].clone();
+            let current_name = if route.mode == CodexMode::Hybrid {
+                "OpenAI"
+            } else {
+                "haxsd byok"
+            };
             let route_changed = desired_provider.get("base_url").and_then(Item::as_str)
                 != Some(route.base_url.as_str())
                 || doc["model"].as_str() != Some(route.model.as_str())
                 || doc["model_catalog_json"].as_str()
                     != Some(route.catalog_path.to_string_lossy().as_ref())
+                || provider_local_token(Some(&desired_provider)) != Some(route.token.as_str())
+                || desired_provider.get("name").and_then(Item::as_str) != Some(current_name)
                 || desired_provider
-                    .get("experimental_bearer_token")
-                    .and_then(Item::as_str)
-                    != Some(route.token.as_str());
+                    .get("requires_openai_auth")
+                    .and_then(Item::as_bool)
+                    != Some(route.mode == CodexMode::Hybrid)
+                || desired_provider.get("http_headers").is_some()
+                    != (route.mode == CodexMode::Hybrid);
             if route_changed && !force {
                 return Err(Error::Config(
                     "restore the existing Codex route before changing it".into(),
@@ -744,13 +769,32 @@ pub fn apply_with_force(
     for key in LEGACY_GLOBAL_LIMITS {
         doc.remove(key);
     }
-    doc["model_providers"][PROVIDER]["name"] = value("haxsd byok");
+    doc["model_providers"][PROVIDER]["name"] = value(if route.mode == CodexMode::Hybrid {
+        "OpenAI"
+    } else {
+        "haxsd byok"
+    });
     doc["model_providers"][PROVIDER]["base_url"] = value(route.base_url.as_str());
     doc["model_providers"][PROVIDER]["wire_api"] = value("responses");
-    doc["model_providers"][PROVIDER]["requires_openai_auth"] = value(false);
     doc["model_providers"][PROVIDER]["supports_websockets"] = value(false);
-    doc["model_providers"][PROVIDER]["experimental_bearer_token"] = value(route.token.as_str());
     doc["model_providers"][PROVIDER]["capabilities"]["remote_compaction"] = value("unsupported");
+    let provider = doc["model_providers"][PROVIDER]
+        .as_table_like_mut()
+        .ok_or_else(|| Error::Config("Codex provider config is not a table".into()))?;
+    provider.remove("experimental_bearer_token");
+    provider.remove("http_headers");
+    if route.mode == CodexMode::Hybrid {
+        provider.insert("requires_openai_auth", value(true));
+        let mut headers = InlineTable::new();
+        headers.insert("x-haxsd-gateway", route.token.as_str().into());
+        provider.insert("http_headers", value(headers));
+    } else {
+        provider.insert("requires_openai_auth", value(false));
+        provider.insert(
+            "experimental_bearer_token",
+            value(route.token.as_str()),
+        );
+    }
     let applied = doc.to_string();
     let receipt_original = rebased_original.or_else(|| original.clone());
     let receipt = serde_json::to_vec(&Receipt {
@@ -1067,6 +1111,7 @@ mod tests {
             base_url: "http://127.0.0.1:43120/v1".into(),
             token: "local-test-token".into(),
             catalog_path: catalog(home, &["model-a", "model-b"]),
+            mode: CodexMode::Local,
         }
     }
 

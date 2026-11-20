@@ -22,6 +22,34 @@ pub(crate) const MAX_CONTEXT_WINDOW: u64 = 10_000_000;
 /// 末尾那句 OpenAI 内部的任务截止时间。
 const MODEL_MESSAGES: &str = include_str!("../../prompt/codex/model_messages.json");
 
+/// 官方 Codex 0.171 模型目录中的一部分条目（Apache-2.0，署名与许可见
+/// `server/prompt/codex/LICENSE`）。混合模式只发布这里列出的官方模型；它们是
+/// 官方账号的模型，不参与本地路由指纹。
+const OFFICIAL_MODELS: &str = include_str!("../../prompt/codex/official_models.json");
+
+fn official_models() -> &'static Vec<Value> {
+    use std::sync::OnceLock;
+    static PARSED: OnceLock<Vec<Value>> = OnceLock::new();
+    PARSED.get_or_init(|| {
+        let models: Vec<Value> = serde_json::from_str(OFFICIAL_MODELS)
+            .expect("the vendored official model catalog is valid JSON");
+        assert!(
+            models
+                .iter()
+                .all(|model| model.get("slug").and_then(Value::as_str).is_some()),
+            "every vendored official model must have a slug"
+        );
+        models
+    })
+}
+
+/// 该 slug 是否是官方目录里的模型。网关据此把请求交给官方透传，而不是本地桥接。
+pub(crate) fn is_official_model(slug: &str) -> bool {
+    official_models().iter().any(|model| {
+        model.get("slug").and_then(Value::as_str) == Some(slug)
+    })
+}
+
 /// 解析一次就够：目录每次发布都要组装全部模型。
 fn model_messages() -> Value {
     use std::sync::OnceLock;
@@ -104,7 +132,7 @@ fn reasoning_level_description(effort: &str) -> &'static str {
     }
 }
 
-pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
+fn build_local_catalog(models: &[ModelConfig], priority_offset: usize) -> Result<Vec<Value>> {
     let mut catalog = Vec::new();
     for (index, model) in models.iter().enumerate() {
         let context = model
@@ -149,7 +177,7 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
             "haxsd_byok_routing_fingerprint":routing_fingerprint(model)?,
             "slug":model.model_hash,"display_name":model.display_name,"description":null,
             "default_reasoning_level":reasoning,"supported_reasoning_levels":levels,
-            "shell_type":"unified_exec","visibility":"list","supported_in_api":true,"priority":index,
+            "shell_type":"unified_exec","visibility":"list","supported_in_api":true,"priority":priority_offset + index,
             "availability_nux":null,"upgrade":null,"additional_speed_tiers":[],"service_tiers":[],
             "model_messages":model_messages(),
             "include_skills_usage_instructions":false,"include_apps_usage_instructions":false,"include_plugin_usage_instructions":false,
@@ -170,7 +198,34 @@ pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
             "supports_reasoning_effort_updates":true,"multi_agent_version":"v2"
         }));
     }
-    Ok(json!({"models":catalog}))
+    Ok(catalog)
+}
+
+/// 本地模式目录：只包含模型库里的自有模型。
+pub fn build_catalog(models: &[ModelConfig]) -> Result<Value> {
+    Ok(json!({"models": build_local_catalog(models, 0)?}))
+}
+
+/// 混合模式目录：官方模型在前，自有模型在后。
+///
+/// 官方条目保留官方原始字段（尤其是 `model_messages`、`tool_mode`、
+/// `use_responses_lite`），不写本地路由指纹；自有模型仍由 `build_local_catalog`
+/// 生成。官方 slug 与本地 slug 冲突时直接报错，避免同一个名字指向两种出口。
+pub fn build_hybrid_catalog(models: &[ModelConfig]) -> Result<Value> {
+    let mut catalog = official_models().clone();
+    let local = build_local_catalog(models, 1000)?;
+    for model in &local {
+        let Some(slug) = model.get("slug").and_then(Value::as_str) else {
+            continue;
+        };
+        if is_official_model(slug) {
+            return Err(Error::Config(format!(
+                "local model slug {slug} conflicts with an official model"
+            )));
+        }
+    }
+    catalog.extend(local);
+    Ok(json!({"models": catalog}))
 }
 
 #[cfg(test)]
@@ -404,5 +459,75 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("task deadline"));
+    }
+
+    #[test]
+    fn hybrid_catalog_keeps_official_entries_and_appends_local_models() {
+        let catalog = build_hybrid_catalog(&[model(ModelType::OpenAi, None, None)]).unwrap();
+        let models = catalog["models"].as_array().unwrap();
+        let slugs = models
+            .iter()
+            .filter_map(|model| model["slug"].as_str())
+            .collect::<Vec<_>>();
+        assert!(slugs.contains(&"gpt-6.2-sol"), "官方模型必须出现在混合目录");
+        assert!(slugs.contains(&"gpt-6.2-astra"), "官方模型必须出现在混合目录");
+        assert!(slugs.contains(&"gpt-5.5"), "官方模型必须出现在混合目录");
+        assert!(slugs.contains(&"hash"), "本地模型必须出现在混合目录");
+        let official = models
+            .iter()
+            .find(|model| model["slug"] == "gpt-6.2-sol")
+            .unwrap();
+        assert_eq!(official["tool_mode"], "code_mode_only");
+        assert_eq!(official["use_responses_lite"], true);
+        assert!(
+            official["model_messages"]["instructions_template"]
+                .as_str()
+                .is_some_and(|text| !text.is_empty()),
+            "官方模型的 instructions_template 不能被本地模板替换"
+        );
+    }
+
+    #[test]
+    fn the_vendored_official_catalog_matches_the_current_official_set() {
+        let models = official_models();
+        assert_eq!(models.len(), 14);
+        assert_eq!(
+            models
+                .iter()
+                .filter(|model| model["visibility"] == "list")
+                .count(),
+            11
+        );
+        let slugs = models
+            .iter()
+            .map(|model| model["slug"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        for slug in [
+            "gpt-6.2-sol",
+            "gpt-6.2-astra",
+            "gpt-6.1-terra",
+            "gpt-6.1-sol",
+            "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+        ] {
+            assert!(slugs.contains(&slug), "missing official model {slug}");
+        }
+    }
+
+    #[test]
+    fn local_catalog_does_not_publish_official_models() {
+        let catalog = build_catalog(&[model(ModelType::OpenAi, None, None)]).unwrap();
+        let slugs = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|model| model["slug"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(slugs, vec!["hash"]);
     }
 }

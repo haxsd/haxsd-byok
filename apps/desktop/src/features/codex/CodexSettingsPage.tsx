@@ -98,6 +98,7 @@ export function CodexSettingsPage() {
   const steps = codexOutstandingSteps(codexStatus, modelCount, models.length);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   const applied = Boolean(codexStatus?.configured && codexStatus.conflict_kind === "none");
+  const hybridNeedsLogin = Boolean(draft?.mode === "hybrid" && codexStatus && !codexStatus.chatgpt_signed_in);
   const locked = Boolean(codexStatus && codexStatus.conflict_kind !== "none");
   const lockReason: CodexLockReason = codexStatus?.conflict_kind === "unreadable"
     ? "unreadable"
@@ -163,6 +164,7 @@ export function CodexSettingsPage() {
         </div>}
         footnotes={<div className={styles.facts}>
           <span>{t("已记录 {count} 次调用", { count: codexStatus?.calls ?? 0 })}</span>
+          <span>{t("接入模式")}：{codexStatus?.mode === "hybrid" ? t("混合模式") : t("本地模式")}</span>
           <span className={styles.home} title={codexStatus?.home}>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
           {codexStatus && <span title={t("cloud/enterprise 策略未在本地核对")}>{t("受管要求：仅本地系统")}</span>}
         </div>}
@@ -173,7 +175,7 @@ export function CodexSettingsPage() {
     {locale === "zh-CN" && <CodexUiCacheNote status={uiCache} busy={busy} error={uiCacheError} onRepair={() => void repairUiCache()} />}
     <TitledCard title={t("接入设置")} icon={settingsIcon}>
       {draft
-        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} lockReason={lockReason} applied={applied} onChange={setDraft} />
+        ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} lockReason={lockReason} applied={applied} hybridNeedsLogin={hybridNeedsLogin} onChange={setDraft} />
         : error
           ? <div className={styles.note}><span>{t("读取失败")}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
           : <p className={styles.note}>{t("加载中…")}</p>}
@@ -183,7 +185,7 @@ export function CodexSettingsPage() {
   return <>
     <PageActions>
       <Button disabled={busy || !dirty || locked || !draft || modelSelectionBlocked} onClick={() => void save()}>{t("保存")}</Button>
-      <Button disabled={busy || !gate.apply} onClick={requestApply}>{t("应用到 Codex")}</Button>
+      <Button disabled={busy || !gate.apply || hybridNeedsLogin} onClick={requestApply}>{t("应用到 Codex")}</Button>
       <Button disabled={busy || !gate.restore} onClick={() => void restore()}>{t("撤销接管")}</Button>
     </PageActions>
     <ConfirmDialog

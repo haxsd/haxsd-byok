@@ -28,8 +28,13 @@ async fn codex_temp_store() -> (tempfile::TempDir, cursor_server::store::Store) 
 
 use axum::{
     body::{to_bytes, Body},
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
+    routing::post,
+    Router,
 };
+use bytes::Bytes;
+use std::sync::{Arc, Mutex};
+use tokio::net::TcpListener;
 use cursor_server::{
     codex::{CodexGateway, CodexSettings, RequirementsSource},
     network::NetworkClients,
@@ -2220,4 +2225,302 @@ async fn invalid_config_and_receipt_do_not_leak_source_lines_through_status_or_r
     let error = gateway.restore().await.unwrap_err().to_string();
     assert_no_marker(&error, "restore/receipt");
     let _ = gateway.shutdown().await;
+}
+
+#[tokio::test]
+async fn hybrid_mode_forwards_official_models_with_chatgpt_auth() {
+    let (_directory, store, gateway, _id) =
+        configured_gateway("responses", "http://127.0.0.1:1".into()).await;
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.mode = cursor_server::codex::CodexMode::Hybrid;
+    store.set_codex_settings(settings).await.unwrap();
+
+    let captured = Arc::new(Mutex::new(None));
+    let app = Router::new().route(
+        "/backend-api/codex/responses",
+        post({
+            let captured = captured.clone();
+            move |headers: HeaderMap, body: Bytes| async move {
+                *captured.lock().unwrap() = Some((headers, body));
+                (
+                    StatusCode::OK,
+                    [("content-type", "text/event-stream")],
+                    "data: {\"type\":\"response.completed\"}\n\n",
+                )
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let gateway =
+        gateway.with_official_base_url(format!("http://{address}/backend-api/codex"));
+    let token = store.codex_token().await.unwrap();
+    let home = store.codex_settings().await.unwrap().home;
+    std::fs::create_dir_all(&home).unwrap();
+    let chatgpt_token = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDB9.";
+    std::fs::write(
+        std::path::Path::new(&home).join("auth.json"),
+        format!(
+            r#"{{"auth_mode":"chatgpt","tokens":{{"access_token":"{chatgpt_token}","refresh_token":"refresh","id_token":"{chatgpt_token}"}}}}"#
+        ),
+    )
+    .unwrap();
+    let raw = br#"{"model":"gpt-6.2-sol","input":"hello"}"#;
+    let compressed = zstd::stream::encode_all(&raw[..], 3).unwrap();
+
+    let response = gateway
+        .router()
+        .oneshot(
+            Request::post("/v1/responses")
+                .header("content-type", "application/json")
+                .header("content-encoding", "zstd")
+                .header("x-haxsd-gateway", token)
+                .body(Body::from(compressed))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("response.completed"));
+
+    let (headers, body) = captured
+        .lock()
+        .unwrap()
+        .take()
+        .expect("official request should be captured");
+    assert_eq!(
+        headers.get("authorization").unwrap().to_str().unwrap(),
+        format!("Bearer {chatgpt_token}")
+    );
+    assert!(
+        headers.get("x-haxsd-gateway").is_none(),
+        "local gateway token must not reach the official backend"
+    );
+    assert!(
+        headers.get("content-encoding").is_none(),
+        "the official backend receives the decoded body"
+    );
+    let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(request["model"], "gpt-6.2-sol");
+}
+/// Real 0.171 engine: hybrid config must list official and local models and send
+/// the ChatGPT credential to the local gateway for an official model request.
+#[tokio::test]
+#[ignore = "requires HAXSD_BYOK_CODEX_TEST_BINARY"]
+async fn installed_engine_lists_official_models_and_sends_chatgpt_auth_in_hybrid_mode() {
+    use axum::routing::post;
+    use axum::Router;
+    use serde_json::{json, Value};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    let binary = std::env::var_os("HAXSD_BYOK_CODEX_TEST_BINARY")
+        .expect("set the installed desktop engine path");
+    let (_directory, store, gateway, local_model) =
+        configured_gateway("responses", "http://127.0.0.1:1".into()).await;
+
+    let captured = Arc::new(Mutex::new(None));
+    let app = Router::new().route(
+        "/backend-api/codex/responses",
+        post({
+            let captured = captured.clone();
+            move |headers: HeaderMap, body: Bytes| async move {
+                *captured.lock().unwrap() = Some((headers, body));
+                let item = json!({
+                    "id": "msg_final",
+                    "type": "message",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": "hybrid-ok", "annotations": []}]
+                });
+                let chunks = [
+                    json!({"type":"response.created","response":{"id":"resp_1","status":"in_progress","output":[]}}),
+                    json!({"type":"response.output_item.done","output_index":0,"item":item}),
+                    json!({"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[item],"usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}),
+                ];
+                let text = chunks.iter().map(|chunk| format!("data: {chunk}\n\n")).collect::<String>();
+                (StatusCode::OK, [("content-type", "text/event-stream")], text)
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let official_address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let gateway = gateway.with_official_base_url(format!(
+        "http://{official_address}/backend-api/codex"
+    ));
+
+    let engine_directory = tempfile::tempdir_in(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"),
+    )
+    .unwrap();
+    let workspace = engine_directory.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let home = engine_directory.path().join("codex-home");
+    std::fs::create_dir(&home).unwrap();
+
+    // Fake JWT with a far-future exp. It is only sent to the local mock.
+    let header = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0";
+    let payload = "eyJleHAiOjQxMDI0NDQ4MDAsInN1YiI6Imh5YnJpZC10ZXN0In0";
+    let token = format!("{header}.{payload}.");
+    std::fs::write(
+        home.join("auth.json"),
+        serde_json::to_vec(&json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": token,
+                "refresh_token": "fake-refresh-token",
+                "id_token": token,
+            },
+            "last_refresh": "2026-11-20T00:00:00Z",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut settings = store.codex_settings().await.unwrap();
+    settings.home = home.display().to_string();
+    settings.mode = cursor_server::codex::CodexMode::Hybrid;
+    settings.port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    store.set_codex_settings(settings.clone()).await.unwrap();
+    gateway.apply().await.unwrap();
+
+    let mut child = tokio::process::Command::new(&binary)
+        .args(["app-server", "--stdio", "--strict-config"])
+        .env("CODEX_HOME", &settings.home)
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
+        .current_dir(&workspace)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let stderr = child.stderr.take().unwrap();
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            eprintln!("desktop engine: {line}");
+        }
+    });
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+
+    async fn request(
+        stdin: &mut tokio::process::ChildStdin,
+        stdout: &mut tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+        request: Value,
+    ) -> Value {
+        stdin
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap();
+        stdin.flush().await.unwrap();
+        loop {
+            let line = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                stdout.next_line(),
+            )
+            .await
+            .expect("desktop RPC timed out")
+            .unwrap()
+            .expect("desktop engine terminated");
+            let event: Value = serde_json::from_str(&line).unwrap();
+            if event["id"] == request["id"] {
+                return event;
+            }
+        }
+    }
+
+    let init = request(
+        &mut stdin,
+        &mut stdout,
+        json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"haxsd-byok-hybrid-test","version":"1"},"capabilities":{"experimentalApi":true}}}),
+    )
+    .await;
+    assert!(init.get("error").is_none(), "{init}");
+    stdin
+        .write_all(b"{\"method\":\"initialized\"}\n")
+        .await
+        .unwrap();
+    stdin.flush().await.unwrap();
+
+    let models = request(
+        &mut stdin,
+        &mut stdout,
+        json!({"id":2,"method":"model/list","params":{}}),
+    )
+    .await;
+    let listed = models["result"]["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["id"].as_str().or_else(|| entry["model"].as_str()))
+        .collect::<Vec<_>>();
+    assert!(listed.contains(&"gpt-6.2-sol"), "official model missing: {models}");
+    assert!(listed.contains(&local_model.as_str()), "local model missing: {models}");
+
+    let thread = request(
+        &mut stdin,
+        &mut stdout,
+        json!({"id":3,"method":"thread/start","params":{"cwd":workspace,"model":"gpt-6.2-sol","approvalPolicy":"never","sandbox":"workspace-write","ephemeral":true}}),
+    )
+    .await;
+    let thread_id = thread
+        .pointer("/result/thread/id")
+        .and_then(Value::as_str)
+        .expect("thread id")
+        .to_string();
+    let turn = request(
+        &mut stdin,
+        &mut stdout,
+        json!({"id":4,"method":"turn/start","params":{"threadId":thread_id,"input":[{"type":"text","text":"say hybrid-ok"}]}}),
+    )
+    .await;
+    assert!(turn.get("error").is_none(), "{turn}");
+
+    loop {
+        let line = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            stdout.next_line(),
+        )
+        .await
+        .expect("turn timed out")
+        .unwrap()
+        .expect("desktop engine terminated");
+        let event: Value = serde_json::from_str(&line).unwrap();
+        if event.get("method").and_then(Value::as_str) == Some("turn/completed") {
+            assert_eq!(event["params"]["turn"]["status"], "completed", "{event}");
+            break;
+        }
+        if event.get("method").and_then(Value::as_str) == Some("turn/failed") {
+            panic!("turn failed: {event}");
+        }
+    }
+
+    let (headers, body) = captured
+        .lock()
+        .unwrap()
+        .take()
+        .expect("official request should reach the mock backend");
+    assert_eq!(
+        headers.get("authorization").unwrap().to_str().unwrap(),
+        format!("Bearer {token}")
+    );
+    assert!(headers.get("x-haxsd-gateway").is_none());
+    let request: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(request["model"], "gpt-6.2-sol");
+
+    let _ = child.kill().await;
+    server.abort();
 }

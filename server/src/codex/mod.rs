@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod catalog;
 pub mod config;
 pub mod gateway;
+pub mod official;
 pub mod requirements;
 pub mod ui_cache;
 mod upstream;
@@ -14,6 +15,19 @@ pub use requirements::{ManagedRequirementConflict, RequirementsSource};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// Codex 的接入模式。
+///
+/// `Local` 是现有行为：所有模型请求都走本机网关和自有上游。
+/// `Hybrid` 在同一模型目录里同时发布官方模型和自有模型，本机网关按模型 slug
+/// 分流；官方模型请求带着客户端的 ChatGPT 凭据转发到官方后端。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CodexMode {
+    #[default]
+    Local,
+    Hybrid,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct CodexSettings {
@@ -22,6 +36,7 @@ pub struct CodexSettings {
     pub home: String,
     pub model_hashes: Vec<String>,
     pub default_model_hash: Option<String>,
+    pub mode: CodexMode,
 }
 
 impl Default for CodexSettings {
@@ -32,6 +47,7 @@ impl Default for CodexSettings {
             home: String::new(),
             model_hashes: Vec::new(),
             default_model_hash: None,
+            mode: CodexMode::Local,
         }
     }
 }
@@ -88,6 +104,7 @@ pub struct CodexStatus {
     pub enabled: bool,
     pub listening: bool,
     pub port: u16,
+    pub mode: CodexMode,
     pub configured: bool,
     pub config_conflict: bool,
     /// 有接管凭证：即使受管字段被外部改过，撤销也能把它们还回去，界面据此允许撤销。
@@ -111,4 +128,32 @@ pub struct CodexStatus {
     pub home: String,
     pub calls: usize,
     pub last_error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_without_mode_stay_local() {
+        let settings: CodexSettings = serde_json::from_str(
+            r#"{"enabled":true,"port":43120,"home":"","model_hashes":["m"],"default_model_hash":"m"}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.mode, CodexMode::Local);
+    }
+
+    #[test]
+    fn hybrid_mode_round_trips() {
+        let settings = CodexSettings {
+            mode: CodexMode::Hybrid,
+            ..CodexSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("\"mode\":\"hybrid\""));
+        assert_eq!(
+            serde_json::from_str::<CodexSettings>(&json).unwrap().mode,
+            CodexMode::Hybrid
+        );
+    }
 }

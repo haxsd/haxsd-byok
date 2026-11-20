@@ -8,11 +8,13 @@ use crate::{network::NetworkClients, store::Store, Error, Result};
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use bytes::Bytes;
+use futures_util::StreamExt;
 use std::{
     net::SocketAddr,
     sync::{
@@ -43,6 +45,8 @@ struct Inner {
     /// 管理员 requirements 的明确来源；不缓存文件内容，管理员改策略后下一次
     /// inspect/apply 就能看到。测试注入临时文件，生产在装配边界解析系统路径。
     requirements: RequirementsSource,
+    /// 官方 ChatGPT Responses 的转发目标；生产固定为官方入口，测试可注入 mock。
+    official_base_url: String,
 }
 
 /// 客户端正文的体积上限，以及从连接上读完它的时限。
@@ -98,8 +102,17 @@ impl CodexGateway {
                 idle_timeout,
                 token: tokio::sync::OnceCell::new(),
                 requirements,
+                official_base_url: super::official::CHATGPT_CODEX_BASE_URL.into(),
             }),
         }
+    }
+
+    /// 测试专用：把官方转发目标指向本地 mock，不改变任何生产默认值。
+    pub fn with_official_base_url(mut self, base_url: impl Into<String>) -> Self {
+        if let Some(inner) = Arc::get_mut(&mut self.inner) {
+            inner.official_base_url = base_url.into();
+        }
+        self
     }
 
     /// 校验用的网关令牌：第一次从库里取（可能生成），之后直接读缓存。
@@ -313,6 +326,7 @@ impl CodexGateway {
             enabled: settings.enabled,
             listening,
             port: settings.port,
+            mode: settings.mode,
             configured,
             config_conflict: conflict,
             restorable,
@@ -400,6 +414,7 @@ impl CodexGateway {
                 base_url: format!("http://127.0.0.1:{}/v1", settings.port),
                 token: self.inner.store.codex_token().await?,
                 catalog_path,
+                mode: settings.mode,
             },
             &self.inner.requirements,
             force,
@@ -420,9 +435,13 @@ impl CodexGateway {
                     .ok_or_else(|| Error::Config(format!("unknown Codex model: {id}")))?,
             );
         }
-        Ok(serde_json::to_vec_pretty(&super::catalog::build_catalog(
-            &models,
-        )?)?)
+        Ok(serde_json::to_vec_pretty(
+            &if settings.mode == super::CodexMode::Hybrid {
+                super::catalog::build_hybrid_catalog(&models)?
+            } else {
+                super::catalog::build_catalog(&models)?
+            },
+        )?)
     }
 
     /// 目录是写给客户端的快照，模型被编辑后它会过期。让用户为一次正常编辑付出
@@ -510,17 +529,32 @@ fn only_model_catalog_changed(previous: &CodexSettings, next: &CodexSettings) ->
 }
 
 async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) -> Response {
+    let headers = request.headers().clone();
+    let settings_for_auth = match gateway.inner.store.codex_settings().await {
+        Ok(settings) => settings,
+        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    };
     let expected = match gateway.token().await {
         Ok(token) => token.to_owned(),
         Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
     };
-    let authorization = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("");
-    if authorization != format!("Bearer {expected}") {
-        return protocol_error(StatusCode::UNAUTHORIZED, "invalid Codex gateway token");
+    let uses_local_header = settings_for_auth.mode == super::CodexMode::Hybrid;
+    if uses_local_header {
+        let local = headers
+            .get(super::official::LOCAL_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        if local != expected {
+            return protocol_error(StatusCode::UNAUTHORIZED, "invalid Codex gateway token");
+        }
+    } else {
+        let authorization = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("");
+        if authorization != format!("Bearer {expected}") {
+            return protocol_error(StatusCode::UNAUTHORIZED, "invalid Codex gateway token");
+        }
     }
     // 正文必须在取全局配置锁之前读完：那把锁的持有者是配置生命周期操作
     // （apply / save_settings / restore / shutdown），让一个慢客户端在锁里等正文，
@@ -543,6 +577,12 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
             )
         }
     };
+    let bytes = match decode_request_body(&headers, bytes) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return protocol_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, error.to_string())
+        }
+    };
     let body: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(body) => body,
         Err(error) => return protocol_error(StatusCode::BAD_REQUEST, error.to_string()),
@@ -559,16 +599,23 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     if !settings.enabled {
         return protocol_error(StatusCode::SERVICE_UNAVAILABLE, "Codex gateway is disabled");
     }
-    if !settings.model_hashes.iter().any(|selected| selected == id) {
+    let official = settings.mode == super::CodexMode::Hybrid && super::catalog::is_official_model(id);
+    if !official && !settings.model_hashes.iter().any(|selected| selected == id) {
         return protocol_error(
             StatusCode::BAD_REQUEST,
             "Codex requested a model that is not enabled",
         );
     }
-    let model = match gateway.inner.store.model(id).await {
-        Ok(Some(model)) => model,
-        Ok(None) => return protocol_error(StatusCode::NOT_FOUND, "Codex model no longer exists"),
-        Err(error) => return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+    let model = if official {
+        None
+    } else {
+        match gateway.inner.store.model(id).await {
+            Ok(Some(model)) => Some(model),
+            Ok(None) => return protocol_error(StatusCode::NOT_FOUND, "Codex model no longer exists"),
+            Err(error) => {
+                return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+            }
+        }
     };
     // `home` 解析不出来是环境问题（没有可用的用户主目录），不是"配置冲突"：以前它被折进
     // 下面那条 409 里，用户看到的是"去处理配置冲突"，而真正该做的是显式填一个 home。
@@ -598,6 +645,54 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
         .map(|r| r.shutdown.clone())
         .unwrap_or_default();
     drop(operation);
+    if official {
+        let client = match gateway
+            .inner
+            .clients
+            .provider_client(gateway.inner.request_timeout)
+            .await
+        {
+            Ok(client) => client,
+            Err(error) => {
+                return protocol_error(StatusCode::BAD_GATEWAY, error.to_string());
+            }
+        };
+        let mut official_headers = headers.clone();
+        if !official_headers.contains_key(header::AUTHORIZATION) {
+            let Some(token) = super::official::chatgpt_access_token(&home) else {
+                return protocol_error(
+                    StatusCode::UNAUTHORIZED,
+                    "sign in to ChatGPT before using Codex hybrid mode",
+                );
+            };
+            let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) else {
+                return protocol_error(
+                    StatusCode::UNAUTHORIZED,
+                    "the stored ChatGPT credential is not a valid bearer token",
+                );
+            };
+            official_headers.insert(header::AUTHORIZATION, value);
+        }
+        let response = match super::official::forward(
+            &client,
+            &gateway.inner.official_base_url,
+            &official_headers,
+            bytes,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                tracing::warn!(
+                    error = %crate::diagnostics::error_chain(&error),
+                    "official Codex request failed"
+                );
+                return protocol_error(StatusCode::BAD_GATEWAY, "official Codex request failed");
+            }
+        };
+        return official_response(response, active, cancellation);
+    }
+    let model = model.expect("local model was resolved above");
     super::upstream::respond(
         gateway.inner.store.clone(),
         gateway.inner.clients.clone(),
@@ -611,6 +706,74 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
         active,
     )
     .await
+}
+
+/// Codex 混合模式可能按官方客户端的行为发 zstd 请求体。解压后再解析模型 slug；
+/// 转发给官方时不再带 `content-encoding`，避免官方后端重复解压。
+fn decode_request_body(headers: &HeaderMap, bytes: Bytes) -> Result<Bytes> {
+    let encoding = headers
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let mut decoded = bytes;
+    for item in encoding.split(',') {
+        let item = item.trim();
+        if item.is_empty() || item.eq_ignore_ascii_case("identity") {
+            continue;
+        }
+        if item.eq_ignore_ascii_case("zstd") {
+            let plain = zstd::stream::decode_all(decoded.as_ref())
+                .map_err(|error| Error::Protocol(format!("invalid zstd request body: {error}")))?;
+            decoded = Bytes::from(plain);
+        } else {
+            return Err(Error::Protocol(format!(
+                "unsupported Codex request encoding: {item}"
+            )));
+        }
+    }
+    Ok(decoded)
+}
+
+/// 官方响应：保留状态码和端到端响应头，正文逐块流回客户端；活动计数跟着流一起释放。
+fn official_response(
+    upstream: reqwest::Response,
+    active: ActiveRequest,
+    cancellation: CancellationToken,
+) -> Response {
+    let status = upstream.status();
+    let headers = upstream.headers().clone();
+    let mut builder = Response::builder().status(status);
+    for (name, value) in headers.iter() {
+        if super::official::should_skip_response_header(name) {
+            continue;
+        }
+        builder = builder.header(name, value);
+    }
+    let mut stream = upstream.bytes_stream();
+    let body = async_stream::stream! {
+        let _active = active;
+        loop {
+            let next = tokio::select! {
+                _ = cancellation.cancelled() => break,
+                next = stream.next() => next,
+            };
+            match next {
+                Some(Ok(bytes)) => yield Ok::<Bytes, std::io::Error>(bytes),
+                Some(Err(error)) => {
+                    tracing::warn!(%error, "official Codex response stream ended with an error");
+                    break;
+                }
+                None => break,
+            }
+        }
+    };
+    match builder.body(Body::from_stream(body)) {
+        Ok(response) => response,
+        Err(error) => protocol_error(
+            StatusCode::BAD_GATEWAY,
+            format!("official Codex response could not be relayed: {error}"),
+        ),
+    }
 }
 
 pub(super) fn protocol_error(status: StatusCode, message: impl Into<String>) -> Response {
@@ -728,6 +891,7 @@ mod tests {
                 home: directory.path().join("codex-home").display().to_string(),
                 model_hashes: vec![model.model_hash.clone()],
                 default_model_hash: Some(model.model_hash.clone()),
+                mode: Default::default(),
             })
             .await
             .unwrap();

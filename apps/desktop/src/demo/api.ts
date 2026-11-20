@@ -106,10 +106,11 @@ let harnessStatus: CursorHarnessStatus = {
   catalog: { last_success_ms: 1_700_000_000_000, last_failure_ms: null, last_failure: null },
 };
 
-let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null };
+let codexSettings: CodexSettings = { enabled: false, port: 43120, home: "", model_hashes: [], default_model_hash: null, mode: "local" };
 let codexConfigured = false;
 function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
+    mode: codexSettings.mode,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
     conflict_kind: "none", route_owned: codexConfigured, managed_conflicts: [], managed_error: null,
     managed_scope: "local_system_only",
