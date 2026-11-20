@@ -18,6 +18,12 @@ async function loadView() {
   return module.devinConnectionView;
 }
 
+async function loadRepairable() {
+  loader.invalidateAll();
+  const module = await loader.load("/src/features/devin/devinConnectionView.ts");
+  return module.devinHostRepairable;
+}
+
 function devinSettings(overrides = {}) {
   return {
     enabled: false,
@@ -503,4 +509,57 @@ test("the explicit default selects the second mapping instead of the first", asy
   assert.equal(view.hero.connected, true);
   assert.equal(view.hero.stages.find((stage) => stage.key === "model").detail, "Second");
   assert.match(view.hero.description, /Second/);
+});
+
+const expectedPorts = { api_port: 43_110, inference_port: 43_111 };
+
+test("a clean extension after a Devin update is repairable", async () => {
+  const devinHostRepairable = await loadRepairable();
+  assert.equal(devinHostRepairable(hostStatus({
+    configured: true,
+    unconfigured: false,
+    ports: expectedPorts,
+    extension: extensionStatus({ compatible: true, clean: true, patched: false }),
+  }), expectedPorts), true);
+});
+
+test("a gate-only 3.14 patch is repairable", async () => {
+  const devinHostRepairable = await loadRepairable();
+  assert.equal(devinHostRepairable(hostStatus({
+    configured: true,
+    unconfigured: false,
+    ports: expectedPorts,
+    extension: extensionStatus({ compatible: false, clean: false, patched: true }),
+  }), expectedPorts), true);
+});
+
+test("a healthy patch is not repairable", async () => {
+  const devinHostRepairable = await loadRepairable();
+  assert.equal(devinHostRepairable(hostStatus({
+    configured: true,
+    unconfigured: false,
+    ports: expectedPorts,
+    extension: extensionStatus({ compatible: true, clean: false, patched: true }),
+  }), expectedPorts), false);
+});
+
+test("an unrecognized clean extension is not repairable", async () => {
+  const devinHostRepairable = await loadRepairable();
+  assert.equal(devinHostRepairable(hostStatus({
+    configured: true,
+    unconfigured: false,
+    ports: expectedPorts,
+    extension: extensionStatus({ compatible: false, clean: true, patched: false }),
+  }), expectedPorts), false);
+});
+
+test("a port mismatch or unconfigured settings are not repairable", async () => {
+  const devinHostRepairable = await loadRepairable();
+  assert.equal(devinHostRepairable(hostStatus({
+    configured: true,
+    unconfigured: false,
+    ports: { api_port: 44_110, inference_port: 44_111 },
+    extension: extensionStatus({ compatible: true, clean: true, patched: false }),
+  }), expectedPorts), false);
+  assert.equal(devinHostRepairable(hostStatus(), expectedPorts), false);
 });

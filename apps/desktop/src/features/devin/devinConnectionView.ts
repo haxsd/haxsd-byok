@@ -62,6 +62,22 @@ export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinH
     && host.ports?.inference_port === ports.inference_port;
 }
 
+/**
+ * 设置已经指向本机、但扩展补丁不完整时，可以只重打扩展，不用重写设置。
+ * 兼容的 clean/patched 和 gate-only patched 都可修；未知结构（clean 但不兼容）
+ * 不应假装能修，交给页面说明需要更新应用。
+ */
+export function devinHostRepairable(host: DevinHostStatus | null, ports: DevinHostPorts | null): boolean {
+  if (!host?.configured || !host.extension.path || !ports) return false;
+  if (devinPointsAtGateway(host, ports)) return false;
+  if (host.ports?.api_port !== ports.api_port || host.ports?.inference_port !== ports.inference_port) {
+    return false;
+  }
+  return host.extension.compatible
+    ? host.extension.clean || host.extension.patched
+    : host.extension.patched;
+}
+
 export function devinConnectionView(input: DevinConnectionInput): DevinConnectionView {
   const { draft, saved, models, hostStatus, gateway: gatewayReading, devinCalls, lastCallSuccess } = input;
   const gatewayListening = gatewayReading?.listening ?? null;

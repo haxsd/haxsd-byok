@@ -456,6 +456,45 @@ export function installDemoApi() {
       devinHostStatus = null;
       return json({ settings: devinHostReceipt, extension: devinExtensionReceipt });
     }
+    if (path === "/harness/devin/host/repair" && method === "POST") {
+      if (!devinHostReceipt) return json(errorBody(400, "Devin settings are not configured"), 400);
+      const extensionPath = "D:\\devin\\Devin\\resources\\app\\extensions\\windsurf\\dist\\extension.js";
+      devinExtensionReceipt = {
+        path: extensionPath,
+        backup_path: `${extensionPath}.devin-router-gate.backup`,
+        version: "3.11.216",
+        original_sha256: "demo-extension-clean",
+        patched_sha256: "demo-extension-patched",
+      };
+      devinHostStatus = null;
+      return json({
+        path: devinHostReceipt.path,
+        compatible: true,
+        unconfigured: false,
+        configured: true,
+        parts: { api: true, inference: true },
+        ports: devinHostReceipt.ports,
+        backup_path: devinHostReceipt.backup_path,
+        backup_available: true,
+        current_sha256: devinHostReceipt.patched_sha256,
+        backup_sha256: devinHostReceipt.original_sha256,
+        restore_receipt: devinHostReceipt,
+        extension: {
+          path: extensionPath,
+          version: "3.11.216",
+          compatible: true,
+          clean: false,
+          patched: true,
+          backup_path: `${extensionPath}.devin-router-gate.backup`,
+          backup_available: true,
+          current_sha256: "demo-extension-patched",
+          backup_sha256: "demo-extension-clean",
+          restore_receipt: devinExtensionReceipt,
+          message: "",
+        },
+        message: "",
+      });
+    }
     if (path === "/harness/devin/host/restore" && method === "POST") {
       if (!devinHostReceipt || (body as { path?: string } | null)?.path !== devinHostReceipt.path) {
         return json(errorBody(400, "no usable Devin host restore receipt"), 400);

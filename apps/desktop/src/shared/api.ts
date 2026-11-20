@@ -1540,6 +1540,8 @@ export const api = {
   /** The identifiers Devin itself asks for, read from the installed client. */
   devinModelUids: (installRoot?: string) => request<DevinModelUids>(`/harness/devin/model-uids${devinHostQuery(undefined, installRoot)}`),
   applyDevinHostConfiguration: (path?: string, installRoot?: string, force = false) => request<DevinHostApplyResult>("/harness/devin/host/apply", { method: "POST", body: devinHostBody(path, installRoot, force) }),
+  /** 只重打扩展补丁；设置已经指向本机网关时用于客户端升级后的修复。 */
+  repairDevinHostConfiguration: (path?: string, installRoot?: string) => request<DevinHostStatus>("/harness/devin/host/repair", { method: "POST", body: devinHostBody(path, installRoot) }),
   restoreDevinHostConfiguration: (path?: string, installRoot?: string) => request<{ restored: boolean }>("/harness/devin/host/restore", { method: "POST", body: devinHostBody(path, installRoot) }),
   initializeCursorCa: () => request<CursorHarnessStatus>("/harness/cursor/ca/initialize", { method: "POST" }),
   plugins: (signal?: AbortSignal) => request<unknown>("/plugins", { signal }).then(rows => usableRows<PluginDescriptor>(

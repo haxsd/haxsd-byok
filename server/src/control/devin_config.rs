@@ -255,6 +255,55 @@ fn apply_host(
     }
 }
 
+/// Re-apply the extension patch when the settings file already points at this
+/// gateway. Devin updates replace `extension.js` (or leave a gate-only patch)
+/// without touching the endpoint URLs; this repairs that state without
+/// rewriting the settings or their backup.
+fn repair_host(
+    path: &Path,
+    extension_path: Option<&Path>,
+    ports: DevinHostPorts,
+) -> Result<HostStatus> {
+    let settings = host_config::inspect(path)?;
+    if !settings.compatible {
+        return Err(Error::Config(settings.message));
+    }
+    if !settings.configured {
+        return Err(Error::Config(
+            "Devin settings are not configured for this application; apply the integration instead"
+                .into(),
+        ));
+    }
+    let configured_ports = settings.ports.ok_or_else(|| {
+        Error::Config("Devin settings ports are unavailable; re-apply the integration".into())
+    })?;
+    if !configured_ports.same_endpoints(ports) {
+        return Err(Error::Config(
+            "Devin settings point at different ports; re-apply or restore the integration".into(),
+        ));
+    }
+
+    let extension_path = extension_path.ok_or_else(|| {
+        Error::Config(
+            "Devin extension.js not found; start Devin once or reinstall it before repairing the \
+             integration"
+                .into(),
+        )
+    })?;
+    let extension = host_patch::inspect(Some(extension_path));
+    if extension.clean || (extension.patched && !extension.compatible) {
+        host_patch::apply(extension_path)?;
+    } else if !extension.patched || !extension.compatible {
+        return Err(Error::Config(if extension.message.is_empty() {
+            "Devin extension is not in a repairable state; restore and re-apply the integration"
+                .into()
+        } else {
+            extension.message
+        }));
+    }
+    inspect_host(path, Some(extension_path))
+}
+
 fn restore_host(path: &Path, extension_path: Option<&Path>) -> Result<()> {
     let settings = host_config::inspect(path)?;
     let extension = host_patch::inspect(extension_path);
@@ -345,6 +394,28 @@ pub async fn host_apply(
             let path = resolve_settings_path(settings_input.as_deref())?;
             let extension = resolve_extension_path(install_input.as_deref())?;
             apply_host(&path, extension.as_deref(), ports, force)
+        })
+        .await?,
+    ))
+}
+
+/// Repair the extension patch without rewriting a settings file that already
+/// points at this gateway. This is the upgrade path: Devin replaces its bundle
+/// but leaves the endpoint URLs alone.
+pub async fn host_repair(
+    State(service): State<ControlService>,
+    Json(input): Json<HostPathInput>,
+) -> Result<Json<HostStatus>> {
+    let settings = service.devin_settings().await?;
+    let ports = host_config_precheck(&settings, service.devin_bound_ports().bound_ports())?;
+    ensure_devin_closed().await?;
+    let settings_input = input.path;
+    let install_input = input.install_root;
+    Ok(Json(
+        on_blocking_pool(move || {
+            let path = resolve_settings_path(settings_input.as_deref())?;
+            let extension = resolve_extension_path(install_input.as_deref())?;
+            repair_host(&path, extension.as_deref(), ports)
         })
         .await?,
     ))
@@ -449,6 +520,32 @@ fn restore_refusal_message(path: &Path, status: &SettingsHostStatus) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Path, PathBuf};
+
+    const CLEAN_EXTENSION: &str = r#"var p={isDevelopment:()=>false};function R(){return !1}
+function S(e){const[t,n=""]=e.split(".",2),i=()=>({value:C(e),source:"deployment_default"});if(e===m.API_SERVER_URL){const e=(0,l.getSessionApiServerUrl)();if(void 0!==e&&""!==e)return{value:e,source:"auth_session"}}if(!R()&&!(0,p.isDevelopment)())return i();const r=a.workspace.getConfiguration(t).inspect(n);if(!a.workspace.isTrusted){const e=r?.globalValue??void 0;return void 0!==e?{value:e,source:"user_setting"}:i()}const s=r?.workspaceFolderValue??r?.workspaceValue??r?.globalValue;return void 0!==s?{value:s,source:"user_setting"}:i()}
+const api=(0,_.getConfig)(_.Config.API_SERVER_URL);class Auth{async apply(){await async function(e){let t;try{t=A.LanguageServerClient.getInstance()}catch{return}e!==t.apiServerUrl?await t.restart(e):await t.whenProcessReplaced()}(t)}}"#;
+
+    fn ports() -> DevinHostPorts {
+        DevinHostPorts {
+            api_port: 43_110,
+            inference_port: 43_111,
+            local_api_port: Some(43_112),
+        }
+    }
+
+    fn configured_settings(directory: &Path, ports: DevinHostPorts) -> PathBuf {
+        let path = directory.join("settings.json");
+        std::fs::write(&path, "{\n}\n").unwrap();
+        host_config::apply_with_force(&path, ports, false).unwrap();
+        path
+    }
+
+    fn clean_extension(directory: &Path) -> PathBuf {
+        let path = directory.join("extension.js");
+        std::fs::write(&path, CLEAN_EXTENSION).unwrap();
+        path
+    }
 
     #[tokio::test]
     async fn host_io_runs_on_a_blocking_thread() {
@@ -457,6 +554,67 @@ mod tests {
             .await
             .unwrap();
         assert_ne!(io_thread, async_thread);
+    }
+
+    #[test]
+    fn repair_reapplies_the_extension_patch_when_settings_already_point_here() {
+        let directory = tempfile::tempdir().unwrap();
+        let ports = ports();
+        let settings = configured_settings(directory.path(), ports);
+        let extension = clean_extension(directory.path());
+        let before = host_config::inspect(&settings).unwrap();
+
+        let repaired = repair_host(&settings, Some(&extension), ports).unwrap();
+
+        assert!(repaired.extension.patched, "{}", repaired.extension.message);
+        assert!(
+            repaired.extension.compatible,
+            "{}",
+            repaired.extension.message
+        );
+        assert_eq!(
+            host_config::inspect(&settings).unwrap().current_sha256,
+            before.current_sha256,
+            "repair must not rewrite settings or their backup"
+        );
+        assert_ne!(
+            std::fs::read_to_string(&extension).unwrap(),
+            CLEAN_EXTENSION
+        );
+    }
+
+    #[test]
+    fn repair_refuses_settings_that_point_at_another_gateway() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = configured_settings(directory.path(), ports());
+        let extension = clean_extension(directory.path());
+        let other = DevinHostPorts {
+            api_port: 44_110,
+            inference_port: 44_111,
+            local_api_port: Some(44_112),
+        };
+
+        let error = repair_host(&settings, Some(&extension), other)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("different ports"), "{error}");
+        assert!(host_patch::inspect(Some(&extension)).clean);
+    }
+
+    #[test]
+    fn repair_refuses_unconfigured_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let settings = directory.path().join("settings.json");
+        std::fs::write(&settings, "{\n}\n").unwrap();
+        let extension = clean_extension(directory.path());
+
+        let error = repair_host(&settings, Some(&extension), ports())
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("not configured"), "{error}");
+        assert!(host_patch::inspect(Some(&extension)).clean);
     }
 
     #[test]

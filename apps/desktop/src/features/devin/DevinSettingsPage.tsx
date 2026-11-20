@@ -15,7 +15,7 @@ import { PageActions } from "../../shell/PageActions";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
-import { devinConnectionView, devinPointsAtGateway } from "./devinConnectionView";
+import { devinConnectionView, devinHostRepairable, devinPointsAtGateway } from "./devinConnectionView";
 import { applyDevinHostConfiguration, canRestoreDevinHost } from "./devinHostApply";
 import {
   appendRouteForBinding,
@@ -118,6 +118,7 @@ export function DevinSettingsPage() {
   const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
   const [hostFailure, setHostFailure] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
+  const [repairingHost, setRepairingHost] = useState(false);
   const [hostNeedsInspect, setHostNeedsInspect] = useState(false);
   const [confirmForceHost, setConfirmForceHost] = useState(false);
   const hostPathSaveTimer = useRef<number | null>(null);
@@ -404,8 +405,31 @@ export function DevinSettingsPage() {
       setHostNeedsInspect(false);
     }
   };
-  const restoreHostConfiguration = async () => {
-    if (!hostStatus || !canRestoreDevinHost(hostStatus)) return;
+  const repairHostConfiguration = async () => {
+    if (!hostStatus?.extension.path) return;
+    setHostBusy(true);
+    setRepairingHost(true);
+    try {
+      const status = await api.repairDevinHostConfiguration(hostStatus.path, hostStatus.extension.path);
+      setHostStatus(status);
+      await appStore.refreshDevinStatus();
+      setHostFailure(null);
+      if (status.path !== hostPath.trim()) {
+        setHostPath(status.path);
+        persistHostPath(status.path);
+      }
+      message(t("Devin 接管补丁已修复；重新打开 Devin 后生效"), { duration: 5_000 });
+    } catch (cause) {
+      const text = clientErrorText(cause);
+      message.error(text, { duration: 8_000 });
+      setHostFailure(text);
+    } finally {
+      setHostBusy(false);
+      setRepairingHost(false);
+      setHostNeedsInspect(false);
+    }
+  };
+  const restoreHostConfiguration = async () => {    if (!hostStatus || !canRestoreDevinHost(hostStatus)) return;
     try {
       setHostBusy(true);
       await api.restoreDevinHostConfiguration(hostStatus.path, hostInstallRoot);
@@ -475,6 +499,12 @@ export function DevinSettingsPage() {
   const extensionMissing = hostStatus != null && hostStatus.extension.path == null;
   const extensionUnsupported = hostStatus != null && hostStatus.extension.path != null && !hostStatus.extension.compatible;
   const canAutoConnect = Boolean(hostStatus?.unconfigured && hostStatus.extension.compatible && hostStatus.extension.clean);
+  const hostRepairable = saved.enabled
+    && !hostIntegrated
+    && devinHostRepairable(hostStatus, {
+      api_port: saved.api_port,
+      inference_port: saved.inference_port,
+    });
   const connectDisabled = loading
     || Boolean(loadError)
     || saving
@@ -493,7 +523,9 @@ export function DevinSettingsPage() {
         ? t("正在检查 Devin 配置…")
         : hostIntegrated
           ? t("已连接。重新打开 Devin 就可以对话。")
-          : canAutoConnect
+          : hostRepairable
+            ? t("Devin 更新后接管补丁未生效。关闭 Devin，然后点右上角“修复接管”。")
+            : canAutoConnect
             ? !settings.enabled
               ? t("先开启“使用自选模型”，选择默认模型并保存。")
               : view.pendingChanges
@@ -688,6 +720,7 @@ export function DevinSettingsPage() {
     <PageActions>
       <Button disabled={loading || Boolean(loadError) || saving || hostBusy || !view.pendingChanges || Boolean(defaultMissingReason)} onClick={save}>{saving ? t("保存中…") : t("保存")}</Button>
       <Button disabled={connectDisabled} onClick={() => void applyHostConfiguration()}>{t("应用到 Devin")}</Button>
+      {hostRepairable && <Button disabled={saving || hostBusy} onClick={() => void repairHostConfiguration()}>{repairingHost ? t("修复中…") : t("修复接管")}</Button>}
       {hostStatus?.configured && !hostIntegrated && !hostStatus.extension.patched && <Button disabled={saving || hostBusy} onClick={() => setConfirmForceHost(true)}>{t("强制接管")}</Button>}
       <Button disabled={saving || hostBusy || hostNeedsInspect || !hostRestorable} onClick={() => void restoreHostConfiguration()}>{t("撤销接管")}</Button>
     </PageActions>

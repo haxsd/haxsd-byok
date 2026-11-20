@@ -21,6 +21,7 @@ import { localServiceStatus } from "./connectionStatus";
 import { harnessClientAt, harnessClients, harnessEntryStatus } from "../features/harness/harnessClients";
 import { HarnessTabs } from "../features/harness/HarnessTabs";
 import { OfflineBanner } from "./OfflineBanner";
+import { DevinTakeoverBanner } from "./DevinTakeoverBanner";
 import { PageActionsTarget } from "./PageActions";
 import { PageCacheErrorBoundary, PageErrorBoundary } from "./PageErrorBoundary";
 
@@ -129,6 +130,7 @@ export function AppLayout() {
   return <PageLayout className={[styles.root, currentClient && styles.harnessModule].filter(Boolean).join(" ")}>
     <CommandPalette />
     <OfflineBanner />
+    <DevinTakeoverBanner />
     {/* 顶部提示条与离线提示一样挂在布局里：它的位置要读外壳的 --app-content-top
         （见 MessageProvider.module.scss），所以不落在 body 上。 */}
     <MessageProvider />

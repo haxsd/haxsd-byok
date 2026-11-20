@@ -295,6 +295,10 @@ pub fn api_router(service: ControlService) -> Router {
             post(devin_config::host_apply),
         )
         .route(
+            "/__byok-api__/api/harness/devin/host/repair",
+            post(devin_config::host_repair),
+        )
+        .route(
             "/__byok-api__/api/harness/devin/host/restore",
             post(devin_config::host_restore),
         )
