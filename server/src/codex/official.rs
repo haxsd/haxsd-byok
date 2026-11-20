@@ -6,11 +6,11 @@
 //! 官方请求的语义不在本模块翻译：`use_responses_lite`、`code_mode_only`、托管工具、
 //! 加密推理都由官方客户端和官方后端自己处理。任何本地桥接都只用于自有模型。
 
+use crate::{Error, Result};
 use axum::http::{HeaderMap, HeaderName};
 use bytes::Bytes;
 use serde_json::Value;
 use std::path::Path;
-use crate::{Error, Result};
 
 /// 官方 ChatGPT 登录的 Codex 推理入口。API Key 模式不走这里。
 pub(crate) const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
@@ -60,11 +60,7 @@ pub(crate) async fn forward(
         }
         request = request.header(name, value);
     }
-    request
-        .body(body)
-        .send()
-        .await
-        .map_err(Error::Http)
+    request.body(body).send().await.map_err(Error::Http)
 }
 
 fn should_skip_request_header(name: &HeaderName) -> bool {

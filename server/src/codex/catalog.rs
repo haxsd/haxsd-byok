@@ -45,9 +45,9 @@ fn official_models() -> &'static Vec<Value> {
 
 /// 该 slug 是否是官方目录里的模型。网关据此把请求交给官方透传，而不是本地桥接。
 pub(crate) fn is_official_model(slug: &str) -> bool {
-    official_models().iter().any(|model| {
-        model.get("slug").and_then(Value::as_str) == Some(slug)
-    })
+    official_models()
+        .iter()
+        .any(|model| model.get("slug").and_then(Value::as_str) == Some(slug))
 }
 
 /// 解析一次就够：目录每次发布都要组装全部模型。
@@ -470,7 +470,10 @@ mod tests {
             .filter_map(|model| model["slug"].as_str())
             .collect::<Vec<_>>();
         assert!(slugs.contains(&"gpt-6.2-sol"), "官方模型必须出现在混合目录");
-        assert!(slugs.contains(&"gpt-6.2-astra"), "官方模型必须出现在混合目录");
+        assert!(
+            slugs.contains(&"gpt-6.2-astra"),
+            "官方模型必须出现在混合目录"
+        );
         assert!(slugs.contains(&"gpt-5.5"), "官方模型必须出现在混合目录");
         assert!(slugs.contains(&"hash"), "本地模型必须出现在混合目录");
         let official = models

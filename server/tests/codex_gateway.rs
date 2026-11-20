@@ -33,13 +33,13 @@ use axum::{
     Router,
 };
 use bytes::Bytes;
-use std::sync::{Arc, Mutex};
-use tokio::net::TcpListener;
 use cursor_server::{
     codex::{CodexGateway, CodexSettings, RequirementsSource},
     network::NetworkClients,
     store::{ProxyMode, ProxySettingsInput},
 };
+use std::sync::{Arc, Mutex};
+use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -2255,8 +2255,7 @@ async fn hybrid_mode_forwards_official_models_with_chatgpt_auth() {
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    let gateway =
-        gateway.with_official_base_url(format!("http://{address}/backend-api/codex"));
+    let gateway = gateway.with_official_base_url(format!("http://{address}/backend-api/codex"));
     let token = store.codex_token().await.unwrap();
     let home = store.codex_settings().await.unwrap().home;
     std::fs::create_dir_all(&home).unwrap();
@@ -2351,14 +2350,12 @@ async fn installed_engine_lists_official_models_and_sends_chatgpt_auth_in_hybrid
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    let gateway = gateway.with_official_base_url(format!(
-        "http://{official_address}/backend-api/codex"
-    ));
+    let gateway =
+        gateway.with_official_base_url(format!("http://{official_address}/backend-api/codex"));
 
-    let engine_directory = tempfile::tempdir_in(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"),
-    )
-    .unwrap();
+    let engine_directory =
+        tempfile::tempdir_in(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target"))
+            .unwrap();
     let workspace = engine_directory.path().join("workspace");
     std::fs::create_dir(&workspace).unwrap();
     let home = engine_directory.path().join("codex-home");
@@ -2427,14 +2424,11 @@ async fn installed_engine_lists_official_models_and_sends_chatgpt_auth_in_hybrid
             .unwrap();
         stdin.flush().await.unwrap();
         loop {
-            let line = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                stdout.next_line(),
-            )
-            .await
-            .expect("desktop RPC timed out")
-            .unwrap()
-            .expect("desktop engine terminated");
+            let line = tokio::time::timeout(std::time::Duration::from_secs(30), stdout.next_line())
+                .await
+                .expect("desktop RPC timed out")
+                .unwrap()
+                .expect("desktop engine terminated");
             let event: Value = serde_json::from_str(&line).unwrap();
             if event["id"] == request["id"] {
                 return event;
@@ -2467,8 +2461,14 @@ async fn installed_engine_lists_official_models_and_sends_chatgpt_auth_in_hybrid
         .iter()
         .filter_map(|entry| entry["id"].as_str().or_else(|| entry["model"].as_str()))
         .collect::<Vec<_>>();
-    assert!(listed.contains(&"gpt-6.2-sol"), "official model missing: {models}");
-    assert!(listed.contains(&local_model.as_str()), "local model missing: {models}");
+    assert!(
+        listed.contains(&"gpt-6.2-sol"),
+        "official model missing: {models}"
+    );
+    assert!(
+        listed.contains(&local_model.as_str()),
+        "local model missing: {models}"
+    );
 
     let thread = request(
         &mut stdin,
@@ -2490,14 +2490,11 @@ async fn installed_engine_lists_official_models_and_sends_chatgpt_auth_in_hybrid
     assert!(turn.get("error").is_none(), "{turn}");
 
     loop {
-        let line = tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            stdout.next_line(),
-        )
-        .await
-        .expect("turn timed out")
-        .unwrap()
-        .expect("desktop engine terminated");
+        let line = tokio::time::timeout(std::time::Duration::from_secs(30), stdout.next_line())
+            .await
+            .expect("turn timed out")
+            .unwrap()
+            .expect("desktop engine terminated");
         let event: Value = serde_json::from_str(&line).unwrap();
         if event.get("method").and_then(Value::as_str) == Some("turn/completed") {
             assert_eq!(event["params"]["turn"]["status"], "completed", "{event}");

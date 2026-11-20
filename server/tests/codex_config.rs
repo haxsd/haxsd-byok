@@ -758,11 +758,18 @@ fn hybrid_apply_requires_chatgpt_login_and_preserves_official_auth() {
     assert!(!inspect(dir.path()).unwrap().restorable);
 
     chatgpt_auth(dir.path());
-    assert!(apply(dir.path(), &hybrid_route(dir.path())).unwrap().applied);
+    assert!(
+        apply(dir.path(), &hybrid_route(dir.path()))
+            .unwrap()
+            .applied
+    );
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("name = \"OpenAI\""), "{text}");
     assert!(text.contains("requires_openai_auth = true"), "{text}");
-    assert!(text.contains("x-haxsd-gateway = \"local-test-token\""), "{text}");
+    assert!(
+        text.contains("x-haxsd-gateway = \"local-test-token\""),
+        "{text}"
+    );
     assert!(!text.contains("experimental_bearer_token"), "{text}");
     assert_eq!(
         std::fs::read_to_string(dir.path().join("auth.json")).unwrap(),

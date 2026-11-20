@@ -790,10 +790,7 @@ pub fn apply_with_force(
         provider.insert("http_headers", value(headers));
     } else {
         provider.insert("requires_openai_auth", value(false));
-        provider.insert(
-            "experimental_bearer_token",
-            value(route.token.as_str()),
-        );
+        provider.insert("experimental_bearer_token", value(route.token.as_str()));
     }
     let applied = doc.to_string();
     let receipt_original = rebased_original.or_else(|| original.clone());

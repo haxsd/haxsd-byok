@@ -579,9 +579,7 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     };
     let bytes = match decode_request_body(&headers, bytes) {
         Ok(bytes) => bytes,
-        Err(error) => {
-            return protocol_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, error.to_string())
-        }
+        Err(error) => return protocol_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, error.to_string()),
     };
     let body: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(body) => body,
@@ -599,7 +597,8 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     if !settings.enabled {
         return protocol_error(StatusCode::SERVICE_UNAVAILABLE, "Codex gateway is disabled");
     }
-    let official = settings.mode == super::CodexMode::Hybrid && super::catalog::is_official_model(id);
+    let official =
+        settings.mode == super::CodexMode::Hybrid && super::catalog::is_official_model(id);
     if !official && !settings.model_hashes.iter().any(|selected| selected == id) {
         return protocol_error(
             StatusCode::BAD_REQUEST,
@@ -611,7 +610,9 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     } else {
         match gateway.inner.store.model(id).await {
             Ok(Some(model)) => Some(model),
-            Ok(None) => return protocol_error(StatusCode::NOT_FOUND, "Codex model no longer exists"),
+            Ok(None) => {
+                return protocol_error(StatusCode::NOT_FOUND, "Codex model no longer exists")
+            }
             Err(error) => {
                 return protocol_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
             }
