@@ -26,7 +26,7 @@
 |---|---|---|
 | Cursor | 官方 / 本地 / 混合模型来源 + 本机代理与本地 CA | 只用自配模型选本地，官方模型同时可用选混合；本地模式不在模型库的模型会被明确拒绝，不会静默走官方。本地/混合模式下长会话的上下文压缩（自动与手动摘要）由本应用网关执行，官方模式仍由 Cursor 自己压缩 |
 | Devin | 可选本机网关 + 自选模型与模型映射 | 自选模型直接出现在 Devin 原生选择器；保留官方目录；按端点设置结构识别的补丁，带备份恢复与自定义安装目录 |
-| Codex（ChatGPT 客户端） | 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；支持 Responses / Chat Completions / Anthropic；只改 `config.toml` 受管字段，撤销即恢复 |
+| Codex（ChatGPT 客户端） | 本地 / 混合模式 + 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；混合模式需登录 ChatGPT，官方模型与自配模型同时可选；支持 Responses / Chat Completions / Anthropic；只改 `config.toml` 受管字段，撤销即恢复 |
 | Claude Desktop | 本机 Anthropic 网关 + `%LOCALAPPDATA%\Claude-3p\configLibrary` 下的 profile | 组织策略托管时只读，只给手工配置引导 |
 
 各网关默认关闭，只监听 `127.0.0.1`。受管配置、端口修改等细节见 [用户指南](./docs/user-guide.md) 与 [Codex 接入](./docs/codex-go-live.md)。

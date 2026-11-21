@@ -28,7 +28,7 @@ The linked guides are currently Chinese-only.
 |---|---|---|
 | Cursor | Official / local / mixed model sources + local proxy and local CA | Use local to route everything to your models, mixed to keep official models available too; local mode refuses models not in your library instead of silently going official. In local/mixed mode, long-session context compression (automatic and manual summaries) is done by this app's gateway; official mode is still compressed by Cursor |
 | Devin | Optional local gateway + custom models and model mappings | Custom models appear in Devin’s native picker alongside its official catalog; structure-detected endpoint-settings patch with backup/restore and custom installation directories |
-| Codex (ChatGPT client) | Local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced, over Responses / Chat Completions / Anthropic; rewrites only managed fields in `config.toml` and restores them on undo |
+| Codex (ChatGPT client) | Local / mixed mode + local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced; mixed mode needs a ChatGPT sign-in and lists official and your own models together; over Responses / Chat Completions / Anthropic; rewrites only managed fields in `config.toml` and restores them on undo |
 | Claude Desktop | Local Anthropic gateway + a profile under `%LOCALAPPDATA%\Claude-3p\configLibrary` | Read-only with manual guidance when managed by an organisation policy |
 
 All gateways are off by default and listen on `127.0.0.1` only. Managed settings, port changes and other details are in the [user guide](./docs/user-guide.md) and [Codex setup](./docs/codex-go-live.md).
