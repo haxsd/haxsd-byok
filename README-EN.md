@@ -50,8 +50,8 @@ Takeover changes only model requests that can be controlled locally. Sign-in, pl
 
 1. Download the installer whose name contains `x64-setup.exe` from [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) and install it.
 2. On the **Models** page, add the base URL, API key and model ID, pick the protocol, and use **Test** to confirm it works.
-3. **For Cursor**: initialize and trust the local CA, then pick the model source on the **Cursor** page. **Entering or leaving official mode stops a running Cursor: save your work and reopen it manually**; switching between local and mixed does not require a restart.
-4. **For Devin**: add custom models to the native picker or map existing Devin models, then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to apply the integration and verify a request.
+3. **For Cursor**: on the **Cursor** page, install the local certificate when prompted, then pick the model source. **Entering or leaving official mode stops a running Cursor: save your work and reopen it manually**; switching between local and mixed does not require a restart.
+4. **For Devin**: add models from your library (they appear under their own names in Devin’s native picker), then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to apply the integration and verify a request.
 5. **For Codex**: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
 6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply the Claude Desktop takeover; **quit Claude Desktop completely (including the tray) before applying, then start it again**.
 

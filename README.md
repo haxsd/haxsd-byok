@@ -48,8 +48,8 @@
 
 1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的安装包并安装。
 2. 在「模型」页添加地址、API Key 与模型 ID，选择协议，用「测试」确认可用。
-3. **用 Cursor**：初始化本地 CA 并按提示信任，再到「Cursor」页选择模型来源。**进出官方模式会结束正在运行的 Cursor，先保存工作并手动重新打开**；本地与混合模式之间切换不需要重启。
-4. **用 Devin**：添加自选模型（直接出现在原生选择器）或映射已有 Devin 模型，再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
+3. **用 Cursor**：在「Cursor」页按提示安装本地证书，再选择模型来源。**进出官方模式会结束正在运行的 Cursor，先保存工作并手动重新打开**；本地与混合模式之间切换不需要重启。
+4. **用 Devin**：添加模型库里的模型（以原名直接出现在 Devin 原生选择器），再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
 5. **用 Codex**：在「Codex」页选择模型、启用网关并保存，点「应用到 Codex」，然后重新打开客户端或新建会话；详见 [Codex 接入](./docs/codex-go-live.md)。
 6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，再应用 Claude Desktop 接管；**Desktop 需先完全退出（含托盘），应用后再启动**。
 
