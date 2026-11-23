@@ -293,7 +293,11 @@ fn codex_profile() -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn codex_running() -> bool {
-    let output = std::process::Command::new("tasklist")
+    use std::os::windows::process::CommandExt;
+    let mut command = std::process::Command::new("tasklist");
+    // tasklist 会弹控制台窗口；页面每次读取缓存状态都会调用它，必须隐藏。
+    command.creation_flags(0x0800_0000);
+    let output = command
         .args(["/FI", "IMAGENAME eq ChatGPT.exe", "/FO", "CSV", "/NH"])
         .output();
     output

@@ -9,6 +9,7 @@
 .verdict {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--oa-space-3);
   padding: var(--oa-space-3) var(--oa-space-4);
   background: var(--oa-surface-well);
@@ -35,7 +36,7 @@
 }
 
 .text {
-  flex: 1 1 auto;
+  flex: 1 1 260px;
   min-width: 0;
   display: grid;
   gap: 3px;
@@ -51,6 +52,13 @@
 .text > small {
   color: var(--vscode-descriptionForeground);
   font-size: type.$font-size-xs;
+}
+
+.action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--oa-space-2);
 }
 
 .aside {

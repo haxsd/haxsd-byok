@@ -1,4 +1,5 @@
 import cursorIconUrl from "../../shared/assets/icons/cursor.svg";
+import { useEffect, useState } from "react";
 import type { TabMode, TabSettings } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { TextInput } from "../../shared/ui/FormControls";
@@ -10,8 +11,8 @@ import styles from "./TabSettingsCard.module.scss";
 /**
  * TAB 补全的连接方式。
  *
- * 卡片永远展开：点「编辑」应该看到表单，而不是先展开一张折叠的卡片——折叠状态下
- * 编辑出的草稿没有任何可见的落点。加载失败在卡内行内说明，重试就在旁边。
+ * 默认折叠，只显示当前连接方式；点「编辑」或标题展开后才出现表单。这样两个
+ * 功能设置不会把 Cursor 接管页的首屏撑长。
  */
 export function TabSettingsCard({
   settings,
@@ -40,18 +41,32 @@ export function TabSettingsCard({
     if (mode === "direct") return t("官方");
     return t("自定义");
   };
+  const [open, setOpen] = useState(Boolean(error) || editing);
+  useEffect(() => {
+    if (error) setOpen(true);
+  }, [error]);
+  const edit = () => {
+    setOpen(true);
+    onEdit();
+  };
   const action = editing ? (
     <div className={styles.actionGroup}>
       <Button size="small" disabled={saving} onClick={onCancel}>{t("取消")}</Button>
       <Button variant="primary" size="small" disabled={saving} onClick={onSave}>{saving ? t("保存中…") : t("保存")}</Button>
     </div>
   ) : (
-    <button type="button" className={styles.headerAction} disabled={!settings} onClick={onEdit}>{t("编辑")}</button>
+    <button type="button" className={styles.headerAction} disabled={!settings} onClick={edit}>{t("编辑")}</button>
   );
 
   return <TitledCard
     title={<div className={styles.title}><Icon src={cursorIconUrl} size="1.1em" /><span>{t("Tab 补全")}</span></div>}
+    description={settings
+      ? `${modeLabel(settings.mode)}${settings.mode === "custom" && settings.address ? ` · ${settings.address}` : ""}`
+      : error ? t("读取失败") : undefined}
     action={action}
+    collapsible
+    expanded={open}
+    onToggle={() => setOpen((current) => editing ? true : !current)}
   >
     <div className={styles.content}>
       {editing ? <>

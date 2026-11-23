@@ -17,12 +17,14 @@ export type StatusStep = {
  *
  * 只显示**还没完成**的步骤：全都通了以后还挂着四个勾，等于每次访问都要重新扫一遍。
  */
-export function StatusHero({ connected, title, description, stages, steps, aside, footnotes }: {
+export function StatusHero({ connected, title, description, stages, steps, action, aside, footnotes }: {
   connected: boolean;
   title: ReactNode;
   description: ReactNode;
   stages: PathStage[];
   steps: StatusStep[];
+  /** 当前唯一主动作，放在结论右侧；不要在这里塞多个同级按钮。 */
+  action?: ReactNode;
   /** 右侧的补充信息，例如本地 CA 状态或接管开关。 */
   aside?: ReactNode;
   footnotes?: ReactNode;
@@ -34,6 +36,7 @@ export function StatusHero({ connected, title, description, stages, steps, aside
         <strong>{title}</strong>
         <small>{description}</small>
       </div>
+      {action && <div className={styles.action}>{action}</div>}
       {aside && <div className={styles.aside}>{aside}</div>}
     </div>
     <ConnectionPath stages={stages} />

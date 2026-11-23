@@ -8,7 +8,7 @@ type Client = "cursor" | "codex" | "devin" | "claude";
  * vendor cloud/account features remain official. Keep this deliberately short;
  * the goal is to tell users where the boundary is, not to document every menu.
  */
-export function HarnessCapabilities({ client }: { client: Client }) {
+export function HarnessCapabilities({ client, collapsible = false }: { client: Client; collapsible?: boolean }) {
   let usable: string[] = [];
   let official: string[] = [];
 
@@ -70,6 +70,8 @@ export function HarnessCapabilities({ client }: { client: Client }) {
     <TitledCard
       title={t("能力与限制")}
       description={t("本机可控制的模型请求走模型库；其余功能仍使用客户端官方服务。")}
+      collapsible={collapsible}
+      storageKey={collapsible ? `harness-capabilities:${client}` : undefined}
     >
       <div className={styles.grid}>
         <section className={styles.group}>

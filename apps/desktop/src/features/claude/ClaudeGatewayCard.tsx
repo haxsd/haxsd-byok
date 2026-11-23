@@ -66,6 +66,8 @@ export function ClaudeGatewayCard({
     title={t("本机网关")}
     description={t("Claude 使用这个网关")}
     icon={providerIcon}
+    collapsible
+    storageKey="claude-gateway"
     badge={status
       ? <StatusPill tone={listening ? "ok" : status.enabled ? "warn" : "idle"}>
         {listening ? t("已监听") : status.enabled ? t("未监听") : t("未启用")}
@@ -89,7 +91,7 @@ export function ClaudeGatewayCard({
             : !canEnable
               ? t("先选择默认模型")
               : dirty
-                ? t("有未保存的改动，点右上角「保存」")
+                ? t("有未保存的改动")
                 : t("关闭时不监听端口")}</small>
         </div>
         <Switch

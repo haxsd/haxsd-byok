@@ -129,7 +129,7 @@ export function claudeActionGate(input: ClaudeGateInput): ClaudeActionGate {
   if (!input.settings.enabled) return blocked(t("先启用并保存 Claude 网关。"));
   if (!input.status.listening) return blocked(t("网关还没有监听；检查端口后保存设置。"));
   if (!input.settings.default_model_hash) return blocked(t("先在网关里选择默认模型。"));
-  if (input.dirty) return blocked(t("有未保存的改动，点右上角「保存」"));
+  if (input.dirty) return blocked(t("有未保存的改动"));
   if (!takeover) return blocked(t("正在读取接管状态…"));
 
   if (takeover.desktop.state === "missing") return blocked(t("没有检测到 Claude Desktop。"));

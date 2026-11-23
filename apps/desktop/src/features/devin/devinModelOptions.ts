@@ -1,7 +1,7 @@
-import type { DevinModelBinding, DevinModelChoice, Model } from "../../shared/api";
+import type { DevinModelBinding, Model } from "../../shared/api";
 import type { ModelSelectOption } from "../../shared/ui/ModelSelect";
 import { modelProviderName } from "../../shared/utils/modelProvider";
-import { effectiveBindingModelHash, isNativeModelUid } from "./devinBindingEdits";
+import { effectiveBindingModelHash } from "./devinBindingEdits";
 
 export function devinModelOptionLabel(model: Pick<Model, "display_name" | "tooltip_data" | "model_id" | "model_hash">): string {
   const displayName = model.display_name.trim();
@@ -23,14 +23,13 @@ export function devinModelOptions(models: Model[]): ModelSelectOption[] {
 }
 
 /**
- * The explicit Devin default is a binding choice, not another model-library
- * choice: the label keeps the Devin-side name and the model that actually
- * answers. Disabled mappings are not selectable.
+ * The explicit Devin default is a direct model-library choice. The label is the
+ * answering model's own name; the client-side UID stays the stable value written
+ * to Devin, but users never need to see it.
  */
 export function devinDefaultModelOptions(
   bindings: DevinModelBinding[],
   models: Model[],
-  choices: DevinModelChoice[],
 ): ModelSelectOption[] {
   const seen = new Set<string>();
   return bindings.flatMap((binding) => {
@@ -42,13 +41,9 @@ export function devinDefaultModelOptions(
     const model = models.find(
       (candidate) => candidate.model_hash === effectiveBindingModelHash(binding),
     );
-    const modelName = model ? devinModelOptionLabel(model) : t("模型已删除或不可用");
-    const choiceName = isNativeModelUid(uid)
-      ? model ? modelName : binding.display_name.trim() || modelName
-      : choices.find((choice) => choice.uid.trim() === uid)?.name.trim() || uid;
     return [{
       value: uid,
-      label: choiceName === modelName ? modelName : `${choiceName} → ${modelName}`,
+      label: model ? devinModelOptionLabel(model) : t("模型已删除或不可用"),
       group: model ? modelProviderName(model) : t("模型库"),
     }];
   });

@@ -4,13 +4,13 @@ import { api, configuredPluginModels, type CodexSettings, type CodexUiCacheStatu
 import { useI18n } from "../../i18n/store";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
+import { Card } from "../../shared/ui/Card";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { StatusHero } from "../../shared/ui/StatusHero";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { useMessage } from "../../shared/ui/message";
 import { PageContent } from "../../shell/layout/PageContent";
-import { PageActions } from "../../shell/PageActions";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { clientErrorText } from "../harness/harnessErrorText";
 import { CodexConflictCard } from "./CodexConflictCard";
@@ -23,11 +23,10 @@ import {
   codexClientStage,
   codexConnectionView,
   codexLoginView,
-  codexOutstandingSteps,
   codexVerdictDescription,
 } from "./codexConnectionView";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
-import { providerIcon, settingsIcon } from "../../shared/ui/icons";
+import { settingsIcon } from "../../shared/ui/icons";
 import styles from "./CodexSettingsPage.module.scss";
 
 /**
@@ -95,7 +94,6 @@ export function CodexSettingsPage() {
   const modelCount = saved?.model_hashes.length ?? 0;
   const modelAvailability = draft ? codexModelAvailability(models, pluginModels, draft.model_hashes) : null;
   const modelSelectionBlocked = modelAvailability ? codexModelSelectionBlocked(modelAvailability) : false;
-  const steps = codexOutstandingSteps(codexStatus, modelCount, models.length);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   const applied = Boolean(codexStatus?.configured && codexStatus.conflict_kind === "none");
   const hybridNeedsLogin = Boolean(draft?.mode === "hybrid" && codexStatus && !codexStatus.chatgpt_signed_in);
@@ -142,13 +140,22 @@ export function CodexSettingsPage() {
     await api.applyCodex(true);
     message(t("已强制接管 Codex 配置。请完全退出 Codex 后重开。"));
   });
+  const primary = (() => {
+    if (!draft || !saved) return { label: t("读取中…"), disabled: true, run: () => undefined };
+    if (!draft.model_hashes.length) {
+      return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
+    }
+    if (dirty) {
+      return { label: t("保存"), disabled: busy || locked || modelSelectionBlocked, run: () => void save() };
+    }
+    if (!applied) {
+      return { label: t("应用到 Codex"), disabled: busy || !gate.apply, run: requestApply };
+    }
+    return { label: t("查看调用记录"), disabled: false, run: () => void navigate("/calls") };
+  })();
   const alertCause = error ?? codexStatus?.last_error ?? codexStatus?.managed_error;
   const content = <div className={styles.page}>
-    <TitledCard
-      title={t("接入状态")}
-      icon={providerIcon}
-      action={<Button size="small" onClick={() => void navigate("/calls")}>{t("查看调用记录")}</Button>}
-    >
+    <Card as="section">
       <StatusHero
         connected={view.state === "taken-over"}
         title={view.label}
@@ -158,7 +165,12 @@ export function CodexSettingsPage() {
           { key: "gateway", label: t("本机网关"), detail: codexStatus?.listening ? t("运行中") : t("未监听"), state: codexStatus?.listening ? "up" : "down" },
           { key: "models", label: t("模型库"), detail: modelCount ? t("{count} 个模型", { count: modelCount }) : t("未选择模型"), state: modelCount ? "up" : "unknown" },
         ]}
-        steps={steps}
+        steps={[]}
+        action={<>
+          {gate.restore && <Button size="small" disabled={busy} onClick={() => void restore()}>{t("撤销接管")}</Button>}
+          {applied && gate.apply && !dirty && <Button size="small" disabled={busy} onClick={requestApply}>{t("应用到 Codex")}</Button>}
+          <Button size="small" variant="primary" disabled={primary.disabled} onClick={primary.run}>{primary.label}</Button>
+        </>}
         aside={<div className={styles.aside}>
           <StatusPill tone={login.tone} title={login.title}>{login.label}</StatusPill>
         </div>}
@@ -170,25 +182,19 @@ export function CodexSettingsPage() {
         </div>}
       />
       {alertCause && <CodexErrorAlert cause={alertCause} />}
-    </TitledCard>
+    </Card>
     <CodexConflictCard status={codexStatus} onForce={() => setConfirmForce(true)} forceBusy={busy} />
     {locale === "zh-CN" && <CodexUiCacheNote status={uiCache} busy={busy} error={uiCacheError} onRepair={() => void repairUiCache()} />}
-    <TitledCard title={t("接入设置")} icon={settingsIcon}>
+    <TitledCard title={t("接入配置")} icon={settingsIcon} collapsible storageKey="codex-settings" badge={<StatusPill tone="idle">{t("{count} 个模型", { count: modelCount })}</StatusPill>}>
       {draft
         ? <CodexSettingsForm draft={draft} models={models} pluginModels={pluginModels} locked={locked || busy} lockReason={lockReason} applied={applied} hybridNeedsLogin={hybridNeedsLogin} onChange={setDraft} />
         : error
           ? <div className={styles.note}><span>{t("读取失败")}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
           : <p className={styles.note}>{t("加载中…")}</p>}
     </TitledCard>
-    <HarnessCapabilities client="codex" />
+    <HarnessCapabilities client="codex" collapsible />
   </div>;
-  return <>
-    <PageActions>
-      <Button disabled={busy || !dirty || locked || !draft || modelSelectionBlocked} onClick={() => void save()}>{t("保存")}</Button>
-      <Button disabled={busy || !gate.apply || hybridNeedsLogin} onClick={requestApply}>{t("应用到 Codex")}</Button>
-      <Button disabled={busy || !gate.restore} onClick={() => void restore()}>{t("撤销接管")}</Button>
-    </PageActions>
-    <ConfirmDialog
+  return <>    <ConfirmDialog
       open={confirmForce}
       destructive
       title={t("强制接管 Codex？")}

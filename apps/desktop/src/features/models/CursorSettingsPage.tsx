@@ -7,9 +7,9 @@ import { startCursorCaWaitPoll } from "./caWaitPoll";
 import { CursorToolsSettings } from "../cursor/CursorToolsSettings";
 import { cursorSettingsSection, TOOLS_SECTION } from "../cursor/toolsSection";
 import styles from "./CursorSettings.module.scss";
-import { PageActions } from "../../shell/PageActions";
 import { PageContent } from "../../shell/layout/PageContent";
 import { Button } from "../../shared/ui/Button";
+import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import type { PathStage } from "../../shared/ui/ConnectionPath";
 import { PageTitle } from "../../shared/ui/PageTitle";
@@ -51,8 +51,16 @@ export function CursorSettingsPage() {
   const [waitingForCaRefresh, setWaitingForCaRefresh] = useState(false);
   const [pendingMode, setPendingMode] = useState<CursorMode | null>(null);
   const [pendingForce, setPendingForce] = useState(false);
+  /**
+   * 模式选择先落在草稿里，不立刻写配置、不结束 Cursor。真正生效只由状态卡里的
+   * 主动作触发；这样页面只有一条接管路径，切换模式不会在后台偷偷改系统。
+   */
+  const [draftMode, setDraftMode] = useState<CursorMode>(cursorHarness?.mode ?? "official");
 
   const mode: CursorMode = cursorHarness?.mode ?? "official";
+  useEffect(() => {
+    setDraftMode(mode);
+  }, [mode]);
   const account = cursorHarness?.account;
   const catalog = cursorHarness?.catalog;
   const caReady = cursorHarness?.ca === "ready";
@@ -111,34 +119,40 @@ export function CursorSettingsPage() {
   };
 
   /**
-   * 切换模式。跨官方边界要结束 Cursor（它只在启动时读代理配置），本地切到混合还要
-   * 清掉我们注入的本地账号，这两件事都先说清楚再动手；本地↔混合的其余情况直接切。
+   * 选择模式只改草稿。跨官方边界、清本地账号、外部配置这些副作用都留到用户点
+   * 状态卡里的主按钮之后，由确认对话框一次说清。
    */
   const requestMode = (next: CursorMode) => {
-    if (next === mode) return;
-    if (next !== "official" && !caReady) {
-      message(t("先初始化并信任本地 CA，再切换到本地或混合模式。"));
-      return;
-    }
-    const clearsLocalAccount = next === "mixed" && account?.state === "local";
-    if (next === "official" || mode === "official" || clearsLocalAccount) {
-      setPendingMode(next);
-      return;
-    }
-    void appStore.setCursorMode(next);
+    if (next === draftMode) return;
+    setDraftMode(next);
   };
-  /** 显式应用当前选择的接管模式；官方模式下没有可应用的东西，先引导选模式。 */
+  /** 状态卡里的唯一下一步：按当前草稿决定是添加模型、装证书、应用接管还是刷新。 */
   const applyTakeover = () => {
-    if (!caReady) {
+    const selectedMode = draftMode === "official" && mode === "official" ? "local" : draftMode;
+    if (selectedMode !== "official" && !caReady) {
       message(t("先初始化并信任本地 CA，再切换到本地或混合模式。"));
       return;
     }
-    if (mode === "official") {
+    if (selectedMode === "official") {
+      if (mode === "official") {
+        message(t("当前就是官方模式。"));
+        return;
+      }
       setPendingForce(false);
-      setPendingMode("local");
+      setPendingMode("official");
       return;
     }
-    void appStore.setCursorMode(mode);
+    if (selectedMode === mode && cursorTakenOver) {
+      void appStore.refresh();
+      return;
+    }
+    const clearsLocalAccount = selectedMode === "mixed" && account?.state === "local";
+    if (mode === "official" || clearsLocalAccount || foreignConfiguration) {
+      setPendingForce(false);
+      setPendingMode(selectedMode);
+      return;
+    }
+    void appStore.setCursorMode(selectedMode);
   };
   /** 撤销接管：回到官方模式。 */
   const revokeTakeover = () => {
@@ -152,14 +166,9 @@ export function CursorSettingsPage() {
       message(t("先初始化并信任本地 CA，再切换到本地或混合模式。"));
       return;
     }
-    if (mode === "official") {
-      // 官方模式下也可能残留外部配置：强制的含义就是切到本地并覆盖它。
-      setPendingForce(true);
-      setPendingMode("local");
-      return;
-    }
+    const selectedMode = draftMode === "official" ? "local" : draftMode;
     setPendingForce(true);
-    setPendingMode(mode);
+    setPendingMode(selectedMode);
   };
   const switchWarning = pendingMode === "official"
     ? t("切换到官方模式会结束所有正在运行的 Cursor 进程（未保存的编辑会丢失），并清除本应用注入的本地账号，之后 Cursor 直连官方。请先保存工作。")
@@ -252,94 +261,180 @@ export function CursorSettingsPage() {
       },
     ]).filter(Boolean) as Array<{ key: string; label: string; hint: string }>;
 
+  /**
+   * 状态卡只有一个主动作。草稿模式决定下一页是什么：先补模型、再补证书，
+   * 然后应用接管；已经生效后只提供查看记录，避免再出现第二个“应用接管”。
+   */
+  const draftDiffers = draftMode !== mode;
+  const primaryAction = (() => {
+    if (modelCount === 0) {
+      return { label: t("添加模型"), run: () => void navigate("/models") };
+    }
+    if (draftMode === "official" && mode !== "official") {
+      return { label: t("切换到官方"), run: applyTakeover };
+    }
+    if (!caReady) {
+      return { label: t("安装证书"), run: () => void initializeCa() };
+    }
+    if (draftMode !== "official" && draftDiffers) {
+      return {
+        label: mode === "official"
+          ? draftMode === "mixed" ? t("开启混合接管") : t("开启本地接管")
+          : draftMode === "mixed" ? t("切换到混合模式") : t("切换到本地模式"),
+        run: applyTakeover,
+      };
+    }
+    if (mode === "official") {
+      return { label: t("开启本地接管"), run: applyTakeover };
+    }
+    if (!cursorTakenOver) {
+      return { label: t("开启接管"), run: applyTakeover };
+    }
+    return { label: t("查看调用记录"), run: () => void navigate("/calls") };
+  })();
+  const statusDescription = modelCount === 0
+    ? t("模型库为空，Cursor 还没有可回答请求的模型。先添加一个，再继续接管。")
+    : !caReady && !takesOver
+      ? t("模型已就绪。安装一次本地证书，Cursor 的请求才能安全经过本机代理。")
+      : !caReady
+        ? t("本地证书未就绪。重新安装后，接管才能继续生效。")
+        : draftMode === "official" && mode !== "official"
+          ? t("已经选择回到官方模式；点击右侧按钮会撤销接管并结束 Cursor。")
+          : draftDiffers
+            ? t("已经选择{mode}模式，点击右侧按钮应用；切换模式不会自动改系统。", { mode: modeLabel[draftMode] })
+            : !takesOver
+              ? t("当前直连官方。点击右侧按钮会开启本地接管，由模型库回答请求。")
+              : connected
+                ? t("代理配置已写入；重启 Cursor 之后，请求会由模型库里的 {count} 个模型回答。", { count: modelCount })
+                : foreignConfiguration
+                  ? t("Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要接管请先关闭对方，或用「强制接管」覆盖。")
+                  : !cursorTakenOver
+                    ? t("本地代理配置尚未写入；点击右侧按钮开启接管。")
+                    : outstanding[0]?.label ?? t("读取中…");
+
   // 两个分区都保持挂载：切到「接入」再看功能设置，编辑中的草稿还在。用 hidden 隐藏
   // 而不是卸载——卸载会把没保存的编辑一起丢掉。
   const accessCards = <>
-    <TitledCard
-      title={t("接入状态")}
-      action={<Button size="small" onClick={() => void navigate("/calls")}>{t("查看调用记录")}</Button>}
-    >
+    <Card as="section" className={styles.statusCard}>
       <StatusHero
         connected={connected}
         title={!takesOver ? t("官方模式") : connected ? t("已接管") : t("还没有接管")}
-        description={!takesOver
-          ? t("Cursor 直连官方：本应用不写代理配置、不注入账号，也不记录它的请求。")
-          : connected
-            ? t("代理配置已写入；重启 Cursor 之后，请求会由模型库里的 {count} 个模型回答。", { count: modelCount })
-            : foreignConfiguration
-              ? t("Cursor 的代理配置由另一个同类软件写入，本应用没有覆盖它。要继续用本应用接管，请先关闭对方的接管，或在上方选择模式。")
-              : outstanding[0]?.label ?? t("读取中…")}
+        description={statusDescription}
         stages={stages}
-        steps={outstanding}
+        steps={[]}
         footnotes={connected
-          ? t("Cursor 只在启动时读取这份配置：如果它是在切换模式之前打开的，需要重启一次。")
-          : undefined}
+          ? t("Cursor 只在启动时读取这份配置：如果它是在切换模式之前打开的，请完全退出并重新打开。")
+          : draftDiffers
+            ? t("选择模式不会立即改系统；点上方主按钮才会写入配置。")
+            : undefined}
+        action={<>
+          {foreignConfiguration && <Button size="small" disabled={cursorBusy} onClick={forceTakeover}>{t("强制接管")}</Button>}
+          {takesOver && <Button size="small" disabled={cursorBusy} onClick={revokeTakeover}>{t("撤销接管")}</Button>}
+          <Button size="small" variant="primary" disabled={cursorBusy} onClick={primaryAction.run}>{primaryAction.label}</Button>
+        </>}
         aside={<>
           {foreignConfiguration && <StatusPill tone="warn">{t("配置冲突")}</StatusPill>}
           <StatusPill tone={caTone}>{t("本地 CA：{state}", { state: caLabel })}</StatusPill>
         </>}
       />
-    </TitledCard>
+    </Card>
 
     <TitledCard
-      title={t("模型来源")}
-      description={t("决定 Cursor 的模型列表里有什么，以及请求由谁回答。")}
-      badge={<StatusPill tone={mode === "official" ? "idle" : officialModelsUsable ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>}
+      title={t("接入配置")}
+      description={t("模型来源、证书和模型库；其余说明放在高级区。")}
+      badge={draftDiffers ? <StatusPill tone="warn">{t("未应用")}</StatusPill> : undefined}
     >
-      <div className={styles.caBody}>
-        <div className={styles.modeRow}>
-          <Segmented<CursorMode>
-            value={mode}
-            ariaLabel={t("模型来源")}
-            disabled={cursorBusy}
-            options={[
-              { value: "official", label: t("官方") },
-              { value: "local", label: t("本地") },
-              { value: "mixed", label: t("混合") },
-            ]}
-            onChange={(next) => requestMode(next)}
-          />
-          {!caReady && mode !== "official" && <StatusPill tone="warn">{t("需要先信任本地 CA")}</StatusPill>}
-        </div>
-        <small className={styles.modeNote}>{modeDetail[mode]}</small>
-        <div className={styles.caFact}>
-          <Icon icon={keyIcon} size="1.1em" />
-          <div>
-            <strong>{t("Cursor 账号：{account}", { account: accountLabel })}</strong>
-            <small>{mode === "mixed"
-              ? t("混合模式要求登录你自己的账号；本应用不会注入本地账号。")
-              : mode === "local"
-                ? t("本地模式不要求官方账号；库里没有的模型会被明确拒绝，不会静默走官方。")
-                : t("官方模式下账号完全由 Cursor 自己管理。")}</small>
+      <div className={styles.configBody}>
+        <section className={styles.configBlock}>
+          <div className={styles.configHead}>
+            <strong>{t("模型来源")}</strong>
+            <StatusPill tone={mode === "official" ? "idle" : officialModelsUsable ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>
           </div>
-        </div>
-        <div className={styles.caFact}>
-          <Icon icon={shieldIcon} size="1.1em" />
-          <div>
-            <strong>{t("官方模型目录：{catalog}", { catalog: catalogLabel })}</strong>
-            <small>{mode === "local"
-              ? t("本地模式不向上游取官方目录，模型列表里只有本机的模型。")
-              : catalogTime
-                ? t("最近一次成功：{time}；失败时官方模型会从列表里消失，这里会显示原因。", { time: catalogTime })
-                : t("还没成功取到官方目录；官方模型暂时不会出现在列表里。")}</small>
+          <div className={styles.modeRow}>
+            <Segmented<CursorMode>
+              value={draftMode}
+              ariaLabel={t("模型来源")}
+              disabled={cursorBusy}
+              options={[
+                { value: "official", label: t("官方") },
+                { value: "local", label: t("本地") },
+                { value: "mixed", label: t("混合") },
+              ]}
+              onChange={(next) => requestMode(next)}
+            />
+            {!caReady && draftMode !== "official" && <StatusPill tone="warn">{t("需要先信任本地 CA")}</StatusPill>}
           </div>
-        </div>
-        {mode === "mixed" && account?.state !== "official" && <ul className={styles.modeList}>
-          <li>{account?.state === "local" ? t("已清除本应用注入的本地账号") : t("尚未登录官方账号")}</li>
-          <li>{t("请在 Cursor 里登录你自己的账号，官方模型才会出现在模型列表里")}</li>
-        </ul>}
-        {catalogDegraded && mode !== "local" && <ul className={styles.modeList}>
-          <li>{t("官方模型列表上一次抓取失败，模型列表可能只有本机的模型")}</li>
-          <li>{t("如果失败原因是 401，通常是账号未登录或登录已过期")}</li>
-        </ul>}
+          <small className={styles.modeNote}>{modeDetail[draftMode]}</small>
+          {draftDiffers && <small className={styles.draftNote}>{t("这是未应用的选择；点上方主按钮才会写入配置。")}</small>}
+          <details className={styles.configDetails}>
+            <summary>{t("账号与官方模型目录")}</summary>
+            <div className={styles.configFacts}>
+              <div className={styles.caFact}>
+                <Icon icon={keyIcon} size="1.1em" />
+                <div>
+                  <strong>{t("Cursor 账号：{account}", { account: accountLabel })}</strong>
+                  <small>{mode === "mixed"
+                    ? t("混合模式要求登录你自己的账号；本应用不会注入本地账号。")
+                    : mode === "local"
+                      ? t("本地模式不要求官方账号；库里没有的模型会被明确拒绝，不会静默走官方。")
+                      : t("官方模式下账号完全由 Cursor 自己管理。")}</small>
+                </div>
+              </div>
+              <div className={styles.caFact}>
+                <Icon icon={shieldIcon} size="1.1em" />
+                <div>
+                  <strong>{t("官方模型目录：{catalog}", { catalog: catalogLabel })}</strong>
+                  <small>{mode === "local"
+                    ? t("本地模式不向上游取官方目录，模型列表里只有本机的模型。")
+                    : catalogTime
+                      ? t("最近一次成功：{time}；失败时官方模型会从列表里消失，这里会显示原因。", { time: catalogTime })
+                      : t("还没成功取到官方目录；官方模型暂时不会出现在列表里。")}</small>
+                </div>
+              </div>
+            </div>
+            {mode === "mixed" && account?.state !== "official" && <ul className={styles.modeList}>
+              <li>{account?.state === "local" ? t("已清除本应用注入的本地账号") : t("尚未登录官方账号")}</li>
+              <li>{t("请在 Cursor 里登录你自己的账号，官方模型才会出现在模型列表里")}</li>
+            </ul>}
+            {catalogDegraded && mode !== "local" && <ul className={styles.modeList}>
+              <li>{t("官方模型列表上一次抓取失败，模型列表可能只有本机的模型")}</li>
+              <li>{t("如果失败原因是 401，通常是账号未登录或登录已过期")}</li>
+            </ul>}
+          </details>
+        </section>
+
+        <section className={styles.configBlock}>
+          <div className={styles.configHead}>
+            <strong>{t("本地证书")}</strong>
+            <StatusPill tone={caTone}>{caLabel}</StatusPill>
+          </div>
+          <small className={styles.modeNote}>{caReady
+            ? t("证书已就绪，用于安全解析 Cursor 的 HTTPS 请求。")
+            : t("安装一次证书，Cursor 的请求才能安全经过本机代理。")}</small>
+        </section>
+
+        <section className={styles.configBlock}>
+          <div className={styles.configHead}>
+            <strong>{t("模型库")}</strong>
+            <span className={styles.configCount}>{t("{count} 个模型", { count: modelCount })}</span>
+          </div>
+          <div className={styles.configLine}>
+            <span>{modelCount > 0
+              ? t("Cursor 会从这里选择模型回答请求。")
+              : t("模型库还是空的。Cursor 需要一个模型才能回答请求。")}</span>
+            <Button size="small" onClick={() => void navigate("/models")}>{t("管理模型")}</Button>
+          </div>
+        </section>
       </div>
     </TitledCard>
 
     <TitledCard
-      title={t("本地证书")}
-      description={t("CA 只保存在本机，用于安全解析 Cursor 的 HTTPS 请求。")}
+      title={t("本地证书详情")}
+      description={t("安装命令、平台授权方式和证书状态。")}
       icon={shieldIcon}
       badge={<StatusPill tone={caTone}>{caLabel}</StatusPill>}
+      collapsible
+      storageKey="cursor-ca-details"
     >
       <CursorCaGate busy={cursorBusy} waitingForRefresh={waitingForCaRefresh} onInitialize={() => void initializeCa()} onRefresh={() => void refreshCa()}>
         <div className={styles.caBody}>
@@ -374,38 +469,14 @@ export function CursorSettingsPage() {
       </CursorCaGate>
     </TitledCard>
 
-    <TitledCard
-      title={t("模型库")}
-      description={t("包括手动配置和插件提供的可用模型；模型旁标明供应商或插件来源。")}
-      action={<Button size="small" variant="primary" onClick={() => void navigate("/models")}>{t("管理模型")}</Button>}
-    >
-      <div className={styles.modelSummary}>
-        <span className={styles.modelCount}>{t("{count} 个模型", { count: modelCount })}</span>
-        {modelCount > 0
-          ? <ul className={styles.modelNames}>
-            {availableModels.map((model) => <li key={model.id}>
-              {model.name}{model.source && <span> · {model.source}</span>}
-            </li>)}
-          </ul>
-          : <small>{t("模型库还是空的。Cursor 需要一个模型才能回答请求。")}</small>}
-      </div>
-    </TitledCard>
-
-    <HarnessCapabilities client="cursor" />
+    <HarnessCapabilities client="cursor" collapsible />
   </>;
-
   const content = <div className={styles.page}>
     {accessCards}
     <div ref={toolsRef} className={styles.section}><CursorToolsSettings /></div>
   </div>;
 
-  return <>
-    <PageActions>
-      {foreignConfiguration && <Button size="small" disabled={cursorBusy} onClick={forceTakeover}>{t("强制接管")}</Button>}
-      <Button size="small" disabled={cursorBusy} onClick={applyTakeover}>{t("应用接管")}</Button>
-      <Button size="small" disabled={cursorBusy || mode === "official"} onClick={revokeTakeover}>{t("撤销接管")}</Button>
-    </PageActions>
-    <PageContent
+  return <>    <PageContent
       title={<PageTitle
         title="Cursor"
         status={<StatusPill tone={!takesOver ? "idle" : connected ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>}
@@ -416,11 +487,15 @@ export function CursorSettingsPage() {
     <ConfirmDialog
       open={pendingMode !== null}
       destructive={pendingEndsCursor}
-      title={pendingForce ? t("强制接管？") : t("切换模型来源？")}
+      title={pendingForce
+        ? t("强制接管？")
+        : pendingMode === "official" ? t("撤销接管？") : t("应用接管？")}
       cancelLabel={t("取消")}
       confirmLabel={pendingForce
         ? t("结束并强制接管")
-        : pendingEndsCursor ? t("结束并切换") : t("切换")}
+        : pendingMode === "official"
+          ? t("结束并撤销")
+          : pendingEndsCursor ? t("结束并应用") : t("应用")}
       onCancel={() => {
         setPendingMode(null);
         setPendingForce(false);

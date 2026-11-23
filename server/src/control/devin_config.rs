@@ -450,7 +450,10 @@ async fn ensure_devin_closed() -> Result<()> {
 
 #[cfg(windows)]
 async fn devin_is_running() -> Result<bool> {
-    let output = tokio::process::Command::new("tasklist")
+    let mut command = tokio::process::Command::new("tasklist");
+    // 页面刷新会探测 Devin 是否在运行；不能让它弹出控制台窗口。
+    command.creation_flags(0x0800_0000);
+    let output = command
         .args(["/FI", "IMAGENAME eq Devin.exe", "/FO", "CSV", "/NH"])
         .output()
         .await

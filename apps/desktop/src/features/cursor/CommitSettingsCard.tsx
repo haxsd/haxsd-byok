@@ -17,8 +17,8 @@ import styles from "./CommitSettingsCard.module.scss";
 /**
  * 提交信息的生成模型与提示词。
  *
- * 卡片永远展开，读模式显示已保存的模型，编辑只改本地草稿；读取失败在卡内说明，
- * 重试不必离开这一页。提示词编辑器仍然是独立弹窗：它要全高，不能挤在卡片里。
+ * 默认折叠，只显示当前生成模型；点「编辑」「提示词设置」或标题后展开。读模式
+ * 只显示已保存的模型，编辑只改本地草稿；读取失败在卡内说明，重试不必离开这一页。
  */
 export function CommitSettingsCard() {
   const { models, plugins } = useAppStore();
@@ -35,6 +35,10 @@ export function CommitSettingsCard() {
   const [promptDraft, setPromptDraft] = useState("");
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [syncingPromptLocale, setSyncingPromptLocale] = useState(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (loadError) setOpen(true);
+  }, [loadError]);
 
   /**
    * 只读设置（`loadCommitSettings` 里没有任何写请求）。
@@ -133,6 +137,7 @@ export function CommitSettingsCard() {
     if (!view) return;
     setModelDraft(view.model_id);
     setEditing(true);
+    setOpen(true);
   }, [view]);
 
   const cancelModelEdit = useCallback(() => {
@@ -161,6 +166,7 @@ export function CommitSettingsCard() {
     if (!view) return;
     setPromptDraft(view.prompt || view.default_prompt);
     setPromptOpen(true);
+    setOpen(true);
   }, [view]);
 
   const savePrompt = useCallback(async () => {
@@ -206,7 +212,14 @@ export function CommitSettingsCard() {
 
   return (
     <>
-      <TitledCard title={t("提交信息模型")} action={action}>
+      <TitledCard
+        title={t("提交信息模型")}
+        description={view ? selectedModelLabel : loadError ? t("读取失败") : undefined}
+        action={action}
+        collapsible
+        expanded={open}
+        onToggle={() => setOpen((current) => editing ? true : !current)}
+      >
         <div className={styles.content}>
           <div className={styles.row}>
             <div className={styles.details}>

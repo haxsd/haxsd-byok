@@ -78,7 +78,7 @@ test("an identical remark and display name are not repeated", async () => {
   assert.equal(devinModelOptionLabel(model({ display_name: "DeepSeek flash", tooltip_data: "DeepSeek" })), "DeepSeek flash");
 });
 
-test("default model options show both the Devin name and the answering model", async () => {
+test("default model options show the answering model directly", async () => {
   const { devinDefaultModelOptions } = await loader.load("/src/features/devin/devinModelOptions.ts");
 
   const options = devinDefaultModelOptions(
@@ -88,16 +88,12 @@ test("default model options show both the Devin name and the answering model", a
       binding({ model_uid: "missing-uid", model_hash: "gone" }),
     ],
     [model()],
-    [
-      { uid: "swe-1-6-slow", name: "SWE-1.6 Slow" },
-      { uid: "missing-uid", name: "SWE-1.7" },
-    ],
   );
 
   assert.deepEqual(options.map((option) => option.value), ["swe-1-6-slow", "missing-uid"]);
-  assert.equal(options[0].label, "SWE-1.6 Slow → Local SSE · Devin E2E Stub");
+  assert.equal(options[0].label, "Local SSE · Devin E2E Stub");
   assert.equal(options[0].group, "E2E");
-  assert.equal(options[1].label, "SWE-1.7 → 模型已删除或不可用");
+  assert.equal(options[1].label, "模型已删除或不可用");
   assert.equal(options[1].group, "模型库");
 });
 

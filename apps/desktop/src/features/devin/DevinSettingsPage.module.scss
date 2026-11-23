@@ -25,10 +25,10 @@
 .reason { display: block; margin: 0 16px 16px; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 .addActions { display: flex; align-items: center; gap: 8px; }
 
-/* A mapping row: the two values that actually decide it, then the disclosure. */
+/* A model row: the direct model selector and its actions. */
 .bindingRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 12px;
   padding: 16px;

@@ -18,7 +18,7 @@ import styles from "./TitledCard.module.scss";
  * card titles were the only thing on a page, so a reader had to open every card to
  * find out which one was worth opening.
  */
-export function TitledCard({ title, description, icon, badge, action, collapsible = false, storageKey, children }: {
+export function TitledCard({ title, description, icon, badge, action, collapsible = false, storageKey, expanded, onToggle, children }: {
   title: ReactNode;
   description?: ReactNode;
   icon?: IconifyIcon;
@@ -26,20 +26,24 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
   action?: ReactNode;
   collapsible?: boolean;
   storageKey?: string;
+  /** 受控展开状态；不传时沿用卡片自己记住的状态。 */
+  expanded?: boolean;
+  onToggle?: () => void;
   children: ReactNode;
 }) {
   const remembered = useUiPreferences().disclosure?.[storageKey ?? ""];
-  const [open, setOpen] = useState(() => {
+  const [internalOpen, setInternalOpen] = useState(() => {
     if (!collapsible) return true;
     // A remembered choice wins; otherwise a collapsible card starts folded.
     return typeof remembered === "boolean" ? remembered : false;
   });
+  const open = expanded ?? internalOpen;
 
   // 启动时偏好是异步到的：值到了要跟上，否则用户上次展开的卡片这次会一直折着。
   useEffect(() => {
-    if (!collapsible || !storageKey || typeof remembered !== "boolean") return;
-    setOpen(remembered);
-  }, [collapsible, storageKey, remembered]);
+    if (!collapsible || !storageKey || expanded !== undefined || typeof remembered !== "boolean") return;
+    setInternalOpen(remembered);
+  }, [collapsible, storageKey, expanded, remembered]);
 
   const heading = <>
     {icon && <span className={styles.icon}><Icon icon={icon} size="1.15em" /></span>}
@@ -61,12 +65,15 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
   }
 
   const toggle = () => {
-    setOpen((current) => {
-      const next = !current;
-      // 写服务端；界面不等它（折叠要立刻响应）。失败只影响"下次启动还记不记得"。
-      if (storageKey) void saveUiPreferences({ disclosure: { [storageKey]: next } });
-      return next;
-    });
+    if (expanded === undefined) {
+      setInternalOpen((current) => {
+        const next = !current;
+        // 写服务端；界面不等它（折叠要立刻响应）。失败只影响"下次启动还记不记得"。
+        if (storageKey) void saveUiPreferences({ disclosure: { [storageKey]: next } });
+        return next;
+      });
+    }
+    onToggle?.();
   };
 
   return <Card as="section" className={styles.root}>

@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type ClaudeDesktopTakeover, type ClaudeSettings, type ClaudeTakeoverConflict } from "../../shared/api";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
+import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { PageTitle } from "../../shared/ui/PageTitle";
+import { StatusHero } from "../../shared/ui/StatusHero";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
 import { terminalIcon } from "../../shared/ui/icons";
-import { PageActions } from "../../shell/PageActions";
 import { PageContent } from "../../shell/layout/PageContent";
 import { ClaudeDesktopTab } from "./ClaudeDesktopTab";
 import { ClaudeGatewayCard } from "./ClaudeGatewayCard";
@@ -16,6 +18,8 @@ import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import {
   claudeActionGate,
   claudeConnectionView,
+  claudeTakeoverDescription,
+  claudeTakeoverStateLabel,
   claudeTokenRotationGate,
   claudeUndoKept,
 } from "./claudeConnectionView";
@@ -46,6 +50,7 @@ export function ClaudeSettingsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const desktopInitialized = useRef(false);
   const message = useMessage();
+  const navigate = useNavigate();
 
   useEffect(() => {
     let disposed = false;
@@ -78,6 +83,8 @@ export function ClaudeSettingsPage() {
     dirty,
     desktopModels,
   });
+  const modelCount = claudeStatus?.models ?? 0;
+  const desktopState = claudeTakeover?.desktop.state ?? null;
 
   const run = async (next: Busy, operation: () => Promise<void>) => {
     setBusy(next);
@@ -137,6 +144,21 @@ export function ClaudeSettingsPage() {
     });
   };
 
+  const primaryAction = (() => {
+    if (!draft || !saved) return { label: t("读取中…"), disabled: true, run: () => undefined };
+    if (dirty) return { label: t("保存"), disabled: busy !== null, run: save };
+    if (!saved.enabled || !saved.default_model_hash) {
+      return { label: t("保存"), disabled: true, run: () => undefined };
+    }
+    if (view.state === "taken-over") {
+      return { label: t("查看调用记录"), disabled: false, run: () => void navigate("/calls") };
+    }
+    if (gate.apply) {
+      return { label: t("应用到 Claude"), disabled: busy !== null, run: applyDesktop };
+    }
+    return { label: t("重新检查"), disabled: busy !== null, run: () => void appStore.refresh() };
+  })();
+
   const copy = (text: string, done: string) => {
     if (!text) return;
     void api.copyCursorText(text)
@@ -145,6 +167,47 @@ export function ClaudeSettingsPage() {
   };
 
   const content = <div className={styles.page}>
+    <Card as="section">
+      <StatusHero
+        connected={view.state === "taken-over"}
+        title={view.label}
+        description={!claudeStatus
+          ? t("正在读取网关状态…")
+          : !claudeStatus.enabled
+            ? t("先启用并保存 Claude 网关。")
+            : !claudeStatus.listening
+              ? t("网关还没有监听；检查端口后保存设置。")
+              : desktopState === "applied"
+                ? t("模型请求已走本机网关。")
+                : claudeTakeoverDescription(desktopState)}
+        stages={[
+          {
+            key: "claude",
+            label: "Claude Desktop",
+            detail: desktopState ? claudeTakeoverStateLabel(desktopState) : t("读取中…"),
+            state: desktopState === "applied" ? "up" : desktopState === "conflict" || desktopState === "stale" ? "down" : "unknown",
+          },
+          {
+            key: "gateway",
+            label: t("本机网关"),
+            detail: claudeStatus?.listening ? t("运行中") : claudeStatus?.enabled ? t("未监听") : t("未启用"),
+            state: claudeStatus?.listening ? "up" : "down",
+          },
+          {
+            key: "models",
+            label: t("模型库"),
+            detail: modelCount ? t("{count} 个模型", { count: modelCount }) : t("还没有模型"),
+            state: modelCount ? "up" : "unknown",
+          },
+        ]}
+        steps={[]}
+        action={<>
+          {claudeTakeover?.desktop.state === "conflict" && <Button size="small" disabled={busy !== null || claudeTakeover.desktop.running} onClick={() => setConfirmForce(true)}>{t("强制接管")}</Button>}
+          {gate.undo && <Button size="small" disabled={busy !== null} onClick={undoDesktop}>{t("撤销 Claude 接管")}</Button>}
+          <Button size="small" variant="primary" disabled={primaryAction.disabled} onClick={primaryAction.run}>{primaryAction.label}</Button>
+        </>}
+      />
+    </Card>
     <ClaudeGatewayCard
       saved={saved}
       draft={draft}
@@ -164,6 +227,8 @@ export function ClaudeSettingsPage() {
       title={t("接管 Claude")}
       description={t("只写 Claude 自己的第三方推理 profile；网关设置共用")}
       icon={terminalIcon}
+      collapsible
+      storageKey="claude-desktop"
       action={busy?.scope === "gateway"
         ? <StatusPill tone="warn">{t("保存中…")}</StatusPill>
         : dirty ? <StatusPill tone="warn">{t("有未保存的改动")}</StatusPill> : undefined}
@@ -184,30 +249,10 @@ export function ClaudeSettingsPage() {
         />
       </div>
     </TitledCard>
-    <HarnessCapabilities client="claude" />
+    <HarnessCapabilities client="claude" collapsible />
   </div>;
 
-  return <>
-    <PageActions>
-      <Button
-        disabled={!draft || !dirty || busy !== null}
-        onClick={() => void save()}
-      >{busy?.action === "save" ? t("保存中…") : t("保存")}</Button>
-      <Button
-        disabled={busy !== null || !gate.apply}
-        title={gate.applyBlockedReason ?? undefined}
-        onClick={applyDesktop}
-      >{t("应用到 Claude")}</Button>
-      {claudeTakeover?.desktop.state === "conflict" && <Button
-        disabled={busy !== null || claudeTakeover.desktop.running}
-        onClick={() => setConfirmForce(true)}
-      >{t("强制接管")}</Button>}
-      <Button
-        disabled={busy !== null || !gate.undo}
-        onClick={undoDesktop}
-      >{t("撤销 Claude 接管")}</Button>
-    </PageActions>
-    <ConfirmDialog
+  return <>    <ConfirmDialog
       open={confirmForce}
       destructive
       title={t("强制接管 Claude？")}

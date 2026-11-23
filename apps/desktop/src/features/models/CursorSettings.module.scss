@@ -449,6 +449,82 @@
 
 /* ---------- Cursor 页：证书与模型摘要 ---------- */
 
+.statusCard {
+  overflow: hidden;
+}
+
+.configBody {
+  display: grid;
+  gap: 0;
+  padding: 0 var(--oa-card-padding);
+}
+
+.configBlock {
+  display: grid;
+  gap: var(--oa-space-2);
+  padding: var(--oa-space-3) 0;
+  border-top: 1px solid var(--oa-border);
+
+  &:first-child { border-top: 0; }
+}
+
+.configHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-2);
+
+  > strong {
+    color: var(--vscode-foreground);
+    font-size: type.$font-size-xs;
+    font-weight: type.$font-weight-semibold;
+  }
+}
+
+.configCount {
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  font-variant-numeric: tabular-nums;
+}
+
+.configLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--oa-space-3);
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-2xs;
+  line-height: 1.5;
+
+  > span { flex: 1 1 auto; min-width: 0; }
+  > button { flex: 0 0 auto; }
+}
+
+.draftNote {
+  color: var(--oa-warn);
+  font-size: type.$font-size-2xs;
+}
+
+.configDetails {
+  margin-top: 2px;
+
+  summary {
+    width: fit-content;
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-2xs;
+    cursor: pointer;
+
+    &:hover { color: var(--vscode-foreground); }
+  }
+
+  &[open] summary { margin-bottom: var(--oa-space-2); }
+}
+
+.configFacts {
+  display: grid;
+  gap: var(--oa-space-2);
+}
+
 .caBody {
   display: grid;
   gap: var(--oa-space-3);

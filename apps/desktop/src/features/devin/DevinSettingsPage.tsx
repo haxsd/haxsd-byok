@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DevinHostStatus, type DevinModelBinding, type DevinModelChoice, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
+import { api, type DevinHostStatus, type DevinModelBinding, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
+import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { ModelSelect } from "../../shared/ui/ModelSelect";
-import { Combobox } from "../../shared/ui/Select";
 import { Switch } from "../../shared/ui/Switch";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
 import { StatusHero } from "../../shared/ui/StatusHero";
 import { PageContent } from "../../shell/layout/PageContent";
-import { PageActions } from "../../shell/PageActions";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
@@ -22,7 +21,6 @@ import {
   isNativeModelUid,
   keepActiveRouteId,
   nativeBindingForNextModel,
-  nextModelUid,
 } from "./devinBindingEdits";
 import { devinDefaultModelOptions, devinModelOptions } from "./devinModelOptions";
 import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
@@ -109,8 +107,6 @@ export function DevinSettingsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  // Devin 选择器里的模型（名字 + 标识），映射的 UID 必须从这里来。
-  const [modelChoices, setModelChoices] = useState<DevinModelChoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hostPath, setHostPath] = useState(readHostPath);
@@ -168,7 +164,9 @@ export function DevinSettingsPage() {
     void Promise.allSettled([api.devinSettings(), api.models()]).then(([settingsResult, modelsResult]) => {
       if (disposed) return;
       if (settingsResult.status === "fulfilled") {
-        setSettings(settingsResult.value);
+        // Devin 只有“使用自选模型”这一种模式：开关不再暴露，读到的旧设置统一
+        // 收敛为开启；保存时再把值写回服务端。
+        setSettings({ ...settingsResult.value, enabled: true });
         setSaved(settingsResult.value);
       } else {
         const text = clientErrorText(settingsResult.reason);
@@ -187,28 +185,6 @@ export function DevinSettingsPage() {
     });
     return () => { disposed = true; };
   }, [message, reloadKey]);
-
-  // 模型 UID 只能从 Devin 自己认识的标识里选：手打的标识永远不会被请求。列表读不到
-  // 只影响"能不能选"，映射本身仍然可以手填，所以这里失败不弹错。
-  useEffect(() => {
-    if (loading || loadError) return;
-    const extensionPath = hostStatus?.extension.path;
-    // 状态读不到时仍按记住的安装目录（或自动探测）取一次：路径失效只影响接入，
-    // 不该把已有映射的 UID 选择器也清空。
-    const source = extensionPath || hostInstallRoot.trim();
-    let cancelled = false;
-    void api.devinModelUids(source || undefined)
-      .then((table) => {
-        if (!cancelled) setModelChoices(table.choices);
-      })
-      .catch(() => {
-        // 读不到只说明这次的位置无效，不应把已经知道的 Devin 模型名降级成原始 UID。
-        // 下一次成功读取会整体替换这份列表。
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, loadError, hostStatus?.extension.path]);
 
   useEffect(() => {
     if (loading || loadError) return;
@@ -290,32 +266,13 @@ export function DevinSettingsPage() {
       };
     });
   };
-  const addBinding = () => {
-    setSettings((current) => {
-      const modelUid = nextModelUid(current.bindings, modelChoices);
-      if (!modelUid) return current;
-      const model = models[0];
-      return {
-        ...current,
-        default_model_uid: current.bindings.length === 0 ? modelUid : current.default_model_uid,
-        bindings: [...current.bindings, {
-          model_uid: modelUid,
-          model_hash: model?.model_hash ?? "",
-          display_name: model?.display_name ?? "",
-          context_window_tokens: model?.context_window_tokens ?? null,
-          enabled: true,
-          routes: [],
-          active_route_id: null,
-        }],
-      };
-    });
-  };
   const addNativeBinding = () => {
     setSettings((current) => {
       const binding = nativeBindingForNextModel(current.bindings, models);
       if (!binding) return current;
       return {
         ...current,
+        enabled: true,
         default_model_uid: current.bindings.length === 0 ? binding.model_uid : current.default_model_uid,
         bindings: [...current.bindings, binding],
       };
@@ -452,7 +409,7 @@ export function DevinSettingsPage() {
   const persistSettings = async (notify: boolean) => {
     try {
       setSaving(true);
-      const next = await api.setDevinSettings(settings);
+      const next = await api.setDevinSettings({ ...settings, enabled: true });
       setSettings(next);
       setSaved(next);
       await appStore.refreshDevinStatus();
@@ -479,7 +436,7 @@ export function DevinSettingsPage() {
   });
 
   const modelOptions = devinModelOptions(models);
-  const defaultModelOptions = devinDefaultModelOptions(settings.bindings, models, modelChoices);
+  const defaultModelOptions = devinDefaultModelOptions(settings.bindings, models);
   const defaultBinding = settings.bindings.find((binding) => (
     binding.enabled
     && binding.model_uid.trim() === settings.default_model_uid?.trim()
@@ -489,11 +446,7 @@ export function DevinSettingsPage() {
       ? t("当前默认模型已停用或不可用，请重新选择。")
       : t("请选择一个默认模型，保存后才能使用。")
     : null;
-  const nextBindingUid = nextModelUid(settings.bindings, modelChoices);
-  const canAddBinding = models.length > 0 && nextBindingUid !== null;
   const canAddNativeBinding = nativeBindingForNextModel(settings.bindings, models) !== null;
-  // 选择器显示 Devin 里的模型名，写回的仍是客户端随后会请求的标识。
-  const uidOptions = modelChoices.map((choice) => ({ value: choice.uid, label: choice.name }));
   const hostIntegrated = devinPointsAtGateway(hostStatus, saved);
   const hostRestorable = canRestoreDevinHost(hostStatus);
   const extensionMissing = hostStatus != null && hostStatus.extension.path == null;
@@ -524,80 +477,103 @@ export function DevinSettingsPage() {
         : hostIntegrated
           ? t("已连接。重新打开 Devin 就可以对话。")
           : hostRepairable
-            ? t("Devin 更新后接管补丁未生效。关闭 Devin，然后点右上角“修复接管”。")
+            ? t("Devin 更新后接管补丁未生效。关闭 Devin，然后点上方“修复接管”。")
             : canAutoConnect
             ? !settings.enabled
               ? t("先开启“使用自选模型”，选择默认模型并保存。")
               : view.pendingChanges
-                ? t("先保存设置，再点右上角“应用到 Devin”。")
+                ? t("先保存设置，再点上方主按钮“应用到 Devin”。")
                 : defaultMissingReason
-                  ?? t("关闭 Devin，然后点右上角“应用到 Devin”。")
+                  ?? t("关闭 Devin，然后点上方主按钮“应用到 Devin”。")
             : extensionMissing
               ? t("找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。")
               : extensionUnsupported
                 ? hostStatus.extension.patched && hostRestorable
-                  ? t("接管配置需要恢复。点右上角“撤销接管”，再重新应用。")
+                  ? t("接管配置需要恢复。点上方“撤销接管”，再重新应用。")
                   : t("当前 Devin 版本暂不支持自动接入。")
                 : hostStatus.configured
                   ? hostRestorable
-                    ? t("接管配置需要恢复。点右上角“撤销接管”，再重新应用。")
+                    ? t("接管配置需要恢复。点上方“撤销接管”，再重新应用。")
                     : t("Devin 配置存在冲突，请查看下面的技术详情。")
                   : t("暂时不能自动接入，请查看下面的技术详情。");
+  const primaryAction = (() => {
+    if (loading || loadError) return { label: t("读取中…"), disabled: true, run: () => undefined };
+    if (!models.length) return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
+    if (view.pendingChanges) {
+      return { label: t("保存"), disabled: saving || Boolean(defaultMissingReason), run: save };
+    }
+    if (!saved.enabled || !saved.bindings.some(binding => binding.enabled
+      && binding.model_uid.trim() === saved.default_model_uid?.trim())) {
+      return { label: t("保存"), disabled: true, run: save };
+    }
+    if (hostRepairable) {
+      return { label: repairingHost ? t("修复中…") : t("修复接管"), disabled: saving || hostBusy, run: () => void repairHostConfiguration() };
+    }
+    if (hostIntegrated) {
+      return { label: t("查看调用记录"), disabled: false, run: () => void navigate("/calls") };
+    }
+    if (canAutoConnect) {
+      return { label: t("应用到 Devin"), disabled: connectDisabled, run: () => void applyHostConfiguration() };
+    }
+    return { label: t("重新检查"), disabled: hostBusy, run: () => void inspectHost() };
+  })();
+  const showHostCard = !hostIntegrated
+    || Boolean(hostFailure)
+    || hostNeedsInspect
+    || hostRepairable
+    || extensionUnsupported
+    || Boolean(hostStatus && !hostStatus.unconfigured && !hostStatus.configured && hostStatus.message);
   const content = loading
     ? <div className={styles.loading}>{t("加载中…")}</div>
     : loadError
       ? <div className={styles.loadError} role="alert"><span>{loadError}</span><Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button></div>
       : <div className={styles.page}>
-    <TitledCard title={t("接入状态")} action={<Button size="small" onClick={() => navigate("/calls")}>{t("查看调用记录")}</Button>}>
+    <Card as="section">
       <StatusHero
         connected={view.hero.connected}
         title={view.hero.title}
         description={view.hero.description}
         stages={view.hero.stages}
-        steps={view.hero.steps}
+        steps={[]}
+        action={<>
+          {hostStatus?.configured && !hostIntegrated && !hostStatus.extension.patched && <Button size="small" disabled={saving || hostBusy} onClick={() => setConfirmForceHost(true)}>{t("强制接管")}</Button>}
+          {hostRestorable && <Button size="small" disabled={saving || hostBusy || hostNeedsInspect} onClick={() => void restoreHostConfiguration()}>{t("撤销接管")}</Button>}
+          <Button size="small" variant="primary" disabled={primaryAction.disabled} onClick={primaryAction.run}>{primaryAction.label}</Button>
+        </>}
       />
-    </TitledCard>
+    </Card>
     <TitledCard
       title={t("使用哪个模型")}
       description={t("Devin 的对话会由你选择的模型回答。")}
-      collapsible={false}
+      collapsible
+      storageKey="devin-models"
+      badge={<StatusPill tone="idle">{t("{count} 个模型", { count: settings.bindings.length })}</StatusPill>}
     >
       <div className={styles.settingRow}>
-        <div><strong>{t("使用自选模型")}</strong><small>{t("开启后，Devin 的请求会交给你下面选择的模型。")}</small></div>
-        <Switch checked={settings.enabled} label={t("使用自选模型")} onChange={(enabled) => update("enabled", enabled)} />
-      </div>
-      <div className={styles.settingRow}>
-        <div><strong>{t("对话模型")}</strong><small>{t("自选模型会以模型库中的名称直接出现在 Devin 原生选择器。")}</small></div>
+        <div><strong>{t("对话模型")}</strong><small>{t("直接选择模型库里的模型；它会以原名出现在 Devin 的模型选择器里。")}</small></div>
         <div className={styles.addActions}>
-          <Button size="small" disabled={!canAddNativeBinding} onClick={addNativeBinding}>{t("添加自选模型")}</Button>
-          <Button size="small" disabled={!canAddBinding} onClick={addBinding}>{t("添加 Devin 模型")}</Button>
+          <Button size="small" disabled={!canAddNativeBinding} onClick={addNativeBinding}>{t("添加模型")}</Button>
         </div>
       </div>
       {!models.length && <small className={styles.reason}>{t("模型库为空。请先在模型库添加一个模型。")}</small>}
-      {models.length > 0 && modelChoices.length > 0 && nextBindingUid === null && <small className={styles.reason}>{t("所有 Devin 模型都已添加。")}</small>}
       <div className={styles.bindings}>
-        {!settings.bindings.length && <small className={styles.empty}>{t("还没有选择模型。点“添加自选模型”开始。")}</small>}
+        {!settings.bindings.length && <small className={styles.empty}>{t("还没有选择模型。点“添加模型”开始。")}</small>}
         {settings.bindings.map((binding, index) => {
           const routes = routesForDisplay(binding);
           const activeRouteId = activeRouteIdForDisplay(binding);
           const hasRoutes = binding.routes.length > 0;
-          const isNative = isNativeModelUid(binding.model_uid);
           const name = bindingName(binding);
-          // 行的 key 不能随输入变化：原来用的是 `model_uid-index`，于是每敲一个字符 key
-          // 就变一次，React 把整行卸载重建，输入框随即失焦——UID 只能"敲一个字点一次"。
-          // 下标在编辑期间是稳定的，只有增删行时才会移动。
+          // 行的 key 不能随输入变化：下标在编辑期间是稳定的，只有增删行时才会移动。
           const rowKey = String(index);
           const expanded = expandedBindings[rowKey] ?? false;
           return <div className={styles.binding} key={rowKey}>
             <div className={styles.bindingRow}>
-              {isNative
-                ? <FormField label={t("在 Devin 中显示为")} hint={t("名称来自右侧模型库。")}><TextInput value={binding.display_name} readOnly /></FormField>
-                : <FormField label={t("Devin 里的模型")} hint={t("一般保持默认即可。")}><Combobox value={binding.model_uid} options={uidOptions} onChange={(model_uid) => updateBinding(index, { model_uid })} /></FormField>}
-              <span className={styles.mappingArrow} aria-hidden="true">→</span>
-              <ModelSelect mode="single" label={t("实际使用")} value={binding.model_hash} options={modelOptions} onChange={(model_hash) => {
-                const model = models.find((item) => item.model_hash === model_hash);
-                updateBinding(index, { model_hash, display_name: model?.display_name ?? binding.display_name, context_window_tokens: model?.context_window_tokens ?? null });
-              }} />
+              <FormField label={t("模型")} hint={t("来自共享模型库。")}>
+                <ModelSelect mode="single" label={t("实际使用")} value={binding.model_hash} options={modelOptions} onChange={(model_hash) => {
+                  const model = models.find((item) => item.model_hash === model_hash);
+                  updateBinding(index, { model_hash, display_name: model?.display_name ?? binding.display_name, context_window_tokens: model?.context_window_tokens ?? null });
+                }} />
+              </FormField>
               <div className={styles.bindingRowActions}>
                 {!binding.enabled && <span className={styles.bindingPaused}>{t("已停用")}</span>}
                 <button type="button" className={styles.more} aria-expanded={expanded} aria-label={t("{model} 的更多设置", { model: name })} onClick={() => setExpandedBindings((current) => ({ ...current, [rowKey]: !expanded }))}>
@@ -654,8 +630,7 @@ export function DevinSettingsPage() {
       </div>
       {defaultMissingReason && <small className={styles.reason}>{defaultMissingReason}</small>}
     </TitledCard>
-    <HarnessCapabilities client="devin" />
-    <TitledCard
+    {showHostCard && <TitledCard
       title={t("连接到 Devin")}
       description={t("第一次使用时完成一次；之后打开 Devin 就能直接对话。")}
       badge={hostIntegrated
@@ -671,21 +646,8 @@ export function DevinSettingsPage() {
         <p role={hostFailure ? "alert" : undefined}>{hostPrimaryText}</p>
         {extensionUnsupported && hostStatus?.extension.message && <p role="alert">{clientErrorText(hostStatus.extension.message)}</p>}
         {hostStatus && !hostStatus.unconfigured && !hostStatus.configured && hostStatus.message && <p>{clientErrorText(hostStatus.message)}</p>}
-        <details className={styles.technical}>
-          <summary>{t("技术详情")}</summary>
-          <div className={styles.technicalBody}>
-            {hostStatus?.path && <p>{t("设置文件：{path}", { path: hostStatus.path })}</p>}
-            {hostStatus?.extension.path && <p>{t("扩展文件：{path}", { path: hostStatus.extension.path })}</p>}
-            {hostStatus?.configured && hostStatus.ports && <p>{t("端口：{ports}", { ports: `${hostStatus.ports.api_port} / ${hostStatus.ports.inference_port}` })}</p>}
-            {hostStatus && <p>{t("兼容补丁：{state}", { state: hostStatus.extension.patched ? t("已写入") : t("未写入") })}</p>}
-            {hostStatus?.extension.version && <p>{t("Devin 版本：{version}", { version: hostStatus.extension.version })}</p>}
-            {hostStatus?.message && <p>{clientErrorText(hostStatus.message)}</p>}
-            {hostStatus?.extension.message && <p>{clientErrorText(hostStatus.extension.message)}</p>}
-          </div>
-        </details>
       </div>
-      <p className={styles.note}>{t("登录、套餐和额度仍由 Devin 管理。")}</p>
-    </TitledCard>
+    </TitledCard>}
     <TitledCard
       title={t("高级")}
       description={t("通常不用改；端口、Devin 文件路径和安装目录都在这里。")}
@@ -710,21 +672,26 @@ export function DevinSettingsPage() {
           <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
+      <details className={styles.technical}>
+        <summary>{t("技术详情")}</summary>
+        <div className={styles.technicalBody}>
+          {hostStatus?.path && <p>{t("设置文件：{path}", { path: hostStatus.path })}</p>}
+          {hostStatus?.extension.path && <p>{t("扩展文件：{path}", { path: hostStatus.extension.path })}</p>}
+          {hostStatus?.configured && hostStatus.ports && <p>{t("端口：{ports}", { ports: `${hostStatus.ports.api_port} / ${hostStatus.ports.inference_port}` })}</p>}
+          {hostStatus && <p>{t("兼容补丁：{state}", { state: hostStatus.extension.patched ? t("已写入") : t("未写入") })}</p>}
+          {hostStatus?.extension.version && <p>{t("Devin 版本：{version}", { version: hostStatus.extension.version })}</p>}
+          {hostStatus?.message && <p>{clientErrorText(hostStatus.message)}</p>}
+          {hostStatus?.extension.message && <p>{clientErrorText(hostStatus.extension.message)}</p>}
+        </div>
+      </details>
       {!hostRestorable && <p className={styles.note}>{t("只有本应用写入的配置才能一键恢复。")}</p>}
     </TitledCard>
+    <HarnessCapabilities client="devin" collapsible />
     {view.pendingChanges && <div className={styles.saveBar}>
       <span>{t("有未保存的改动")}</span>
     </div>}
   </div>;
-  return <>
-    <PageActions>
-      <Button disabled={loading || Boolean(loadError) || saving || hostBusy || !view.pendingChanges || Boolean(defaultMissingReason)} onClick={save}>{saving ? t("保存中…") : t("保存")}</Button>
-      <Button disabled={connectDisabled} onClick={() => void applyHostConfiguration()}>{t("应用到 Devin")}</Button>
-      {hostRepairable && <Button disabled={saving || hostBusy} onClick={() => void repairHostConfiguration()}>{repairingHost ? t("修复中…") : t("修复接管")}</Button>}
-      {hostStatus?.configured && !hostIntegrated && !hostStatus.extension.patched && <Button disabled={saving || hostBusy} onClick={() => setConfirmForceHost(true)}>{t("强制接管")}</Button>}
-      <Button disabled={saving || hostBusy || hostNeedsInspect || !hostRestorable} onClick={() => void restoreHostConfiguration()}>{t("撤销接管")}</Button>
-    </PageActions>
-    <ConfirmDialog
+  return <>    <ConfirmDialog
       open={confirmForceHost}
       destructive
       title={t("强制接管 Devin？")}
