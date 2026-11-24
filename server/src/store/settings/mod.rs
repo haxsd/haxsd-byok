@@ -5,15 +5,18 @@ mod commit;
 mod compaction;
 mod desktop;
 mod devin;
+mod external_api;
 mod ports;
 mod pricing;
 mod proxy;
+mod vision;
 
 pub use capabilities::{ModelCapabilities, ModelCapabilitySettings};
 pub use commit::{CommitPromptLocale, CommitSettings};
 pub use compaction::CompactionSettings;
 pub use desktop::{DesktopSettings, DesktopSettingsPatch, PendingUpdate};
 pub(crate) use devin::DevinSettingsCache;
+pub use external_api::ExternalApiSettings;
 
 pub(crate) use ports::migrate_cursor_mode;
 pub use ports::{CursorMode, PortSettings, TabMode, TabSettings};
@@ -24,6 +27,7 @@ pub use pricing::{
 pub(crate) use proxy::read_proxy_settings;
 pub(crate) use proxy::ProxySettingsSecret;
 pub use proxy::{ProxyMode, ProxySettings, ProxySettingsInput};
+pub use vision::VisionSettings;
 
 const PORT_SETTINGS_KEY: &str = "network_ports";
 const PROXY_SETTINGS_KEY: &str = "outbound_proxy";

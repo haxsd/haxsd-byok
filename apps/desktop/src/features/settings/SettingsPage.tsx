@@ -15,11 +15,13 @@ import { ScrollableContent } from "../../shared/virtual/ScrollableContent";
 import { AppLifecycleSettingsCard } from "./AppLifecycleSettingsCard";
 import { CompactionSettingsCard } from "./CompactionSettingsCard";
 import { DiagnosticsCard } from "./DiagnosticsCard";
+import { ExternalApiSettingsCard } from "./ExternalApiSettingsCard";
 import { NetworkSettingsCard } from "./NetworkSettingsCard";
 import { PortSettingsCard } from "./PortSettingsCard";
 import { PricingSettingsCard } from "./PricingSettingsCard";
 import { StorageSettingsCard } from "./StorageSettingsCard";
 import { UpdateCard } from "./UpdateCard";
+import { VisionSettingsCard } from "./VisionSettingsCard";
 import { settingsDestinations, settingsSections, visibleSettingsItems, visibleSettingsSections, type SettingsItemId } from "./settingsNavigation";
 import styles from "./SettingsPage.module.scss";
 
@@ -64,7 +66,9 @@ export function SettingsPage() {
       </div>
     </TitledCard>,
     app: <AppLifecycleSettingsCard />,
+    vision: <VisionSettingsCard visible={visibleItems.has("vision")} />,
     proxy: <NetworkSettingsCard visible={visibleItems.has("proxy")} />,
+    "external-api": <ExternalApiSettingsCard visible={visibleItems.has("external-api")} />,
     recording: <TitledCard title={t("调用记录")}>
       <div className={styles.settingRow}>
         <div><strong>{t("保存请求与响应")}</strong><small>{t("可能包含对话及敏感内容，并增加磁盘占用。关闭时只保存时间、状态与用量。")}</small></div>

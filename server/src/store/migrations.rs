@@ -575,12 +575,22 @@ mod tests {
             .await
             .unwrap();
 
+            let image_descriptions_table_exists: i64 = sqlx::query_scalar(
+                "SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'table' AND name = 'image_descriptions'
+                 )",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
             assert_eq!(checksum_after, checksum_before);
             assert_eq!(
                 versions,
                 vec![
                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                    23, 24, 25, 26
+                    23, 24, 25, 26, 27
                 ]
             );
             assert_eq!(checkpoint_table_exists, 1);
@@ -594,6 +604,7 @@ mod tests {
             assert_eq!(llm_calls_conversation_index_exists, 1);
             assert_eq!(runs_parent_indexes_exist, 2);
             assert_eq!(checkpoint_messages_message_index_exists, 1);
+            assert_eq!(image_descriptions_table_exists, 1);
         }
     }
 

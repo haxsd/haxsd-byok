@@ -607,6 +607,17 @@ export interface CompactionSettings {
   max_retained_tokens: number | null;
 }
 
+/** 非视觉模型的图片描述兜底。 */
+export type VisionSettings =
+  | { mode: "disabled" }
+  | { mode: "model"; model_hash: string };
+
+/** 本机 OpenAI / Anthropic 兼容 API。 */
+export interface ExternalApiSettings {
+  enabled: boolean;
+  api_key: string;
+}
+
 export interface CommitSettingsView extends CommitSettings {
   default_prompt: string;
 }
@@ -1647,6 +1658,10 @@ export const api = {
   setCommitSettings: (settings: CommitSettings) => request<CommitSettingsView>("/settings/commit", { method: "PUT", body: JSON.stringify(settings) }),
   compactionSettings: () => request<CompactionSettings>("/settings/compaction"),
   setCompactionSettings: (settings: CompactionSettings) => request<CompactionSettings>("/settings/compaction", { method: "PUT", body: JSON.stringify(settings) }),
+  visionSettings: (signal?: AbortSignal) => request<VisionSettings>("/settings/vision", { signal }),
+  setVisionSettings: (settings: VisionSettings) => request<VisionSettings>("/settings/vision", { method: "PUT", body: JSON.stringify(settings) }),
+  externalApiSettings: (signal?: AbortSignal) => request<ExternalApiSettings>("/settings/external-api", { signal }),
+  setExternalApiSettings: (settings: ExternalApiSettings) => request<ExternalApiSettings>("/settings/external-api", { method: "PUT", body: JSON.stringify(settings) }),
   pricingSettings: (signal?: AbortSignal) => request<TokenPricingSettings>("/settings/pricing", { signal }).then(usablePricing),
   setModelPricing: (modelHash: string, pricing: ModelTokenPricing) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "PUT", body: JSON.stringify(pricing) }).then(usablePricing),
   removeModelPricing: (modelHash: string) => request<TokenPricingSettings>(`/settings/pricing/${encodeURIComponent(modelHash)}`, { method: "DELETE" }).then(usablePricing),

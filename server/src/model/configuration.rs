@@ -281,8 +281,23 @@ impl ModelConfig {
         }
     }
 
+    /// 模型在 Responses 的额外参数里显式默认 `service_tier=ultrafast` 时，
+    /// Cursor 没给 Speed 参数也应使用 Ultrafast；显式选了 default/priority 的
+    /// 请求不会被覆盖。
+    pub(crate) fn uses_ultrafast_by_default(&self) -> bool {
+        self.provider_type() == ProviderType::OpenAiResponses
+            && self
+                .extra_params()
+                .get("service_tier")
+                .and_then(serde_json::Value::as_str)
+                == Some("ultrafast")
+    }
+
     pub fn configure(&self, model: &mut super::ModelSpec) {
         model.display_name = Some(self.display_name.clone());
+        if model.latency == ModelLatency::Standard && self.uses_ultrafast_by_default() {
+            model.latency = ModelLatency::Ultrafast;
+        }
         // A request-selected context is authoritative.  Use the saved model
         // value only when Cursor did not send a context parameter.
         if model.context_window_tokens.is_none() {
@@ -600,7 +615,22 @@ impl ReasoningSpec {
 pub enum ModelLatency {
     #[default]
     Standard,
+    DefaultTier,
     Fast,
+    Ultrafast,
+}
+
+impl ModelLatency {
+    /// Responses 的 `service_tier` 取值。Standard 不发字段，交给模型配置的
+    /// extra params 或上游默认值。
+    pub fn responses_tier(&self) -> Option<&'static str> {
+        match self {
+            Self::Standard => None,
+            Self::DefaultTier => Some("default"),
+            Self::Fast => Some("priority"),
+            Self::Ultrafast => Some("ultrafast"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

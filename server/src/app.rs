@@ -107,6 +107,7 @@ impl App {
             plugins.clone(),
             crate::config::managed_data_dir()?.join("rules"),
         );
+        let external_api = api::byok::router(store.clone(), plugins.clone(), provider.clone());
         let control = control::ControlService::new(
             store.clone(),
             provider,
@@ -117,6 +118,7 @@ impl App {
         )?;
         let harness = control.cursor_harness().clone();
         let mut router = api::router(registry.clone(), clients.clone(), harness.clone())?;
+        router = router.merge(external_api);
         // The status endpoint needs both the control service and the gateway's
         // own listening flag, so it is merged here rather than inside either one.
         router = router.merge(control::codex::router(codex_gateway.clone(), store.clone()));

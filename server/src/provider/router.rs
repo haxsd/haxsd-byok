@@ -108,6 +108,13 @@ impl Provider for ProviderRouter {
                     let provider_type = model.provider_type();
                     let request_url = model.request_url()?;
                     model.configure(&mut routed.request.model);
+                    if routed.request.model.latency == ModelLatency::Ultrafast
+                        && provider_type != ProviderType::OpenAiResponses
+                    {
+                        Err(Error::Config(
+                            "Ultrafast model selection requires OpenAI Responses".into(),
+                        ))?;
+                    }
                     routed.request.model.extra_params =
                         super::request_template::render_json_strings(
                             model.extra_params(),
@@ -290,7 +297,10 @@ async fn start_recorder(store: &Store, call: RecordedCall<'_>) -> Result<CallRec
             model_id: model_id.into(),
             display_name: display_name.into(),
             reasoning_effort: reasoning_effort.map(str::to_owned),
-            fast: invocation.request.model.latency == ModelLatency::Fast,
+            fast: matches!(
+                invocation.request.model.latency,
+                ModelLatency::Fast | ModelLatency::Ultrafast
+            ),
             // 上下文用量锚点的计数：只数持久化消息，不含只对 provider 可见的瞬时尾巴
             // （见 `ModelInvocation::persisted_message_count`，审计 09/F7）。
             message_count: invocation.persisted_message_count(),

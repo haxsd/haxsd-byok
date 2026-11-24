@@ -28,6 +28,8 @@ pub enum CallPurpose {
     #[default]
     Chat,
     CompactionSummary,
+    /// 由本机网关替不支持图片的模型生成图片描述；不是会话的上下文锚点。
+    Vision,
 }
 
 impl CallPurpose {
@@ -35,6 +37,7 @@ impl CallPurpose {
         match self {
             Self::Chat => "chat",
             Self::CompactionSummary => "compaction-summary",
+            Self::Vision => "vision",
         }
     }
 }

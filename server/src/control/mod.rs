@@ -259,6 +259,14 @@ pub fn api_router(service: ControlService) -> Router {
             get(settings::get_compaction).put(settings::update_compaction),
         )
         .route(
+            "/__byok-api__/api/settings/vision",
+            get(settings::get_vision).put(settings::update_vision),
+        )
+        .route(
+            "/__byok-api__/api/settings/external-api",
+            get(settings::get_external_api).put(settings::update_external_api),
+        )
+        .route(
             "/__byok-api__/api/settings/pricing",
             get(settings::get_pricing_settings),
         )

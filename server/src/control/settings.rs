@@ -172,6 +172,32 @@ pub async fn update_compaction(
     Ok(Json(service.set_compaction_settings(settings).await?))
 }
 
+pub async fn get_vision(
+    State(service): State<ControlService>,
+) -> Result<Json<crate::store::VisionSettings>> {
+    Ok(Json(service.vision_settings().await?))
+}
+
+pub async fn update_vision(
+    State(service): State<ControlService>,
+    Json(settings): Json<crate::store::VisionSettings>,
+) -> Result<Json<crate::store::VisionSettings>> {
+    Ok(Json(service.set_vision_settings(settings).await?))
+}
+
+pub async fn get_external_api(
+    State(service): State<ControlService>,
+) -> Result<Json<crate::store::ExternalApiSettings>> {
+    Ok(Json(service.external_api_settings().await?))
+}
+
+pub async fn update_external_api(
+    State(service): State<ControlService>,
+    Json(settings): Json<crate::store::ExternalApiSettings>,
+) -> Result<Json<crate::store::ExternalApiSettings>> {
+    Ok(Json(service.set_external_api_settings(settings).await?))
+}
+
 pub async fn update_model_pricing(
     State(service): State<ControlService>,
     Path(model_hash): Path<String>,

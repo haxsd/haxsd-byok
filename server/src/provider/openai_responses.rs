@@ -8,8 +8,8 @@ use serde_json::{json, Map, Value};
 use crate::{
     config::ProviderConfig,
     model::{
-        ContentPart, ModelInvocation, ModelLatency, ProjectedContent, ProjectedMessage, Role,
-        ToolDefinition, Usage,
+        ContentPart, ModelInvocation, ProjectedContent, ProjectedMessage, Role, ToolDefinition,
+        Usage,
     },
     network::OutboundClient,
     Error, Result,
@@ -83,6 +83,7 @@ impl Provider for OpenAiResponsesProvider {
             apply_model(&mut body, &request.model, config.max_output_tokens)?;
             apply_client_options(&mut body, &request.model.client);
             merge_extra_params(&mut body, &request.model.extra_params)?;
+            apply_service_tier(&mut body, &request.model);
             apply_openai_prompt_cache_key(&mut body, &conversation_id, &config.request_url)?;
             let request_headers = recorded_headers(&config, &[("content-type", "application/json")]);
             if let Some(recorder) = &recorder {
@@ -411,10 +412,13 @@ fn apply_model(
         }
         object.insert("reasoning".into(), Value::Object(reasoning));
     }
-    if model.latency == ModelLatency::Fast {
-        object.insert("service_tier".into(), json!("fast"));
-    }
     Ok(())
+}
+
+fn apply_service_tier(body: &mut Value, model: &crate::model::ModelSpec) {
+    if let Some(tier) = model.latency.responses_tier() {
+        body["service_tier"] = json!(tier);
+    }
 }
 
 /// 必须写成整数的 JSON Schema 关键字。
@@ -744,6 +748,23 @@ mod tests {
                 .contains("without response.completed or response.incomplete"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn responses_service_tiers_are_mapped_without_touching_effort() {
+        use crate::model::ModelLatency;
+        for (latency, expected) in [
+            (ModelLatency::Standard, None),
+            (ModelLatency::DefaultTier, Some("default")),
+            (ModelLatency::Fast, Some("priority")),
+            (ModelLatency::Ultrafast, Some("ultrafast")),
+        ] {
+            let mut model = crate::model::ModelSpec::new("responses-model");
+            model.latency = latency;
+            let mut body = json!({});
+            apply_service_tier(&mut body, &model);
+            assert_eq!(body.get("service_tier").and_then(Value::as_str), expected);
+        }
     }
 
     #[test]

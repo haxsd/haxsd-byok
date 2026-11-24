@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 
 use super::{
     migrate_cursor_mode, read_proxy_settings, CommitPromptLocale, CommitSettings,
-    CompactionSettings, CurrencyPricing, CursorMode, DesktopSettingsPatch, ModelTokenPricing,
-    PendingUpdate, PricingMode, ProxyMode, ProxySettingsInput, ProxySettingsSecret, Store,
-    TokenPrice, TokenPricingSettings, DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN,
-    LEGACY_CURSOR_TAKEOVER_KEY, MODEL_PRICING_SETTINGS_KEY, PROXY_SETTINGS_KEY,
+    CompactionSettings, CurrencyPricing, CursorMode, DesktopSettingsPatch, ExternalApiSettings,
+    ModelTokenPricing, PendingUpdate, PricingMode, ProxyMode, ProxySettingsInput,
+    ProxySettingsSecret, Store, TokenPrice, TokenPricingSettings, VisionSettings,
+    DEFAULT_COMMIT_PROMPT_EN_US, DEFAULT_COMMIT_PROMPT_ZH_CN, LEGACY_CURSOR_TAKEOVER_KEY,
+    MODEL_PRICING_SETTINGS_KEY, PROXY_SETTINGS_KEY,
 };
 use crate::devin::{DevinModelBinding, DevinSettings};
 use crate::store::now_ms;
@@ -28,6 +29,48 @@ async fn insert_legacy_global_row(store: &Store) {
         .execute(store.pool())
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn vision_settings_round_trip_and_reject_empty_model() {
+    let (_directory, store) = temp_store().await;
+    assert_eq!(
+        store.vision_settings().await.unwrap(),
+        VisionSettings::Disabled
+    );
+    store
+        .set_vision_settings(&VisionSettings::Model {
+            model_hash: "vision-hash".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        store.vision_settings().await.unwrap(),
+        VisionSettings::Model {
+            model_hash: "vision-hash".into()
+        }
+    );
+    assert!(store
+        .set_vision_settings(&VisionSettings::Model {
+            model_hash: "  ".into()
+        })
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn external_api_settings_round_trip() {
+    let (_directory, store) = temp_store().await;
+    assert_eq!(
+        store.external_api_settings().await.unwrap(),
+        ExternalApiSettings::default()
+    );
+    let settings = ExternalApiSettings {
+        enabled: true,
+        api_key: "test-key".into(),
+    };
+    store.set_external_api_settings(&settings).await.unwrap();
+    assert_eq!(store.external_api_settings().await.unwrap(), settings);
 }
 
 #[tokio::test]

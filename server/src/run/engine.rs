@@ -650,7 +650,7 @@ impl RunEngine {
             // 观测层的上下文用量锚点只数持久化消息：下面追加的尾巴只对 provider 可见、
             // 不进库（`ModelInvocation::persisted_message_count` 按消息身份把它排除）。
             let anchored_messages = history.len();
-            let history = if let Some(target) = &summary_target {
+            let mut history = if let Some(target) = &summary_target {
                 // 手动 `/summarize` 与自动压缩用同一套按窗口裁剪的逻辑，否则大历史
                 // 会把摘要调用本身撑爆，provider 直接拒绝这一轮。摘要请求自己的
                 // 专用提示词也要从预算里扣掉。
@@ -678,6 +678,18 @@ impl RunEngine {
                     super::compaction::OUTPUT_TOKENS,
                 ),
             };
+            if let Err(error) = super::vision::prepare(
+                &self.store,
+                &*self.provider,
+                prepared,
+                &model,
+                &mut history,
+                cancellation,
+            )
+            .await
+            {
+                return (RunOutcome::Failed(error.into()), usage);
+            }
             let mut request = crate::model::ModelRequest {
                 prompt: summary_prompt
                     .clone()
@@ -1915,7 +1927,7 @@ impl RunEngine {
                 if summary_call_index.is_none() {
                     summary_call_index = Some(provider_call_index);
                 }
-                let history = crate::model::project_messages(&compactable)
+                let mut history = crate::model::project_messages(&compactable)
                     .map(|history| {
                         // First attempt: the calibrated safe budget. Retry after an
                         // over-limit refusal: cut the replayed history roughly in
@@ -1931,6 +1943,21 @@ impl RunEngine {
                         }
                     })
                     .map_err(|error| RunOutcome::Failed(error.into()))?;
+                if let Err(error) = self.images.hydrate(&self.store, &mut history).await {
+                    return Err(RunOutcome::Failed(error.into()));
+                }
+                if let Err(error) = super::vision::prepare(
+                    &self.store,
+                    &*self.provider,
+                    prepared,
+                    &target.model,
+                    &mut history,
+                    cancellation,
+                )
+                .await
+                {
+                    return Err(RunOutcome::Failed(error.into()));
+                }
                 let invocation = crate::model::ModelInvocation {
                     // 摘要调用的输入是被裁剪过的重放历史，不能当上下文用量锚点。
                     purpose: crate::model::CallPurpose::CompactionSummary,

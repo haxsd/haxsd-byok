@@ -11,13 +11,13 @@ test("default settings show only general preferences, not updates or diagnostics
   const { settingsSections, visibleSettingsSections } = await navigation();
   const shown = visibleSettingsSections(settingsSections(false), null, "");
   assert.deepEqual(shown.map(section => section.id), ["general"]);
-  assert.deepEqual(shown[0].items.map(item => item.id), ["appearance", "app"]);
+  assert.deepEqual(shown[0].items.map(item => item.id), ["appearance", "app", "vision"]);
 });
 
 test("selecting a category replaces content instead of appending all settings", async () => {
   const { settingsSections, visibleSettingsSections } = await navigation();
   const shown = visibleSettingsSections(settingsSections(false), "network", "");
-  assert.deepEqual(shown.flatMap(section => section.items.map(item => item.id)), ["proxy"]);
+  assert.deepEqual(shown.flatMap(section => section.items.map(item => item.id)), ["proxy", "external-api"]);
 });
 
 test("search finds a concrete setting outside the selected category", async () => {

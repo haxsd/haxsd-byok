@@ -15,10 +15,12 @@ import type {
   DevinHostReceipt,
   DevinHostStatus,
   DevinSettings,
+  ExternalApiSettings,
   LlmCall,
   Model,
   ModelTokenPricing,
   TokenPricingSettings,
+  VisionSettings,
   Overview,
   OverviewTokenUsageBucket,
   ProxySettings,
@@ -208,6 +210,8 @@ let compactionSettings: CompactionSettings = {
   retention_percent: null,
   max_retained_tokens: null,
 };
+let visionSettings: VisionSettings = { mode: "disabled" };
+let externalApiSettings: ExternalApiSettings = { enabled: false, api_key: "" };
 // 演示数据：数据库文件大，但大头是已删除数据留下的空闲页；有效数据、调用明细、对话内容、
 // 抓取缓存与大工具结果各自单列，正好演示每项该用哪个动作。
 // `conversation_retention_days` 与真实服务端的回收常量一致（见 server/src/store/retention.rs）。
@@ -392,6 +396,16 @@ export function installDemoApi() {
     if (path === "/settings/compaction" && method === "PUT") {
       compactionSettings = body as CompactionSettings;
       return json(compactionSettings);
+    }
+    if (path === "/settings/vision" && method === "GET") return json(visionSettings);
+    if (path === "/settings/vision" && method === "PUT") {
+      visionSettings = body as VisionSettings;
+      return json(visionSettings);
+    }
+    if (path === "/settings/external-api" && method === "GET") return json(externalApiSettings);
+    if (path === "/settings/external-api" && method === "PUT") {
+      externalApiSettings = body as ExternalApiSettings;
+      return json(externalApiSettings);
     }
     if (path === "/harness/devin/host/status" && method === "GET") {
       const hostPath = url.searchParams.get("path") || "C:\\Users\\demo\\AppData\\Roaming\\Devin\\User\\settings.json";

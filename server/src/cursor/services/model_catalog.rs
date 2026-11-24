@@ -278,6 +278,10 @@ pub async fn available_models(
 ) -> Result<Response<Body>> {
     let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
+    let vision_fallback = matches!(
+        registry.store().vision_settings().await?,
+        crate::store::VisionSettings::Model { .. }
+    );
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
         None => Vec::new(),
@@ -287,7 +291,10 @@ pub async fn available_models(
         plugin_model_count = plugin_models.len(),
         "appending BYOK models to Cursor AvailableModels"
     );
-    let mut available_models = models.iter().map(available_model).collect::<Vec<_>>();
+    let mut available_models = models
+        .iter()
+        .map(|model| available_model(model, vision_fallback))
+        .collect::<Vec<_>>();
     available_models.extend(plugin_models.iter().map(available_plugin_model));
     let local = AvailableModelsAddition {
         model_names: models
@@ -576,10 +583,18 @@ fn unary_payload(body: &Bytes) -> Result<(bool, &[u8])> {
     Ok((true, &body[5..]))
 }
 
-fn available_model(model: &ModelConfig) -> AvailableModel {
+const SERVICE_TIERS: [(&str, &str); 3] = [
+    ("default", "Standard"),
+    ("priority", "Fast"),
+    ("ultrafast", "Ultrafast"),
+];
+const FAST_TOGGLE: [(&str, &str); 2] = [("false", ""), ("true", "Fast")];
+
+fn available_model(model: &ModelConfig, vision_fallback: bool) -> AvailableModel {
     let contexts = context_options(model.context_window_tokens);
     let default_context = default_context(model.context_window_tokens);
     let tooltip = model_tooltip(model);
+    let ultrafast = model.uses_ultrafast_by_default();
     let variants = model_variants(
         &model.model_hash,
         &model.display_name,
@@ -587,6 +602,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         &contexts,
         &default_context,
         true,
+        ultrafast,
     );
     let legacy_slugs = variants
         .iter()
@@ -599,7 +615,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         degradation_status: Some(0),
         tooltip_data: Some(tooltip.clone()),
         supports_thinking: Some(true),
-        supports_images: Some(model.supports_images),
+        supports_images: Some(model.supports_images || vision_fallback),
         supports_max_mode: Some(true),
         client_display_name: Some(model.display_name.clone()),
         server_model_name: Some(model.model_hash.clone()),
@@ -610,7 +626,7 @@ fn available_model(model: &ModelConfig) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(&contexts, true, ultrafast),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -642,6 +658,7 @@ fn provider_host(base_url: &str) -> String {
 fn model_parameters(
     contexts: &[(String, String)],
     thinking: bool,
+    ultrafast: bool,
 ) -> Vec<ModelParameterDefinition> {
     let mut parameters = vec![ModelParameterDefinition {
         id: "context".into(),
@@ -681,6 +698,30 @@ fn model_parameters(
             is_cycleable_by_hotkey: Some(true),
         });
     }
+    if ultrafast {
+        parameters.push(ModelParameterDefinition {
+            id: "service_tier".into(),
+            name: "Speed".into(),
+            markdown_tooltip: Some(
+                "Ultrafast availability and pricing depend on the upstream model and account."
+                    .into(),
+            ),
+            parameter_type: Some(ModelParameterType {
+                boolean_parameter: None,
+                enum_parameter: Some(EnumParameter {
+                    values: SERVICE_TIERS
+                        .iter()
+                        .map(|(value, name)| EnumParameterValue {
+                            value: (*value).into(),
+                            display_name: Some((*name).into()),
+                        })
+                        .collect(),
+                }),
+            }),
+            is_cycleable_by_hotkey: Some(false),
+        });
+        return parameters;
+    }
     parameters.push(ModelParameterDefinition {
         id: "fast".into(),
         name: "Fast".into(),
@@ -714,8 +755,14 @@ fn model_variants(
     contexts: &[(String, String)],
     default_context: &str,
     thinking: bool,
+    ultrafast: bool,
 ) -> Vec<ModelVariant> {
-    // 非思考模型没有 Effort 轴,变体网格只剩 Context × Fast。
+    let (speed_id, speeds, default_speed) = if ultrafast {
+        ("service_tier", SERVICE_TIERS.as_slice(), "ultrafast")
+    } else {
+        ("fast", FAST_TOGGLE.as_slice(), "false")
+    };
+    // 非思考模型没有 Effort 轴,变体网格只剩 Context × Speed。
     let efforts: &[Option<(&str, &str)>] = if thinking {
         &[
             Some(EFFORTS[0]),
@@ -727,10 +774,10 @@ fn model_variants(
     } else {
         &[None]
     };
-    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * 2);
+    let mut variants = Vec::with_capacity(contexts.len() * efforts.len() * speeds.len());
     for (context, context_name) in contexts {
         for effort in efforts {
-            for fast in [false, true] {
+            for (speed_value, speed_name) in speeds {
                 variants.push(model_variant(
                     name,
                     display_name,
@@ -739,7 +786,10 @@ fn model_variants(
                     context_name,
                     default_context,
                     *effort,
-                    fast,
+                    (speed_id, speed_value, speed_name),
+                    context == default_context
+                        && *speed_value == default_speed
+                        && effort.is_none_or(|(effort, _)| effort == "high"),
                 ));
             }
         }
@@ -756,8 +806,10 @@ fn model_variant(
     context_name: &str,
     default_context: &str,
     effort: Option<(&str, &str)>,
-    fast: bool,
+    speed: (&str, &str, &str),
+    is_default: bool,
 ) -> ModelVariant {
+    let (speed_id, speed_value, speed_name) = speed;
     let mut suffix = Vec::with_capacity(3);
     if context != default_context {
         suffix.push(context_name);
@@ -765,8 +817,8 @@ fn model_variant(
     if let Some((_, effort_name)) = effort {
         suffix.push(effort_name);
     }
-    if fast {
-        suffix.push("Fast");
+    if !speed_name.is_empty() {
+        suffix.push(speed_name);
     }
     let suffix = suffix.join(" ");
     let display_name = if suffix.is_empty() {
@@ -776,8 +828,6 @@ fn model_variant(
             "{display_name} <span style=\"color: var(--cursor-text-tertiary);\">{suffix}</span>"
         )
     };
-    let is_default =
-        context == default_context && !fast && effort.is_none_or(|(effort, _)| effort == "high");
     let mut parameter_values = vec![ModelParameterValue {
         id: "context".into(),
         value: context.into(),
@@ -789,8 +839,8 @@ fn model_variant(
         });
     }
     parameter_values.push(ModelParameterValue {
-        id: "fast".into(),
-        value: fast.to_string(),
+        id: speed_id.into(),
+        value: speed_value.into(),
     });
     ModelVariant {
         parameter_values,
@@ -802,16 +852,20 @@ fn model_variant(
         display_name_outside_picker: Some(display_name),
         variant_string_representation: Some(match effort {
             Some((effort, _)) => {
-                format!("{name}[context={context},reasoning={effort},fast={fast}]")
+                format!("{name}[context={context},reasoning={effort},{speed_id}={speed_value}]")
             }
-            None => format!("{name}[context={context},fast={fast}]"),
+            None => format!("{name}[context={context},{speed_id}={speed_value}]"),
         }),
         legacy_slug: Some(format!(
             "{name}-{context}{}{}",
             effort
                 .map(|(effort, _)| format!("-{effort}"))
                 .unwrap_or_default(),
-            if fast { "-fast" } else { "" }
+            match speed_value {
+                "true" | "priority" => "-fast",
+                "ultrafast" => "-ultrafast",
+                _ => "",
+            }
         )),
     }
 }
@@ -835,6 +889,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         &contexts,
         DEFAULT_CONTEXT,
         true,
+        false,
     );
     let legacy_slugs = variants
         .iter()
@@ -858,7 +913,7 @@ fn available_plugin_model(model: &PluginModelDescriptor) -> AvailableModel {
         inputbox_short_model_name: Some(model.display_name.clone()),
         supports_sandboxing: Some(true),
         supports_cmd_k: Some(false),
-        parameter_definitions: model_parameters(&contexts, true),
+        parameter_definitions: model_parameters(&contexts, true, false),
         variants,
         legacy_slugs,
         named_model_section_index: Some(1),
@@ -940,6 +995,64 @@ mod tests {
             created_at_ms: 0,
             updated_at_ms: 0,
         }
+    }
+
+    #[test]
+    fn ultrafast_responses_models_expose_a_speed_axis_and_default_to_it() {
+        use crate::model::OPENAI_RESPONSES_ENDPOINT;
+        let mut model = model();
+        model.openai_endpoint = OPENAI_RESPONSES_ENDPOINT.into();
+        model.openai_extra_params_enabled = true;
+        model.openai_extra_params = serde_json::json!({"service_tier":"ultrafast"});
+        let available = available_model(&model, false);
+        let speed = available
+            .parameter_definitions
+            .iter()
+            .find(|parameter| parameter.id == "service_tier")
+            .expect("ultrafast Responses model should expose Speed");
+        let values = speed
+            .parameter_type
+            .as_ref()
+            .and_then(|kind| kind.enum_parameter.as_ref())
+            .expect("Speed must be an enum")
+            .values
+            .iter()
+            .map(|value| value.value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(values, ["default", "priority", "ultrafast"]);
+        assert!(available.variants.iter().any(|variant| {
+            variant.is_default_max_config == Some(true)
+                && variant
+                    .parameter_values
+                    .iter()
+                    .any(|value| value.id == "service_tier" && value.value == "ultrafast")
+        }));
+        assert!(available
+            .parameter_definitions
+            .iter()
+            .all(|p| p.id != "fast"));
+    }
+
+    #[test]
+    fn regular_models_keep_the_fast_toggle() {
+        let mut model = model();
+        model.supports_images = false;
+        let available = available_model(&model, true);
+        assert_eq!(available.supports_images, Some(true));
+        assert!(available
+            .parameter_definitions
+            .iter()
+            .any(|p| p.id == "fast"));
+        assert!(available
+            .parameter_definitions
+            .iter()
+            .all(|p| p.id != "service_tier"));
+        assert!(available.variants.iter().any(|variant| {
+            variant
+                .parameter_values
+                .iter()
+                .any(|value| value.id == "fast" && value.value == "true")
+        }));
     }
 
     #[test]

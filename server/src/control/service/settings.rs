@@ -106,6 +106,42 @@ impl ControlService {
         self.store.set_compaction_settings(settings).await
     }
 
+    pub async fn vision_settings(&self) -> Result<crate::store::VisionSettings> {
+        self.store.vision_settings().await
+    }
+
+    pub async fn set_vision_settings(
+        &self,
+        settings: crate::store::VisionSettings,
+    ) -> Result<crate::store::VisionSettings> {
+        if let crate::store::VisionSettings::Model { model_hash } = &settings {
+            let model = self.store.require_model(model_hash).await?;
+            if !model.supports_images {
+                return Err(crate::Error::Config(format!(
+                    "model {} does not accept images",
+                    model.display_name
+                )));
+            }
+        }
+        self.store.set_vision_settings(&settings).await
+    }
+
+    pub async fn external_api_settings(&self) -> Result<crate::store::ExternalApiSettings> {
+        self.store.external_api_settings().await
+    }
+
+    pub async fn set_external_api_settings(
+        &self,
+        settings: crate::store::ExternalApiSettings,
+    ) -> Result<crate::store::ExternalApiSettings> {
+        if settings.enabled && settings.api_key.trim().is_empty() {
+            return Err(crate::Error::Config(
+                "external API key is required when enabled".into(),
+            ));
+        }
+        self.store.set_external_api_settings(&settings).await
+    }
+
     pub async fn pricing_settings(&self) -> Result<TokenPricingSettings> {
         self.store.pricing_settings().await
     }

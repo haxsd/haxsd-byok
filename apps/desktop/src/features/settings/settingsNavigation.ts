@@ -1,5 +1,5 @@
 export type SettingsSectionId = "general" | "network" | "usage" | "advanced" | "about";
-export type SettingsItemId = "appearance" | "app" | "proxy" | "recording" | "pricing" | "storage" | "compaction" | "developer" | "ports" | "diagnostics" | "update";
+export type SettingsItemId = "appearance" | "app" | "vision" | "proxy" | "external-api" | "recording" | "pricing" | "storage" | "compaction" | "developer" | "ports" | "diagnostics" | "update";
 export type SettingsSection = {
   id: SettingsSectionId;
   label: string;
@@ -12,9 +12,11 @@ export function settingsSections(developerMode: boolean): SettingsSection[] {
     { id: "general", label: t("常规"), items: [
       { id: "appearance", label: t("外观与语言"), keywords: "语言 主题 外观 language theme appearance" },
       { id: "app", label: t("启动与窗口"), keywords: "开机 静默 启动 窗口 托盘 dock autostart startup window" },
+      { id: "vision", label: t("图片识别"), keywords: "图片 视觉 识别 截图 image vision screenshot" },
     ] },
     { id: "network", label: t("网络"), items: [
       { id: "proxy", label: t("出网代理"), keywords: "网络 代理 proxy network address auth 认证" },
+      { id: "external-api", label: t("外部 API"), keywords: "外部 api openai anthropic 接口 api key 密钥 external" },
     ] },
     { id: "usage", label: t("记录与用量"), items: [
       { id: "recording", label: t("调用记录"), keywords: "详细 请求 响应 隐私 detailed recording request response" },

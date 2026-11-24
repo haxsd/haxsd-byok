@@ -20,10 +20,10 @@ test("only the selected section's settings are treated as visible, search widens
 
   assert.deepEqual(
     [...visibleSettingsItems(settingsSections(false), "general", "")].sort(),
-    ["app", "appearance"],
-    "默认落在「常规」：只有这一分区的两项可见",
+    ["app", "appearance", "vision"],
+    "默认落在「常规」：只有这一分区的三项可见",
   );
-  assert.deepEqual([...visibleSettingsItems(settingsSections(false), "network", "")], ["proxy"]);
+  assert.deepEqual([...visibleSettingsItems(settingsSections(false), "network", "")], ["proxy", "external-api"]);
   assert.deepEqual(
     [...visibleSettingsItems(settingsSections(false), "general", "存储")].sort(),
     ["storage"],

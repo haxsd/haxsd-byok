@@ -107,6 +107,7 @@ fn from_requested(
         stop_sequences: Vec::new(),
         client: Default::default(),
     };
+    let mut explicit_tier = None;
     for parameter in &model.parameters {
         match parameter.id.as_str() {
             "effort" | "reasoning" => {
@@ -132,6 +133,18 @@ fn from_requested(
                     spec.latency = ModelLatency::Fast;
                 }
             }
+            "service_tier" => {
+                explicit_tier = Some(match parameter.value.as_str() {
+                    "default" => ModelLatency::DefaultTier,
+                    "priority" | "fast" => ModelLatency::Fast,
+                    "ultrafast" => ModelLatency::Ultrafast,
+                    value => {
+                        return Err(Error::Protocol(format!(
+                            "invalid Cursor service tier {value}"
+                        )))
+                    }
+                });
+            }
             "context" => {
                 spec.context_window_tokens =
                     Some(parse_token_count(&parameter.value).ok_or_else(|| {
@@ -143,6 +156,9 @@ fn from_requested(
             }
             _ => {}
         }
+    }
+    if let Some(tier) = explicit_tier {
+        spec.latency = tier;
     }
     Ok(spec)
 }
@@ -179,6 +195,43 @@ mod tests {
             let model = requested_model(&request).unwrap();
             assert_eq!(model.reasoning.enabled, Some(true));
             assert_eq!(model.reasoning.effort.as_deref(), Some(effort));
+        }
+    }
+
+    #[test]
+    fn requested_service_tier_is_separate_from_effort() {
+        let requested = pb::RequestedModel {
+            model_id: "responses-model".into(),
+            parameters: [("service_tier", "ultrafast"), ("reasoning", "high")]
+                .into_iter()
+                .map(|(id, value)| pb::requested_model::ModelParameterValue {
+                    id: id.into(),
+                    value: value.into(),
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let model = from_requested(&requested, None).unwrap();
+        assert_eq!(model.latency, ModelLatency::Ultrafast);
+        assert_eq!(model.reasoning.effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn service_tier_default_and_priority_are_distinct() {
+        for (value, expected) in [
+            ("default", ModelLatency::DefaultTier),
+            ("priority", ModelLatency::Fast),
+            ("ultrafast", ModelLatency::Ultrafast),
+        ] {
+            let requested = pb::RequestedModel {
+                model_id: "responses-model".into(),
+                parameters: vec![pb::requested_model::ModelParameterValue {
+                    id: "service_tier".into(),
+                    value: value.into(),
+                }],
+                ..Default::default()
+            };
+            assert_eq!(from_requested(&requested, None).unwrap().latency, expected);
         }
     }
 
