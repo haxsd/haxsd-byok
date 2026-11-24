@@ -19,13 +19,14 @@
 - **模型自己管**：模型库支持 OpenAI Chat / Responses 与 Anthropic 协议，发现后多选添加、带连接测试；Cursor 可让官方模型和自配模型同时可用。
 - **成本看得见**：每次调用的成败、耗时、Token 用量，以及按参考单价估算的金额。
 - **桌面管理**：中英俄三语、多主题、托盘、应用内教程与签名更新。
+- **速度、图片与外部接口**：Cursor 里可为自配模型选择 Fast / Ultrafast 速度档；对话模型读不了图片时，可在「图片识别」用视觉模型先写成文字；「外部 API」可在本机提供 OpenAI / Anthropic 兼容接口（只监听本机、默认关闭、需密钥），让脚本或其他工具共用同一套模型库。
 
 ## 支持的客户端
 
 | 客户端 | 接管方式 | 说明 |
 |---|---|---|
 | Cursor | 官方 / 本地 / 混合模型来源 + 本机代理与本地 CA | 只用自配模型选本地，官方模型同时可用选混合；本地模式不在模型库的模型会被明确拒绝，不会静默走官方。本地/混合模式下长会话的上下文压缩（自动与手动摘要）由本应用网关执行，官方模式仍由 Cursor 自己压缩 |
-| Devin | 可选本机网关 + 自选模型与模型映射 | 自选模型直接出现在 Devin 原生选择器；保留官方目录；按端点设置结构识别的补丁，带备份恢复与自定义安装目录 |
+| Devin | 可选本机网关 + 模型库模型进入原生选择器 | 添加的模型以原名直接出现在 Devin 原生选择器；保留官方目录；按端点设置结构识别的补丁，带备份恢复与自定义安装目录 |
 | Codex（ChatGPT 客户端） | 本地 / 混合模式 + 本机网关 + “应用到 Codex” | 保留工具、终端、审批、沙箱与任务循环，只替换推理；混合模式需登录 ChatGPT，官方模型与自配模型同时可选；支持 Responses / Chat Completions / Anthropic；只改 `config.toml` 受管字段，撤销即恢复 |
 | Claude Desktop | 本机 Anthropic 网关 + `%LOCALAPPDATA%\Claude-3p\configLibrary` 下的 profile | 组织策略托管时只读，只给手工配置引导 |
 
@@ -37,7 +38,7 @@
 | --- | --- | --- |
 | Cursor | Agent / Chat / Plan、本机子代理与工具、Rules / Skills / MCP、Checkpoint | Cloud Agents、Projects、Bugbot、Automations、Tab 补全、CLI / IDE 插件、Remote Control |
 | Codex | 本地 Agent / TUI / exec、Plan、工具、审批、沙箱、多会话、MCP / Skills / Plugins / Hooks、图片输入 | ChatGPT Work、Codex Cloud、Remote Control、官方托管搜索 / 图像 / 语音 |
-| Devin | Cascade、Devin Local、本机工具、Rules / Memories / MCP、模型映射、Checkpoint | 账号套餐与额度、Tab / Command / embedding、Devin Cloud、远程索引、Slack / Linear / Jira / Teams / GitHub 集成 |
+| Devin | Cascade、Devin Local、本机工具、Rules / Memories / MCP、Checkpoint | 账号套餐与额度、Tab / Command / embedding、Devin Cloud、远程索引、Slack / Linear / Jira / Teams / GitHub 集成 |
 | Claude | Claude Desktop 会话、本机工具、MCP / Skills / Hooks、Checkpoint、模型库路由 | Cloud session、Teleport、Ultrareview、云端定时任务、Remote Control、供应商侧 WebSearch / WebFetch、云账号能力 |
 
 接管只改变本机可控制的模型请求；登录、套餐、额度和厂商云端功能仍由对应客户端管理，不会绕过。
@@ -49,7 +50,7 @@
 1. 从 [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) 下载名称含 `x64-setup.exe` 的安装包并安装。
 2. 在「模型」页添加地址、API Key 与模型 ID，选择协议，用「测试」确认可用。
 3. **用 Cursor**：在「Cursor」页按提示安装本地证书，再选择模型来源。**进出官方模式会结束正在运行的 Cursor，先保存工作并手动重新打开**；本地与混合模式之间切换不需要重启。
-4. **用 Devin**：添加模型库里的模型（以原名直接出现在 Devin 原生选择器），再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 写入接入配置并验证。
+4. **用 Devin**：添加模型库里的模型（以原名直接出现在 Devin 原生选择器），再选默认模型、启用网关并保存；自定义安装目录在「高级」填写。重启应用后按 [Devin 接入](./docs/devin-go-live.md) 点「应用到 Devin」并验证。
 5. **用 Codex**：在「Codex」页选择模型、启用网关并保存，点「应用到 Codex」，然后重新打开客户端或新建会话；详见 [Codex 接入](./docs/codex-go-live.md)。
 6. **用 Claude**：在「Claude」页选择默认模型、启用网关并保存，再应用 Claude Desktop 接管；**Desktop 需先完全退出（含托盘），应用后再启动**。
 

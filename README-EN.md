@@ -21,13 +21,14 @@ The linked guides are currently Chinese-only.
 - **Own your models**: the model library supports OpenAI Chat / Responses and Anthropic protocols, with multi-select after discovery and a built-in connection test; in Cursor, official models and your own models can coexist.
 - **See the cost**: every call's status, latency, token usage and an estimate from reference prices.
 - **Desktop app**: Chinese, English and Russian, multiple themes, tray, in-app tutorial and signed updates.
+- **Speed, images and an external API**: in Cursor, your models can use Fast / Ultrafast speed tiers; if a chat model cannot read images, Image recognition can describe them with a vision model first; External API exposes a local OpenAI / Anthropic-compatible endpoint (localhost only, off by default, requires a key) so scripts and other clients can reuse the same model library.
 
 ## Supported clients
 
 | Client | How it is taken over | Notes |
 |---|---|---|
 | Cursor | Official / local / mixed model sources + local proxy and local CA | Use local to route everything to your models, mixed to keep official models available too; local mode refuses models not in your library instead of silently going official. In local/mixed mode, long-session context compression (automatic and manual summaries) is done by this app's gateway; official mode is still compressed by Cursor |
-| Devin | Optional local gateway + custom models and model mappings | Custom models appear in Devin’s native picker alongside its official catalog; structure-detected endpoint-settings patch with backup/restore and custom installation directories |
+| Devin | Optional local gateway + custom models in the native picker | Custom models appear in Devin’s native picker alongside its official catalog; structure-detected endpoint-settings patch with backup/restore and custom installation directories |
 | Codex (ChatGPT client) | Local / mixed mode + local gateway + "Apply to Codex" | Keeps tools, terminal, approvals, sandbox and task loop; only inference is replaced; mixed mode needs a ChatGPT sign-in and lists official and your own models together; over Responses / Chat Completions / Anthropic; rewrites only managed fields in `config.toml` and restores them on undo |
 | Claude Desktop | Local Anthropic gateway + a profile under `%LOCALAPPDATA%\Claude-3p\configLibrary` | Read-only with manual guidance when managed by an organisation policy |
 
@@ -39,7 +40,7 @@ All gateways are off by default and listen on `127.0.0.1` only. Managed settings
 | --- | --- | --- |
 | Cursor | Agent / Chat / Plan, local subagents and tools, Rules / Skills / MCP, Checkpoint | Cloud Agents, Projects, Bugbot, Automations, Tab completion, CLI / IDE integrations, Remote Control |
 | Codex | Local Agent / TUI / exec, Plan, tools, approvals, sandbox, multiple sessions, MCP / Skills / Plugins / Hooks, image input | ChatGPT Work, Codex Cloud, Remote Control, hosted web search / image generation / voice |
-| Devin | Cascade, Devin Local, local tools, Rules / Memories / MCP, model mappings, Checkpoint | Account plans and quota, Tab / Command / embedding, Devin Cloud, remote indexing, Slack / Linear / Jira / Teams / GitHub integrations |
+| Devin | Cascade, Devin Local, local tools, Rules / Memories / MCP, Checkpoint | Account plans and quota, Tab / Command / embedding, Devin Cloud, remote indexing, Slack / Linear / Jira / Teams / GitHub integrations |
 | Claude | Claude Desktop sessions, local tools, MCP / Skills / Hooks, Checkpoint, model-library routing | Cloud session, Teleport, Ultrareview, cloud schedules, Remote Control, provider-side WebSearch / WebFetch, cloud-account features |
 
 Takeover changes only model requests that can be controlled locally. Sign-in, plans, quota and vendor cloud features still belong to each client and are not bypassed.
@@ -51,7 +52,7 @@ Takeover changes only model requests that can be controlled locally. Sign-in, pl
 1. Download the installer whose name contains `x64-setup.exe` from [Releases](https://github.com/haxsd/haxsd-byok/releases/latest) and install it.
 2. On the **Models** page, add the base URL, API key and model ID, pick the protocol, and use **Test** to confirm it works.
 3. **For Cursor**: on the **Cursor** page, install the local certificate when prompted, then pick the model source. **Entering or leaving official mode stops a running Cursor: save your work and reopen it manually**; switching between local and mixed does not require a restart.
-4. **For Devin**: add models from your library (they appear under their own names in Devin’s native picker), then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md) to apply the integration and verify a request.
+4. **For Devin**: add models from your library (they appear under their own names in Devin’s native picker), then select a default, enable the gateway and save; set a custom installation directory under Advanced if needed. Restart the app, then follow [Devin setup](./docs/devin-go-live.md), click **Apply to Devin**, and verify a request.
 5. **For Codex**: pick models on the **Codex** page, enable the gateway and save, click **Apply to Codex**, then reopen the client or start a new session; see [Codex setup](./docs/codex-go-live.md).
 6. **For Claude**: on the **Claude** page pick the default model, enable the gateway and save, then apply the Claude Desktop takeover; **quit Claude Desktop completely (including the tray) before applying, then start it again**.
 
