@@ -367,7 +367,7 @@ export interface ClaudeDesktopTakeoverInput {
 export interface DevinHostPorts {
   api_port: number;
   inference_port: number;
-  local_api_port?: number;
+  local_api_port?: number | null;
 }
 
 export interface DevinHostStatus {

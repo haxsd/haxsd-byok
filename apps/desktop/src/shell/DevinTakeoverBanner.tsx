@@ -1,5 +1,5 @@
 import { memo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { devinHostRepairable, devinPointsAtGateway } from "../features/devin/devinConnectionView";
 import type { DevinHostPorts } from "../shared/api";
 import { appStore, useAppStoreSelector } from "../shared/store/appStore";
@@ -21,6 +21,7 @@ export const DevinTakeoverBanner = memo(function DevinTakeoverBanner() {
   const devinStatus = useAppStoreSelector(state => state.devinStatus);
   const host = useAppStoreSelector(state => state.devinHostStatus);
   const navigate = useNavigate();
+  const location = useLocation();
   const devinEnabled = Boolean(devinStatus?.enabled);
 
   useEffect(() => {
@@ -42,6 +43,12 @@ export const DevinTakeoverBanner = memo(function DevinTakeoverBanner() {
   }, [devinEnabled]);
 
   if (offline || !devinStatus?.enabled || !devinStatus.ready || !host?.configured) {
+    return null;
+  }
+  // The Devin page already shows the same conflict inline. Keeping the global
+  // banner there makes "查看详情" navigate to the current route, which looks like
+  // a dead button.
+  if (location.pathname === "/harness/devin") {
     return null;
   }
   const ports: DevinHostPorts | null = devinStatus.bound_ports

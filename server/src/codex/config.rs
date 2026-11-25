@@ -757,7 +757,8 @@ pub fn apply_with_force(
         if !current.applied && force {
             if !external(&doc) && owned_item(&doc, PROVIDER_KEY).is_some() {
                 if let Some(current_text) = original.as_deref() {
-                    rebased_original = Some(rebase_original(current_text, original_text(&receipt))?);
+                    rebased_original =
+                        Some(rebase_original(current_text, original_text(&receipt))?);
                 }
             } else {
                 // 另一款工具改过的配置就是新的“用户原值”：撤销时回到这里，而不是旧收据。

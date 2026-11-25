@@ -98,6 +98,18 @@ function isSameRange(left: RenderRange, right: RenderRange): boolean {
   return left.start === right.start && left.end === right.end
 }
 
+/**
+ * The range map is reset in a layout effect after the item list changes. During
+ * that render its old count can still point past the new list, so every range
+ * consumed by the renderer has to be bounded by the current item count.
+ */
+function clampRenderRange(range: RenderRange, count: number): RenderRange {
+  return {
+    start: Math.min(range.start, count),
+    end: Math.min(range.end, count),
+  }
+}
+
 function VirtualRow(props: VirtualRowProps) {
   const { index, top, measure, children } = props
   const rowRef = useRef<HTMLDivElement | null>(null)
@@ -242,16 +254,19 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
   const initialRenderCount = Math.max(1, overscan * 2 + 1)
   let renderRange: RenderRange
   if (scrollState.viewportHeight > 0) {
-    renderRange = getRenderRange(
-      rangeMap,
-      Math.max(0, scrollState.scrollTop - contentInsetTop),
-      scrollState.viewportHeight,
-      overscan
+    renderRange = clampRenderRange(
+      getRenderRange(
+        rangeMap,
+        Math.max(0, scrollState.scrollTop - contentInsetTop),
+        scrollState.viewportHeight,
+        overscan
+      ),
+      items.length
     )
   } else {
     renderRange = {
       start: 0,
-      end: Math.min(rangeMap.count, initialRenderCount),
+      end: Math.min(rangeMap.count, items.length, initialRenderCount),
     }
   }
   renderRangeRef.current = renderRange
@@ -295,11 +310,14 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
       const previousState = scrollStateRef.current
       scrollStateRef.current = nextState
 
-      const nextRange = getRenderRange(
-        rangeMapRef.current,
-        Math.max(0, nextState.scrollTop - contentInsetTop),
-        nextState.viewportHeight,
-        overscan
+      const nextRange = clampRenderRange(
+        getRenderRange(
+          rangeMapRef.current,
+          Math.max(0, nextState.scrollTop - contentInsetTop),
+          nextState.viewportHeight,
+          overscan
+        ),
+        items.length
       )
       const dimensionsChanged =
         !previousState ||
@@ -317,7 +335,7 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
         setScrollState(nextState)
       }
     },
-    [contentInsetTop, overscan]
+    [contentInsetTop, overscan, items.length]
   )
 
   const api = useMemo<VirtualListApi>(

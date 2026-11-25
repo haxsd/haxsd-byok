@@ -191,9 +191,9 @@ fn validate_asset_path(directory: &Path, value: &str) -> Result<()> {
     let canonical_dir = directory
         .canonicalize()
         .map_err(|error| Error::Config(format!("failed to resolve plugin directory: {error}")))?;
-    let canonical_target = target
-        .canonicalize()
-        .map_err(|error| Error::Config(format!("failed to resolve plugin icon {value}: {error}")))?;
+    let canonical_target = target.canonicalize().map_err(|error| {
+        Error::Config(format!("failed to resolve plugin icon {value}: {error}"))
+    })?;
     if !canonical_target.starts_with(&canonical_dir) {
         return Err(Error::Config(format!(
             "plugin icon escapes plugin directory: {value}"

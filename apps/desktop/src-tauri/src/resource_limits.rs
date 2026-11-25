@@ -39,7 +39,10 @@ pub(crate) fn raise_open_file_limit() -> io::Result<OpenFileLimit> {
         if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &requested) } != 0 {
             let error = io::Error::last_os_error();
             let fallback_target = limits.rlim_max.min(10_240 as libc::rlim_t);
-            if error.raw_os_error() == Some(libc::EINVAL) && previous < fallback_target && fallback_target < target {
+            if error.raw_os_error() == Some(libc::EINVAL)
+                && previous < fallback_target
+                && fallback_target < target
+            {
                 let fallback = libc::rlimit {
                     rlim_cur: fallback_target,
                     rlim_max: limits.rlim_max,

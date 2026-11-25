@@ -959,10 +959,7 @@ async fn forward_native_model_config(
             } else {
                 user_status::with_local_models(payload, &local_models, default_uid)?
             };
-            let harnesses = if matches!(
-                method,
-                "GetCliTeamSettings" | "GetCommandModelConfigs"
-            ) {
+            let harnesses = if matches!(method, "GetCliTeamSettings" | "GetCommandModelConfigs") {
                 // Team settings / command / CLI model configs 不含完整的 Cascade harness 映射：
                 // 整表替换会把刚建立的 harness 分配清掉，随后 AssignModel 就不再返回 harness_uids。
                 None

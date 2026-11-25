@@ -97,8 +97,10 @@ impl Output {
             Protocol::Responses => {
                 let mut items = Vec::new();
                 if !self.thinking.is_empty() {
-                    items.push(json!({"id":format!("rs_{id}"),"type":"reasoning","status":"completed",
-                        "summary":[{"type":"summary_text","text":self.thinking}]}));
+                    items.push(
+                        json!({"id":format!("rs_{id}"),"type":"reasoning","status":"completed",
+                        "summary":[{"type":"summary_text","text":self.thinking}]}),
+                    );
                 }
                 if !self.text.is_empty() {
                     items.push(json!({"id":format!("msg_{id}"),"type":"message","status":"completed",

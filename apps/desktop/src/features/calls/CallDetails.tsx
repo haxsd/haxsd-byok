@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CallDetail } from "../../shared/api";
+import type { CallDetail, LlmCall } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { JsonEditor } from "../../shared/ui/JsonEditor";
 import { Tabs, type TabItem } from "../../shared/ui/Tabs";
@@ -7,6 +7,33 @@ import { formatBytes } from "../settings/storageHint";
 import { CallFacts } from "./CallFacts";
 import { RESPONSE_PREVIEW_BYTES, responsePreview } from "./responsePreview";
 import styles from "./CallDetails.module.scss";
+
+/// 请求级协议的展示值：对象按 JSON 显示，缺失用 `-`，不要印出 undefined。
+function protocolValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function ProtocolSummary({ call, body }: { call: LlmCall; body: unknown }) {
+  const object = body !== null && typeof body === "object" ? body as Record<string, unknown> : {};
+  const reasoning = object.reasoning !== null && typeof object.reasoning === "object"
+    ? object.reasoning as Record<string, unknown>
+    : {};
+  const tools = Array.isArray(object.tools) ? object.tools.length : call.tool_count;
+  return <div className={styles.protocol}>
+    <h4>{t("请求协议")}</h4>
+    <dl>
+      <div><dt>{t("思考强度")}</dt><dd><code>{protocolValue(reasoning.effort ?? call.reasoning_effort)}</code></dd></div>
+      <div><dt>reasoning.summary</dt><dd><code>{protocolValue(reasoning.summary)}</code></dd></div>
+      <div><dt>tool_choice</dt><dd><code>{protocolValue(object.tool_choice)}</code></dd></div>
+      <div><dt>parallel_tool_calls</dt><dd><code>{protocolValue(object.parallel_tool_calls)}</code></dd></div>
+      <div><dt>{t("消息 / 工具数")}</dt><dd>{call.message_count} / {tools}</dd></div>
+    </dl>
+  </div>;
+}
 
 /// 压缩触发方式的可读标签；未知值原样显示，后端加新触发方式时界面不会变成空白。
 function compactionTriggerLabel(trigger: string) {
@@ -51,6 +78,7 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
       </div>}
     </section> },
     { value: "request", label: t("请求"), content: <section className={styles.section}>
+      <ProtocolSummary call={call} body={request?.body} />
       {request ? <>
         <div className={styles.meta}>{t("字节数")}：{request.byte_count}</div>
         <h4>{t("请求头")}</h4><LazyJsonEditor ariaLabel={t("请求头")} source={request.headers} />

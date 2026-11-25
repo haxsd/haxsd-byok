@@ -5,8 +5,9 @@ use uuid::Uuid;
 use crate::{
     devin::{wire::FieldValue, DevinModelBinding, DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX},
     model::{
-        ContentPart, ModelConfig, ModelRequest, ModelSpec, ProjectedContent, ProjectedMessage,
-        PromptSpec, ProviderReplayState, Role, ToolCallContent, ToolDefinition, ToolResultContent,
+        ClientRequestOptions, ContentPart, ModelConfig, ModelRequest, ModelSpec, ProjectedContent,
+        ProjectedMessage, PromptSpec, ProviderReplayState, Role, ToolCallContent, ToolDefinition,
+        ToolResultContent,
     },
     Error, Result,
 };
@@ -35,6 +36,8 @@ pub struct DevinChatRequest {
     pub execution_id: String,
     pub context_tokens: u64,
     pub context_token_source: ContextTokenSource,
+    /// Devin 的工具策略来自官方 `GetChatMessageRequest` 字段 11/12。
+    pub client: ClientRequestOptions,
 }
 
 pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
@@ -71,9 +74,7 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
     let tools = super::wire::all_fields(&fields, 10)
         .map(|field| parse_tool(bytes_value(field)?))
         .collect::<Result<Vec<_>>>()?;
-    // 字段 12 在真实请求里出现过，但它的编码没有可核对的证据，模型请求里也没有对应字段。
-    // 以前这里直接报错，于是一个我们用不上的字段就能让整轮对话失败；现在忽略它，让模型按
-    // 自己的判断选工具。
+    let client = parse_client_options(&fields)?;
     let requested_model = string_field(&fields, 21)?;
     let cascade_id = string_field(&fields, 16)?;
     let session_id = string_field(&fields, 28)?;
@@ -108,6 +109,7 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
         execution_id,
         context_tokens,
         context_token_source,
+        client,
     })
 }
 
@@ -190,6 +192,7 @@ pub fn to_invocation(
         model_spec.reasoning.enabled = Some(selected.reasoning_effort.is_some());
         model_spec.reasoning.effort = selected.reasoning_effort;
     }
+    model_spec.client = Box::new(request.client);
 
     replay_thinking(&mut request.history, model);
 
@@ -243,6 +246,45 @@ fn replay_thinking(history: &mut [ProjectedMessage], model: &ModelConfig) {
             })
         };
     }
+}
+
+/// Devin 的 `GetChatMessageRequest` 工具策略。
+///
+/// 字段 11 是 `disable_parallel_tool_calls`，字段 12 是 `ChatToolChoice`
+/// (`option_name` 或 `tool_name`)。共享请求层使用 Anthropic 形状，所以在这里
+/// 一次转换；两个 OpenAI 适配器都已经知道如何把它转成各自的上游字段。
+fn parse_client_options(fields: &[super::wire::Field]) -> Result<ClientRequestOptions> {
+    let disable_parallel = varint_field(fields, 11)?.unwrap_or_default() != 0;
+    let mut tool_choice = None;
+    if let Some(field) = super::wire::first_field(fields, 12) {
+        if let FieldValue::Bytes(bytes) = &field.value {
+            if let Ok(choice) = super::wire::parse_fields(bytes) {
+                let option = string_field(&choice, 1).unwrap_or_default();
+                let tool_name = string_field(&choice, 2).unwrap_or_default();
+                tool_choice = if !tool_name.is_empty() {
+                    Some(json!({ "type": "tool", "name": tool_name }))
+                } else {
+                    match option.as_str() {
+                        "auto" => Some(json!({ "type": "auto" })),
+                        "any" | "required" => Some(json!({ "type": "any" })),
+                        "none" => Some(json!({ "type": "none" })),
+                        _ => None,
+                    }
+                };
+            }
+        }
+    }
+    if disable_parallel {
+        let mut choice = tool_choice.unwrap_or_else(|| json!({ "type": "auto" }));
+        if let Some(object) = choice.as_object_mut() {
+            object.insert("disable_parallel_tool_use".into(), json!(true));
+        }
+        tool_choice = Some(choice);
+    }
+    Ok(ClientRequestOptions {
+        tool_choice,
+        ..ClientRequestOptions::default()
+    })
 }
 
 fn parse_message(
@@ -543,6 +585,54 @@ mod tests {
             request.history[2].content,
             ProjectedContent::ToolResult(_)
         ));
+    }
+
+    #[test]
+    fn parses_official_tool_policy_fields() {
+        let choice = serialize_fields(&[Field::bytes(1, b"any")]).unwrap();
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"user-1"),
+                Field::varint(2, 1),
+                Field::bytes(3, b"hello"),
+            ]),
+            Field::varint(11, 1),
+            Field::bytes(12, choice),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+        assert_eq!(
+            request.client.tool_choice,
+            Some(json!({
+                "type": "any",
+                "disable_parallel_tool_use": true
+            }))
+        );
+    }
+
+    #[test]
+    fn a_named_tool_choice_keeps_its_tool_name() {
+        let choice = serialize_fields(&[Field::bytes(2, b"read_file")]).unwrap();
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"user-1"),
+                Field::varint(2, 1),
+                Field::bytes(3, b"hello"),
+            ]),
+            Field::bytes(12, choice),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+        assert_eq!(
+            request.client.tool_choice,
+            Some(json!({ "type": "tool", "name": "read_file" }))
+        );
     }
 
     #[test]

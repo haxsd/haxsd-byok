@@ -157,7 +157,9 @@ impl From<Error> for InstallFailure {
         match error {
             Error::Cancelled => Self::cancelled(),
             Error::Io(error) => Self::from(error),
-            error => Self::other(crate::error::redact(&crate::diagnostics::error_chain(&error))),
+            error => Self::other(crate::error::redact(&crate::diagnostics::error_chain(
+                &error,
+            ))),
         }
     }
 }

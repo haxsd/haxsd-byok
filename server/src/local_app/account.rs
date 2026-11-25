@@ -658,9 +658,9 @@ mod tests {
 
     async fn read_account(path: &Path, key: &str) -> Option<String> {
         let options = sqlx::sqlite::SqliteConnectOptions::new()
-        .filename(path)
-        .read_only(true)
-        .busy_timeout(std::time::Duration::from_millis(200));
+            .filename(path)
+            .read_only(true)
+            .busy_timeout(std::time::Duration::from_millis(200));
         let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
         read_account_value(&mut connection, key).await.unwrap()
     }

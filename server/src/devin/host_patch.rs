@@ -568,7 +568,8 @@ fn language_server_restart_update(
         Regex::new(LS_VENDOR_RESTART_PATTERN).expect("static language-server restart regex")
     });
     let patched_old = PATCHED_OLD.get_or_init(|| {
-        Regex::new(LS_PATCHED_RESTART_PATTERN).expect("static patched language-server restart regex")
+        Regex::new(LS_PATCHED_RESTART_PATTERN)
+            .expect("static patched language-server restart regex")
     });
     let vendor_new = VENDOR_NEW.get_or_init(|| {
         Regex::new(LS_METHOD_VENDOR_RESTART_PATTERN)

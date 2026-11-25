@@ -421,8 +421,10 @@ pub(crate) fn redact(text: &str) -> String {
 fn pem_private_key() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----")
-            .unwrap()
+        Regex::new(
+            r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+        )
+        .unwrap()
     })
 }
 
@@ -495,10 +497,16 @@ fn redact_urls(text: &str) -> String {
 
 fn find_url_start(text: &str) -> Option<usize> {
     let lowered = text.to_ascii_lowercase();
-    ["http://", "https://", "socks5h://", "socks5://", "socks4://"]
-        .into_iter()
-        .filter_map(|scheme| lowered.find(scheme))
-        .min()
+    [
+        "http://",
+        "https://",
+        "socks5h://",
+        "socks5://",
+        "socks4://",
+    ]
+    .into_iter()
+    .filter_map(|scheme| lowered.find(scheme))
+    .min()
 }
 
 fn is_sensitive_query_key(key: &str) -> bool {
@@ -591,7 +599,10 @@ mod tests {
             "s3cr3t",
             "MIIBOgIBAAJ",
         ] {
-            assert!(!cleaned.contains(leaked), "cleaned leaked {leaked}: {cleaned}");
+            assert!(
+                !cleaned.contains(leaked),
+                "cleaned leaked {leaked}: {cleaned}"
+            );
         }
     }
 

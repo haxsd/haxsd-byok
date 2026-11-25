@@ -347,8 +347,9 @@ pub fn devin_status_router(service: ControlService, listening: DevinListening) -
 /// `pub` 是因为桌面壳的窄路由（`open-external-url`）也要套同一道准入：它和这里的管理
 /// 路由并到同一个 HTTP 服务，不能成为跨站 POST 的旁路。
 pub async fn reject_cross_site(request: Request<Body>, next: Next) -> Response<Body> {
-    if let Some(axum::extract::ConnectInfo(addr)) =
-        request.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    if let Some(axum::extract::ConnectInfo(addr)) = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
     {
         if !addr.ip().is_loopback() {
             return (StatusCode::FORBIDDEN, "remote management access rejected").into_response();

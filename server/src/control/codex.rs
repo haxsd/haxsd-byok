@@ -68,7 +68,9 @@ async fn ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
 async fn repair_ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
     let status = tokio::task::spawn_blocking(crate::codex::ui_cache::repair)
         .await
-        .map_err(|error| crate::Error::Config(format!("Codex UI cache repair failed: {error}")))??;
+        .map_err(|error| {
+            crate::Error::Config(format!("Codex UI cache repair failed: {error}"))
+        })??;
     Ok(Json(status))
 }
 async fn apply(

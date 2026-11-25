@@ -34,3 +34,41 @@
   border: 1px solid var(--oa-border);
   border-radius: 4px;
 }
+
+.protocol {
+  margin-bottom: var(--oa-space-3);
+  padding: 8px 10px;
+  border: 1px solid var(--oa-border);
+  border-radius: 4px;
+
+  h4 {
+    margin-top: 0;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 16px;
+    margin: 0;
+  }
+
+  dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  dt {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+    font-size: type.$font-size-xs;
+  }
+}

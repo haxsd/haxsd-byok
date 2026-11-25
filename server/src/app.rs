@@ -217,10 +217,10 @@ impl App {
             self.router
                 .into_make_service_with_connect_info::<std::net::SocketAddr>(),
         )
-            .with_graceful_shutdown(async move {
-                graceful.cancelled().await;
-            })
-            .into_future();
+        .with_graceful_shutdown(async move {
+            graceful.cancelled().await;
+        })
+        .into_future();
         tokio::pin!(server);
 
         let gateway_shutdown = shutdown.clone();

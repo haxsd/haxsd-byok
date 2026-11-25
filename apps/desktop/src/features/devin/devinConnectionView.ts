@@ -53,6 +53,15 @@ export interface DevinConnectionView {
   };
 }
 
+/**
+ * The host settings file only stores the API and inference endpoints. Its
+ * local API port is normally null (unknown), which must mean "not compared"
+ * rather than "mismatch".
+ */
+function optionalPortMatches(hostPort: number | null | undefined, wanted: number | null | undefined): boolean {
+  return hostPort == null || wanted == null || hostPort === wanted;
+}
+
 export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinHostPorts | null): boolean {
   return host?.configured === true
     && host.extension.compatible
@@ -60,7 +69,7 @@ export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinH
     && ports !== null
     && host.ports?.api_port === ports.api_port
     && host.ports?.inference_port === ports.inference_port
-    && (ports.local_api_port === undefined || host.ports?.local_api_port === undefined || host.ports.local_api_port === ports.local_api_port);
+    && optionalPortMatches(host.ports?.local_api_port, ports.local_api_port);
 }
 
 /**
@@ -74,7 +83,7 @@ export function devinHostRepairable(host: DevinHostStatus | null, ports: DevinHo
   if (
     host.ports?.api_port !== ports.api_port
     || host.ports?.inference_port !== ports.inference_port
-    || (ports.local_api_port !== undefined && host.ports?.local_api_port !== undefined && host.ports.local_api_port !== ports.local_api_port)
+    || !optionalPortMatches(host.ports?.local_api_port, ports.local_api_port)
   ) {
     return false;
   }
