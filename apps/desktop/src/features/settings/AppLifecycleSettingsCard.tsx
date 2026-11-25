@@ -64,8 +64,13 @@ export function AppLifecycleSettingsCard() {
     try {
       setLoadingAutostart(true);
       await writeAutostart(enabled);
-      setAutostart(await readAutostart());
-      message(enabled ? t("已开启开机启动") : t("已关闭开机启动"));
+      const actual = await readAutostart();
+      setAutostart(actual);
+      if (actual !== enabled) {
+        message.error(t("开机启动未生效，可能被系统策略或安全软件拦截"));
+      } else {
+        message(actual ? t("已开启开机启动") : t("已关闭开机启动"));
+      }
     } catch (cause) {
       message.error(cause);
     } finally {

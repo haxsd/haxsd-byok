@@ -121,7 +121,8 @@ export function ModelSelect(props: ModelSelectProps) {
     if (!open) return;
     const closeOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!root.current?.contains(target) && !menu.current?.contains(target)) close();
+      // 外部点击关闭时不把焦点拉回触发器，避免抢走用户正在点击的输入框/按钮。
+      if (!root.current?.contains(target) && !menu.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
@@ -211,6 +212,7 @@ export function ModelSelect(props: ModelSelectProps) {
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       close();
       return;
     }
@@ -256,7 +258,7 @@ export function ModelSelect(props: ModelSelectProps) {
       aria-label={label}
       style={position}
       onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); close(); } }}
+      onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}
     >
       <div
         className={styles.listFrame}

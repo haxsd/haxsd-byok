@@ -168,13 +168,13 @@ export function HomeMetrics({ data, stats, callCounts, estimate = null, pricingF
       label={t("缓存命中率")}
       info={<InfoTooltip content={cacheTooltip} />}
       value={formatRate(defaultCacheHitRate)}
-      hint={t("缓存读取 /（缓存读取 + 非缓存输入）")}
+      hint={defaultCacheHitRate === null ? t("暂无缓存命中记录") : t("缓存读取 {tokens} Token", { tokens: formatCompactInteger(data.cacheReadTokens) })}
       visualPosition="right"
       visual={<ProgressRing
         value={defaultCacheHitRate ?? 0}
         size={62}
         thickness={6}
-        tone={(defaultCacheHitRate ?? 0) >= 0.5 ? "ok" : (defaultCacheHitRate ?? 0) > 0 ? "warn" : "bad"}
+        tone={defaultCacheHitRate === null ? "idle" : defaultCacheHitRate >= 0.5 ? "ok" : defaultCacheHitRate > 0 ? "warn" : "bad"}
         animationKey={refreshVersion}
         ariaLabel={t("缓存命中率 {rate}", { rate: formatRate(defaultCacheHitRate) })}
       />}

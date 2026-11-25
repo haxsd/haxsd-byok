@@ -5,18 +5,36 @@ const RELATIVE_UNIT_MS: Record<string, number> = {
   mins: 60_000,
   minute: 60_000,
   minutes: 60_000,
+  мин: 60_000,
+  минута: 60_000,
+  минуту: 60_000,
+  минуты: 60_000,
+  минут: 60_000,
   小时: 60 * 60_000,
   h: 60 * 60_000,
   hour: 60 * 60_000,
   hours: 60 * 60_000,
+  ч: 60 * 60_000,
+  час: 60 * 60_000,
+  часа: 60 * 60_000,
+  часов: 60 * 60_000,
   天: 24 * 60 * 60_000,
   d: 24 * 60 * 60_000,
   day: 24 * 60 * 60_000,
   days: 24 * 60 * 60_000,
+  д: 24 * 60 * 60_000,
+  день: 24 * 60 * 60_000,
+  дня: 24 * 60 * 60_000,
+  дней: 24 * 60 * 60_000,
   周: 7 * 24 * 60 * 60_000,
   w: 7 * 24 * 60 * 60_000,
   week: 7 * 24 * 60 * 60_000,
   weeks: 7 * 24 * 60 * 60_000,
+  нед: 7 * 24 * 60 * 60_000,
+  неделя: 7 * 24 * 60 * 60_000,
+  недели: 7 * 24 * 60 * 60_000,
+  неделю: 7 * 24 * 60 * 60_000,
+  недель: 7 * 24 * 60 * 60_000,
 };
 
 function localDate(parts: RegExpMatchArray) {
@@ -35,21 +53,21 @@ function localDate(parts: RegExpMatchArray) {
 export function parseTimeInput(input: string, now = new Date()): number | null {
   const value = input.trim().toLowerCase();
   if (!value) return null;
-  if (value === "现在" || value === "now") return now.getTime();
+  if (value === "现在" || value === "now" || value === "сейчас") return now.getTime();
 
-  if (value === "今天" || value === "today") {
+  if (value === "今天" || value === "today" || value === "сегодня") {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
     return start.getTime();
   }
-  if (value === "昨天" || value === "yesterday") {
+  if (value === "昨天" || value === "yesterday" || value === "вчера") {
     const start = new Date(now);
     start.setDate(start.getDate() - 1);
     start.setHours(0, 0, 0, 0);
     return start.getTime();
   }
 
-  const relative = value.match(/^(\d+(?:\.\d+)?)\s*(分钟|分|mins?|minutes?|min|小时|hours?|h|天|days?|d|周|weeks?|w)\s*(?:前|ago)$/);
+  const relative = value.match(/^(\d+(?:\.\d+)?)\s*(分钟|分|mins?|minutes?|min|минут[ауы]?|мин|小时|hours?|h|час(?:а|ов)?|ч|天|days?|d|дн(?:я|ей)|день|д|周|weeks?|w|недел[яиюь]|нед)\s*(?:前|ago|назад)$/);
   if (relative) return now.getTime() - Number(relative[1]) * RELATIVE_UNIT_MS[relative[2]];
 
   if (/^\d{10}$/.test(value)) return Number(value) * 1_000;

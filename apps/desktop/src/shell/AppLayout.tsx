@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { IconifyIcon } from "@iconify/react/offline";
 import KeepAliveRouteOutlet from "keepalive-for-react-router";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -9,7 +9,7 @@ import { StatusPill } from "../shared/ui/StatusPill";
 import { TooltipTrigger } from "../shared/ui/TooltipTrigger";
 import { navCallsIcon, navHarnessIcon, navModelsIcon, navOverviewIcon, navPluginsIcon, navSettingsIcon, navTutorialIcon } from "../shared/ui/navIcons";
 import { refreshIcon, searchIcon } from "../shared/ui/icons";
-import { appStore, useAppStore } from "../shared/store/appStore";
+import { appStore, useAppStoreSelector } from "../shared/store/appStore";
 import { configuredPluginModels } from "../shared/api";
 import { saveUiPreferences, useUiPreferences } from "../shared/store/uiPreferences";
 import { MessageProvider } from "../shared/ui/MessageProvider";
@@ -33,12 +33,27 @@ const keptAlivePages = ["/", "/calls", "/models", "/settings", "/harness/cursor"
 /** 教程从「外部文档」变成产品内页面后，这个标记表示「打开过」。存在服务端，见 uiPreferences.ts。 */
 
 export function AppLayout() {
-  const { busy, cursorHarness, devinStatus, devinHostStatus, codexStatus, claudeStatus, claudeTakeover, models, plugins, offline, error } = useAppStore();
+  const busy = useAppStoreSelector((state) => state.busy);
+  const cursorHarness = useAppStoreSelector((state) => state.cursorHarness);
+  const devinStatus = useAppStoreSelector((state) => state.devinStatus);
+  const devinHostStatus = useAppStoreSelector((state) => state.devinHostStatus);
+  const codexStatus = useAppStoreSelector((state) => state.codexStatus);
+  const claudeStatus = useAppStoreSelector((state) => state.claudeStatus);
+  const claudeTakeover = useAppStoreSelector((state) => state.claudeTakeover);
+  const models = useAppStoreSelector((state) => state.models);
+  const plugins = useAppStoreSelector((state) => state.plugins);
+  const offline = useAppStoreSelector((state) => state.offline);
+  const error = useAppStoreSelector((state) => state.error);
   const availableUpdate = useAvailableUpdate();
+  const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const navigate = useNavigate();
   const [leftActionTarget, setLeftActionTarget] = useState<HTMLDivElement | null>(null);
   const [rightActionTarget, setRightActionTarget] = useState<HTMLDivElement | null>(null);
+  const pageActionsValue = useMemo(
+    () => ({ left: leftActionTarget, right: rightActionTarget }),
+    [leftActionTarget, rightActionTarget],
+  );
   const [actionRegion, setActionRegion] = useState<HTMLDivElement | null>(null);
   // 「打开过教程」也存服务端（原来在 localStorage：端口一变，这个标记就没了，教程又变成未读）。
   const tutorialRead = useUiPreferences().tutorialRead === true;
@@ -152,7 +167,7 @@ export function AppLayout() {
           与「调用」页），常驻状态条里的那个累计值既与页面范围口径不一致，也读不出趋势。 */}
       <div className={styles.systemStatus} aria-label={t("运行状态")}>
         <TooltipTrigger label={t("本地管理服务")}>
-          <StatusPill tone={service.tone} title={t("本地管理服务")}>{service.label}</StatusPill>
+          <StatusPill tone={service.tone}>{service.label}</StatusPill>
         </TooltipTrigger>
         <span className={styles.statusDivider} aria-hidden="true" />
         <TooltipTrigger label={t("模型库里可用的模型")}>
@@ -181,7 +196,7 @@ export function AppLayout() {
             onClick={() => window.dispatchEvent(new Event("byok:open-command-palette"))}
           >
             <Icon icon={searchIcon} size="1em" />
-            <kbd>Ctrl K</kbd>
+            <kbd>{isMac ? "⌘ K" : "Ctrl K"}</kbd>
           </button>
         </TooltipTrigger>
       </div>
@@ -191,13 +206,13 @@ export function AppLayout() {
     {currentClient && <div className={styles.harnessBar}><HarnessTabs state={harnessState} /></div>}
     <div ref={setActionRegion} className={styles.actionRegion}>
       <div ref={setLeftActionTarget} className={styles.pageActions} />
-      {location.pathname !== "/" && <TooltipTrigger label={t("刷新")}><button className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={() => void appStore.refresh()}>
+      {location.pathname !== "/" && <TooltipTrigger label={t("刷新")}><button type="button" className={controls.iconButton} aria-label={t("刷新")} disabled={busy} onClick={() => void appStore.refresh()}>
         <Icon className={busy ? controls.spin : ""} icon={refreshIcon} size="1.1em" />
       </button></TooltipTrigger>}
       <div ref={setRightActionTarget} className={styles.pageActions} />
     </div>
     <main className={styles.content}>
-      <PageActionsTarget.Provider value={{ left: leftActionTarget, right: rightActionTarget }}>
+      <PageActionsTarget.Provider value={pageActionsValue}>
         {/* 外层边界只是兜底（缓存容器自身出错的情形）：页面报错由每个缓存节点内部的
             PageCacheErrorBoundary 接住，不会连累其它页面的缓存状态。 */}
         <PageErrorBoundary resetKey={location.pathname}>

@@ -1,5 +1,5 @@
 import type { EChartsCoreOption } from "echarts/core";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { TokenUsageGranularity } from "../../../shared/api";
 import { useI18n } from "../../../i18n/store";
 import { formatCompactInteger } from "../../../shared/utils/numberFormat";
@@ -71,7 +71,6 @@ export function DailyTokenUsageChart({
   onSelectBucket?: (bucketStartMs: number) => void;
 }) {
   const { locale } = useI18n();
-  const [hovered, setHovered] = useState(false);
   // Read from the theme rather than module constants, so the bars follow a theme
   // change instead of keeping whatever colours this file was written with.
   const palette = chartPalette();
@@ -149,10 +148,10 @@ export function DailyTokenUsageChart({
           const day = data[first.dataIndex];
           const total = totalTokens(day);
           const line = (color: string, label: string, value: number) =>
-            `${colorMark(color)}${label}：${formatCompactInteger(value)}${total > 0 && value > 0 ? `（${((value / total) * 100).toFixed(0)}%）` : ""}`;
+            `${colorMark(color)}${label}: ${formatCompactInteger(value)}${total > 0 && value > 0 ? ` (${((value / total) * 100).toFixed(0)}%)` : ""}`;
           return [
             formatTooltipTime(day.bucketStartMs, granularity, locale),
-            `${t("总请求")}：${formatCompactInteger(total)}`,
+            t("总 Token：{tokens}", { tokens: formatCompactInteger(total) }),
             line(seriesColors.input, t("输入（非缓存）"), day.inputTokens),
             line(seriesColors.cacheRead, t("缓存输入"), day.cacheReadTokens),
             line(seriesColors.cacheWrite, t("缓存写入"), day.cacheWriteTokens),
@@ -160,6 +159,7 @@ export function DailyTokenUsageChart({
           ].join("<br/>");
         },
       },
+      animationDurationUpdate: 0,
       xAxis: {
         type: "category",
         data: data.map(({ bucketStartMs }) => bucketStartMs),
@@ -170,7 +170,7 @@ export function DailyTokenUsageChart({
           hideOverlap: true,
           formatter: (_value: string, index: number) => formatAxisLabel(data[index].bucketStartMs, granularity, monthFormatter),
           color: palette.axis,
-          fontFamily: "HFKos",
+          fontFamily: "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", sans-serif",
           margin: 14,
         },
       },
@@ -186,7 +186,7 @@ export function DailyTokenUsageChart({
         splitLine: { lineStyle: { color: palette.grid } },
         axisLabel: {
           color: palette.axis,
-          fontFamily: "HFKos",
+          fontFamily: "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", sans-serif",
           formatter: (value: number) => formatCompactInteger(value),
         },
       },
@@ -208,27 +208,21 @@ export function DailyTokenUsageChart({
           markLine: {
             silent: true,
             symbol: "none",
-            lineStyle: { color: seriesColors.output, opacity: hovered ? 1 : 0, type: "dashed", width: 2 },
+            lineStyle: { color: seriesColors.output, opacity: 0.45, type: "dashed", width: 1.5 },
             label: {
-              show: hovered,
-              position: "insideStartTop",
-              formatter: t("平均"),
-              color: seriesColors.output,
-              distance: 8,
+              show: false,
             },
             data: [{ yAxis: averageLevel }],
           },
         } : series),
       ],
     };
-  }, [averageLevel, axisMaximum, data, emptyBarHeight, granularity, hovered, monthFormatter, palette.grid, seriesColors.cacheRead, seriesColors.cacheWrite, seriesColors.input, seriesColors.output, topBandPerBucket]);
+  }, [averageLevel, axisMaximum, data, emptyBarHeight, granularity, locale, monthFormatter, palette.axis, palette.grid, seriesColors.cacheRead, seriesColors.cacheWrite, seriesColors.input, seriesColors.output, topBandPerBucket]);
 
   return <div className={styles.root}>
     <EChart
       option={option}
       className={styles.chart}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       onClick={onSelectBucket ? (params) => {
         const index = (params as { dataIndex?: number }).dataIndex;
         if (typeof index === "number" && data[index]) onSelectBucket(data[index].bucketStartMs);

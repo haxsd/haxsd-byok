@@ -165,11 +165,9 @@ export function CursorModelEditor({ draft, modelOptions, discovering, hasStoredK
       </div>
       <FormField label="API Key" hint={hasStoredKey ? t("已保存密钥；留空表示不修改。") : t("访问模型服务所需的密钥。")}> <SecretTextInput placeholder={hasStoredKey ? t("留空保持不变") : "sk-xxxxxx"} autoComplete="off" value={draft.model.api_key} onChange={(event) => setModel({ api_key: event.target.value })} /></FormField>
 
-      <FormField label={t("模型名称")} hint={t("可以直接输入模型标识，也可以读取接口返回的模型列表。")}><Combobox ref={modelCombobox} value={draft.model.model_id} options={combinedOptions} placeholder="gpt-5" append={<Button className={styles.discoverButton} disabled={discovering || !canDiscover} onClick={() => void discoverModels()}>{discovering ? t("获取中…") : t("获取模型")}</Button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} /></FormField>
-      <FormField label={t("显示名称")} hint={t("仅用于界面展示，不会改变发送给模型服务的模型名称。")}> <TextInput placeholder={t("例如：主力模型")} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
-      {/* 备注是保存时的必填项（服务端同样要求），所以它必须留在第一屏：
-          折进「高级」会让用户在不展开时永远保存不了，也看不到报错说的是哪一栏。 */}
-      <FormField className={styles.fullWidth} label={t("备注")} hint={t("显示在 Cursor 模型说明中，也会用于 Devin 的模型选择器。建议每个模型写不同的备注。")}> <TextInput placeholder={t("请输入模型备注")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
+      <FormField label={t("模型名称 *")} hint={t("可以直接输入模型标识，也可以读取接口返回的模型列表。")}><Combobox ref={modelCombobox} value={draft.model.model_id} options={combinedOptions} placeholder="gpt-5" append={<Button className={styles.discoverButton} disabled={discovering || !canDiscover} onClick={() => void discoverModels()}>{discovering ? t("获取中…") : t("获取模型")}</Button>} onChange={(model_id) => setModel({ model_id, display_name: draft.model.display_name || model_id })} /></FormField>
+      <FormField label={t("显示名称 *")} hint={t("仅用于界面展示，不会改变发送给模型服务的模型名称。")}> <TextInput placeholder={t("例如：主力模型")} value={draft.model.display_name} onChange={(event) => setModel({ display_name: event.target.value })} /></FormField>
+      <FormField className={styles.fullWidth} label={t("备注（选填）")} hint={t("显示在 Cursor 模型说明中，也会用于 Devin 的模型选择器；留空默认使用显示名称。")}> <TextInput placeholder={t("留空默认使用显示名称")} value={draft.model.tooltip_data} onChange={(event) => setModel({ tooltip_data: event.target.value })} /></FormField>
 
       <div className={`${styles.fullWidth} ${styles.advanced}`}>
         <button type="button" className={styles.advancedToggle} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((current) => !current)}>

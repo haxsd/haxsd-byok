@@ -46,6 +46,7 @@ export function callClientLabel(source: string): string {
     case "devin": return "Devin";
     case "codex": return "Codex";
     case "claude": return "Claude";
+    case "external_api": return t("外部 API");
     case "internal": return t("内部调用");
     default: return source;
   }
@@ -56,7 +57,7 @@ export function callClientLabel(source: string): string {
  *
  * 与 `callClientLabel` 放一起，避免筛选项和表格/明细的称呼各自漂移。
  */
-export const callClientSources = ["cursor", "devin", "codex", "claude", "internal"] as const;
+export const callClientSources = ["cursor", "devin", "codex", "claude", "external_api", "internal"] as const;
 
 /**
  * 路由列：客户端来源 + 路由类型。
@@ -69,6 +70,7 @@ export function callRouteLabel(call: { client_source: string; route: string }): 
     case "codex": return "Codex · BYOK";
     case "devin": return "Devin · BYOK";
     case "claude": return "Claude · BYOK";
+    case "external_api": return `${t("外部 API")} · BYOK`;
     default: return call.route === "cursor_official" ? t("官方") : "BYOK";
   }
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LlmCall } from "../../shared/api";
 import { useI18n } from "../../i18n/store";
 import { ScrollableContent } from "../../shared/virtual/ScrollableContent";
@@ -53,6 +53,9 @@ export function CallTable({ calls, noCallsYet = false, onDetails }: { calls: Llm
   }, [calls, sort]);
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, pageCount);
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
   const rows = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const toggleSort = (key: SortKey) => setSort((current) => current.key === key
@@ -70,7 +73,6 @@ export function CallTable({ calls, noCallsYet = false, onDetails }: { calls: Llm
     <ScrollableContent
       className={styles.viewport}
       contentClassName={styles.tableContent}
-      scrollbarInsetTop="var(--app-content-top)"
       /* 列宽在 880px（应用最小窗口）下已经放得下；窗口比这更窄时，横向滚动条
          接管——没有它，最右侧的详情按钮会被静默裁掉、够不到（实测 98px）。 */
       horizontal
@@ -138,7 +140,7 @@ export function CallTable({ calls, noCallsYet = false, onDetails }: { calls: Llm
               </span>
               <span className={styles.actionsCell} role="cell">
                 <TooltipTrigger label={t("查看详情")}>
-                  <button className={styles.rowAction} aria-label={t("查看详情")} onClick={() => onDetails(call)}>
+                  <button type="button" className={styles.rowAction} aria-label={t("查看详情")} onClick={() => onDetails(call)}>
                     <Icon icon={eyeIcon} size="1.05em" />
                   </button>
                 </TooltipTrigger>

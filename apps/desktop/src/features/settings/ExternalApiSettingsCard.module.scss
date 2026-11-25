@@ -49,3 +49,43 @@
   display: flex;
   gap: 6px;
 }
+
+.inlineValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.examples {
+  font-size: type.$font-size-xs;
+  color: var(--vscode-descriptionForeground);
+
+  summary {
+    cursor: pointer;
+    user-select: none;
+  }
+}
+
+.exampleBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.modelChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modelChip {
+  padding: 3px 8px;
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-xs);
+  background: var(--oa-surface-well);
+  color: var(--vscode-foreground);
+  font-size: type.$font-size-2xs;
+}

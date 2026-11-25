@@ -603,6 +603,7 @@ export function installDemoApi() {
       }
       return empty();
     }
+    if (path === "/app/prepare-update-exit" && method === "POST") return empty();
     if (path.endsWith("/dismissals")) return empty();
 
     return json(errorBody(404, `Unhandled demo endpoint: ${method} ${path}`), 404);

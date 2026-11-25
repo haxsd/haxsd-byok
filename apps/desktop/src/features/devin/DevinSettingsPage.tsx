@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type DevinHostStatus, type DevinModelBinding, type DevinRoute, type DevinSettings, type Model } from "../../shared/api";
+import { api, type DevinHostStatus, type DevinModelBinding, type DevinRoute, type DevinSettings } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
@@ -104,13 +104,17 @@ export function DevinSettingsPage() {
   // The save button used to live inside the collapsed section, which meant a change
   // made in the open one looked applied while nothing had been written.
   const [saved, setSaved] = useState<DevinSettings>(emptySettings);
-  const [models, setModels] = useState<Model[]>([]);
+  const models = useAppStoreSelector((state) => state.models);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hostPath, setHostPath] = useState(readHostPath);
   const [hostInstallRoot, setHostInstallRoot] = useState(readHostInstallRoot);
+  const hostPathRef = useRef(hostPath);
+  const hostInstallRootRef = useRef(hostInstallRoot);
+  hostPathRef.current = hostPath;
+  hostInstallRootRef.current = hostInstallRoot;
   const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
   const [hostFailure, setHostFailure] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
@@ -161,30 +165,25 @@ export function DevinSettingsPage() {
     let disposed = false;
     setLoading(true);
     setLoadError(null);
-    void Promise.allSettled([api.devinSettings(), api.models()]).then(([settingsResult, modelsResult]) => {
+    void api.devinSettings().then((value) => {
       if (disposed) return;
-      if (settingsResult.status === "fulfilled") {
-        // Devin 只有“使用自选模型”这一种模式：开关不再暴露，读到的旧设置统一
-        // 收敛为开启；保存时再把值写回服务端。
-        setSettings({ ...settingsResult.value, enabled: true });
-        setSaved(settingsResult.value);
-      } else {
-        const text = clientErrorText(settingsResult.reason);
-        setLoadError(text);
-        message.error(text);
-      }
-      if (modelsResult.status === "fulfilled") {
-        setModels(modelsResult.value);
-      } else {
-        const text = clientErrorText(modelsResult.reason);
-        setLoadError(text);
-        message.error(text);
-      }
+      setSettings(value);
+      setSaved(value);
+    }).catch((cause) => {
+      if (disposed) return;
+      const text = clientErrorText(cause);
+      setLoadError(text);
+      message.error(text);
     }).finally(() => {
       if (!disposed) setLoading(false);
     });
     return () => { disposed = true; };
   }, [message, reloadKey]);
+
+  useEffect(() => () => {
+    if (hostPathSaveTimer.current !== null) window.clearTimeout(hostPathSaveTimer.current);
+    if (hostInstallRootSaveTimer.current !== null) window.clearTimeout(hostInstallRootSaveTimer.current);
+  }, []);
 
   useEffect(() => {
     if (loading || loadError) return;
@@ -192,27 +191,22 @@ export function DevinSettingsPage() {
   }, [loading, loadError]);
 
   // 设置文件路径与安装目录不再要求用户填写：服务端自己找到它们，再回填到界面。
-  //
-  // 这里刻意只跑一次，用的是"打开页面时记住的那两个输入"：把它们列进依赖会让用户
-  // 每敲一个字符就打一次探测请求。初始值由 useState 给出，所以闭包里拿到的是该用的值。
-  //
-  // 记住的路径失效（卸载、换盘、搬到别处）不是用户的操作错误，因此不弹红条：两个输入
-  // 各自失效时互不牵连，都失败才退回自动探测；仍失败才把原因写在卡片里。
   useEffect(() => {
     if (loading || loadError) return;
     let cancelled = false;
-    void probeHostPath(hostPath, api.devinHostStatus, hostInstallRoot)
+    const probedPath = hostPathRef.current;
+    const probedRoot = hostInstallRootRef.current;
+    void probeHostPath(probedPath, api.devinHostStatus, probedRoot)
       .then((probe) => {
         if (cancelled) return;
         setHostStatus(probe.status);
         setHostFailure(probe.failure);
         setHostNeedsInspect(false);
-        if (probe.status && probe.status.path !== hostPath.trim()) {
+        if (probe.status && probe.status.path !== probedPath.trim() && hostPathRef.current === probedPath) {
           setHostPath(probe.status.path);
           persistHostPath(probe.status.path);
         }
-        if (probe.status && hostInstallRoot.trim() && !probe.matched.installRoot) {
-          // 记住的安装目录已经失效，自动探测成功：清掉旧值，别让输入框和实际状态互相矛盾。
+        if (probe.status && probedRoot.trim() && !probe.matched.installRoot && hostInstallRootRef.current === probedRoot) {
           setHostInstallRoot("");
           persistHostInstallRoot("");
         }
@@ -457,6 +451,7 @@ export function DevinSettingsPage() {
     && devinHostRepairable(hostStatus, {
       api_port: saved.api_port,
       inference_port: saved.inference_port,
+      local_api_port: saved.local_api_port,
     });
   const connectDisabled = loading
     || Boolean(loadError)
@@ -479,12 +474,10 @@ export function DevinSettingsPage() {
           : hostRepairable
             ? t("Devin 更新后接管补丁未生效。关闭 Devin，然后点上方“修复接管”。")
             : canAutoConnect
-            ? !settings.enabled
-              ? t("先开启“使用自选模型”，选择默认模型并保存。")
-              : view.pendingChanges
-                ? t("先保存设置，再点上方主按钮“应用到 Devin”。")
-                : defaultMissingReason
-                  ?? t("关闭 Devin，然后点上方主按钮“应用到 Devin”。")
+            ? view.pendingChanges
+              ? t("先保存设置，再点上方主按钮“应用到 Devin”。")
+              : defaultMissingReason
+                ?? t("关闭 Devin，然后点上方主按钮“应用到 Devin”。")
             : extensionMissing
               ? t("找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。")
               : extensionUnsupported
@@ -563,8 +556,7 @@ export function DevinSettingsPage() {
           const activeRouteId = activeRouteIdForDisplay(binding);
           const hasRoutes = binding.routes.length > 0;
           const name = bindingName(binding);
-          // 行的 key 不能随输入变化：下标在编辑期间是稳定的，只有增删行时才会移动。
-          const rowKey = String(index);
+          const rowKey = binding.model_uid.trim() || `${binding.model_hash}:${index}`;
           const expanded = expandedBindings[rowKey] ?? false;
           return <div className={styles.binding} key={rowKey}>
             <div className={styles.bindingRow}>
@@ -689,6 +681,10 @@ export function DevinSettingsPage() {
     <HarnessCapabilities client="devin" collapsible />
     {view.pendingChanges && <div className={styles.saveBar}>
       <span>{t("有未保存的改动")}</span>
+      <div className={styles.addActions}>
+        <Button size="small" disabled={saving} onClick={() => setSettings(saved)}>{t("放弃改动")}</Button>
+        <Button size="small" variant="primary" disabled={saving || Boolean(defaultMissingReason)} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
+      </div>
     </div>}
   </div>;
   return <>    <ConfirmDialog

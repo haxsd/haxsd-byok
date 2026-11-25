@@ -14,10 +14,10 @@ export type UpdateFailure = {
   raw: string;
 };
 
-/** 系统策略拦下未签名的安装器（Code Integrity / Smart App Control）。 */
-const POLICY_MARKERS = ["application control policy", "blocked this file", "os error 4551"];
-/** 安装器没有写入权限。 */
-const PERMISSION_MARKERS = ["os error 5", "access is denied"];
+/** 系统策略拦下未签名的安装器（Code Integrity / Smart App Control / Defender）。 */
+const POLICY_MARKERS = ["application control policy", "blocked this file", "os error 4551", "os error 225", "virus or potentially unwanted"];
+/** 安装器没有写入权限或需要管理员提权。 */
+const PERMISSION_MARKERS = ["os error 5", "os error 740", "access is denied", "requires elevation"];
 /** 清单或安装包没下载下来：本机 github.com 直连不稳，系统代理开关会变。 */
 const NETWORK_MARKERS = ["403", "timed out", "dns", "connection"];
 

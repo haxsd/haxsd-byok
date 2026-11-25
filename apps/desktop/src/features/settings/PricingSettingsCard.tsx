@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { pluginText, type CurrencyPricing, type ModelTokenPricing, type PricingMode, type TokenPrice } from "../../shared/api";
-import { appStore, useAppStore } from "../../shared/store/appStore";
+import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { useI18n } from "../../i18n/store";
 import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Select } from "../../shared/ui/Select";
 import { ModelSelect, type ModelSelectOption } from "../../shared/ui/ModelSelect";
@@ -55,7 +56,10 @@ function PriceRows({ price, unit }: { price: TokenPrice; unit: string }) {
 }
 
 export function PricingSettingsCard() {
-  const { pricing, models, plugins } = useAppStore();
+  const pricing = useAppStoreSelector(state => state.pricing);
+  const models = useAppStoreSelector(state => state.models);
+  const plugins = useAppStoreSelector(state => state.plugins);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const { locale } = useI18n();
   const currency = currencyOf(locale);
   const unit = currencySymbol(currency);
@@ -106,6 +110,7 @@ export function PricingSettingsCard() {
     finally { setSaving(false); }
   };
   const remove = async () => {
+    setConfirmRemove(false);
     try {
       setSaving(true);
       if (await appStore.removePricingSettings(targetKey)) { setEditingKey(null); message(t("已移除此模型定价，相关用量将显示为未定价")); }
@@ -116,10 +121,23 @@ export function PricingSettingsCard() {
     <Button size="small" disabled={saving} onClick={() => setEditingKey(null)}>{t("取消")}</Button>
     <Button variant="primary" size="small" disabled={saving || !targetKey} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
   </div> : <div className={styles.actionGroup}>
-    {saved && <Button size="small" disabled={saving || !targetKey} onClick={() => void remove()}>{t("移除定价")}</Button>}
+    {saved && <Button size="small" disabled={saving || !targetKey} onClick={() => setConfirmRemove(true)}>{t("移除定价")}</Button>}
     <Button size="small" disabled={saving || !modelHash} onClick={edit}>{t("编辑")}</Button>
   </div>;
-  return <TitledCard title={t("模型定价")} action={actions}>
+  return <>
+    <ConfirmDialog
+      open={confirmRemove}
+      destructive
+      title={t("移除模型定价？")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("移除")}
+      busy={saving}
+      onCancel={() => setConfirmRemove(false)}
+      onConfirm={() => void remove()}
+    >
+      <p>{t("这会清空该模型在所有币种下的单价配置，相关用量将显示为未定价。")}</p>
+    </ConfirmDialog>
+    <TitledCard title={t("模型定价")} action={actions}>
     <div className={styles.content}>
       <small className={styles.rule}>{t("按模型单价估算；未定价用量不计入金额。")}</small>
       <small className={styles.rule}>{t("价格币种跟随界面语言：中文用人民币，其它语言用美元，两套价格各自独立维护。")}</small>
@@ -137,5 +155,6 @@ export function PricingSettingsCard() {
       {(editing ? draft.mode : saved?.mode) === "peak_off_peak" && <span className={styles.rule}>{t("规则：UTC 周一至周五 01:00-04:00、06:00-10:00 为高峰期，其余时段（含周末）为低谷期；两段单价分别填写。")}</span>}
       <small className={styles.rule}>{t("修改单价会重新估算历史用量；这里不是服务商账单。")}</small>
     </div>
-  </TitledCard>;
+  </TitledCard>
+  </>;
 }

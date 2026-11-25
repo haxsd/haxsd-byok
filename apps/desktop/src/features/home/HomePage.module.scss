@@ -59,6 +59,66 @@
   white-space: nowrap;
 }
 
+.onboardingBanner {
+  display: grid;
+  gap: var(--oa-space-4);
+  padding: var(--oa-card-padding);
+  border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-card);
+  background: var(--oa-surface-card);
+}
+
+.onboardingHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--oa-space-4);
+
+  > div {
+    display: grid;
+    gap: 4px;
+  }
+
+  small {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+  }
+}
+
+.onboardingSteps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--oa-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--oa-radius-control);
+    border: 1px solid var(--oa-border);
+  }
+
+  span {
+    color: var(--vscode-descriptionForeground);
+    font-size: type.$font-size-xs;
+  }
+}
+
+.onboardingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--oa-space-3);
+}
+
+@media (max-width: 780px) {
+  .onboardingSteps {
+    grid-template-columns: 1fr;
+  }
+}
+
 .linkButton {
   padding: 3px 6px;
   color: var(--vscode-textLink-foreground);

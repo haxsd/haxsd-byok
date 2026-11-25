@@ -127,7 +127,7 @@
   padding: var(--oa-card-padding);
   > div { min-width: 0; display: grid; gap: 4px; }
   span { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
-  strong { font-size: 26px; font-weight: type.$font-weight-medium; font-variant-numeric: tabular-nums; }
+  strong { font-size: type.$font-size-2xl; font-weight: type.$font-weight-medium; font-variant-numeric: tabular-nums; }
   small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
 }
 .storageMeter {

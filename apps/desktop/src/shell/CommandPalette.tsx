@@ -5,7 +5,8 @@ import { useI18n } from "../i18n/store";
 import { useAppStoreSelector } from "../shared/store/appStore";
 import { selectCalls, selectModels, selectTheme } from "../shared/store/selectors";
 import { Icon } from "../shared/ui/Icon";
-import { isTopModalLayer, pushModalLayer, removeModalLayer } from "../shared/ui/modalLayer";
+import { hasModalLayer, isTopModalLayer, pushModalLayer, removeModalLayer } from "../shared/ui/modalLayer";
+import { desktopPlatform } from "../shared/native/platform";
 import { arrowRightIcon, searchIcon } from "../shared/ui/icons";
 import { commandPaletteCommands, type PaletteCommand as Command } from "./commandPaletteCommands";
 import { paletteMatches } from "./commandPaletteMatches";
@@ -41,6 +42,8 @@ export const CommandPalette = memo(function CommandPalette() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        // 普通 Modal 在栈顶时不叠开命令面板，避免 inert 与焦点冲突。
+        if (!open && hasModalLayer()) return;
         event.preventDefault();
         setOpen((current) => !current);
         return;
@@ -49,13 +52,13 @@ export const CommandPalette = memo(function CommandPalette() {
     window.addEventListener("keydown", onKeyDown);
     // The button in the navigation bar opens it too: a shortcut nobody can discover
     // is a shortcut only its author uses.
-    const onOpenRequest = () => setOpen(true);
+    const onOpenRequest = () => { if (!hasModalLayer()) setOpen(true); };
     window.addEventListener("byok:open-command-palette", onOpenRequest);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("byok:open-command-palette", onOpenRequest);
     };
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -190,7 +193,7 @@ export const CommandPalette = memo(function CommandPalette() {
         <div className={styles.footer}>
           <span><kbd className={styles.kbd}>↑</kbd><kbd className={styles.kbd}>↓</kbd>{t("选择")}</span>
           <span><kbd className={styles.kbd}>Enter</kbd>{t("执行")}</span>
-          <span><kbd className={styles.kbd}>Ctrl</kbd><kbd className={styles.kbd}>K</kbd>{t("开关")}</span>
+          <span>{desktopPlatform() === "macos" ? <><kbd className={styles.kbd}>⌘</kbd><kbd className={styles.kbd}>K</kbd></> : <><kbd className={styles.kbd}>Ctrl</kbd><kbd className={styles.kbd}>K</kbd></>}{t("开关")}</span>
         </div>
       </div>
     </div>,

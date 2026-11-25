@@ -269,8 +269,15 @@ async function runBoot(): Promise<UiPreferences> {
   }
   const plan = planPreferenceBoot(settings, readLegacyPreferences());
   // 先把读到的偏好发布出去，再尝试上传旧 localStorage：上传失败只影响"服务端是否
-  // 收到"，不能连本地已经生效的偏好一起丢掉。
-  publish(plan.preferences);
+  // 收到"，不能连本地已经生效的偏好一起丢掉。同时保留启动期间用户已经改过的字段。
+  const mergedDisclosure = (plan.preferences.disclosure || snapshot.disclosure)
+    ? { ...(plan.preferences.disclosure ?? {}), ...(snapshot.disclosure ?? {}) }
+    : undefined;
+  publish({
+    ...plan.preferences,
+    ...snapshot,
+    ...(mergedDisclosure ? { disclosure: mergedDisclosure } : {}),
+  });
   if (plan.upload) {
     try {
       const echoed = preferencesFromSettings(
@@ -306,7 +313,11 @@ export function loadUiPreferences(): Promise<UiPreferences> {
 
 /** 改一项偏好：立刻生效并广播，同时写回服务端。返回服务端是否确认收到。 */
 export async function saveUiPreferences(patch: UiPreferences): Promise<boolean> {
-  publish({ ...snapshot, ...patch });
+  const next: UiPreferences = { ...snapshot, ...patch };
+  if (patch.disclosure) {
+    next.disclosure = { ...(snapshot.disclosure ?? {}), ...patch.disclosure };
+  }
+  publish(next);
   try {
     const echoed = preferencesFromSettings(await api.setDesktopSettings(preferencePatch(patch)));
     return coversPreferences(echoed, patch);

@@ -14,3 +14,7 @@ export function removeModalLayer(layer: symbol) {
 export function isTopModalLayer(layer: symbol) {
   return layers.at(-1) === layer;
 }
+
+export function hasModalLayer() {
+  return layers.length > 0;
+}

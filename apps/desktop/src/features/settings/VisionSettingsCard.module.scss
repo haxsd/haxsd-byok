@@ -37,3 +37,8 @@
   display: flex;
   gap: 6px;
 }
+
+.warning {
+  color: var(--oa-warn);
+  font-size: type.$font-size-xs;
+}

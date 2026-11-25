@@ -27,6 +27,7 @@ export const DevinTakeoverBanner = memo(function DevinTakeoverBanner() {
     if (!devinEnabled) return;
     let lastCheck = 0;
     const check = () => {
+      if (document.hidden) return;
       const now = Date.now();
       if (now - lastCheck < 30_000) return;
       lastCheck = now;
@@ -47,6 +48,7 @@ export const DevinTakeoverBanner = memo(function DevinTakeoverBanner() {
     ? {
         api_port: devinStatus.bound_ports.api,
         inference_port: devinStatus.bound_ports.inference,
+        local_api_port: devinStatus.bound_ports.local_api,
       }
     : null;
   if (!ports || devinPointsAtGateway(host, ports)) return null;

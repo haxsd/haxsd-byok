@@ -54,7 +54,7 @@ export function Select({ value, options, disabled, ariaLabel, onChange }: { valu
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       if (event.key === "Enter" && open && options[active]) { event.preventDefault(); choose(options[active]); }
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
       if (event.key === "Tab") setOpen(false);
     }}><span className={styles.optionContent}>{(selected?.icon || selected?.iconSrc) && <Icon icon={selected.icon} src={selected.iconSrc} />}<span>{selected?.label ?? value}</span></span><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>
@@ -159,7 +159,7 @@ export const Combobox = forwardRef<ComboboxHandle, ComboboxProps>(function Combo
       if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
       if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
       if (event.key === "Enter" && open && filtered[active]) { event.preventDefault(); choose(filtered[active]); }
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
     }} />
     <button type="button" className={styles.comboToggle} disabled={disabled} aria-label={t("打开模型列表")} aria-expanded={open} tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => { if (open) setOpen(false); else { openMenu(); input.current?.focus(); } }}><Icon icon={chevronDownIcon} size="1.1em" className={[styles.dropdownIcon, open && styles.dropdownIconOpen].filter(Boolean).join(" ")} /></button>
     {open && createPortal(<div id={menuId} ref={menu} className={styles.menu} role="listbox" style={{ left: position.left, top: position.top, width: position.width }}>

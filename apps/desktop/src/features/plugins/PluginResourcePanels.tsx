@@ -65,14 +65,24 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
   const [begun, setBegun] = useState<PluginOAuthBegin | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
   // 回调进 ref：父组件每次重渲染都会给一个新的函数，直接列进依赖会让轮询 effect 跟着重启。
   const configuredRef = useRef(onConfigured);
   configuredRef.current = onConfigured;
 
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
+
   const copyCode = async (code: string) => {
-    await api.copyCursorText(code).catch(() => undefined);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    try {
+      await api.copyCursorText(code);
+      setCopied(true);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
   };
 
   useEffect(() => {
@@ -112,7 +122,11 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
       setBegun(next);
       setStatus("polling");
       if (next.userCode) await api.copyCursorText(next.userCode).catch(() => undefined);
-      await api.openExternalUrl(next.verificationUrlComplete || next.verificationUrl);
+      try {
+        await api.openExternalUrl(next.verificationUrlComplete || next.verificationUrl);
+      } catch (openCause) {
+        setError(t("未能自动打开浏览器，请手动访问授权链接：{error}", { error: errorText(openCause) }));
+      }
     } catch (cause) {
       setStatus("error");
       setError(errorText(cause));
@@ -144,6 +158,7 @@ function OAuthMethodCard({ pluginId, resourceType, method, onConfigured }: {
 export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletingResource, setDeletingResource] = useState<{ resource: PluginResourceDescriptor; item: PluginResourceView } | null>(null);
   const [modelProviderId, setModelProviderId] = useState<string | null>(null);
   // 模型开关保存的失败明细单独记：那条通用错误提示在弹窗后面，用户看不见。
   const [modelError, setModelError] = useState<string | null>(null);
@@ -251,11 +266,28 @@ export function PluginSettingsPanel({ plugin }: { plugin: PluginDescriptor }) {
       onRefresh={(item) => void run(`refresh:${item.id}`, async () => {
         await api.refreshPluginResource(plugin.id, resource.type, item.id);
       })}
-      onDelete={(item) => void run(`delete:${item.id}`, async () => {
-        await api.deletePluginResource(plugin.id, resource.type, item.id);
-      })}
+      onDelete={(item) => setDeletingResource({ resource, item })}
     />)}
     {error && <span className={styles.error} role="alert">{error}</span>}
+    <ConfirmDialog
+      open={deletingResource !== null}
+      destructive
+      title={t("确认删除资源")}
+      cancelLabel={t("取消")}
+      confirmLabel={t("删除")}
+      busy={busy !== null}
+      onCancel={() => setDeletingResource(null)}
+      onConfirm={() => {
+        if (!deletingResource) return;
+        const target = deletingResource;
+        setDeletingResource(null);
+        void run(`delete:${target.item.id}`, async () => {
+          await api.deletePluginResource(plugin.id, target.resource.type, target.item.id);
+        });
+      }}
+    >
+      <p>{t("确定要删除「{name}」吗？", { name: deletingResource?.item.displayName ?? "" })}</p>
+    </ConfirmDialog>
     {modelProvider && <ModelManagementModal
       provider={modelProvider}
       busy={busy !== null}
@@ -384,6 +416,9 @@ function ResourceList({ resource, busy, onAction, onRefresh, onDelete }: {
   const visible = filtered.slice((Math.min(page, pageCount) - 1) * PAGE_SIZE, Math.min(page, pageCount) * PAGE_SIZE);
 
   useEffect(() => setPage(1), [query]);
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   return <FormField label={pluginText(resource.displayName, locale)}>
     <div className={styles.resourceSection}>

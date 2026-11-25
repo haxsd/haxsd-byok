@@ -2,11 +2,19 @@ import { useEffect, useState } from "react";
 import { api, type LlmCall } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { callClientLabel } from "../../shared/utils/callStatus";
-import { useAppStore } from "../../shared/store/appStore";
+import { useAppStoreSelector } from "../../shared/store/appStore";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
 import { copyErrorDiagnostic, sanitizeDiagnosticText } from "./errorDiagnostics";
 import styles from "./CallFacts.module.scss";
+
+let cachedAppVersion: Promise<string | null> | null = null;
+function readAppVersion(): Promise<string | null> {
+  if (!cachedAppVersion) {
+    cachedAppVersion = api.appInfo().then((info) => info.version).catch(() => null);
+  }
+  return cachedAppVersion;
+}
 
 /**
  * 一次调用的全部字段，按「谁是谁 / 快不快 / 花了多少 / 打到哪」分四组。
@@ -22,7 +30,7 @@ import styles from "./CallFacts.module.scss";
  * 报错时上游地址仍留在错误块里——"打到哪个上游失败"是排查的第一步。
  */
 export function CallFacts({ call }: { call: LlmCall }) {
-  const { developerMode } = useAppStore();
+  const developerMode = useAppStoreSelector((state) => state.developerMode);
   const tokens = call.total_tokens ?? (call.input_tokens ?? 0) + (call.output_tokens ?? 0);
   const identity: Array<[string, string]> = developerMode ? [
     ["Call ID", call.call_id],
@@ -83,14 +91,17 @@ function ErrorDiagnostic({ call, developerMode }: { call: LlmCall; developerMode
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
   const [copyError, setCopyError] = useState("");
 
-  // 版本来自 /api/app-info（桌面壳启动时写入）。取不到就保持 unknown，不阻断复制。
   useEffect(() => {
     let cancelled = false;
-    void api.appInfo()
-      .then((info) => { if (!cancelled) setAppVersion(info.version); })
-      .catch(() => { /* 版本只是诊断字段；失败时仍复制其余现场。 */ });
+    void readAppVersion().then((version) => { if (!cancelled) setAppVersion(version); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (copyState !== "copied") return;
+    const timer = window.setTimeout(() => setCopyState("idle"), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
 
   const code = call.error_kind?.trim() || t("未知");
   const reason = sanitizeDiagnosticText(call.error_message);

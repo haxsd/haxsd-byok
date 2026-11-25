@@ -56,7 +56,7 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
 
   if (!collapsible) {
     return <Card as="section" className={styles.root}>
-      <header className={styles.header}>
+      <header className={styles.header} data-collapsed={!open || undefined}>
         <div className={styles.headingRow}>{heading}</div>
         {action}
       </header>
@@ -77,7 +77,7 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
   };
 
   return <Card as="section" className={styles.root}>
-    <header className={styles.header}>
+    <header className={styles.header} data-collapsed={!open || undefined}>
       <button type="button" className={styles.disclosure} aria-expanded={open} onClick={toggle}>
         <span className={styles.chevron} data-open={open} aria-hidden="true"><Icon icon={chevronRightIcon} size="1em" /></span>
         {heading}

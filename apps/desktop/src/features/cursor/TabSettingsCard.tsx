@@ -92,7 +92,7 @@ export function TabSettingsCard({
           </div>
           <div className={styles.control}><TextInput
             value={draft.address}
-            placeholder="https://tab.leokun.cn"
+            placeholder="https://tab.example.com"
             aria-label={t("TAB 服务地址")}
             onChange={(event) => onDraftChange({ ...draft, address: event.target.value })}
             onKeyDown={(event) => { if (event.key === "Enter") onSave(); }}

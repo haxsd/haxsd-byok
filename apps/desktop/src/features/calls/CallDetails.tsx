@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { CallDetail } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { JsonEditor } from "../../shared/ui/JsonEditor";
@@ -18,14 +18,15 @@ function compactionTriggerLabel(trigger: string) {
   }
 }
 
+function LazyJsonEditor({ ariaLabel, source, detail }: { ariaLabel: string; source: unknown; detail?: boolean }) {
+  const value = useMemo(() => JSON.stringify(source), [source]);
+  return <JsonEditor ariaLabel={ariaLabel} value={value} readOnly detail={detail} />;
+}
+
 export function CallDetails({ detail }: { detail: CallDetail }) {
   const { call, request, cursor_trace: cursorTrace } = detail;
-  // 响应也可能是空的：把所有取值都收在一个为空的默认值上，别让一个缺字段的
-  // 响应把整个详情窗口打空（真实发生过）。
   const chunks = detail.response_chunks ?? [];
-  // 大响应默认只渲染前缀：几 MB 的正文一次性交给 Monaco，打开详情要等两三秒。
   const [showAllResponse, setShowAllResponse] = useState(false);
-  const response = responsePreview(chunks, { showAll: showAllResponse });
 
   const tabs: TabItem[] = [
     { value: "call", label: t("调用信息"), content: <section className={styles.section}>
@@ -52,34 +53,42 @@ export function CallDetails({ detail }: { detail: CallDetail }) {
     { value: "request", label: t("请求"), content: <section className={styles.section}>
       {request ? <>
         <div className={styles.meta}>{t("字节数")}：{request.byte_count}</div>
-        <h4>{t("请求头")}</h4><JsonEditor ariaLabel={t("请求头")} value={JSON.stringify(request.headers)} readOnly />
-        <h4>{t("请求体")}</h4><JsonEditor ariaLabel={t("请求体")} value={JSON.stringify(request.body)} readOnly detail />
-      </> : <div className={styles.empty}>{t("未记录请求内容，请开启详细记录后重试。")}</div>}
+        <h4>{t("请求头")}</h4><LazyJsonEditor ariaLabel={t("请求头")} source={request.headers} />
+        <h4>{t("请求体")}</h4><LazyJsonEditor ariaLabel={t("请求体")} source={request.body} detail />
+      </> : <div className={styles.empty}>{t("未记录请求内容，请在「系统设置 → 详细记录」开启后重试。")}</div>}
     </section> },
-    { value: "response", label: t("响应流"), content: <section className={styles.section}>
-      {chunks.length > 0 ? <>
-        <div className={styles.meta}>{t("分块数")}：{chunks.length} · {t("字节数")}：{response.totalBytes}</div>
-        {response.truncated && <div className={styles.meta}>
-          <span>{t("仅显示前 {shown}（共 {total}）", { shown: formatBytes(response.shownBytes), total: formatBytes(response.totalBytes) })}</span>
-          <Button size="small" onClick={() => setShowAllResponse(true)}>{t("显示全部")}</Button>
-        </div>}
-        <JsonEditor ariaLabel={t("响应流")} value={response.text} readOnly detail />
-        {response.truncated && <small>{t("默认只渲染前 {limit}；点「显示全部」会一次性加载整段响应。", { limit: formatBytes(RESPONSE_PREVIEW_BYTES) })}</small>}
-      </> : <div className={styles.empty}>{t("未记录响应内容，请开启详细记录后重试。")}</div>}
-    </section> },
+    { value: "response", label: t("响应流"), content: <ResponseTabContent chunks={chunks} showAll={showAllResponse} onShowAll={() => setShowAllResponse(true)} /> },
   ];
 
   if (cursorTrace) tabs.push({ value: "cursor-trace", label: t("Cursor 追踪"), content: <section className={styles.section}>
       <div className={styles.meta}>
         Request ID：{cursorTrace.trace.request_id} · {t("工件数")}：{cursorTrace.artifacts.length}
       </div>
-      <JsonEditor
+      <LazyJsonEditor
         ariaLabel={t("Cursor 追踪")}
-        value={JSON.stringify({ trace: cursorTrace.trace, artifacts: cursorTrace.artifacts })}
-        readOnly
+        source={{ trace: cursorTrace.trace, artifacts: cursorTrace.artifacts }}
         detail
       />
     </section> });
 
   return <div className={styles.root}><Tabs items={tabs} /></div>;
+}
+
+function ResponseTabContent({ chunks, showAll, onShowAll }: {
+  chunks: CallDetail["response_chunks"];
+  showAll: boolean;
+  onShowAll: () => void;
+}) {
+  const response = useMemo(() => responsePreview(chunks, { showAll }), [chunks, showAll]);
+  return <section className={styles.section}>
+    {chunks.length > 0 ? <>
+      <div className={styles.meta}>{t("分块数")}：{chunks.length} · {t("字节数")}：{response.totalBytes}</div>
+      {response.truncated && <div className={styles.meta}>
+        <span>{t("仅显示前 {shown}（共 {total}）", { shown: formatBytes(response.shownBytes), total: formatBytes(response.totalBytes) })}</span>
+        <Button size="small" onClick={onShowAll}>{t("显示全部")}</Button>
+      </div>}
+      <JsonEditor ariaLabel={t("响应流")} value={response.text} readOnly detail />
+      {response.truncated && <small>{t("默认只渲染前 {limit}；点「显示全部」会一次性加载整段响应。", { limit: formatBytes(RESPONSE_PREVIEW_BYTES) })}</small>}
+    </> : <div className={styles.empty}>{t("未记录响应内容，请在「系统设置 → 详细记录」开启后重试。")}</div>}
+  </section>;
 }

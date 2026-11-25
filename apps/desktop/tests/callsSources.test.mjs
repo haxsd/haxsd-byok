@@ -17,7 +17,7 @@ test("the calls page source filter lists Claude exactly once", async () => {
 
   assert.deepEqual(
     [...callClientSources],
-    ["cursor", "devin", "codex", "claude", "internal"],
+    ["cursor", "devin", "codex", "claude", "external_api", "internal"],
     "CallsPage builds its source options from this list",
   );
   assert.equal(callClientLabel("claude"), "Claude", "the filter and the detail panel share one name");

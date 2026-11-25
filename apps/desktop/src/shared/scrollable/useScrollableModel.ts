@@ -233,7 +233,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
         maxScrollTop = measureScrollArea(
           element,
           trackRef.current,
-          contentHeight,
+          contentHeightRef.current,
           minThumbSize,
           isScrolling
         ).maxScrollTop
@@ -249,7 +249,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
       if (isScrolling) scheduleScrollEnd()
       return nextMetrics
     },
-    [contentHeight, minThumbSize, scheduleScrollEnd, snapshot, trackRef, viewportRef]
+    [minThumbSize, scheduleScrollEnd, snapshot, trackRef, viewportRef]
   )
 
   const api = useMemo<ScrollAreaApi>(
@@ -271,7 +271,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
         const metrics = measureScrollArea(
           element,
           trackRef.current,
-          contentHeight,
+          contentHeightRef.current,
           minThumbSize,
           true
         )
@@ -281,7 +281,7 @@ export function useScrollableModel(options: UseScrollableModelOptions) {
         return viewportRef.current
       },
     }),
-    [contentHeight, minThumbSize, scrollToNow, trackRef, viewportRef]
+    [minThumbSize, scrollToNow, trackRef, viewportRef]
   )
 
   useEffect(() => {

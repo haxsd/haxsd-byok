@@ -35,9 +35,14 @@ function read(variable: string, fallback: string): string {
   return value || fallback;
 }
 
+let cachedThemeKey: string | null = null;
+let cachedPalette: ChartPalette | null = null;
+
 /** Reads the palette for the theme currently applied to the document. */
 export function chartPalette(): ChartPalette {
-  return {
+  const themeKey = typeof document !== "undefined" ? (document.documentElement.dataset.theme ?? "default") : "ssr";
+  if (cachedPalette && cachedThemeKey === themeKey) return cachedPalette;
+  const palette: ChartPalette = {
     input: read(names.input, "#0091ff"),
     cacheRead: read(names.cacheRead, "#2ecc8f"),
     cacheWrite: read(names.cacheWrite, "#6c7cf0"),
@@ -48,4 +53,7 @@ export function chartPalette(): ChartPalette {
     series: [1, 2, 3, 4, 5].map((index) => read(`--oa-chart-${index}`, "#7c9cff")),
     heat: [0, 1, 2, 3, 4].map((index) => read(`--oa-heat-${index}`, "#2f5da8")),
   };
+  cachedThemeKey = themeKey;
+  cachedPalette = palette;
+  return palette;
 }

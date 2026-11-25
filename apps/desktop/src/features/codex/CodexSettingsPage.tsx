@@ -142,11 +142,11 @@ export function CodexSettingsPage() {
   });
   const primary = (() => {
     if (!draft || !saved) return { label: t("读取中…"), disabled: true, run: () => undefined };
-    if (!draft.model_hashes.length) {
-      return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
-    }
     if (dirty) {
       return { label: t("保存"), disabled: busy || locked || modelSelectionBlocked, run: () => void save() };
+    }
+    if (!draft.model_hashes.length) {
+      return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
     }
     if (!applied) {
       return { label: t("应用到 Codex"), disabled: busy || !gate.apply, run: requestApply };
@@ -193,6 +193,13 @@ export function CodexSettingsPage() {
           : <p className={styles.note}>{t("加载中…")}</p>}
     </TitledCard>
     <HarnessCapabilities client="codex" collapsible />
+    {dirty && !locked && <Card className={styles.saveBar}>
+      <span>{t("有未保存的更改")}</span>
+      <div className={styles.saveBarActions}>
+        <Button size="small" disabled={busy} onClick={() => { if (saved) setDraft(saved); }}>{t("放弃改动")}</Button>
+        <Button size="small" variant="primary" disabled={busy || modelSelectionBlocked} onClick={() => void save()}>{t("保存")}</Button>
+      </div>
+    </Card>}
   </div>;
   return <>    <ConfirmDialog
       open={confirmForce}

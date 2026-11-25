@@ -55,7 +55,7 @@ export function Modal({ id, open, title, children, banner, busy, wide, compact, 
     const previous = document.activeElement as HTMLElement | null;
     const onKey = (event: KeyboardEvent) => {
       if (!isTopModalLayer(layer.current)) return;
-      if (event.key === "Escape" && !busyRef.current) {
+      if (event.key === "Escape" && !event.defaultPrevented && !busyRef.current) {
         event.preventDefault();
         closeRef.current();
         return;

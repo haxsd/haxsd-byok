@@ -15,7 +15,7 @@ import { bucketStart, bucketStats, callsPerBucket, modelUsage, peakDay, sumStats
 import { RecentCalls } from "./overview/RecentCalls";
 import { OverviewTimeRangeFilter, type OverviewRangePreset, type QuickPreset } from "./overview/OverviewTimeRangeFilter";
 import { PageActions } from "../../shell/PageActions";
-import { appStore, useAppStore } from "../../shared/store/appStore";
+import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { formatTimeInput, parseTimeInput } from "../../shared/utils/parseTimeInput";
 import { modelProviderName } from "../../shared/utils/modelProvider";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
@@ -37,18 +37,26 @@ const OVERVIEW_REFRESH_INTERVAL_MS = 2_000;
 /// 区间卡片按这个间隔推进；焦点/可见性回来时强制刷新一次。
 const RANGE_REFRESH_INTERVAL_MS = 30_000;
 
+function localDateKey(ms: number) {
+  const date = new Date(ms);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function contributionCalendarData(overview: Overview, endMs: number) {
   const tokensByDate = new Map<string, number>();
   for (const bucket of overview.token_usage_series) {
-    const date = new Date(bucket.bucket_start_ms).toISOString().slice(0, 10);
+    const date = localDateKey(bucket.bucket_start_ms);
     const tokens = bucket.input_tokens + bucket.cache_read_tokens + bucket.cache_write_tokens + bucket.output_tokens;
     tokensByDate.set(date, (tokensByDate.get(date) ?? 0) + tokens);
   }
   const lastDay = new Date(Math.max(0, endMs - 1));
-  lastDay.setUTCHours(0, 0, 0, 0);
+  lastDay.setHours(0, 0, 0, 0);
   const firstDayMs = lastDay.getTime() - (CALENDAR_DAYS - 1) * DAY_MS;
   return Array.from({ length: CALENDAR_DAYS }, (_, offset) => {
-    const date = new Date(firstDayMs + offset * DAY_MS).toISOString().slice(0, 10);
+    const date = localDateKey(firstDayMs + offset * DAY_MS);
     return { date, tokens: tokensByDate.get(date) ?? 0 };
   });
 }
@@ -71,11 +79,22 @@ function presetRange(preset: Exclude<OverviewRangePreset, "custom">, now = new D
   return { startMs: now.getTime() - duration, endMs };
 }
 
+const ONBOARDING_DISMISSED_KEY = "haxsd-byok.onboarding-dismissed";
+
 export function HomePage() {
-  const { overview, calls, busy, models, plugins, pricing } = useAppStore();
+  const overview = useAppStoreSelector((state) => state.overview);
+  const calls = useAppStoreSelector((state) => state.calls);
+  const busy = useAppStoreSelector((state) => state.busy);
+  const models = useAppStoreSelector((state) => state.models);
+  const plugins = useAppStoreSelector((state) => state.plugins);
+  const pricing = useAppStoreSelector((state) => state.pricing);
+  const offline = useAppStoreSelector((state) => state.offline);
   const { locale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    try { return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === "1"; } catch { return false; }
+  });
   const [preset, setPreset] = useState<OverviewRangePreset>("today");
   const [quick, setQuick] = useState<QuickPreset | null>(null);
   const [customRange, setCustomRange] = useState<TimeRange | null>(null);
@@ -197,17 +216,18 @@ export function HomePage() {
 
   const filteredOverview = rangeOverview ?? overview;
   const granularity = filteredOverview.token_usage_granularity;
-  const dailyTokenUsage = filteredOverview.token_usage_series.map((bucket) => ({
+  const dailyTokenUsage = useMemo(() => filteredOverview.token_usage_series.map((bucket) => ({
     bucketStartMs: bucket.bucket_start_ms,
     inputTokens: bucket.input_tokens,
     cacheReadTokens: bucket.cache_read_tokens,
     cacheWriteTokens: bucket.cache_write_tokens,
     outputTokens: bucket.output_tokens,
-  }));
+  })), [filteredOverview.token_usage_series]);
   // The calendar is labelled as the past year, so it reads the unfiltered overview.
   // Feeding it the range-filtered series left eleven of the twelve months empty
   // whenever a short range was selected, which is the default.
-  const contribution = contributionCalendarData(overview, Date.now());
+  const todayKey = localDateKey(Date.now());
+  const contribution = useMemo(() => contributionCalendarData(overview, Date.now()), [overview, todayKey]);
   const metrics = {
     llmCalls: filteredOverview.metrics.llm_calls,
     successfulCalls: filteredOverview.metrics.successful_calls,
@@ -218,7 +238,7 @@ export function HomePage() {
     cacheWriteTokens: filteredOverview.metrics.cache_write_tokens,
   };
   const currency = currencyOf(locale);
-  const pricingInput = !rangeOverview || rangeBusy ? null : granularity === "day" ? (pricingSource === loadedRange ? pricingSeries : null) : rangeOverview.token_usage_series;
+  const pricingInput = !rangeOverview ? null : granularity === "day" ? (pricingSource === loadedRange ? pricingSeries : null) : rangeOverview.token_usage_series;
   const estimate = useMemo(() => pricingInput === null ? null : sumHourlyCost(pricingInput, pricing, currency), [pricingInput, pricing, currency]);
   const costs = useMemo(() => {
     const result = new Map<number, number>();
@@ -307,12 +327,19 @@ export function HomePage() {
     ? t("还没有这个范围的用量数据。")
     : rangeIsEmpty
       ? t("这个范围内没有调用记录。")
-      : t("合计 {tokens} Token · 日均 {average} · 峰值 {peak}（{peakTokens}）", {
-        tokens: formatCompactInteger(totals.totalTokens),
-        average: formatCompactInteger(Math.round(totals.totalTokens / stats.length)),
-        peak: busiest ? formatBucketLabel(busiest.startMs, granularity, locale) : "-",
-        peakTokens: formatCompactInteger(busiest?.totalTokens ?? 0),
-      });
+      : granularity === "day"
+        ? t("合计 {tokens} Token · 日均 {average} · 峰值 {peak}（{peakTokens}）", {
+          tokens: formatCompactInteger(totals.totalTokens),
+          average: formatCompactInteger(Math.round(totals.totalTokens / stats.length)),
+          peak: busiest ? formatBucketLabel(busiest.startMs, granularity, locale) : "-",
+          peakTokens: formatCompactInteger(busiest?.totalTokens ?? 0),
+        })
+        : t("合计 {tokens} Token · 均值 {average} · 峰值 {peak}（{peakTokens}）", {
+          tokens: formatCompactInteger(totals.totalTokens),
+          average: formatCompactInteger(Math.round(totals.totalTokens / stats.length)),
+          peak: busiest ? formatBucketLabel(busiest.startMs, granularity, locale) : "-",
+          peakTokens: formatCompactInteger(busiest?.totalTokens ?? 0),
+        });
 
   // 范围查询失败时，区间口径的数字一个都不渲染（指标、Token 图表、模型用量）：
   // 以前失败会静默回退到全量数据，徽标写着"近30天"、数字却是全量，用户以为看的是区间。
@@ -360,8 +387,16 @@ export function HomePage() {
         {rangeIsEmpty
           ? <div className={styles.emptyBlock}><EmptyState
             icon={flatColorAreaChartIcon}
-            title={t("这个范围内还没有用量")}
-            description={t("换一个时间范围，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。")}
+            title={offline
+              ? t("本机管理服务未连接")
+              : models.length === 0
+                ? t("还没有配置任何模型")
+                : t("这个范围内还没有用量")}
+            description={offline
+              ? t("请先启动网关服务，再刷新查看用量统计。")
+              : models.length === 0
+                ? t("先在模型库中添加一个可用模型，然后在客户端里发起对话。")
+                : t("换一个时间范围，或先在 Cursor / Devin / Codex / Claude 里发起一次对话。")}
           /></div>
           : <div className={styles.chartBlock}>
             <DailyTokenUsageChart
@@ -373,7 +408,42 @@ export function HomePage() {
       </TitledCard>,
     },
   ];
+  const showOnboarding = models.length === 0 && !offline && !onboardingDismissed;
   const sections: VirtualPageSection[] = [
+    ...(showOnboarding ? [{
+      key: "onboarding",
+      estimatedHeight: 165,
+      content: <section className={styles.onboardingBanner} aria-label={t("快速开始")}>
+        <div className={styles.onboardingHeader}>
+          <div>
+            <strong>{t("3 步完成首次配置")}</strong>
+            <small>{t("配置好模型与客户端接管后，这里会实时展示调用统计与费用估算。")}</small>
+          </div>
+          <Button size="small" onClick={() => {
+            setOnboardingDismissed(true);
+            try { localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1"); } catch {}
+          }}>{t("不再提示")}</Button>
+        </div>
+        <ol className={styles.onboardingSteps}>
+          <li>
+            <strong>{t("1. 添加模型")}</strong>
+            <span>{t("填写接口地址与 API Key，并测试连通性。")}</span>
+          </li>
+          <li>
+            <strong>{t("2. 接管客户端")}</strong>
+            <span>{t("在 Cursor、Devin、Codex 或 Claude 中选择本机网关。")}</span>
+          </li>
+          <li>
+            <strong>{t("3. 发起对话")}</strong>
+            <span>{t("回到首页查看 Token 消耗、缓存命中与调用详情。")}</span>
+          </li>
+        </ol>
+        <div className={styles.onboardingActions}>
+          <Button size="small" variant="primary" onClick={() => void navigate("/models")}>{t("前往模型库")}</Button>
+          <Button size="small" onClick={() => void navigate("/tutorial")}>{t("查看使用教程")}</Button>
+        </div>
+      </section>,
+    }] : []),
     ...rangeSections,
     {
       key: "calendar",
@@ -386,7 +456,7 @@ export function HomePage() {
           <ContributionCalendarChart
             data={contribution}
             onSelectDay={(date) => {
-              const startMs = Date.parse(`${date}T00:00:00Z`);
+              const startMs = Date.parse(`${date}T00:00:00`);
               zoomToRange(startMs, startMs + DAY_MS);
             }}
           />

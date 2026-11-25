@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -6,6 +6,7 @@ import { api } from "../../shared/api";
 import { Button } from "../../shared/ui/Button";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { forgetPendingUpdate, rememberPendingUpdate, usePendingUpdateOutcome } from "./pendingUpdate";
+import { useAvailableUpdate } from "./startupUpdateCheck";
 import { NOT_APPLIED, classifyUpdateFailure, describeUpdateFailure, type UpdateFailure } from "./updateFailure";
 import styles from "./SettingsPage.module.scss";
 
@@ -30,10 +31,18 @@ export function UpdateCard() {
   const [versionError, setVersionError] = useState<string | null>(null);
   const [update, setUpdate] = useState<Update | null>(null);
   const [downloaded, setDownloaded] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [status, setStatus] = useState<UpdateStatus>({ kind: "none" });
   const lastApply = usePendingUpdateOutcome();
+  const availableUpdate = useAvailableUpdate();
+  const autoCheckedRef = useRef(false);
+  const busy = checking || applying;
+
+  useEffect(() => () => {
+    void update?.close().catch(() => undefined);
+  }, [update]);
 
   // Runtime version is a native capability; browser previews read it from the management API.
   useEffect(() => {
@@ -46,7 +55,7 @@ export function UpdateCard() {
   }, []);
 
   const checkForUpdate = async () => {
-    setBusy(true);
+    setChecking(true);
     setStatus({ kind: "none" });
     setUpdate(null);
     setDownloaded(false);
@@ -60,12 +69,23 @@ export function UpdateCard() {
       }
       setUpdate(found);
     } catch (cause) {
-      // 开发模式与非 Tauri 环境下没有更新通道，据实说明而不是装作已是最新。
-      setStatus({ kind: "notice", text: cause instanceof Error ? cause.message : String(cause) });
+      const failure = classifyUpdateFailure(cause);
+      if (failure.kind === "network") {
+        setStatus({ kind: "failure", phase: "download", failure });
+      } else {
+        setStatus({ kind: "notice", text: cause instanceof Error ? cause.message : String(cause) });
+      }
     } finally {
-      setBusy(false);
+      setChecking(false);
     }
   };
+
+  useEffect(() => {
+    if (autoCheckedRef.current) return;
+    if (!availableUpdate || update !== null || checking || applying || status.kind !== "none") return;
+    autoCheckedRef.current = true;
+    void checkForUpdate();
+  }, [availableUpdate, update, checking, applying, status.kind]);
 
   /** 下载：失败只可能是连接或配额问题，说清"下载失败"就够。 */
   const downloadStep = async (target: Update) => {
@@ -95,9 +115,18 @@ export function UpdateCard() {
 
   /** 安装：Windows 上这一句之后本进程就结束了，所以期望值与提示都要先落下。 */
   const installStep = async (target: Update) => {
-    // 先等服务端确认记录再启动安装器。只写内存快照不够：下一次启动是新的进程，
-    // PUT 如果还没到达服务端，就永远无法核对这次升级。
-    await rememberPendingUpdate(target.currentVersion, target.version);
+    let remembered = false;
+    try {
+      remembered = await rememberPendingUpdate(target.currentVersion, target.version);
+    } catch {
+      remembered = false;
+    }
+    if (!remembered) {
+      setStatus({ kind: "notice", text: t("未能写入升级记录（服务可能正忙），请稍后重试安装。") });
+      return;
+    }
+    // 通知后端写优雅退出标记，避免 Windows NSIS 安装器直接结束旧进程时被收尾助手误判为崩溃。
+    await api.prepareUpdateExit().catch(() => undefined);
     setStatus({ kind: "notice", text: t("安装程序已启动，应用将退出；重启后会自动核对是否装上了") });
     try {
       await target.install();
@@ -106,32 +135,36 @@ export function UpdateCard() {
       setStatus({ kind: "failure", phase: "install", failure: classifyUpdateFailure(cause) });
       return;
     }
-    await relaunch();
+    try {
+      await relaunch();
+    } catch (cause) {
+      setStatus({ kind: "failure", phase: "install", failure: classifyUpdateFailure(cause) });
+    }
   };
 
   const applyUpdate = async () => {
     if (!update) return;
-    setBusy(true);
+    setApplying(true);
     setStatus({ kind: "none" });
     try {
       // 已经下载过的包不重下：安装失败后可以直接重试安装。
       if (!downloaded && !(await downloadStep(update))) return;
       await installStep(update);
     } finally {
-      setBusy(false);
+      setApplying(false);
     }
   };
 
   /** 更新行的说明：下载中显示进度，下载完成后说明可以直接重试安装。 */
   const updateHint = () => {
     if (downloaded) return t("安装包已下载，可以直接重试安装");
-    if (!busy) return t("安装程序会退出本应用，装好后重新启动它");
+    if (!applying) return t("安装程序会退出本应用，装好后重新启动它");
     return progress === null ? t("下载中…") : t("下载中 {percent}%", { percent: progress });
   };
 
   return <TitledCard
     title={t("软件更新")}
-    action={<Button size="small" variant="primary" disabled={busy} onClick={() => void checkForUpdate()}>{busy ? t("检查中…") : t("检查更新")}</Button>}
+    action={<Button size="small" variant="primary" disabled={busy} onClick={() => void checkForUpdate()}>{checking ? t("检查中…") : t("检查更新")}</Button>}
   >
     <div className={styles.runtimeRow}>
       <strong>{t("当前版本")}</strong>
@@ -143,7 +176,7 @@ export function UpdateCard() {
         <small>{updateHint()}</small>
       </div>
       <Button size="small" disabled={busy} onClick={() => void applyUpdate()}>
-        {busy ? (downloaded ? t("安装中…") : t("下载中…")) : downloaded ? t("重试安装") : t("下载并安装")}
+        {applying ? (downloaded ? t("安装中…") : t("下载中…")) : downloaded ? t("重试安装") : t("下载并安装")}
       </Button>
     </div>}
     {status.kind === "failure" && <div className={styles.statusRow} data-tone="bad">

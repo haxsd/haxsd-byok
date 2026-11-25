@@ -79,14 +79,24 @@ export function CursorSettingsPage() {
   // 设置页的「Tab 补全」「提交信息模型」链接带 ?section=tools：滚动到功能设置块，
   // 不再用标签页切换。
   const [params] = useSearchParams();
+  const [caCopyFailed, setCaCopyFailed] = useState(false);
   const section = cursorSettingsSection(params);
   const toolsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (section === TOOLS_SECTION) toolsRef.current?.scrollIntoView({ block: "start" });
+    if (section !== TOOLS_SECTION) return;
+    const node = toolsRef.current;
+    if (!node) return;
+    node.scrollIntoView({ block: "start" });
   }, [section]);
 
   useEffect(() => {
-    if (caCommand) void api.copyCursorText(caCommand);
+    if (!caCommand) {
+      setCaCopyFailed(false);
+      return;
+    }
+    void api.copyCursorText(caCommand)
+      .then(() => setCaCopyFailed(false))
+      .catch(() => setCaCopyFailed(true));
   }, [caCommand]);
 
   /**
@@ -110,7 +120,7 @@ export function CursorSettingsPage() {
   };
   const refreshCa = async () => {
     await appStore.refresh();
-    if (appStore.getSnapshot().cursorHarness?.ca !== "ready") setWaitingForCaRefresh(false);
+    if (appStore.getSnapshot().cursorHarness?.ca === "ready") setWaitingForCaRefresh(false);
   };
   const openCaTerminal = () => {
     if (caCommand) void api.openCursorCaInstallTerminal().catch((cause) => message.error(cause));
@@ -348,8 +358,11 @@ export function CursorSettingsPage() {
         <section className={styles.configBlock}>
           <div className={styles.configHead}>
             <strong>{t("模型来源")}</strong>
-            <StatusPill tone={mode === "official" ? "idle" : officialModelsUsable ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>
+            <StatusPill tone={mode === "official" ? "idle" : mode === "local" || officialModelsUsable ? "ok" : "warn"}>{modeLabel[mode]}</StatusPill>
           </div>
+          {cursorHarness?.runtime_mismatch && (
+            <small className={styles.draftNote}>{t("检测到正在运行的 Cursor 使用的端口或模式与当前配置不一致，请完全退出并重新打开 Cursor。")}</small>
+          )}
           <div className={styles.modeRow}>
             <Segmented<CursorMode>
               value={draftMode}
@@ -514,8 +527,12 @@ export function CursorSettingsPage() {
     </ConfirmDialog>
     <ConfirmDialog open={caCommand !== null} title={t("安装本地 CA")} cancelLabel={t("关闭")} confirmLabel={t("打开终端")} onCancel={() => setCaCommand(null)} onConfirm={openCaTerminal}>
       <div className={styles.editor}><strong>{t("需要授权安装证书")}</strong><span>{windows
-        ? t("安装命令已自动复制。点击「打开终端」，命令会自动执行并弹出 UAC 授权窗口，选「是」即可；装好后本页会自动刷新。")
-        : t("安装命令已自动复制。点击「打开终端」，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")}</span><pre className={styles.command}>{caCommand}</pre></div>
+        ? caCopyFailed
+          ? t("请先手动复制下方命令，或点击「打开终端」自动执行并弹出 UAC 授权窗口，选「是」即可；装好后本页会自动刷新。")
+          : t("安装命令已自动复制。点击「打开终端」，命令会自动执行并弹出 UAC 授权窗口，选「是」即可；装好后本页会自动刷新。")
+        : caCopyFailed
+          ? t("未能自动复制命令，请手动复制下方命令；点击「打开终端」，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")
+          : t("安装命令已自动复制。点击「打开终端」，将命令粘贴到终端中执行，并按提示输入密码；装好后本页会自动刷新。")}</span><pre className={styles.command}>{caCommand}</pre></div>
     </ConfirmDialog>
   </>;
 }

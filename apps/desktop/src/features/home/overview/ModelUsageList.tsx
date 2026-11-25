@@ -16,6 +16,7 @@ export function ModelUsageList({ rows, currency, limit = 5 }: { rows: ModelUsage
   if (rows.length === 0) return <p className={styles.empty}>{t("这段时间内还没有模型调用。")}</p>;
   const visible = rows.slice(0, limit);
   const rest = rows.slice(limit);
+  const totalTokens = rows.reduce((total, row) => total + row.tokens, 0);
   const restTokens = rest.reduce((total, row) => total + row.tokens, 0);
   const restCalls = rest.reduce((total, row) => total + row.calls, 0);
 
@@ -25,6 +26,7 @@ export function ModelUsageList({ rows, currency, limit = 5 }: { rows: ModelUsage
       <span className={styles.share}>
         <Meter
           height={5}
+          total={totalTokens}
           ariaLabel={t("{name} 占全部用量的 {percent}%", { name: row.label, percent: Math.round(row.share * 100) })}
           segments={[{ value: row.tokens, color: palette.series[index % palette.series.length], label: row.label }]}
         />

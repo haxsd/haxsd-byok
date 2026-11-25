@@ -39,10 +39,20 @@ function mondayIndex(date: Date) {
   return (date.getUTCDay() + 6) % 7;
 }
 
+function quartileLevel(tokens: number, sortedNonZero: number[]): number {
+  if (tokens <= 0 || sortedNonZero.length === 0) return 0;
+  const rank = sortedNonZero.findIndex((value) => value >= tokens);
+  const ratio = (rank + 1) / sortedNonZero.length;
+  if (ratio <= 0.25) return 1;
+  if (ratio <= 0.5) return 2;
+  if (ratio <= 0.75) return 3;
+  return 4;
+}
+
 function buildCalendar(data: ContributionDay[], locale: Locale) {
   if (data.length === 0) return null;
   const monthFormatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
-  const maximum = Math.max(1, ...data.map(({ tokens }) => tokens));
+  const sortedNonZero = data.map(({ tokens }) => tokens).filter((tokens) => tokens > 0).sort((a, b) => a - b);
   const firstDate = parseDate(data[0].date);
   const gridStart = new Date(firstDate.getTime() - mondayIndex(firstDate) * DAY_IN_MS);
   const cells: Cell[] = data.map((day) => {
@@ -52,17 +62,20 @@ function buildCalendar(data: ContributionDay[], locale: Locale) {
       ...day,
       column: Math.floor(daysFromStart / 7),
       row: mondayIndex(date),
-      level: day.tokens === 0 ? 0 : Math.max(1, Math.ceil((day.tokens / maximum) * 4)),
+      level: quartileLevel(day.tokens, sortedNonZero),
     };
   });
   const columnCount = cells.at(-1)!.column + 1;
   const monthTicks = cells.reduce<Array<{ key: string; text: string; column: number }>>((ticks, cell) => {
     const date = parseDate(cell.date);
     const key = `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
-    if (ticks.at(-1)?.key !== key) ticks.push({ key, text: monthFormatter.format(date), column: cell.column });
+    const prev = ticks.at(-1);
+    if (prev?.key !== key && (!prev || cell.column - prev.column >= 3)) {
+      ticks.push({ key, text: monthFormatter.format(date), column: cell.column });
+    }
     return ticks;
   }, []);
-  return { cells, columnCount, monthTicks };
+  return { cells, columnCount, monthTicks, hasActivity: sortedNonZero.length > 0 };
 }
 
 /**
@@ -201,7 +214,8 @@ export function ContributionCalendarChart({ data, onSelectDay }: {
       <span>{t("少")}</span>
       {[0, 1, 2, 3, 4].map((level) => <span key={level} className={styles.legendCell} data-level={level} />)}
       <span>{t("多")}</span>
-      {onSelectDay && <span className={styles.legendHint}>{t("点一天看当天明细")}</span>}
+      {!layout.hasActivity && <span className={styles.legendHint}>{t("暂无年度用量记录")}</span>}
+      {layout.hasActivity && onSelectDay && <span className={styles.legendHint}>{t("点一天看当天明细")}</span>}
     </div>
   </div>;
 }

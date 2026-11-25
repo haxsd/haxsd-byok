@@ -25,6 +25,7 @@ type CursorModelCardsProps = {
   disabled: boolean;
   /** 搜索筛选生效时关闭拖拽：排序提交的是完整列表，筛选后的子集提交会破坏顺序。 */
   allowReorder: boolean;
+  searchActive?: boolean;
   testingModelHashes: Set<string>;
   testResults: Map<string, CursorModelTestState>;
   onTest: (model: Model) => void;
@@ -64,6 +65,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
         icon={group.icon}
         count={group.models.length}
         defaultOpen={false}
+        forceOpen={props.searchActive}
         onSettings={props.grouping === "provider" ? () => props.onGroupSettings(group) : undefined}
       >
         {group.models.map((model) => <ModelListRow
@@ -87,6 +89,7 @@ export function CursorModelCards(props: CursorModelCardsProps) {
       iconSrc={group.icon}
       count={group.models.length}
       defaultOpen={props.grouping === "flat"}
+      forceOpen={props.searchActive}
     >
       {group.models.map((model) => <PluginModelRow
         key={model.id}
@@ -114,25 +117,27 @@ function pluginGroups(models: PluginModelDescriptor[]) {
   return groups;
 }
 
-function CollapsibleGroup({ label, icon, iconSrc, count, defaultOpen = true, onSettings, children }: {
+function CollapsibleGroup({ label, icon, iconSrc, count, defaultOpen = true, forceOpen = false, onSettings, children }: {
   label: string;
   icon?: IconifyIcon;
   iconSrc?: string;
   count: number;
   defaultOpen?: boolean;
+  forceOpen?: boolean;
   onSettings?: () => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const isOpen = forceOpen || open;
   return <Card className={styles.groupCard}>
     <div className={styles.groupHeader}>
       <button
         type="button"
         className={styles.groupToggle}
-        aria-expanded={open}
+        aria-expanded={isOpen}
         onClick={() => setOpen((current) => !current)}
       >
-        <span className={styles.groupChevron} data-open={open}><Icon icon={chevronRightIcon} size="1em" /></span>
+        <span className={styles.groupChevron} data-open={isOpen}><Icon icon={chevronRightIcon} size="1em" /></span>
         {icon && <Icon icon={icon} size="1.1em" />}
         {iconSrc && <Icon src={iconSrc} size="1.1em" />}
         <span className={styles.groupLabel}>{label}</span>
@@ -142,7 +147,7 @@ function CollapsibleGroup({ label, icon, iconSrc, count, defaultOpen = true, onS
         {t("分组设置")}
       </button>}
     </div>
-    {open && <div className={styles.modelList}>{children}</div>}
+    {isOpen && <div className={styles.modelList}>{children}</div>}
   </Card>;
 }
 
@@ -330,16 +335,14 @@ function ModelChips({ model }: { model: Model }) {
   const contextTokens = Number.isFinite(model.context_window_tokens) ? model.context_window_tokens : null;
   const rawMaxOutput = model.type === "openai" ? model.max_completion_tokens : model.anthropic_max_tokens;
   const maxOutput = Number.isFinite(rawMaxOutput) ? rawMaxOutput : null;
+  const parts: string[] = [];
+  if (contextTokens !== null) parts.push(t("上下文 {tokens}", { tokens: formatTokens(contextTokens) }));
+  if (maxOutput !== null) parts.push(t("输出上限 {tokens}", { tokens: formatTokens(maxOutput) }));
+  if (model.custom_headers_enabled) parts.push(t("自定义 Headers"));
   return <>
-    {contextTokens !== null && <span className={styles.chip}>
-      {t("上下文 {tokens}", { tokens: formatTokens(contextTokens) })}
-    </span>}
-    {maxOutput !== null && <span className={styles.chip}>
-      {t("输出上限 {tokens}", { tokens: formatTokens(maxOutput) })}
-    </span>}
+    {parts.length > 0 && <span className={styles.chip}>{parts.join(" · ")}</span>}
     {model.reasoning_effort && <span className={styles.chip} data-tone="accent">{t("思考 {effort}", { effort: model.reasoning_effort })}</span>}
     {model.anthropic_thinking_effort && <span className={styles.chip} data-tone="accent">{t("思考 {effort}", { effort: model.anthropic_thinking_effort })}</span>}
-    {model.custom_headers_enabled && <span className={styles.chip}>{t("自定义 Headers")}</span>}
   </>;
 }
 

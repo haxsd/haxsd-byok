@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type StatisticsStorage, type StatisticsStorageScope } from "../../shared/api";
 import { appStore } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
@@ -102,6 +102,13 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
   const artifactDays = retentionDays(storage?.artifact_retention_days);
   const progress = clearing ? clearingCounter(clearingScope, clearing) : 0;
   const maintenanceActive = Boolean(clearing || storage?.compaction_requested || storage?.compacting);
+  const wasMaintenanceActiveRef = useRef(false);
+  useEffect(() => {
+    if (wasMaintenanceActiveRef.current && !maintenanceActive) {
+      void appStore.refresh();
+    }
+    wasMaintenanceActiveRef.current = maintenanceActive;
+  }, [maintenanceActive]);
   const actionBlocked = busy || maintenanceActive;
   const canCompact = Boolean(storage && Number.isFinite(storage.database_free_bytes) && storage.database_free_bytes > 0 && !actionBlocked);
   const usedBytes = storage && Number.isFinite(storage.database_used_bytes) ? storage.database_used_bytes : 0;

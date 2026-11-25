@@ -163,11 +163,12 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
   const rangeMapRef = useRef(
     new RangeMap(itemSnapshot.map((item) => item.estimatedSize))
   )
+  const itemKeysSignature = itemSnapshot.map((item) => item.key).join("\0")
+  const itemKeysSignatureRef = useRef(itemKeysSignature)
   const itemSignature = itemSnapshot
     .map((item) => `${item.key}:${item.estimatedSize}`)
     .join("\0")
   const itemSignatureRef = useRef(itemSignature)
-  const shouldResetScrollRef = useRef(false)
   const scrollApiRef = useRef<ScrollAreaApi | null>(null)
   const scrollStateRef = useRef<ScrollAreaState | null>(null)
   const contentElementRef = useRef<HTMLDivElement | null>(null)
@@ -226,19 +227,16 @@ export function VirtualList<TItem>(props: VirtualListProps<TItem>) {
     scrollStateRef.current = scrollState
   }
 
-  if (itemSignatureRef.current !== itemSignature) {
+  useLayoutEffect(() => {
+    if (itemSignatureRef.current === itemSignature) return
+    const keysChanged = itemKeysSignatureRef.current !== itemKeysSignature
     const estimatedSizes = itemSnapshot.map((item) => item.estimatedSize)
     rangeMapRef.current.reset(estimatedSizes)
     itemSignatureRef.current = itemSignature
-    shouldResetScrollRef.current = true
-  }
-
-  useEffect(() => {
-    if (!shouldResetScrollRef.current) return
-    shouldResetScrollRef.current = false
-    scrollApiRef.current?.scrollToTop()
+    itemKeysSignatureRef.current = itemKeysSignature
+    if (keysChanged) scrollApiRef.current?.scrollToTop()
     forceUpdate((current) => current + 1)
-  }, [itemSignature])
+  }, [itemKeysSignature, itemSignature, itemSnapshot])
 
   const rangeMap = rangeMapRef.current
   const initialRenderCount = Math.max(1, overscan * 2 + 1)

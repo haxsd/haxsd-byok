@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type DevinHostStatus } from "../../shared/api";
 import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
+import { useUiPreferences } from "../../shared/store/uiPreferences";
 import { Button } from "../../shared/ui/Button";
 import { Card } from "../../shared/ui/Card";
 import { Icon } from "../../shared/ui/Icon";
@@ -39,6 +40,7 @@ const onboardingClients: Array<{ id: OnboardingClient; label: string }> = [
  */
 export function TutorialPage() {
   const { models, cursorHarness, devinStatus, codexStatus, claudeStatus, claudeTakeover, calls } = useAppStore();
+  const { devinHostPath, devinInstallRoot } = useUiPreferences();
   const navigate = useNavigate();
   const [hostStatus, setHostStatus] = useState<DevinHostStatus | null>(null);
   // 读取过程单独记一份：读不到和「确实没写入」必须分开，否则清单会把读失败
@@ -51,7 +53,7 @@ export function TutorialPage() {
   useEffect(() => {
     let cancelled = false;
     setHostStatusRead("reading");
-    void api.devinHostStatus()
+    void api.devinHostStatus(devinHostPath || undefined, devinInstallRoot || undefined)
       .then((status) => {
         if (cancelled) return;
         setHostStatus(status);
@@ -63,7 +65,7 @@ export function TutorialPage() {
         setHostStatusRead("failed");
       });
     return () => { cancelled = true; };
-  }, [hostAttempt]);
+  }, [devinHostPath, devinInstallRoot, hostAttempt]);
 
   const callCounts: Record<OnboardingClient, number> = { cursor: 0, devin: 0, codex: 0, claude: 0 };
   for (const call of calls) {
@@ -115,7 +117,7 @@ export function TutorialPage() {
     },
     {
       question: t("退出软件后 Cursor、Devin、Codex 和 Claude 还能用吗？"),
-      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置；Claude 会尝试还原 CLI，并在 Desktop 未运行时还原 Desktop。Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
+      answer: t("退出时会撤掉 Cursor 与 Codex 的接管配置；Claude Desktop 会在未运行时尝试还原。Devin 的用户设置会保留，在恢复设置之前它的请求会失败。不再使用时，建议先在对应接入页撤销接管。"),
     },
     {
       question: t("点关闭按钮会退出应用吗？"),
@@ -133,9 +135,9 @@ export function TutorialPage() {
 
   const glossary: Array<[string, string]> = [
     [t("自带密钥（BYOK）"), t("Bring Your Own Key：用你自己的模型服务，而不是厂商内置的模型。")],
-    [t("接管"), t("把客户端的模型请求指向本机网关。Cursor 改写代理配置，Codex 改写 config.toml 里的模型路由，Devin 写入服务地址与扩展读取开关，Claude 写入 CLI 的环境变量或 Desktop 的 profile。")],
+    [t("接管"), t("把客户端的模型请求指向本机网关。Cursor 改写代理配置，Codex 改写 config.toml 里的模型路由，Devin 写入服务地址与扩展读取开关，Claude 写入 Desktop 的本地网关配置。")],
     [t("本地 CA"), t("本机生成的一份证书，用于读取 Cursor 的 HTTPS 请求。它需要安装到系统信任库（Windows 受信任的根证书颁发机构、macOS 钥匙串或 Linux 系统证书目录）才能让 Cursor 信任它；安装会请你确认。")],
-    [t("Devin 接入配置"), t("写入 Devin 用户设置里的 API 与推理地址，并仅对 Devin 3.11.216 的扩展放开读取这两个设置；不改模型协议、不写入模型地址。写入前会备份设置文件和 extension.js，并保留其他设置；请先完全退出 Devin。")],
+    [t("Devin 接入配置"), t("写入 Devin 用户设置里的 API 与推理地址，并对已支持的 Devin 客户端扩展放开读取这两个设置；不改模型协议、不写入模型地址。写入前会备份设置文件和 extension.js，并保留其他设置；请先完全退出 Devin。")],
     [t("缓存命中率"), t("缓存读取 /（缓存读取 + 非缓存输入）。它衡量的是「有多少输入是从提供方的缓存里读回来的」。")],
     [t("详细模式"), t("额外保存完整的请求头、请求体与响应流，便于排查问题；它会让数据库明显变大。")],
   ];
@@ -251,7 +253,7 @@ export function TutorialPage() {
         </li>
         <li>
           <Icon icon={refreshIcon} size="1.1em" />
-          <span>{t("「概览」每 2 秒自动刷新，「调用」每 2 秒自动刷新；其他页面的数字在打开页面时更新。看到「服务未连接」说明本地管理服务没起来，先重启应用。")}</span>
+          <span>{t("「概览」每 2 秒自动刷新最近调用，区间统计每 30 秒自动刷新；「调用」每 2 秒自动刷新；其他页面在打开或切回时更新。看到「服务未连接」说明本地管理服务没起来，先重启应用。")}</span>
         </li>
       </ul>
     </TitledCard>

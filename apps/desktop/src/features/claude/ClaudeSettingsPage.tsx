@@ -41,6 +41,7 @@ export function ClaudeSettingsPage() {
   const [saved, setSaved] = useState<ClaudeSettings | null>(null);
   const [draft, setDraft] = useState<ClaudeSettings | null>(null);
   const [desktopModels, setDesktopModels] = useState<string[]>([]);
+  const [appliedDesktopModels, setAppliedDesktopModels] = useState<string[]>([]);
   // 撤销不保证全部还原：服务端保留的条目要留在页面上，不能只弹一句「已撤销」。
   const [desktopKept, setDesktopKept] = useState<ClaudeTakeoverConflict[]>([]);
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -70,10 +71,13 @@ export function ClaudeSettingsPage() {
   useEffect(() => {
     if (!saved || desktopInitialized.current) return;
     desktopInitialized.current = true;
-    setDesktopModels(claudeDesktopModelDraft(saved));
+    const initial = claudeDesktopModelDraft(saved);
+    setDesktopModels(initial);
+    setAppliedDesktopModels(initial);
   }, [saved]);
 
   const dirty = Boolean(saved && draft && JSON.stringify(saved) !== JSON.stringify(draft));
+  const desktopModelsDirty = JSON.stringify(desktopModels) !== JSON.stringify(appliedDesktopModels);
   const view = claudeConnectionView(claudeStatus, claudeTakeover);
   const rotation = claudeTokenRotationGate(claudeTakeover);
   const gate = claudeActionGate({
@@ -119,6 +123,7 @@ export function ClaudeSettingsPage() {
   const applyDesktop = () => {
     void run({ scope: "desktop", action: "apply" }, async () => {
       await api.applyClaudeDesktop(desktopModels.map((model_hash) => ({ model_hash })));
+      setAppliedDesktopModels(desktopModels);
       setDesktopKept([]);
       message(t("Claude 接管已应用，请重新打开 Claude"));
     });
@@ -139,6 +144,7 @@ export function ClaudeSettingsPage() {
     setConfirmForce(false);
     void run({ scope: "desktop", action: "apply" }, async () => {
       await api.applyClaudeDesktop(desktopModels.map((model_hash) => ({ model_hash })), true);
+      setAppliedDesktopModels(desktopModels);
       setDesktopKept([]);
       message(t("已强制接管 Claude，请重新打开 Claude"));
     });
@@ -147,10 +153,16 @@ export function ClaudeSettingsPage() {
   const primaryAction = (() => {
     if (!draft || !saved) return { label: t("读取中…"), disabled: true, run: () => undefined };
     if (dirty) return { label: t("保存"), disabled: busy !== null, run: save };
+    if (models.length === 0) {
+      return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
+    }
     if (!saved.enabled || !saved.default_model_hash) {
       return { label: t("保存"), disabled: true, run: () => undefined };
     }
     if (view.state === "taken-over") {
+      if (desktopModelsDirty && gate.apply) {
+        return { label: t("重新应用"), disabled: busy !== null, run: applyDesktop };
+      }
       return { label: t("查看调用记录"), disabled: false, run: () => void navigate("/calls") };
     }
     if (gate.apply) {
@@ -204,6 +216,7 @@ export function ClaudeSettingsPage() {
         action={<>
           {claudeTakeover?.desktop.state === "conflict" && <Button size="small" disabled={busy !== null || claudeTakeover.desktop.running} onClick={() => setConfirmForce(true)}>{t("强制接管")}</Button>}
           {gate.undo && <Button size="small" disabled={busy !== null} onClick={undoDesktop}>{t("撤销 Claude 接管")}</Button>}
+          {view.state === "taken-over" && gate.apply && !dirty && !desktopModelsDirty && <Button size="small" disabled={busy !== null} onClick={applyDesktop}>{t("重新应用")}</Button>}
           <Button size="small" variant="primary" disabled={primaryAction.disabled} onClick={primaryAction.run}>{primaryAction.label}</Button>
         </>}
       />
@@ -229,9 +242,9 @@ export function ClaudeSettingsPage() {
       icon={terminalIcon}
       collapsible
       storageKey="claude-desktop"
-      action={busy?.scope === "gateway"
-        ? <StatusPill tone="warn">{t("保存中…")}</StatusPill>
-        : dirty ? <StatusPill tone="warn">{t("有未保存的改动")}</StatusPill> : undefined}
+      action={busy?.scope === "desktop"
+        ? <StatusPill tone="warn">{t("应用中…")}</StatusPill>
+        : desktopModelsDirty ? <StatusPill tone="warn">{t("待重新应用")}</StatusPill> : undefined}
     >
       <div className={styles.settingsBody}>
         <ClaudeDesktopTab

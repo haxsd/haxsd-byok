@@ -367,6 +367,7 @@ export interface ClaudeDesktopTakeoverInput {
 export interface DevinHostPorts {
   api_port: number;
   inference_port: number;
+  local_api_port?: number;
 }
 
 export interface DevinHostStatus {
@@ -878,7 +879,7 @@ export interface Overview {
 }
 
 export interface LlmCall {
-  client_source: "cursor" | "devin" | "codex" | "claude" | "internal";
+  client_source: "cursor" | "devin" | "codex" | "claude" | "external_api" | "internal";
   call_kind: "provider_llm" | "cursor_official";
   route: "local_byok" | "cursor_official";
   call_id: string;
@@ -1639,6 +1640,8 @@ export const api = {
     await request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url: url.toString() }) });
   },
   openExternalUrl: (url: string) => request<void>("/desktop/open-external-url", { method: "POST", body: JSON.stringify({ url }) }),
+  /** Windows NSIS 更新安装器会直接结束旧进程，安装前先写优雅退出标记以免收尾助手误判为崩溃。 */
+  prepareUpdateExit: () => request<void>("/app/prepare-update-exit", { method: "POST" }),
   observability: (signal?: AbortSignal) => request<{ detailed: boolean }>("/settings/observability", { signal }),
   setObservability: (detailed: boolean) => request<{ detailed: boolean }>("/settings/observability", { method: "PUT", body: JSON.stringify({ detailed }) }),
   ports: (signal?: AbortSignal) => request<PortSettings>("/settings/ports", { signal }),

@@ -63,6 +63,10 @@
     fill: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
   }
 
+  &[role="button"] {
+    cursor: pointer;
+  }
+
   &:hover:not([data-dim]),
   &[data-focused]:not([data-dim]) {
     stroke: var(--vscode-foreground);

@@ -15,6 +15,10 @@
     /* The divider only needs to suggest a boundary; a full-strength line across
        every card adds visual noise at this density. */
     border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+
+    &[data-collapsed="true"] {
+      border-bottom: 0;
+    }
   }
 
   .headingRow {

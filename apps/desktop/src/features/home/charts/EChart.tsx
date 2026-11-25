@@ -1,11 +1,11 @@
-import { BarChart, GaugeChart, LineChart } from "echarts/charts";
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
+import { BarChart } from "echarts/charts";
+import { GridComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import { getInstanceByDom, init, use, type EChartsCoreOption } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef, type MouseEventHandler } from "react";
 import styles from "./EChart.module.scss";
 
-use([BarChart, GaugeChart, LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
+use([BarChart, GridComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
 
 type EChartProps = {
   option: EChartsCoreOption;
@@ -19,6 +19,7 @@ type EChartProps = {
 export function EChart({ option, className = styles.root, onMouseEnter, onMouseLeave, onClick }: EChartProps) {
   const element = useRef<HTMLDivElement>(null);
   const optionRef = useRef<EChartsCoreOption | null>(null);
+  const hasRenderedRef = useRef(false);
   // The handler is registered against a ref, so a chart that gains an onClick later
   // does not need the instance to be recreated.
   const clickHandler = useRef(onClick);
@@ -37,7 +38,10 @@ export function EChart({ option, className = styles.root, onMouseEnter, onMouseL
       if (chart) return;
       chart = init(node, undefined, { renderer: "canvas" });
       chart.on("click", handler);
-      if (optionRef.current) chart.setOption(optionRef.current, { notMerge: true });
+      if (optionRef.current) {
+        chart.setOption(optionRef.current, { notMerge: true });
+        hasRenderedRef.current = true;
+      }
       resize = new ResizeObserver(() => chart?.resize());
       resize.observe(node);
     };
@@ -47,6 +51,7 @@ export function EChart({ option, className = styles.root, onMouseEnter, onMouseL
       chart?.off("click", handler);
       chart?.dispose();
       chart = null;
+      hasRenderedRef.current = false;
     };
     const visibility = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) show();
@@ -62,7 +67,10 @@ export function EChart({ option, className = styles.root, onMouseEnter, onMouseL
   useEffect(() => {
     optionRef.current = option;
     const node = element.current;
-    if (node) getInstanceByDom(node)?.setOption(option, { notMerge: true });
+    const instance = node ? getInstanceByDom(node) : undefined;
+    if (!instance) return;
+    instance.setOption(option, { notMerge: !hasRenderedRef.current, lazyUpdate: true });
+    hasRenderedRef.current = true;
   }, [option]);
 
   return <div ref={element} className={className} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave} />;

@@ -27,3 +27,7 @@ export function selectModels(snapshot: AppSnapshot): Model[] {
 export function selectTheme(snapshot: AppSnapshot): AppSnapshot["theme"] {
   return snapshot.theme;
 }
+
+export function selectPlugins(snapshot: AppSnapshot): AppSnapshot["plugins"] {
+  return snapshot.plugins;
+}

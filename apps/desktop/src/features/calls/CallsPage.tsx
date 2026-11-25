@@ -56,6 +56,7 @@ export function CallsPage() {
     }
     return [...seen.entries()].map(([value, label]) => ({ value, label }));
   }, [calls]);
+  const effectiveModel = model === "all" || modelOptions.some((option) => option.value === model) ? model : "all";
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -66,13 +67,13 @@ export function CallsPage() {
       if (status === "other" && (call.status === "completed" || call.status === "failed" || call.status === "error")) return false;
       if (route === "byok" && call.route !== "local_byok") return false;
       if (route === "official" && call.route !== "cursor_official") return false;
-      if (model !== "all" && (call.model_hash ?? call.model_id) !== model) return false;
+      if (effectiveModel !== "all" && (call.model_hash ?? call.model_id) !== effectiveModel) return false;
       if (!query) return true;
       // 字段缺失时按空串比对：服务端少给一个字段不该让整张表抛错。
       return [call.display_name, call.model_id, call.call_id, call.conversation_id, call.status]
         .some((field) => String(field ?? "").toLowerCase().includes(query));
     });
-  }, [calls, client, model, route, search, status]);
+  }, [calls, client, effectiveModel, route, search, status]);
 
   const summary = useMemo(() => summarize(filtered), [filtered]);
   const filteredOut = filtered.length !== calls.length;
@@ -133,7 +134,7 @@ export function CallsPage() {
       />
       {modelOptions.length > 1 && <div className={styles.modelFilter}><Select
         ariaLabel={t("按模型筛选")}
-        value={model === "all" || modelOptions.some((option) => option.value === model) ? model : "all"}
+        value={effectiveModel}
         options={[{ value: "all", label: t("全部模型") }, ...modelOptions]}
         onChange={setModel}
       /></div>}

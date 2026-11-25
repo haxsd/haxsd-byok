@@ -8,7 +8,7 @@
      所以下面这条内容偏移公式对所有页面都成立（接入页的取值见 .harnessModule）。 */
   --app-harness-band: 0px;
   /* Header, then the navigation bar, then the band that holds the page title. */
-  --app-content-top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-harness-band) + var(--app-title-band));
+  --app-content-top: calc(var(--window-safe-top) + 5px + var(--app-nav-height) + var(--app-harness-band) + var(--app-title-band));
   background: var(--vscode-editor-background);
 }
 
@@ -56,7 +56,7 @@
 }
 
 .navItem {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   /* 英文标签明显比中文长；窗口不够宽时应该由标签省略，而不是把整项压成一个字母
      （真实发生过：英文下最后一项只剩一个 "U"）。 */
   min-width: 0;
@@ -263,7 +263,7 @@
 .harnessBar {
   position: absolute;
   z-index: 12500;
-  top: calc(var(--window-safe-top) + var(--app-nav-height));
+  top: calc(var(--window-safe-top) + 5px + var(--app-nav-height));
   left: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
   height: var(--app-harness-band);
   max-width: calc(100% - var(--app-page-padding) * 2);
@@ -277,7 +277,7 @@
 .actionRegion {
   position: absolute;
   z-index: 12500;
-  top: calc(var(--window-safe-top) + var(--app-nav-height) + var(--app-harness-band));
+  top: calc(var(--window-safe-top) + 5px + var(--app-nav-height) + var(--app-harness-band));
   right: max(var(--app-page-padding), calc((100% - var(--app-page-max-width)) / 2));
   height: var(--app-title-band);
   display: flex;

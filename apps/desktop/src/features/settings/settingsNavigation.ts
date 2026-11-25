@@ -10,27 +10,27 @@ export type SettingsSection = {
 export function settingsSections(developerMode: boolean): SettingsSection[] {
   return [
     { id: "general", label: t("常规"), items: [
-      { id: "appearance", label: t("外观与语言"), keywords: "语言 主题 外观 language theme appearance" },
-      { id: "app", label: t("启动与窗口"), keywords: "开机 静默 启动 窗口 托盘 dock autostart startup window" },
-      { id: "vision", label: t("图片识别"), keywords: "图片 视觉 识别 截图 image vision screenshot" },
+      { id: "appearance", label: t("外观与语言"), keywords: "语言 主题 外观 language theme appearance язык тема оформление" },
+      { id: "app", label: t("启动与窗口"), keywords: "开机 静默 启动 窗口 托盘 dock autostart startup window автозапуск окно трей" },
+      { id: "vision", label: t("图片识别"), keywords: "图片 视觉 识别 截图 image vision screenshot изображение зрение скриншот" },
     ] },
     { id: "network", label: t("网络"), items: [
-      { id: "proxy", label: t("出网代理"), keywords: "网络 代理 proxy network address auth 认证" },
-      { id: "external-api", label: t("外部 API"), keywords: "外部 api openai anthropic 接口 api key 密钥 external" },
+      { id: "proxy", label: t("出网代理"), keywords: "网络 代理 proxy network address auth 认证 прокси сеть авторизация" },
+      { id: "external-api", label: t("外部 API"), keywords: "外部 api openai anthropic 接口 api key 密钥 external внешний ключ" },
     ] },
     { id: "usage", label: t("记录与用量"), items: [
-      { id: "recording", label: t("调用记录"), keywords: "详细 请求 响应 隐私 detailed recording request response" },
-      { id: "pricing", label: t("模型定价"), keywords: "价格 定价 费用 币种 高峰 低谷 token pricing cost currency" },
-      { id: "compaction", label: t("上下文压缩"), keywords: "压缩 上下文 摘要 保留 compact compression summary context" },
-      { id: "storage", label: t("存储管理"), keywords: "存储 空间 清理 删除 磁盘 storage cleanup disk" },
+      { id: "recording", label: t("调用记录"), keywords: "详细 请求 响应 隐私 detailed recording request response подробности запрос ответ" },
+      { id: "pricing", label: t("模型定价"), keywords: "价格 定价 费用 币种 高峰 低谷 token pricing cost currency цена тариф стоимость валюта" },
+      { id: "compaction", label: t("上下文压缩"), keywords: "压缩 上下文 摘要 保留 compact compression summary context сжатие контекст сводка" },
+      { id: "storage", label: t("存储管理"), keywords: "存储 空间 清理 删除 磁盘 storage cleanup disk хранилище очистка диск" },
     ] },
     { id: "advanced", label: t("高级与诊断"), items: [
-      { id: "developer", label: t("开发者模式"), keywords: "开发 调试 端口 developer debug port" },
-      ...(developerMode ? [{ id: "ports" as const, label: t("端口设置"), keywords: "端口 监听 服务 port listen server" }] : []),
-      { id: "diagnostics", label: t("诊断"), keywords: "日志 版本 路径 诊断 log version path diagnostics" },
+      { id: "developer", label: t("开发者模式"), keywords: "开发 调试 端口 developer debug port разработчик отладка порт" },
+      ...(developerMode ? [{ id: "ports" as const, label: t("端口设置"), keywords: "端口 监听 服务 port listen server порт сервер" }] : []),
+      { id: "diagnostics", label: t("诊断"), keywords: "日志 版本 路径 诊断 log version path diagnostics логи версия путь диагностика" },
     ] },
     { id: "about", label: t("关于与更新"), items: [
-      { id: "update", label: t("软件更新"), keywords: "更新 版本 安装 下载 update version install download" },
+      { id: "update", label: t("软件更新"), keywords: "更新 版本 安装 下载 update version install download обновление версия установка" },
     ] },
   ];
 }
@@ -39,9 +39,9 @@ export function settingsDestinations(query: string) {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return [];
   return [
-    { label: t("Tab 补全"), keywords: "tab 补全 autocomplete", path: "/harness/cursor?section=tools" },
-    { label: t("提交信息模型"), keywords: "commit 提交 prompt 提示词", path: "/harness/cursor?section=tools" },
-    { label: t("导入模型"), keywords: "import 导入 模型", path: "/models" },
+    { label: t("Tab 补全"), keywords: "tab 补全 autocomplete автодополнение", path: "/harness/cursor?section=tools" },
+    { label: t("提交信息模型"), keywords: "commit 提交 prompt 提示词 коммит промпт", path: "/harness/cursor?section=tools" },
+    { label: t("导入模型"), keywords: "import 导入 模型 импорт модель", path: "/models" },
   ].filter(item => matchesWords(`${item.label} ${item.keywords}`, words));
 }
 

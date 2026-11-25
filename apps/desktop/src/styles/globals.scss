@@ -18,8 +18,8 @@ html[data-idle] *::after {
 }
 
 :root {
-  --window-header-height: 30px;
-  --oa-ui-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --window-header-height: 32px;
+  --oa-ui-font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, sans-serif;
   --oa-code-font: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
   /* HFKos 只有 99 个字形（ASCII），「¥」「·」这类符号不在其中，浏览器会顺着列表
      往后找。这里第二项写的是系统字体名而不是内嵌家族：macOS 上就是它原本的苹方，
@@ -34,10 +34,14 @@ html[data-idle] *::after {
   letter-spacing: type.$letter-spacing-wide;
   color: var(--vscode-foreground);
   background: transparent;
-  font-synthesis: none;
+  font-synthesis: weight;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-platform="macos"] {
+  --window-header-height: 30px;
 }
 
 /* Headings carry weight and tracking rather than a bigger size alone. */
@@ -63,8 +67,8 @@ small {
 }
 
 :focus-visible {
-  outline: none;
-  box-shadow: var(--oa-focus-ring);
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
   border-radius: var(--oa-radius-sm);
 }
 
@@ -88,7 +92,8 @@ body,
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -105,13 +110,15 @@ button {
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black var(--app-content-top) ,
+    transparent var(--app-content-top),
+    black calc(var(--app-content-top) + 16px),
     black 100%
   );
   mask-image: linear-gradient(
     to bottom,
     transparent 0,
-    black var(--app-content-top),
+    transparent var(--app-content-top),
+    black calc(var(--app-content-top) + 16px),
     black 100%
   );
 }
@@ -130,4 +137,15 @@ button {
     black calc(100% - var(--scroll-shadow-bottom-size)),
     transparent 100%
   );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -84,14 +84,19 @@ function update(patch: Partial<AppSnapshot>) {
   listeners.forEach((listener) => listener());
 }
 
+let activePerformCount = 0;
+
 async function perform(task: () => Promise<void>) {
-  update({ error: null });
+  if (activePerformCount === 0) update({ error: null });
+  activePerformCount += 1;
   try {
     await task();
     if (snapshot.offline) update({ offline: false });
   } catch (cause) {
     if (cause instanceof ServiceUnreachableError) update({ offline: true, error: null });
     else update({ error: cause instanceof Error ? cause.message : String(cause) });
+  } finally {
+    activePerformCount = Math.max(0, activePerformCount - 1);
   }
 }
 
@@ -103,6 +108,7 @@ let refreshGeneration = 0;
 
 /** 当前在跑的刷新。发起新刷新或做数据变更前先中止它，避免旧结果回填。 */
 let refreshController: AbortController | null = null;
+let callsRefreshing = false;
 
 /**
  * 已成功写入的服务端设置字段各自的代际。
@@ -237,8 +243,7 @@ export const appStore = {
     if (failedLabels.length > 0) {
       patch.error = t("部分数据刷新失败：{items}。其余数据已更新，失败项保留上一次的值。", { items: failedLabels.join("、") });
     }
-    update(patch);
-    update({ busy: false });
+    update({ ...patch, busy: false });
     return patch.models !== undefined;
   },
 
@@ -341,7 +346,7 @@ export const appStore = {
         for (const model of created) byHash.set(model.model_hash, model);
         update({ models: [...byHash.values()].sort((a, b) => a.sort_order - b.sort_order) });
       }
-      await appStore.refresh();
+      await appStore.refreshModels();
       return created;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
@@ -359,7 +364,7 @@ export const appStore = {
         byHash.set(created.model_hash, created);
         update({ models: [...byHash.values()].sort((a, b) => a.sort_order - b.sort_order) });
       }
-      await appStore.refresh();
+      await appStore.refreshModels();
       return created;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
@@ -371,7 +376,7 @@ export const appStore = {
     try {
       invalidateRefresh();
       const result = await api.importV0049Models();
-      await appStore.refresh();
+      await appStore.refreshModels();
       return result;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
@@ -387,7 +392,7 @@ export const appStore = {
       if (updated) {
         update({ models: snapshot.models.map((item) => item.model_hash === updated.model_hash ? updated : item) });
       }
-      await appStore.refresh();
+      await appStore.refreshModels();
       return updated;
     } catch (cause) {
       update({ error: cause instanceof Error ? cause.message : String(cause) });
@@ -427,12 +432,25 @@ export const appStore = {
     }
   },
 
+  async refreshModels() {
+    try {
+      update({ models: await api.models(), offline: false });
+    } catch (cause) {
+      if (cause instanceof ServiceUnreachableError) update({ offline: true });
+      else update({ error: cause instanceof Error ? cause.message : String(cause) });
+    }
+  },
+
   async refreshCalls() {
+    if (callsRefreshing) return;
+    callsRefreshing = true;
     try {
       update({ calls: await api.calls(), offline: false });
     } catch (cause) {
       if (cause instanceof ServiceUnreachableError) update({ offline: true });
       else update({ error: cause instanceof Error ? cause.message : String(cause) });
+    } finally {
+      callsRefreshing = false;
     }
   },
 
@@ -449,7 +467,6 @@ export const appStore = {
   /** Refresh Devin readiness without pulling every unrelated dashboard endpoint. */
   async refreshDevinStatus() {
     try {
-      invalidateRefresh();
       update({ ...await readDevinStatus(), offline: false });
     } catch (cause) {
       update({ devinHostStatus: null });

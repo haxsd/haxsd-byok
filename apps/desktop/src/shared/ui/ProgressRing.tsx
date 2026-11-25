@@ -11,7 +11,7 @@ export function ProgressRing({ value, size = 92, thickness = 8, tone = "ok", chi
   value: number;
   size?: number;
   thickness?: number;
-  tone?: "ok" | "warn" | "bad" | "accent";
+  tone?: "ok" | "warn" | "bad" | "accent" | "idle";
   children?: ReactNode;
   ariaLabel?: string;
   /** Change this to replay the sweep; a refresh should look like one. */
@@ -41,7 +41,7 @@ export function ProgressRing({ value, size = 92, thickness = 8, tone = "ok", chi
   return <div className={styles.root} data-tone={tone} style={{ width: size, height: size }} role="img" aria-label={ariaLabel}>
     <svg width={size} height={size} aria-hidden="true">
       <circle className={styles.track} cx={size / 2} cy={size / 2} r={radius} strokeWidth={thickness} />
-      <circle
+      {shown > 0 && <circle
         className={styles.value}
         cx={size / 2}
         cy={size / 2}
@@ -50,7 +50,7 @@ export function ProgressRing({ value, size = 92, thickness = 8, tone = "ok", chi
         strokeDasharray={`${circumference * shown} ${circumference}`}
         strokeDashoffset={0}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
+      />}
     </svg>
     <div className={styles.content}>{children}</div>
   </div>;
@@ -60,19 +60,22 @@ export function ProgressRing({ value, size = 92, thickness = 8, tone = "ok", chi
  * A proportion drawn as one bar. Used where a number needs a shape next to it —
  * token composition, storage use — and a second chart would be too much.
  */
-export function Meter({ segments, height = 6, ariaLabel }: {
+export function Meter({ segments, total, height = 6, ariaLabel }: {
   segments: Array<{ value: number; color: string; label: string }>;
+  /** 显式分母：单段条（如模型用量排行）传总用量或最大值，不传时按各段之和。 */
+  total?: number;
   height?: number;
   ariaLabel?: string;
 }) {
-  const total = segments.reduce((sum, segment) => sum + Math.max(0, segment.value), 0);
+  const segmentSum = segments.reduce((sum, segment) => sum + Math.max(0, segment.value), 0);
+  const denominator = Math.max(segmentSum, total ?? 0);
   return <div className={styles.meter} style={{ height }} role="img" aria-label={ariaLabel}>
-    {total <= 0
+    {denominator <= 0 || segmentSum <= 0
       ? <span className={styles.meterEmpty} />
       : segments.filter((segment) => segment.value > 0).map((segment) => <span
         key={segment.label}
         title={segment.label}
-        style={{ width: `${(Math.max(0, segment.value) / total) * 100}%`, background: segment.color }}
+        style={{ width: `${(Math.max(0, segment.value) / denominator) * 100}%`, background: segment.color }}
       />)}
   </div>;
 }

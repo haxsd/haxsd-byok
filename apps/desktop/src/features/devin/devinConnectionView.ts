@@ -59,7 +59,8 @@ export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinH
     && host.extension.patched
     && ports !== null
     && host.ports?.api_port === ports.api_port
-    && host.ports?.inference_port === ports.inference_port;
+    && host.ports?.inference_port === ports.inference_port
+    && (ports.local_api_port === undefined || host.ports?.local_api_port === undefined || host.ports.local_api_port === ports.local_api_port);
 }
 
 /**
@@ -70,7 +71,11 @@ export function devinPointsAtGateway(host: DevinHostStatus | null, ports: DevinH
 export function devinHostRepairable(host: DevinHostStatus | null, ports: DevinHostPorts | null): boolean {
   if (!host?.configured || !host.extension.path || !ports) return false;
   if (devinPointsAtGateway(host, ports)) return false;
-  if (host.ports?.api_port !== ports.api_port || host.ports?.inference_port !== ports.inference_port) {
+  if (
+    host.ports?.api_port !== ports.api_port
+    || host.ports?.inference_port !== ports.inference_port
+    || (ports.local_api_port !== undefined && host.ports?.local_api_port !== undefined && host.ports.local_api_port !== ports.local_api_port)
+  ) {
     return false;
   }
   return host.extension.compatible
@@ -159,7 +164,7 @@ export function devinConnectionView(input: DevinConnectionInput): DevinConnectio
       done: savedEnabled && defaultBinding !== null && activeModel !== null,
       label: t("选择默认模型"),
       hint: !savedEnabled
-        ? t("打开“使用自选模型”并选择模型")
+        ? t("选择默认模型并保存设置")
         : !standard.length
           ? t("选择模型后保存")
           : !defaultUid

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type VisionSettings } from "../../shared/api";
-import { useAppStore } from "../../shared/store/appStore";
+import { useAppStoreSelector } from "../../shared/store/appStore";
+import { selectModels } from "../../shared/store/selectors";
 import { Button } from "../../shared/ui/Button";
 import { ModelSelect, type ModelSelectOption } from "../../shared/ui/ModelSelect";
 import { Switch } from "../../shared/ui/Switch";
@@ -10,13 +12,18 @@ import { modelProviderName } from "../../shared/utils/modelProvider";
 import styles from "./VisionSettingsCard.module.scss";
 
 export function VisionSettingsCard({ visible }: { visible: boolean }) {
-  const { models } = useAppStore();
+  const models = useAppStoreSelector(selectModels);
   const message = useMessage();
+  const navigate = useNavigate();
   const [saved, setSaved] = useState<VisionSettings | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [enabled, setEnabled] = useState(false);
   const [modelHash, setModelHash] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const editingRef = useRef(false);
+  editingRef.current = editing;
   const options = useMemo<ModelSelectOption[]>(
     () => models
       .filter(model => model.supports_images)
@@ -27,24 +34,35 @@ export function VisionSettingsCard({ visible }: { visible: boolean }) {
       })),
     [models],
   );
+  const plainTextCount = useMemo(
+    () => models.filter(model => !model.supports_images).length,
+    [models],
+  );
+  const savedVisionModel = saved?.mode === "model"
+    ? models.find(model => model.model_hash === saved.model_hash) ?? null
+    : null;
+  const savedVisionInvalid = saved?.mode === "model" && (!savedVisionModel || !savedVisionModel.supports_images);
 
   useEffect(() => {
     if (!visible) return;
-    let live = true;
-    api.visionSettings()
+    const controller = new AbortController();
+    setLoadError(false);
+    api.visionSettings(controller.signal)
       .then(value => {
-        if (!live) return;
+        if (controller.signal.aborted) return;
         setSaved(value);
-        setEnabled(value.mode === "model");
-        setModelHash(value.mode === "model" ? value.model_hash : "");
+        if (!editingRef.current) {
+          setEnabled(value.mode === "model");
+          setModelHash(value.mode === "model" ? value.model_hash : "");
+        }
       })
       .catch(cause => {
-        if (live) message.error(cause);
+        if (controller.signal.aborted) return;
+        setLoadError(true);
+        message.error(cause);
       });
-    return () => {
-      live = false;
-    };
-  }, [visible, message]);
+    return () => controller.abort();
+  }, [visible, message, reloadKey]);
 
   const edit = () => {
     setEnabled(saved?.mode === "model");
@@ -85,10 +103,28 @@ export function VisionSettingsCard({ visible }: { visible: boolean }) {
         </div>
         {enabled && (options.length > 0
           ? <ModelSelect mode="single" label={t("视觉模型")} options={options} value={modelHash} disabled={saving} onChange={setModelHash} emptySummary={t("选择视觉模型")} />
-          : <small>{t("模型库里还没有标记为支持图片的模型，请先添加或在模型设置里启用图片输入。")}</small>)}
-      </> : saved?.mode === "model"
-        ? <div className={styles.row}><strong>{t("视觉模型")}</strong><span>{models.find(model => model.model_hash === saved.model_hash)?.display_name ?? saved.model_hash}</span></div>
-        : <small>{t("未启用。纯文本模型收到图片时仍会由上游决定是否报错。")}</small>}
+          : <div className={styles.row}>
+              <small>{t("模型库里还没有标记为支持图片的模型，请先添加或在模型设置里启用图片输入。")}</small>
+              <Button size="small" onClick={() => void navigate("/models")}>{t("前往模型库")}</Button>
+            </div>)}
+      </> : loadError && !saved ? <div className={styles.row}>
+        <small>{t("读取图片识别设置失败")}</small>
+        <Button size="small" onClick={() => setReloadKey(key => key + 1)}>{t("重试")}</Button>
+      </div> : saved?.mode === "model" ? <>
+        <div className={styles.row}>
+          <strong>{t("视觉模型")}</strong>
+          <span>{savedVisionModel?.display_name ?? saved.model_hash}</span>
+        </div>
+        {savedVisionInvalid ? (
+          <small className={styles.warning}>{t("当前指定的视觉模型已删除或已关闭图片输入，请重新选择。")}</small>
+        ) : (
+          <small>{t("已启用，当前为 {count} 个纯文本模型提供图片描述兜底。", { count: plainTextCount })}</small>
+        )}
+      </> : saved ? (
+        <small>{t("未启用。纯文本模型收到图片时仍会由上游决定是否报错。")}</small>
+      ) : (
+        <small>{t("正在读取图片识别设置…")}</small>
+      )}
     </div>
   </TitledCard>;
 }

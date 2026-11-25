@@ -1,17 +1,17 @@
 .root {
   position: relative;
   z-index: 2;
-  height: 30px;
+  height: var(--window-header-height, 32px);
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }
 
 .button {
-  width: 30px;
-  height: 30px;
+  width: 46px;
+  height: var(--window-header-height, 32px);
   display: grid;
   place-items: center;
   padding: 0;
@@ -32,5 +32,6 @@
 }
 
 .close:hover {
-  color: var(--vscode-foreground);
+  color: #ffffff;
+  background: #c42b1c;
 }

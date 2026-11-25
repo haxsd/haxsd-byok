@@ -1,19 +1,21 @@
+import { lazy, Suspense } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { TooltipProvider } from "./shared/ui/Tooltip";
 import { AppErrorBoundary } from "./shell/AppErrorBoundary";
 import { AppFrame } from "./shell/AppFrame";
 import { AppLayout } from "./shell/AppLayout";
 import { CallsPage } from "./features/calls/CallsPage";
-import { CallDetailsPage } from "./features/calls/CallDetailsPage";
-import { CursorSettingsPage } from "./features/models/CursorSettingsPage";
 import { ModelLibraryPage } from "./features/models/ModelLibraryPage";
-import { DevinSettingsPage } from "./features/devin/DevinSettingsPage";
-import { CodexSettingsPage } from "./features/codex/CodexSettingsPage";
-import { ClaudeSettingsPage } from "./features/claude/ClaudeSettingsPage";
 import { HomePage } from "./features/home/HomePage";
-import { PluginManagementPage } from "./features/plugins/PluginManagementPage";
-import { SettingsPage } from "./features/settings/SettingsPage";
-import { TutorialPage } from "./features/tutorial/TutorialPage";
+
+const CallDetailsPage = lazy(() => import("./features/calls/CallDetailsPage").then((m) => ({ default: m.CallDetailsPage })));
+const CursorSettingsPage = lazy(() => import("./features/models/CursorSettingsPage").then((m) => ({ default: m.CursorSettingsPage })));
+const DevinSettingsPage = lazy(() => import("./features/devin/DevinSettingsPage").then((m) => ({ default: m.DevinSettingsPage })));
+const CodexSettingsPage = lazy(() => import("./features/codex/CodexSettingsPage").then((m) => ({ default: m.CodexSettingsPage })));
+const ClaudeSettingsPage = lazy(() => import("./features/claude/ClaudeSettingsPage").then((m) => ({ default: m.ClaudeSettingsPage })));
+const PluginManagementPage = lazy(() => import("./features/plugins/PluginManagementPage").then((m) => ({ default: m.PluginManagementPage })));
+const SettingsPage = lazy(() => import("./features/settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const TutorialPage = lazy(() => import("./features/tutorial/TutorialPage").then((m) => ({ default: m.TutorialPage })));
 
 export function App() {
   return (
@@ -22,24 +24,26 @@ export function App() {
     <AppErrorBoundary>
       <TooltipProvider>
         <HashRouter>
-          <Routes>
-            <Route path="calls/:callId" element={<CallDetailsPage />} />
-            <Route element={<AppFrame />}>
-              <Route element={<AppLayout />}>
-                <Route index element={<HomePage />} />
-                <Route path="calls" element={<CallsPage />} />
-                <Route path="models" element={<ModelLibraryPage />} />
-                <Route path="harness/cursor" element={<CursorSettingsPage />} />
-                <Route path="harness/devin" element={<DevinSettingsPage />} />
-                <Route path="harness/codex" element={<CodexSettingsPage />} />
-                <Route path="harness/claude" element={<ClaudeSettingsPage />} />
-                <Route path="plugins" element={<PluginManagementPage />} />
-                <Route path="settings" element={<SettingsPage />} />
-                <Route path="tutorial" element={<TutorialPage />} />
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="calls/:callId" element={<CallDetailsPage />} />
+              <Route element={<AppFrame />}>
+                <Route element={<AppLayout />}>
+                  <Route index element={<HomePage />} />
+                  <Route path="calls" element={<CallsPage />} />
+                  <Route path="models" element={<ModelLibraryPage />} />
+                  <Route path="harness/cursor" element={<CursorSettingsPage />} />
+                  <Route path="harness/devin" element={<DevinSettingsPage />} />
+                  <Route path="harness/codex" element={<CodexSettingsPage />} />
+                  <Route path="harness/claude" element={<ClaudeSettingsPage />} />
+                  <Route path="plugins" element={<PluginManagementPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="tutorial" element={<TutorialPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
+            </Routes>
+          </Suspense>
         </HashRouter>
       </TooltipProvider>
     </AppErrorBoundary>

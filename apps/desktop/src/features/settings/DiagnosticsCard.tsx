@@ -66,7 +66,7 @@ export function DiagnosticsCard({ visible }: { visible: boolean }) {
     `${t("日志目录")}: ${logDirectory ?? failed}`,
     `${t("监听端口")}: ${portsText}`,
     `${t("Devin 网关")}: ${gateway}`,
-    `${t("诊断现场")}: ${logDirectory ? joinPath(logDirectory, "diagnostics-<时间戳>.log") : failed}`,
+    `${t("诊断现场")}: ${logDirectory ? joinPath(logDirectory, t("diagnostics-<时间戳>.log")) : failed}`,
   ].join("\n");
 
   const openLogs = async () => {

@@ -7,7 +7,7 @@ import { EmptyState } from "../../shared/ui/EmptyState";
 import { Icon } from "../../shared/ui/Icon";
 import { StatusPill } from "../../shared/ui/StatusPill";
 import { Card } from "../../shared/ui/Card";
-import { callStatusLabel, callStatusTone } from "../../shared/utils/callStatus";
+import { callRouteLabel, callStatusLabel, callStatusTone } from "../../shared/utils/callStatus";
 import { formatCompactInteger } from "../../shared/utils/numberFormat";
 import { formatDuration } from "../../shared/utils/relativeTime";
 import { alertCircleIcon, activityIcon, refreshIcon } from "../../shared/ui/icons";
@@ -52,7 +52,7 @@ export function CallDetailsPage() {
         <div className={styles.titleRow}>
           {call && <StatusPill tone={callStatusTone(call.status)} title={call.status}>{callStatusLabel(call.status)}</StatusPill>}
           <h1>{call ? call.display_name || call.model_id : t("调用详情")}</h1>
-          {call && <span className={styles.route} data-route={call.route}>{call.route === "cursor_official" ? t("Cursor 官方") : "BYOK"}</span>}
+          {call && <span className={styles.route} data-route={call.route}>{callRouteLabel(call)}</span>}
         </div>
         {call && <div className={styles.meta}>
           <span>{Number.isFinite(call.created_at_ms) ? new Date(call.created_at_ms).toLocaleString() : "-"}</span>

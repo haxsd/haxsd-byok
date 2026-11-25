@@ -35,8 +35,8 @@ const COMMON_FIELDS = [
   /服务器地址/,
   /模型名称/,
   /显示名称/,
-  // 备注是保存时的必填项，必须在第一屏：折进「高级」会让不展开的用户永远存不上。
-  /请输入模型备注/,
+  // 备注虽改为选填，但仍在第一屏展示以便核对。
+  /留空默认使用显示名称/,
 ];
 
 /** Fields that only appear once the advanced group is open. */

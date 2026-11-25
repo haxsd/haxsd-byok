@@ -158,6 +158,15 @@ export function ModelLibraryPage() {
         return "single";
       }
       if (candidates.length === 1) {
+        const onlyId = candidates[0];
+        setDraft((current) => current ? {
+          ...current,
+          model: {
+            ...current.model,
+            model_id: onlyId,
+            display_name: current.model.display_name.trim() || onlyId,
+          },
+        } : current);
         setDiscoveryModels([]);
         return "single";
       }
@@ -182,6 +191,19 @@ export function ModelLibraryPage() {
   };
   const addDiscoveredModels = async (modelIds: string[]) => {
     if (!draft || modelIds.length === 0) return;
+    if (modelIds.length === 1) {
+      const picked = modelIds[0];
+      setDraft((current) => current ? {
+        ...current,
+        model: {
+          ...current.model,
+          model_id: picked,
+          display_name: current.model.display_name.trim() || picked,
+        },
+      } : current);
+      setDiscoveryModels([]);
+      return;
+    }
     setBulkAdding(true);
     try {
       const base = draftProviderInput(draft, false);
@@ -294,7 +316,7 @@ export function ModelLibraryPage() {
     if (!saved) return;
     setEditing(saved);
     await testModel(saved);
-    await appStore.refresh();
+    await appStore.refreshModels();
   };
   const testAllModels = async () => {
     if (!testTargets.length || batchTesting) return;
@@ -432,6 +454,7 @@ export function ModelLibraryPage() {
           grouping={grouping}
           disabled={cursorBusy || importingLegacyModels}
           allowReorder={query === ""}
+          searchActive={query !== ""}
           testingModelHashes={testingModelHashes}
           testResults={modelTestResults}
           onTest={(model) => void testModel(model)}
@@ -533,7 +556,19 @@ export function ModelLibraryPage() {
           </FormField>
         </div>}
       </Modal>
-      <ConfirmDialog open={deleting !== null} destructive title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void appStore.deleteModel(deleting.model_hash); setDeleting(null); }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
+      <ConfirmDialog open={deleting !== null} destructive title={t("删除模型")} cancelLabel={t("取消")} confirmLabel={t("删除")} onCancel={() => setDeleting(null)} onConfirm={() => {
+        if (deleting) {
+          const deletedHash = deleting.model_hash;
+          setModelTestResults((current) => {
+            if (!current.has(deletedHash)) return current;
+            const next = new Map(current);
+            next.delete(deletedHash);
+            return next;
+          });
+          void appStore.deleteModel(deletedHash);
+        }
+        setDeleting(null);
+      }}><p>{t("确定删除这个模型吗？")}</p></ConfirmDialog>
     </>;
   }}</LegacyModelImport>;
 }
@@ -585,8 +620,11 @@ function draftProviderInput(draft: CursorModelDraft, keepStoredKey: boolean): Mo
 /** `keepStoredKey` 为真表示在编辑已有模型：凭据栏留空即"不修改"，服务端沿用已保存的 key。 */
 function draftInput(draft: CursorModelDraft, keepStoredKey: boolean): ModelInput {
   const model = draftProviderInput(draft, keepStoredKey);
-  if (!model.display_name || !model.tooltip_data || !model.model_id) throw new Error(t("模型名称、显示名称和备注不能为空"));
-  return model;
+  if (!model.display_name || !model.model_id) throw new Error(t("模型名称和显示名称不能为空"));
+  return {
+    ...model,
+    tooltip_data: model.tooltip_data || model.display_name,
+  };
 }
 
 function modelProviderLabel(draft: CursorModelDraft) {

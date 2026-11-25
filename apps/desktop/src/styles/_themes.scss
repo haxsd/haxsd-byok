@@ -17,6 +17,7 @@
 }
 
 :root {
+  --app-page-max-width: 1280px;
   --oa-card-radius: 9px;
   --oa-overlay-radius: 8px;
   /* Layout rhythm, overridable per theme so a theme can breathe more. */
@@ -59,9 +60,11 @@
      and grid entries track --vscode-*, so only the data colours are repeated per
      theme below. */
   --oa-chart-axis: var(--vscode-descriptionForeground);
-  --oa-chart-grid: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  --oa-chart-grid: rgba(255, 255, 255, 0.08);
   /* Contribution calendar ramps from the surface colour to the accent. */
-  --oa-heat-0: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  --oa-heat-0: rgba(255, 255, 255, 0.06);
+  --oa-button-hover: color-mix(in srgb, var(--vscode-button-background) 86%, white);
+  --oa-modal-mask: rgba(0, 0, 0, 0.45);
 
   /* Semantic tokens for surfaces and states.
      Components used to reach for --vscode-* names this theme never defined
@@ -138,23 +141,23 @@
     editorLineNumber-foreground: #ffffff40,
     editorLineNumber-activeForeground: #ffffffe6,
     editorWidget-background: #1f1f1f,
-    editorWidget-border: #ffffff0a,
+    editorWidget-border: #ffffff17,
     editorHoverWidget-background: #1f1f1f,
-    editorHoverWidget-border: #ffffff0a,
+    editorHoverWidget-border: #ffffff17,
     editorHoverWidget-foreground: #ffffffe6,
-    sideBar-border: #ffffff0a,
+    sideBar-border: #ffffff12,
     list-activeSelectionBackground: #ffffff0d,
     list-activeSelectionForeground: #ffffffe6,
     list-hoverBackground: #2a2a2a,
     input-background: #2a2a2a,
     input-foreground: #ffffffe6,
-    input-border: #ffffff0a,
-    button-background: #4489ff,
+    input-border: #ffffff14,
+    button-background: #2563eb,
     button-foreground: #ffffff,
     dropdown-background: #2a2a2a,
     dropdown-foreground: #ffffffe6,
-    dropdown-border: #ffffff0a,
-    badge-background: #4489ff,
+    dropdown-border: #ffffff14,
+    badge-background: #2563eb,
     badge-foreground: #fffffff2,
     scrollbarSlider-background: #ffffff14,
     scrollbarSlider-hoverBackground: #ffffff1a,
@@ -165,8 +168,13 @@
     notifications-border: #ffffff14,
     checkbox-background: #ffffff0d,
     checkbox-foreground: #ffffff,
-    checkbox-border: #ffffff0a,
+    checkbox-border: #ffffff14,
   ));
+  --oa-bad: #ff6666;
+  --oa-bad-soft: rgba(255, 102, 102, 0.16);
+  --oa-button-hover: #3b82f6;
+  --oa-chart-grid: rgba(255, 255, 255, 0.08);
+  --oa-heat-0: rgba(255, 255, 255, 0.06);
   color-scheme: dark;
 }
 
@@ -193,7 +201,7 @@
     editor-selectionBackground: #7c9cff40,
     editor-selectionForeground: #ffffff,
     editorCursor-foreground: #ffffff,
-    editorLineNumber-foreground: #64708a,
+    editorLineNumber-foreground: #7b88a4,
     editorLineNumber-activeForeground: #eef1f8,
     editorWidget-background: #161b25,
     editorWidget-border: #ffffff1f,
@@ -207,12 +215,12 @@
     input-background: #11161f,
     input-foreground: #eef1f8,
     input-border: #ffffff24,
-    button-background: #6d8cff,
+    button-background: #4f6ef7,
     button-foreground: #ffffff,
     dropdown-background: #1c2330,
     dropdown-foreground: #eef1f8,
     dropdown-border: #ffffff24,
-    badge-background: #6d8cff,
+    badge-background: #4f6ef7,
     badge-foreground: #ffffff,
     scrollbarSlider-background: #ffffff1f,
     scrollbarSlider-hoverBackground: #ffffff2e,
@@ -225,6 +233,9 @@
     checkbox-foreground: #ffffff,
     checkbox-border: #ffffff2b,
   ));
+  --oa-button-hover: #6380ff;
+  --oa-chart-grid: rgba(238, 241, 248, 0.1);
+  --oa-heat-0: rgba(238, 241, 248, 0.06);
   color-scheme: dark;
 
   /* Lifted against the deeper indigo base so the series stay legible on it. */
@@ -249,20 +260,23 @@
 :root[data-theme="default-light"] {
   --oa-tooltip-shadow: 0 8px 22px rgb(0 0 0 / 12%);
   --oa-dropdown-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+  --oa-shadow-card: 0 1px 3px rgb(0 0 0 / 8%);
+  --oa-shadow-raised: 0 4px 12px rgb(0 0 0 / 10%);
+  --oa-modal-mask: rgba(15, 23, 42, 0.28);
 
   @include vscode-theme((
     foreground: #191919,
-    errorForeground: #f53b3a,
-    descriptionForeground: #888888,
-    focusBorder: #317cff,
-    textLink-foreground: #317cff,
-    textLink-activeForeground: #1a5fd0,
+    errorForeground: #c62828,
+    descriptionForeground: #596070,
+    focusBorder: #1d64e0,
+    textLink-foreground: #1d64e0,
+    textLink-activeForeground: #154bb0,
     textCodeBlock-background: #f0f0f0,
     editor-background: #f5f5f5,
-    editor-selectionBackground: #317cff40,
+    editor-selectionBackground: #1d64e033,
     editor-selectionForeground: #191919,
     editorCursor-foreground: #000000,
-    editorLineNumber-foreground: #1919194d,
+    editorLineNumber-foreground: #19191966,
     editorLineNumber-activeForeground: #191919,
     editorWidget-background: #ffffff,
     editorWidget-border: #00000024,
@@ -276,17 +290,17 @@
     input-background: #ffffff,
     input-foreground: #191919,
     input-border: #00000024,
-    button-background: #317cff,
+    button-background: #1d64e0,
     button-foreground: #ffffff,
     dropdown-background: #ffffff,
     dropdown-foreground: #191919,
     dropdown-border: #00000024,
-    badge-background: #317cff,
+    badge-background: #1d64e0,
     badge-foreground: #fffffff2,
-    scrollbarSlider-background: #00000014,
-    scrollbarSlider-hoverBackground: #1919191a,
-    scrollbarSlider-activeBackground: #19191926,
-    gitDecoration-addedResourceForeground: #00a558,
+    scrollbarSlider-background: #00000018,
+    scrollbarSlider-hoverBackground: #19191926,
+    scrollbarSlider-activeBackground: #19191938,
+    gitDecoration-addedResourceForeground: #0f7b4b,
     notifications-background: #ffffff,
     notifications-foreground: #191919,
     notifications-border: #00000024,
@@ -300,14 +314,14 @@
      now means darker, which is the only direction that reads on a light page. */
   @include chart-palette((
     chart-input: #0a66d0,
-    chart-cache-read: #0d8a58,
+    chart-cache-read: #0f7b4b,
     chart-cache-write: #4f5ad0,
-    chart-output: #a86a00,
-    chart-line: #317cff,
-    chart-1: #317cff,
-    chart-2: #0d8a58,
-    chart-3: #a86a00,
-    chart-4: #cf4436,
+    chart-output: #945700,
+    chart-line: #1d64e0,
+    chart-1: #1d64e0,
+    chart-2: #0f7b4b,
+    chart-3: #945700,
+    chart-4: #c62828,
     chart-5: #7f4fd0,
     heat-1: #d3e2fe,
     heat-2: #a7c4fa,
@@ -315,10 +329,13 @@
     heat-4: #2b5ac2,
   ));
 
-  /* The amber needs to be darker to read on a near-white surface. */
-  --oa-warn: #a86a00;
-  --oa-warn-soft: color-mix(in srgb, #a86a00 14%, transparent);
-  /* Pure red vibrates on a near-white surface at this size. */
+  --oa-ok: #0f7b4b;
+  --oa-ok-soft: rgba(15, 123, 75, 0.12);
+  --oa-warn: #945700;
+  --oa-warn-soft: rgba(148, 87, 0, 0.12);
   --oa-bad: #c62828;
-  --oa-bad-soft: color-mix(in srgb, #c62828 12%, transparent);
+  --oa-bad-soft: rgba(198, 40, 40, 0.12);
+  --oa-button-hover: #1754c2;
+  --oa-chart-grid: rgba(25, 25, 25, 0.09);
+  --oa-heat-0: rgba(25, 25, 25, 0.06);
 }
