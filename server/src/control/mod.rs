@@ -143,9 +143,18 @@ fn proxy_error(error: impl std::fmt::Display) -> Response<Body> {
         .expect("static proxy error response")
 }
 
+async fn prepare_update_exit() -> StatusCode {
+    crate::local_app::mark_graceful_exit();
+    StatusCode::NO_CONTENT
+}
+
 pub fn api_router(service: ControlService) -> Router {
     Router::new()
         .route("/__byok-api__/api/app-info", get(app_info::get))
+        .route(
+            "/__byok-api__/api/app/prepare-update-exit",
+            post(prepare_update_exit),
+        )
         .route(
             "/__byok-api__/api/models",
             get(models::list).post(models::create),
@@ -338,13 +347,55 @@ pub fn devin_status_router(service: ControlService, listening: DevinListening) -
 /// `pub` 是因为桌面壳的窄路由（`open-external-url`）也要套同一道准入：它和这里的管理
 /// 路由并到同一个 HTTP 服务，不能成为跨站 POST 的旁路。
 pub async fn reject_cross_site(request: Request<Body>, next: Next) -> Response<Body> {
+    if let Some(axum::extract::ConnectInfo(addr)) =
+        request.extensions().get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+    {
+        if !addr.ip().is_loopback() {
+            return (StatusCode::FORBIDDEN, "remote management access rejected").into_response();
+        }
+    }
     if cross_site_request(request.headers()) {
         return (StatusCode::FORBIDDEN, "cross-site request rejected").into_response();
     }
     next.run(request).await
 }
 
+fn is_loopback_host(host: &HeaderValue) -> bool {
+    let Ok(host) = host.to_str() else {
+        return false;
+    };
+    let Ok(service) = Url::parse(&format!("http://{host}")) else {
+        return false;
+    };
+    if !service.username().is_empty()
+        || service.password().is_some()
+        || service.path() != "/"
+        || service.query().is_some()
+        || service.fragment().is_some()
+    {
+        return false;
+    }
+    match service.host() {
+        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    }
+}
+
+fn is_tauri_origin(origin: &HeaderValue) -> bool {
+    origin.to_str().is_ok_and(|value| {
+        value.eq_ignore_ascii_case("tauri://localhost")
+            || value.eq_ignore_ascii_case("http://tauri.localhost")
+    })
+}
+
 fn cross_site_request(headers: &axum::http::HeaderMap) -> bool {
+    if let Some(host) = headers.get(header::HOST) {
+        if !is_loopback_host(host) {
+            return true;
+        }
+    }
     if headers
         .get("sec-fetch-site")
         .and_then(|value| value.to_str().ok())
@@ -352,11 +403,21 @@ fn cross_site_request(headers: &axum::http::HeaderMap) -> bool {
     {
         return true;
     }
-    // 带 Origin 但不是本机页面:跨站表单、跨站 fetch、被沙箱化的 iframe(`Origin: null`)
-    // 都属于这种。
-    headers
-        .get(header::ORIGIN)
-        .is_some_and(|origin| !local_origin(origin))
+    // 带 Origin 但不是本机当前服务页面:跨站表单、跨站 fetch、同机跨端口 CSRF、
+    // 被沙箱化的 iframe(`Origin: null`) 都属于这种。
+    let Some(origin) = headers.get(header::ORIGIN) else {
+        return false;
+    };
+    if is_tauri_origin(origin) {
+        return false;
+    }
+    if !local_origin(origin) {
+        return true;
+    }
+    if let Some(host) = headers.get(header::HOST) {
+        return !same_service_origin(origin, Some(host));
+    }
+    false
 }
 
 fn desktop_cors() -> CorsLayer {
@@ -488,21 +549,80 @@ mod tests {
             .unwrap();
         assert_eq!(without_origin.status(), StatusCode::OK);
 
-        for value in ["tauri://localhost", "http://127.0.0.1:49234"] {
+        for value in ["tauri://localhost", "http://tauri.localhost"] {
             let response = router
                 .clone()
                 .oneshot(
                     Request::builder()
                         .method(Method::POST)
                         .uri("/write")
+                        .header(header::HOST, "127.0.0.1:49234")
                         .header(header::ORIGIN, value)
                         .body(Body::empty())
                         .unwrap(),
                 )
                 .await
                 .unwrap();
-            assert_eq!(response.status(), StatusCode::OK, "{value} 是本机来源");
+            assert_eq!(response.status(), StatusCode::OK, "{value} 是 Tauri 来源");
         }
+
+        let same_port = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/write")
+                    .header(header::HOST, "127.0.0.1:49234")
+                    .header(header::ORIGIN, "http://127.0.0.1:49234")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(same_port.status(), StatusCode::OK);
+
+        // DNS Rebinding / 同机跨端口 CSRF / 远端非回环连接必须拒绝
+        let rebind = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/write")
+                    .header(header::HOST, "evil.example:49234")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rebind.status(), StatusCode::FORBIDDEN);
+
+        let cross_port = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/write")
+                    .header(header::HOST, "127.0.0.1:49234")
+                    .header(header::ORIGIN, "http://127.0.0.1:3000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cross_port.status(), StatusCode::FORBIDDEN);
+
+        let remote_req = Request::builder()
+            .method(Method::GET)
+            .uri("/write")
+            .header(header::HOST, "127.0.0.1:49234")
+            .extension(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                [192, 168, 1, 50],
+                54321,
+            ))))
+            .body(Body::empty())
+            .unwrap();
+        let remote_resp = router.clone().oneshot(remote_req).await.unwrap();
+        assert_eq!(remote_resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

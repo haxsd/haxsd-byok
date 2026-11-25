@@ -32,7 +32,8 @@ impl Store {
             .create_if_missing(true)
             .foreign_keys(true)
             .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Full)
+            .synchronous(SqliteSynchronous::Normal)
+            .pragma("journal_size_limit", "67108864")
             .busy_timeout(Duration::from_secs(5));
         let database_path = options.get_filename().to_owned();
         let is_new = !database_path.exists();

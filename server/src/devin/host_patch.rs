@@ -557,18 +557,35 @@ fn api_server_config_binding(content: &str, match_start: usize, window: usize) -
 fn language_server_restart_update(
     content: &str,
 ) -> Result<Option<(std::ops::Range<usize>, String)>> {
-    let vendor_old =
-        Regex::new(LS_VENDOR_RESTART_PATTERN).expect("static language-server restart regex");
-    let patched_old = Regex::new(LS_PATCHED_RESTART_PATTERN)
-        .expect("static patched language-server restart regex");
-    let vendor_new = Regex::new(LS_METHOD_VENDOR_RESTART_PATTERN)
-        .expect("static language-server method restart regex");
-    let patched_new = Regex::new(LS_METHOD_PATCHED_RESTART_PATTERN)
-        .expect("static patched language-server method restart regex");
-    let vendor_ternary = Regex::new(LS_VENDOR_RESTART_TERNARY_PATTERN)
-        .expect("static language-server ternary restart regex");
-    let patched_ternary = Regex::new(LS_PATCHED_RESTART_TERNARY_PATTERN)
-        .expect("static patched language-server ternary restart regex");
+    static VENDOR_OLD: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static PATCHED_OLD: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static VENDOR_NEW: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static PATCHED_NEW: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static VENDOR_TERNARY: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static PATCHED_TERNARY: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+
+    let vendor_old = VENDOR_OLD.get_or_init(|| {
+        Regex::new(LS_VENDOR_RESTART_PATTERN).expect("static language-server restart regex")
+    });
+    let patched_old = PATCHED_OLD.get_or_init(|| {
+        Regex::new(LS_PATCHED_RESTART_PATTERN).expect("static patched language-server restart regex")
+    });
+    let vendor_new = VENDOR_NEW.get_or_init(|| {
+        Regex::new(LS_METHOD_VENDOR_RESTART_PATTERN)
+            .expect("static language-server method restart regex")
+    });
+    let patched_new = PATCHED_NEW.get_or_init(|| {
+        Regex::new(LS_METHOD_PATCHED_RESTART_PATTERN)
+            .expect("static patched language-server method restart regex")
+    });
+    let vendor_ternary = VENDOR_TERNARY.get_or_init(|| {
+        Regex::new(LS_VENDOR_RESTART_TERNARY_PATTERN)
+            .expect("static language-server ternary restart regex")
+    });
+    let patched_ternary = PATCHED_TERNARY.get_or_init(|| {
+        Regex::new(LS_PATCHED_RESTART_TERNARY_PATTERN)
+            .expect("static patched language-server ternary restart regex")
+    });
 
     let vendor_old_matches = vendor_old.captures_iter(content).collect::<Vec<_>>();
     let patched_old_matches = patched_old

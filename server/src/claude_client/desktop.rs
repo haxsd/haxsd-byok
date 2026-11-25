@@ -695,7 +695,7 @@ pub fn undo(
     Ok(status)
 }
 
-/// 只读查询 `claude.exe` 是否在运行；不结束进程。
+/// 只读查询 `claude.exe` 与 `cowork-svc.exe` 是否在运行；查询失败时按运行中保守拒写。
 pub async fn process_running() -> bool {
     #[cfg(windows)]
     {
@@ -703,21 +703,23 @@ pub async fn process_running() -> bool {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let mut command = Command::new("tasklist");
         command.creation_flags(CREATE_NO_WINDOW);
-        match command
-            .args(["/FI", "IMAGENAME eq claude.exe", "/NH", "/FO", "CSV"])
-            .output()
-            .await
-        {
-            Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout)
-                .to_ascii_lowercase()
-                .contains("claude.exe"),
+        match command.args(["/NH", "/FO", "CSV"]).output().await {
+            Ok(output) if output.status.success() => {
+                let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+                text.lines().any(|line| {
+                    line.split(',')
+                        .next()
+                        .map(|name| name.trim().trim_matches('"'))
+                        .is_some_and(|name| name == "claude.exe" || name == "cowork-svc.exe")
+                })
+            }
             Ok(output) => {
                 tracing::warn!(status = %output.status, "cannot inspect the Claude Desktop process");
-                false
+                true
             }
             Err(error) => {
                 tracing::warn!(%error, "cannot inspect the Claude Desktop process");
-                false
+                true
             }
         }
     }
@@ -728,10 +730,15 @@ pub async fn process_running() -> bool {
             .status()
             .await
         {
-            Ok(status) => status.success(),
+            Ok(status) if status.success() => true,
+            Ok(status) if status.code() == Some(1) => false,
+            Ok(status) => {
+                tracing::warn!(%status, "cannot inspect the Claude Desktop process");
+                true
+            }
             Err(error) => {
                 tracing::warn!(%error, "cannot inspect the Claude Desktop process");
-                false
+                true
             }
         }
     }

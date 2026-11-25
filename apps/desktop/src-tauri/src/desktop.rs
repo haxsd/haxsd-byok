@@ -230,6 +230,7 @@ fn create_main_window(
         .parse()
         .expect("local frontend URL");
     let (width, height) = default_window_size(app);
+    let allowed_port = address.port();
     let builder = WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::External(url))
         .title("haxsd byok")
         .inner_size(width, height)
@@ -239,7 +240,8 @@ fn create_main_window(
         .decorations(cfg!(target_os = "macos"))
         .shadow(true)
         .resizable(true)
-        .visible(false);
+        .visible(false)
+        .on_navigation(move |nav_url| is_allowed_window_navigation(nav_url, allowed_port));
 
     #[cfg(target_os = "macos")]
     let builder = builder
@@ -247,6 +249,19 @@ fn create_main_window(
         .hidden_title(true);
 
     builder.build()
+}
+
+fn is_allowed_window_navigation(nav_url: &tauri::Url, port: u16) -> bool {
+    if nav_url.scheme() == "about" {
+        return true;
+    }
+    if nav_url.scheme() != "http" || nav_url.port() != Some(port) {
+        return false;
+    }
+    let host_ok = nav_url
+        .host_str()
+        .is_some_and(|host| host == "127.0.0.1" || host.eq_ignore_ascii_case("localhost"));
+    host_ok && nav_url.path().starts_with("/__byok-api__/")
 }
 
 /// 按需打开主窗口：首次需要界面时创建；之后关闭按钮只隐藏窗口，页面状态保留。
@@ -257,7 +272,11 @@ pub(crate) fn open_main_window(app: &AppHandle) -> tauri::Result<()> {
         let _ = window.set_focus();
         return Ok(());
     }
-    let address = app.state::<DesktopRuntime>().server_addr;
+    let Some(runtime) = app.try_state::<DesktopRuntime>() else {
+        tracing::debug!("desktop runtime is not ready yet; ignoring open_main_window");
+        return Ok(());
+    };
+    let address = runtime.server_addr;
     let window = create_main_window(app, address)?;
     window.show()?;
     window.set_focus()?;
@@ -414,20 +433,20 @@ pub fn run() -> ExitCode {
     };
     #[cfg(unix)]
     {
-        let open_file_limit = match crate::resource_limits::raise_open_file_limit() {
-            Ok(limit) => limit,
-            Err(error) => {
-                diagnostics.report_fatal(&error);
-                return ExitCode::FAILURE;
+        match crate::resource_limits::raise_open_file_limit() {
+            Ok(open_file_limit) => {
+                tracing::info!(
+                    requested = crate::resource_limits::REQUESTED_OPEN_FILE_LIMIT,
+                    previous = open_file_limit.previous,
+                    effective = open_file_limit.effective,
+                    hard = open_file_limit.hard,
+                    "open file limit configured"
+                );
             }
-        };
-        tracing::info!(
-            requested = crate::resource_limits::REQUESTED_OPEN_FILE_LIMIT,
-            previous = open_file_limit.previous,
-            effective = open_file_limit.effective,
-            hard = open_file_limit.hard,
-            "open file limit configured"
-        );
+            Err(error) => {
+                tracing::warn!(%error, "failed to raise open file limit; continuing with OS default");
+            }
+        }
     }
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),

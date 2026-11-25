@@ -209,7 +209,11 @@ pub fn proxy_settings_snapshot() -> Result<Value> {
         .chain([MANAGED_MARKER_KEY, RESTORED_PROXY_MARKER_KEY, NO_PROXY_KEY])
     {
         if let Some(value) = settings.get(key) {
-            entries.insert(key.to_owned(), value.clone());
+            let redacted = match value {
+                Value::String(text) => Value::String(crate::error::redact(text)),
+                other => other.clone(),
+            };
+            entries.insert(key.to_owned(), redacted);
         }
     }
     Ok(serde_json::json!({
@@ -251,7 +255,7 @@ fn clear_proxy_settings_at(path: &Path) -> Result<bool> {
     write_to(path, &settings)?;
     tracing::info!(
         path = %path.display(),
-        removed = before.len() - settings.len(),
+        removed = before.len().saturating_sub(settings.len()),
         "cleared Cursor proxy configuration"
     );
     Ok(true)
@@ -312,9 +316,10 @@ fn mentions_us(settings: &BTreeMap<String, Value>) -> bool {
 /// 还有这些键，一定是接管之后被写进来的（用户自己设的，或 Cursor 把内存里那一份写回来）
 /// ——那是用户的设置，归用户：不能收第二次，撤回时也不拿我们保管的旧值覆盖它。
 fn take_custody(settings: &mut BTreeMap<String, Value>) {
-    if mentions_us(settings) {
+    if mentions_us(settings) && !is_foreign_configuration(settings) {
         return;
     }
+    settings.remove(MANAGED_MARKER_KEY);
     for (key, custody) in CUSTODY_KEYS {
         if let Some(value) = settings.remove(key) {
             settings.insert(custody.into(), value);

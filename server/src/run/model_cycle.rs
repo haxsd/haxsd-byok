@@ -401,7 +401,9 @@ fn failure(
     let retryable = match &failure {
         RunFailure::Protocol(_) => true,
         RunFailure::Provider(message)
-            if is_rejected_request(message.message()) || is_gateway_timeout(message.message()) =>
+            if message.code() == crate::error::code::TIMEOUT
+                || is_rejected_request(message.message())
+                || is_gateway_timeout(message.message()) =>
         {
             false
         }
@@ -444,6 +446,7 @@ fn is_rejected_request(message: &str) -> bool {
 fn is_gateway_timeout(message: &str) -> bool {
     message.contains("provider stream idle timeout")
         || message.contains("provider request timed out")
+        || message.contains("provider request deadline elapsed")
 }
 
 fn terminal_failure(

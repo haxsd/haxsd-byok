@@ -59,11 +59,17 @@ async fn save(
 async fn status(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
     Ok(Json(state.gateway.status().await?))
 }
-async fn ui_cache() -> Json<crate::codex::ui_cache::UiCacheStatus> {
-    Json(crate::codex::ui_cache::ensure())
+async fn ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
+    let status = tokio::task::spawn_blocking(crate::codex::ui_cache::inspect)
+        .await
+        .map_err(|error| crate::Error::Config(format!("Codex UI cache check failed: {error}")))?;
+    Ok(Json(status))
 }
 async fn repair_ui_cache() -> Result<Json<crate::codex::ui_cache::UiCacheStatus>> {
-    Ok(Json(crate::codex::ui_cache::repair()?))
+    let status = tokio::task::spawn_blocking(crate::codex::ui_cache::repair)
+        .await
+        .map_err(|error| crate::Error::Config(format!("Codex UI cache repair failed: {error}")))??;
+    Ok(Json(status))
 }
 async fn apply(
     State(state): State<CodexControl>,

@@ -700,7 +700,16 @@ pub async fn release_download_client(store: &Store) -> Result<reqwest::Client> {
 
 /// 只跟随白名单域名之间的 HTTPS 跳转；其它跳转一律停下。
 pub(crate) fn allow_listed_redirect(hosts: &'static [&'static str]) -> reqwest::redirect::Policy {
+    const MAX_REDIRECTS: usize = 10;
     reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= MAX_REDIRECTS {
+            tracing::warn!(
+                hops = attempt.previous().len(),
+                to = %attempt.url(),
+                "refusing redirect loop past hop limit"
+            );
+            return attempt.error("too many redirects");
+        }
         let url = attempt.url();
         let allowed = redirect_allowed(url, hosts);
         if !allowed {

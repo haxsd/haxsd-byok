@@ -422,6 +422,50 @@ impl PluginWorker {
     }
 }
 
+const MAX_WORKER_LINE_BYTES: usize = 16 * 1024 * 1024;
+
+async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> std::io::Result<Option<String>> {
+    let mut buffer = Vec::new();
+    loop {
+        let chunk = reader.fill_buf().await?;
+        if chunk.is_empty() {
+            if buffer.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(String::from_utf8_lossy(&buffer).into_owned()));
+        }
+        if let Some(pos) = chunk.iter().position(|&byte| byte == b'\n') {
+            if buffer.len() + pos > max_bytes {
+                reader.consume(pos + 1);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "plugin worker line exceeded maximum length",
+                ));
+            }
+            buffer.extend_from_slice(&chunk[..pos]);
+            reader.consume(pos + 1);
+            if buffer.last() == Some(&b'\r') {
+                buffer.pop();
+            }
+            return Ok(Some(String::from_utf8_lossy(&buffer).into_owned()));
+        }
+        if buffer.len() + chunk.len() > max_bytes {
+            let len = chunk.len();
+            reader.consume(len);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "plugin worker line exceeded maximum length",
+            ));
+        }
+        buffer.extend_from_slice(chunk);
+        let len = chunk.len();
+        reader.consume(len);
+    }
+}
+
 fn spawn_stdout_reader(
     plugin_id: String,
     stdout: tokio::process::ChildStdout,
@@ -430,8 +474,16 @@ fn spawn_stdout_reader(
     host: HostContext,
 ) {
     tokio::spawn(async move {
-        let mut lines = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let line = match read_bounded_line(&mut reader, MAX_WORKER_LINE_BYTES).await {
+                Ok(Some(line)) => line,
+                Ok(None) => break,
+                Err(error) => {
+                    tracing::warn!(plugin = %plugin_id, %error, "plugin worker stdout read aborted");
+                    break;
+                }
+            };
             let message = match serde_json::from_str::<WorkerMessage>(&line) {
                 Ok(message) => message,
                 Err(error) => {
@@ -539,8 +591,17 @@ async fn cancel_invocation(
         return false;
     };
     state.cancellation.cancel();
-    if let Some(process) = process.lock().await.as_ref() {
-        let _ = write_message(&process.stdin, &HostMessage::Cancel { id: request_id }).await;
+    let stdin = process
+        .lock()
+        .await
+        .as_ref()
+        .map(|worker| worker.stdin.clone());
+    if let Some(stdin) = stdin {
+        let _ = tokio::time::timeout(
+            Duration::from_secs(2),
+            write_message(&stdin, &HostMessage::Cancel { id: request_id }),
+        )
+        .await;
     }
     true
 }

@@ -267,6 +267,12 @@ impl Store {
         let mut saved = self
             .insert_models(&[source.config_input(display_name.to_string(), sort_order)])
             .await?;
+        drop(_write);
+        if !source.supports_images {
+            self.set_model_supports_images(&saved[0].model_hash, false)
+                .await?;
+            saved[0].supports_images = false;
+        }
         Ok(saved.remove(0))
     }
 
@@ -291,6 +297,13 @@ impl Store {
         .bind(format!("$.models.\"{hash}\""))
         .bind(now_ms())
         .bind(super::settings::MODEL_CAPABILITIES_SETTINGS_KEY)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE service_settings SET value_json = '{\"mode\":\"disabled\"}', updated_at_ms = ? WHERE setting_key = 'vision' AND json_valid(value_json) AND json_extract(value_json, '$.model_hash') = ?",
+        )
+        .bind(now_ms())
+        .bind(hash)
         .execute(&mut *transaction)
         .await?;
         transaction.commit().await?;

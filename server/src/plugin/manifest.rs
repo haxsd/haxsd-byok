@@ -182,9 +182,21 @@ fn validate_asset_path(directory: &Path, value: &str) -> Result<()> {
             "unsupported plugin icon format: {value}"
         )));
     }
-    if !directory.join(path).is_file() {
+    let target = directory.join(path);
+    if !target.is_file() {
         return Err(Error::Config(format!(
             "plugin icon does not exist: {value}"
+        )));
+    }
+    let canonical_dir = directory
+        .canonicalize()
+        .map_err(|error| Error::Config(format!("failed to resolve plugin directory: {error}")))?;
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|error| Error::Config(format!("failed to resolve plugin icon {value}: {error}")))?;
+    if !canonical_target.starts_with(&canonical_dir) {
+        return Err(Error::Config(format!(
+            "plugin icon escapes plugin directory: {value}"
         )));
     }
     Ok(())

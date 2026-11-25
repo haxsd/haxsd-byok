@@ -72,10 +72,19 @@ impl Provider for AnthropicProvider {
             if mark_messages {
                 mark_cache_breakpoint(&mut messages);
             }
+            let one_hour_cache = client_system
+                .as_deref()
+                .is_some_and(|blocks| blocks.iter().any(has_one_hour_cache))
+                || messages.iter().any(has_one_hour_cache);
             let system = if let Some(blocks) = client_system {
                 Value::Array(blocks)
             } else if request.prompt.instructions.is_empty() {
                 Value::String(String::new())
+            } else if one_hour_cache {
+                json!([{
+                    "type": "text",
+                    "text": request.prompt.instructions,
+                }])
             } else {
                 json!([{
                     "type": "text",
@@ -414,9 +423,24 @@ fn cache_breakpoint_plan(client_system: Option<&[Value]>, messages: &[Value]) ->
                 .count()
         })
         .unwrap_or(0);
+    let message_breakpoints = messages
+        .iter()
+        .filter(|message| {
+            message
+                .get("content")
+                .and_then(Value::as_array)
+                .is_some_and(|blocks| {
+                    blocks.iter().any(|block| {
+                        block
+                            .get("cache_control")
+                            .is_some_and(|value| !value.is_null())
+                    })
+                })
+        })
+        .count();
     let one_hour = client_system.is_some_and(|blocks| blocks.iter().any(has_one_hour_cache))
         || messages.iter().any(has_one_hour_cache);
-    let budget = 4_usize.saturating_sub(client_breakpoints);
+    let budget = 4_usize.saturating_sub(client_breakpoints + message_breakpoints);
     (budget >= 1, client_breakpoints == 0 && !one_hour)
 }
 

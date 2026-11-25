@@ -28,6 +28,51 @@ pub(crate) async fn prepare(
     history: &mut [ProjectedMessage],
     cancellation: &CancellationToken,
 ) -> Result<()> {
+    prepare_inner(
+        store,
+        provider,
+        Some(prepared),
+        prepared.conversation_id.as_str(),
+        prepared.run_id.as_str(),
+        model,
+        history,
+        cancellation,
+    )
+    .await
+}
+
+pub(crate) async fn prepare_for_request(
+    store: &Store,
+    provider: &dyn Provider,
+    call_prefix: &str,
+    model: &ModelSpec,
+    history: &mut [ProjectedMessage],
+    cancellation: &CancellationToken,
+) -> Result<()> {
+    prepare_inner(
+        store,
+        provider,
+        None,
+        call_prefix,
+        call_prefix,
+        model,
+        history,
+        cancellation,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn prepare_inner(
+    store: &Store,
+    provider: &dyn Provider,
+    prepared: Option<&PreparedRun>,
+    conversation_id: &str,
+    run_id: &str,
+    model: &ModelSpec,
+    history: &mut [ProjectedMessage],
+    cancellation: &CancellationToken,
+) -> Result<()> {
     if !history.iter().any(has_image) {
         return Ok(());
     }
@@ -57,15 +102,29 @@ pub(crate) async fn prepare(
     }
 
     let question = latest_user_text(history);
+    let question = if question.trim().is_empty() {
+        "Describe the image in detail."
+    } else {
+        question.as_str()
+    };
+    let max_output_tokens = vision_model
+        .max_output_tokens()
+        .map(|cap| cap.min(4_096))
+        .unwrap_or(4_096);
+    let mut local_call_index = 0_u64;
     for message in history.iter_mut() {
         describe_message(
             store,
             provider,
             prepared,
+            conversation_id,
+            run_id,
+            &mut local_call_index,
             cancellation,
             &vision_model.model_hash,
+            max_output_tokens,
             message,
-            &question,
+            question,
         )
         .await?;
     }
@@ -100,12 +159,48 @@ fn latest_user_text(history: &[ProjectedMessage]) -> String {
         .unwrap_or_default()
 }
 
+pub(crate) fn strip_images(history: &mut [ProjectedMessage]) {
+    for message in history.iter_mut() {
+        match &mut message.content {
+            ProjectedContent::Parts(parts) => {
+                for part in parts.iter_mut() {
+                    if matches!(part, ContentPart::Image { .. }) {
+                        *part = ContentPart::Text {
+                            text: "\n[Image omitted]\n".into(),
+                        };
+                    }
+                }
+            }
+            ProjectedContent::ToolResult(result) if !result.provider_parts.is_empty() => {
+                let mut text_parts = Vec::new();
+                for part in &result.provider_parts {
+                    match part {
+                        ContentPart::Text { text } => text_parts.push(text.clone()),
+                        ContentPart::Image { .. } => text_parts.push("\n[Image omitted]\n".into()),
+                        other => text_parts.push(format!("{other:?}")),
+                    }
+                }
+                result.content = text_parts.join("\n\n");
+                result.provider_parts = vec![ContentPart::Text {
+                    text: result.content.clone(),
+                }];
+            }
+            ProjectedContent::ToolResult(_) | ProjectedContent::Assistant { .. } => {}
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn describe_message(
     store: &Store,
     provider: &dyn Provider,
-    prepared: &PreparedRun,
+    prepared: Option<&PreparedRun>,
+    conversation_id: &str,
+    run_id: &str,
+    local_call_index: &mut u64,
     cancellation: &CancellationToken,
     vision_model: &str,
+    max_output_tokens: u64,
     message: &mut ProjectedMessage,
     question: &str,
 ) -> Result<()> {
@@ -119,8 +214,12 @@ async fn describe_message(
                     store,
                     provider,
                     prepared,
+                    conversation_id,
+                    run_id,
+                    local_call_index,
                     cancellation,
                     vision_model,
+                    max_output_tokens,
                     &message.message_id,
                     mime_type,
                     data,
@@ -145,8 +244,12 @@ async fn describe_message(
                             store,
                             provider,
                             prepared,
+                            conversation_id,
+                            run_id,
+                            local_call_index,
                             cancellation,
                             vision_model,
+                            max_output_tokens,
                             &message.message_id,
                             mime_type,
                             data,
@@ -172,31 +275,43 @@ async fn describe_message(
 async fn describe_image(
     store: &Store,
     provider: &dyn Provider,
-    prepared: &PreparedRun,
+    prepared: Option<&PreparedRun>,
+    conversation_id: &str,
+    run_id: &str,
+    local_call_index: &mut u64,
     cancellation: &CancellationToken,
     vision_model: &str,
+    max_output_tokens: u64,
     message_id: &str,
     mime_type: &str,
     data: &[u8],
     question: &str,
 ) -> Result<String> {
     let digest = BlobId::digest(data).to_base64();
-    if let Some(text) = store
-        .image_description(prepared.conversation_id.as_str(), message_id, &digest)
-        .await?
-    {
-        return Ok(text);
+    if let Some(prepared) = prepared {
+        if let Some(text) = store
+            .image_description(prepared.conversation_id.as_str(), message_id, &digest)
+            .await?
+        {
+            return Ok(text);
+        }
     }
 
-    let provider_call_index = store.begin_provider_call(&prepared.run_id).await?;
+    let provider_call_index = match prepared {
+        Some(prepared) => store.begin_provider_call(&prepared.run_id).await?,
+        None => {
+            *local_call_index += 1;
+            *local_call_index
+        }
+    };
     let mut model = ModelSpec::new(vision_model);
     model.reasoning.enabled = Some(false);
-    model.max_output_tokens = Some(2_048);
+    model.max_output_tokens = Some(max_output_tokens);
     let invocation = ModelInvocation {
         client_source: crate::model::CallClient::Internal,
-        call_id: format!("{}:vision:{provider_call_index}", prepared.run_id),
-        run_id: prepared.run_id.to_string(),
-        conversation_id: prepared.conversation_id.to_string(),
+        call_id: format!("{run_id}:vision:{provider_call_index}"),
+        run_id: run_id.to_string(),
+        conversation_id: conversation_id.to_string(),
         provider_call_index,
         purpose: crate::model::CallPurpose::Vision,
         request: crate::model::ModelRequest {
@@ -230,15 +345,20 @@ async fn describe_image(
         };
         match event {
             ModelEvent::TextDelta(delta) => text.push_str(&delta),
-            ModelEvent::Done(FinishReason::Stop) if !text.trim().is_empty() => {
-                return store
-                    .save_image_description(
-                        prepared.conversation_id.as_str(),
-                        message_id,
-                        &digest,
-                        &text,
-                    )
-                    .await;
+            ModelEvent::Done(FinishReason::Stop | FinishReason::Length)
+                if !text.trim().is_empty() =>
+            {
+                if let Some(prepared) = prepared {
+                    return store
+                        .save_image_description(
+                            prepared.conversation_id.as_str(),
+                            message_id,
+                            &digest,
+                            &text,
+                        )
+                        .await;
+                }
+                return Ok(text);
             }
             ModelEvent::Done(_) | ModelEvent::ToolCallStart { .. } => break,
             _ => {}

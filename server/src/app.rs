@@ -212,7 +212,11 @@ impl App {
             tracing::error!(%error, "Claude gateway could not start; other integrations remain active");
         }
         let graceful = shutdown.clone();
-        let server = axum::serve(listener, self.router)
+        let server = axum::serve(
+            listener,
+            self.router
+                .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
             .with_graceful_shutdown(async move {
                 graceful.cancelled().await;
             })

@@ -300,10 +300,12 @@ fn codex_running() -> bool {
     let output = command
         .args(["/FI", "IMAGENAME eq ChatGPT.exe", "/FO", "CSV", "/NH"])
         .output();
-    output
-        .ok()
-        .map(|output| tasklist_contains_codex(&String::from_utf8_lossy(&output.stdout)))
-        .unwrap_or(false)
+    match output {
+        Ok(output) if output.status.success() => {
+            tasklist_contains_codex(&String::from_utf8_lossy(&output.stdout))
+        }
+        _ => true,
+    }
 }
 
 #[cfg(not(windows))]

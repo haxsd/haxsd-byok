@@ -278,7 +278,7 @@ fn apply_model(
         object.insert("reasoning_effort".into(), json!(effort));
     }
     if model.latency == ModelLatency::Fast {
-        object.insert("service_tier".into(), json!("fast"));
+        object.insert("service_tier".into(), json!("priority"));
     }
     Ok(())
 }

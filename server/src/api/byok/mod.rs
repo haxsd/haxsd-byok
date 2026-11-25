@@ -34,6 +34,7 @@ pub fn router(store: Store, plugins: PluginRegistry, provider: Arc<dyn Provider>
         .route("/byok/v1/chat/completions", post(chat))
         .route("/byok/v1/responses", post(responses))
         .route("/byok/v1/messages", post(messages))
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(ApiState {
             store,
             plugins,
@@ -159,8 +160,25 @@ async fn generate(
     let id = format!("external-api:{}", uuid::Uuid::new_v4());
     let mut request = parsed.request;
     request.model.model_id = model.internal_id.clone();
+    let cancellation = CancellationToken::new();
+    if let Err(error) = crate::run::vision::prepare_for_request(
+        &state.store,
+        state.provider.as_ref(),
+        &id,
+        &request.model,
+        &mut request.history,
+        &cancellation,
+    )
+    .await
+    {
+        let status = match error {
+            Error::Config(_) | Error::Protocol(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::BAD_GATEWAY,
+        };
+        return api_error(status, error);
+    }
     let invocation = ModelInvocation {
-        client_source: crate::model::CallClient::Internal,
+        client_source: crate::model::CallClient::ExternalApi,
         call_id: id.clone(),
         run_id: id.clone(),
         conversation_id: id.clone(),
@@ -168,7 +186,6 @@ async fn generate(
         purpose: crate::model::CallPurpose::Chat,
         request,
     };
-    let cancellation = CancellationToken::new();
     let stream = state.provider.stream(invocation, cancellation.clone());
     if parsed.stream {
         output::streamed(protocol, stream, cancellation, id, parsed.public_model_id)

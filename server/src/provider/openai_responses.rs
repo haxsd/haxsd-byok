@@ -175,6 +175,7 @@ impl Provider for OpenAiResponsesProvider {
                                     for event in reconcile_response_text(&mut text_open, &mut text, &final_text) { yield event; }
                                 }
                                 if text_open { text_open = false; yield ModelEvent::TextEnd; }
+                                text.clear();
                             }
                             Some("function_call") => {
                                 saw_completed_item = true;
@@ -243,6 +244,7 @@ impl Provider for OpenAiResponsesProvider {
                         yield ModelEvent::Done(if saw_tool { FinishReason::ToolUse } else { FinishReason::Stop });
                     }
                     "response.incomplete" => {
+                        if let Some(usage) = value.pointer("/response/usage") { yield ModelEvent::Usage(responses_usage(usage)); }
                         if thinking_open { thinking_open = false; yield ModelEvent::ThinkingEnd; }
                         if text_open { text_open = false; yield ModelEvent::TextEnd; }
                         for (index, tool) in tools.iter_mut().filter(|(_, tool)| tool.started && !tool.ended) {

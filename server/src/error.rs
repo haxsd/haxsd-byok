@@ -397,8 +397,11 @@ fn bounded(text: &str) -> String {
 ///
 /// 错误链里经常带请求 URL（`error sending request for url (...)`）；有的自建网关把
 /// 密钥写进查询参数。这里在落日志和诊断前统一处理，不依赖调用点自觉。
-pub(crate) fn redact(text: &str) -> String {
+pub(crate) fn redact_unbounded(text: &str) -> String {
     let text = redact_urls(text);
+    let text = pem_private_key()
+        .replace_all(&text, "[REDACTED_PRIVATE_KEY]")
+        .into_owned();
     let text = quoted_credentials()
         .replace_all(&text, "$1\"[REDACTED]\"")
         .into_owned();
@@ -408,7 +411,19 @@ pub(crate) fn redact(text: &str) -> String {
     let text = authorization_header()
         .replace_all(&text, "$1: [REDACTED]")
         .into_owned();
-    bounded(&secret_token().replace_all(&text, "[REDACTED]"))
+    secret_token().replace_all(&text, "[REDACTED]").into_owned()
+}
+
+pub(crate) fn redact(text: &str) -> String {
+    bounded(&redact_unbounded(text))
+}
+
+fn pem_private_key() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----")
+            .unwrap()
+    })
 }
 
 fn quoted_credentials() -> &'static Regex {
@@ -431,7 +446,10 @@ fn authorization_header() -> &'static Regex {
 
 fn secret_token() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| Regex::new(r"(?:sk|pk|xai|ant)-[A-Za-z0-9._-]{8,}").unwrap())
+    REGEX.get_or_init(|| {
+        Regex::new(r"(?:sk|pk|xai|ant)-[A-Za-z0-9._-]{8,}|haxsd-[0-9a-fA-F]{16,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{20,}")
+            .unwrap()
+    })
 }
 
 fn redact_urls(text: &str) -> String {
@@ -477,14 +495,10 @@ fn redact_urls(text: &str) -> String {
 
 fn find_url_start(text: &str) -> Option<usize> {
     let lowered = text.to_ascii_lowercase();
-    let http = lowered.find("http://");
-    let https = lowered.find("https://");
-    match (http, https) {
-        (Some(http), Some(https)) => Some(http.min(https)),
-        (Some(http), None) => Some(http),
-        (None, Some(https)) => Some(https),
-        (None, None) => None,
-    }
+    ["http://", "https://", "socks5h://", "socks5://", "socks4://"]
+        .into_iter()
+        .filter_map(|scheme| lowered.find(scheme))
+        .min()
 }
 
 fn is_sensitive_query_key(key: &str) -> bool {
@@ -554,6 +568,31 @@ mod tests {
         assert!(text.contains("BYOK-STREAM"));
         assert!(text.contains("fixture-call"));
         assert!(!text.contains("external error body"));
+    }
+
+    #[test]
+    fn redact_strips_gateway_jwt_github_google_pem_and_proxy_credentials() {
+        let sample = concat!(
+            "gateway=haxsd-0123456789abcdef0123456789abcdef ",
+            "jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF123456 ",
+            "gh=ghp_1234567890abcdefghij1234 ",
+            "pat=github_pat_1234567890abcdefghij1234 ",
+            "g=AIzaSyA1234567890abcdefghij ",
+            "proxy=socks5://alice:s3cr3t@10.0.0.1:1080 ",
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJ\n-----END RSA PRIVATE KEY-----"
+        );
+        let cleaned = redact_unbounded(sample);
+        for leaked in [
+            "0123456789abcdef",
+            "eyJhbGci",
+            "ghp_",
+            "github_pat_",
+            "AIzaSyA",
+            "s3cr3t",
+            "MIIBOgIBAAJ",
+        ] {
+            assert!(!cleaned.contains(leaked), "cleaned leaked {leaked}: {cleaned}");
+        }
     }
 
     #[test]

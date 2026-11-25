@@ -231,39 +231,39 @@ pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
                         }
                     }
                 }
-                Ok(status) => {
-                    if leaves_something(&status.state) {
-                        tracing::warn!(
-                            state = ?status.state,
-                            conflicts = status.conflicts.len(),
-                            "left the Claude Desktop takeover in place during shutdown"
-                        );
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "cannot inspect the Claude Desktop takeover during shutdown");
-                }
+                _ => {}
             }
         }
         Err(error) => {
-            tracing::warn!(%error, "cannot resolve the Claude Desktop profile path; skipped cleanup");
+            tracing::debug!(%error, "Claude Desktop paths unavailable during shutdown");
         }
     }
 }
 
-fn take_over(state: &TakeoverState, restorable: bool) -> bool {
-    restorable && matches!(state, TakeoverState::Applied | TakeoverState::Stale)
+/// 强杀收尾助手调用：在确认 Claude Desktop 已完全退出后，还原可恢复的接管 profile。
+pub async fn restore_on_forced_exit() -> bool {
+    let _serial = serial().await;
+    let Ok(state_dir) = claude_client::state_dir() else {
+        return false;
+    };
+    let Ok(paths) = DesktopPaths::discover() else {
+        return false;
+    };
+    if claude_desktop::process_running().await {
+        return false;
+    }
+    let policy = DesktopPolicy::detect();
+    let Ok(status) = claude_desktop::inspect(&paths, &state_dir, &policy, false, None) else {
+        return false;
+    };
+    if !take_over(&status.state, status.restorable) {
+        return false;
+    }
+    claude_desktop::undo(&paths, &state_dir, &policy, false).is_ok()
 }
 
-/// 有收据却没能撤销的状态：退出时值得留一条日志。
-fn leaves_something(state: &TakeoverState) -> bool {
-    matches!(
-        state,
-        TakeoverState::Applied
-            | TakeoverState::Stale
-            | TakeoverState::Conflict
-            | TakeoverState::Managed
-    )
+fn take_over(state: &TakeoverState, restorable: bool) -> bool {
+    restorable && matches!(state, TakeoverState::Applied | TakeoverState::Stale)
 }
 
 async fn takeover_status(State(state): State<ClaudeControl>) -> Result<Json<TakeoverStatus>> {

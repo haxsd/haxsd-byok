@@ -23,23 +23,38 @@ pub(crate) const LOCAL_HEADER: &str = "x-haxsd-gateway";
 /// 0.171 的 1.x 自定义 provider 路径不会把 auth.json 里的 token 附加到我们伪造的
 /// `OpenAI` provider 上；官方模型要工作，网关必须自己带上用户已经登录的凭据。
 /// 凭据只用于官方转发，绝不进入日志或本地模型上游。
+fn parse_auth_json(home: &Path) -> Option<Value> {
+    let raw = std::fs::read_to_string(home.join("auth.json")).ok()?;
+    let trimmed = raw.trim_start_matches('\u{feff}');
+    serde_json::from_str::<Value>(trimmed).ok()
+}
+
 pub(crate) fn chatgpt_access_token(home: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(home.join("auth.json")).ok()?;
-    let auth: Value = serde_json::from_str(&text).ok()?;
+    let auth = parse_auth_json(home)?;
     let mode = auth.get("auth_mode").and_then(Value::as_str);
-    if mode.is_some_and(|mode| mode != "chatgpt" && mode != "chatgptAuthTokens") {
-        return None;
+    let allow_chatgpt = mode.is_none_or(|mode| mode == "chatgpt" || mode == "chatgptAuthTokens");
+    if allow_chatgpt {
+        if let Some(token) = auth
+            .pointer("/tokens/access_token")
+            .and_then(Value::as_str)
+            .filter(|token| !token.trim().is_empty())
+        {
+            return Some(token.to_owned());
+        }
     }
-    auth.pointer("/tokens/access_token")
+    auth.get("personal_access_token")
         .and_then(Value::as_str)
         .filter(|token| !token.trim().is_empty())
         .map(str::to_owned)
-        .or_else(|| {
-            auth.get("personal_access_token")
-                .and_then(Value::as_str)
-                .filter(|token| !token.trim().is_empty())
-                .map(str::to_owned)
-        })
+}
+
+pub(crate) fn chatgpt_account_id(home: &Path) -> Option<String> {
+    let auth = parse_auth_json(home)?;
+    auth.pointer("/tokens/account_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
 }
 
 pub(crate) fn target_url(base_url: &str) -> String {

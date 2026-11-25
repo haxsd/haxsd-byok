@@ -110,7 +110,10 @@ async fn read_account_state_at(path: &Path) -> Result<CursorAccount> {
             email: None,
         });
     }
-    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(path);
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .busy_timeout(std::time::Duration::from_millis(200));
     let mut connection = SqliteConnection::connect_with(&options).await?;
     let stored = read_account_value(&mut connection, "cursorAuth/accessToken").await?;
     let Some(token) = stored.filter(|value| !value.trim().is_empty()) else {
@@ -654,7 +657,10 @@ mod tests {
     }
 
     async fn read_account(path: &Path, key: &str) -> Option<String> {
-        let options = sqlx::sqlite::SqliteConnectOptions::new().filename(path);
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .read_only(true)
+        .busy_timeout(std::time::Duration::from_millis(200));
         let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
         read_account_value(&mut connection, key).await.unwrap()
     }

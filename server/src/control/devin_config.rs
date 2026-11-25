@@ -379,10 +379,16 @@ pub async fn model_uids(Query(input): Query<HostPathInput>) -> Result<Json<Model
     ))
 }
 
+fn host_op_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
 pub async fn host_apply(
     State(service): State<ControlService>,
     Json(input): Json<HostApplyInput>,
 ) -> Result<Json<HostApplyResult>> {
+    let _serial = host_op_lock().lock().await;
     let settings = service.devin_settings().await?;
     let ports = host_config_precheck(&settings, service.devin_bound_ports().bound_ports())?;
     ensure_devin_closed().await?;
@@ -406,6 +412,7 @@ pub async fn host_repair(
     State(service): State<ControlService>,
     Json(input): Json<HostPathInput>,
 ) -> Result<Json<HostStatus>> {
+    let _serial = host_op_lock().lock().await;
     let settings = service.devin_settings().await?;
     let ports = host_config_precheck(&settings, service.devin_bound_ports().bound_ports())?;
     ensure_devin_closed().await?;
@@ -423,6 +430,7 @@ pub async fn host_repair(
 
 /// 恢复只用 apply 时落盘的收据。进程重启后页面拿不到旧收据，仍然可以恢复。
 pub async fn host_restore(Json(input): Json<HostPathInput>) -> Result<Json<serde_json::Value>> {
+    let _serial = host_op_lock().lock().await;
     ensure_devin_closed().await?;
     let settings_input = input.path;
     let install_input = input.install_root;
@@ -454,7 +462,7 @@ async fn devin_is_running() -> Result<bool> {
     // 页面刷新会探测 Devin 是否在运行；不能让它弹出控制台窗口。
     command.creation_flags(0x0800_0000);
     let output = command
-        .args(["/FI", "IMAGENAME eq Devin.exe", "/FO", "CSV", "/NH"])
+        .args(["/NH", "/FO", "CSV"])
         .output()
         .await
         .map_err(|error| {
@@ -479,7 +487,9 @@ fn tasklist_contains_devin(output: &str) -> bool {
         line.split(',')
             .next()
             .map(|name| name.trim().trim_matches('"'))
-            .is_some_and(|name| name.eq_ignore_ascii_case("Devin.exe"))
+            .is_some_and(|name| {
+                name.eq_ignore_ascii_case("Devin.exe") || name.eq_ignore_ascii_case("Windsurf.exe")
+            })
     })
 }
 

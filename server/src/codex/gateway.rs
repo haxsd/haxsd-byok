@@ -8,7 +8,7 @@ use crate::{network::NetworkClients, store::Store, Error, Result};
 use axum::{
     body::{to_bytes, Body},
     extract::{Request, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -577,9 +577,26 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
             )
         }
     };
-    let bytes = match decode_request_body(&headers, bytes) {
-        Ok(bytes) => bytes,
-        Err(error) => return protocol_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, error.to_string()),
+    let encoding = headers
+        .get(header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let bytes = match encoding {
+        Some(encoding) if !encoding.trim().is_empty() => {
+            match tokio::task::spawn_blocking(move || decode_request_body(&encoding, bytes)).await {
+                Ok(Ok(bytes)) => bytes,
+                Ok(Err(error)) => {
+                    return protocol_error(StatusCode::UNSUPPORTED_MEDIA_TYPE, error.to_string())
+                }
+                Err(error) => {
+                    return protocol_error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("failed to decode Codex request body: {error}"),
+                    )
+                }
+            }
+        }
+        _ => bytes,
     };
     let body: serde_json::Value = match serde_json::from_slice(&bytes) {
         Ok(body) => body,
@@ -674,6 +691,16 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
             };
             official_headers.insert(header::AUTHORIZATION, value);
         }
+        if !official_headers.contains_key("chatgpt-account-id") {
+            if let Some(account_id) = super::official::chatgpt_account_id(&home) {
+                if let Ok(value) = HeaderValue::from_str(&account_id) {
+                    official_headers.insert(
+                        axum::http::HeaderName::from_static("chatgpt-account-id"),
+                        value,
+                    );
+                }
+            }
+        }
         let response = match super::official::forward(
             &client,
             &gateway.inner.official_base_url,
@@ -709,22 +736,32 @@ async fn responses(State(gateway): State<CodexGateway>, request: Request<Body>) 
     .await
 }
 
+const MAX_CODEX_DECODED_BYTES: usize = 32 * 1024 * 1024;
+
 /// Codex 混合模式可能按官方客户端的行为发 zstd 请求体。解压后再解析模型 slug；
 /// 转发给官方时不再带 `content-encoding`，避免官方后端重复解压。
-fn decode_request_body(headers: &HeaderMap, bytes: Bytes) -> Result<Bytes> {
-    let encoding = headers
-        .get(header::CONTENT_ENCODING)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
+fn decode_request_body(encoding: &str, bytes: Bytes) -> Result<Bytes> {
+    use std::io::Read as _;
+
     let mut decoded = bytes;
-    for item in encoding.split(',') {
+    for item in encoding.split(',').rev() {
         let item = item.trim();
         if item.is_empty() || item.eq_ignore_ascii_case("identity") {
             continue;
         }
         if item.eq_ignore_ascii_case("zstd") {
-            let plain = zstd::stream::decode_all(decoded.as_ref())
+            let decoder = zstd::stream::Decoder::new(decoded.as_ref())
                 .map_err(|error| Error::Protocol(format!("invalid zstd request body: {error}")))?;
+            let mut plain = Vec::new();
+            decoder
+                .take((MAX_CODEX_DECODED_BYTES + 1) as u64)
+                .read_to_end(&mut plain)
+                .map_err(|error| Error::Protocol(format!("invalid zstd request body: {error}")))?;
+            if plain.len() > MAX_CODEX_DECODED_BYTES {
+                return Err(Error::Protocol(format!(
+                    "decoded Codex request body exceeds {MAX_CODEX_DECODED_BYTES} bytes"
+                )));
+            }
             decoded = Bytes::from(plain);
         } else {
             return Err(Error::Protocol(format!(
@@ -762,6 +799,7 @@ fn official_response(
                 Some(Ok(bytes)) => yield Ok::<Bytes, std::io::Error>(bytes),
                 Some(Err(error)) => {
                     tracing::warn!(%error, "official Codex response stream ended with an error");
+                    yield Err(std::io::Error::other(error.to_string()));
                     break;
                 }
                 None => break,

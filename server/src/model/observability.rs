@@ -107,6 +107,9 @@ pub enum CallClient {
     Codex,
     /// Claude 客户端经入站 Anthropic Messages 网关发起的调用。
     Claude,
+    /// 外部兼容 API（`/byok/v1/*`）发起的调用。
+    #[serde(rename = "external_api")]
+    ExternalApi,
     Internal,
 }
 impl CallClient {
@@ -116,6 +119,7 @@ impl CallClient {
             Self::Devin => "devin",
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::ExternalApi => "external_api",
             Self::Internal => "internal",
         }
     }

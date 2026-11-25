@@ -116,7 +116,7 @@ fn is_secret_key(key: &str) -> bool {
     key.contains("token") || key.contains("secret") || key.contains("key")
 }
 
-/// provider 表按字段渲染，凭据字段只回 `[redacted]`。
+/// provider 表按字段渲染，凭据字段与 `http_headers` 嵌套值只回 `[redacted]`。
 fn render_provider(item: &Item) -> String {
     let Some(table) = item.as_table_like() else {
         return REDACTED.into();
@@ -126,6 +126,17 @@ fn render_provider(item: &Item) -> String {
         .map(|(key, value)| {
             if is_secret_key(key) {
                 format!("{key} = {REDACTED}")
+            } else if key.eq_ignore_ascii_case("http_headers") {
+                if let Some(headers) = value.as_table_like() {
+                    let masked = headers
+                        .iter()
+                        .map(|(header_name, _)| format!("{header_name} = {REDACTED}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{key} = {{ {masked} }}")
+                } else {
+                    format!("{key} = {REDACTED}")
+                }
             } else {
                 format!("{key} = {}", render_value(value))
             }
@@ -744,8 +755,14 @@ pub fn apply_with_force(
             }
         }
         if !current.applied && force {
-            // 另一款工具改过的配置就是新的“用户原值”：撤销时回到这里，而不是旧收据。
-            rebased_original = Some(original.clone().unwrap_or_default());
+            if !external(&doc) && owned_item(&doc, PROVIDER_KEY).is_some() {
+                if let Some(current_text) = original.as_deref() {
+                    rebased_original = Some(rebase_original(current_text, original_text(&receipt))?);
+                }
+            } else {
+                // 另一款工具改过的配置就是新的“用户原值”：撤销时回到这里，而不是旧收据。
+                rebased_original = Some(original.clone().unwrap_or_default());
+            }
         }
         // 旧收据保留到新收据成功写入：后面的 external 检查、并发修改检查或备份写入
         // 都可能拒绝这次应用；先删收据会让一次无副作用的拒绝丢掉撤销基线。

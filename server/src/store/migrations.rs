@@ -590,7 +590,7 @@ mod tests {
                 versions,
                 vec![
                     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-                    23, 24, 25, 26, 27
+                    23, 24, 25, 26, 27, 28
                 ]
             );
             assert_eq!(checkpoint_table_exists, 1);
@@ -947,12 +947,13 @@ mod tests {
             indexes,
             vec![
                 "llm_calls_client_source",
+                "llm_calls_client_source_created",
                 "llm_calls_conversation_created",
                 "llm_calls_created",
                 "llm_calls_model",
                 "llm_calls_run",
             ],
-            "重建后五个索引一个都不能少"
+            "重建后六个索引一个都不能少"
         );
 
         // 新来源可写、未知来源仍被 CHECK 拒绝。
@@ -1159,7 +1160,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("migration {version} must exist"));
             stage_timeout(migration)
         };
-        for version in [4, 6, 7, 25] {
+        for version in [4, 6, 7, 25, 28] {
             assert_eq!(
                 budget(version),
                 MIGRATION_REBUILD_TIMEOUT,

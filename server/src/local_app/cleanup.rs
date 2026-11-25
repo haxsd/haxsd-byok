@@ -152,6 +152,7 @@ async fn clean_leftovers() -> Result<bool> {
         ),
     }
     changed |= restore_devin_settings();
+    changed |= crate::control::claude::restore_on_forced_exit().await;
     Ok(changed)
 }
 

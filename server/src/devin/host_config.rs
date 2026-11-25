@@ -156,8 +156,8 @@ pub fn apply_with_force(path: &Path, ports: DevinHostPorts, force: bool) -> Resu
     let backup_path = backup_path(path);
     let mut original_sha256 = None;
     if path.is_file() {
-        if force {
-            // 强制接管把当前的外部配置当成新的原值；撤销时回到这份内容。
+        if force && !status.configured {
+            // 强制接管仅在当前是外部配置时更新原值基线；若当前已是本机网关残留配置，保留原备份。
             atomic_replace(&backup_path, &original)?;
         } else {
             ensure_backup(&backup_path, &original)?;

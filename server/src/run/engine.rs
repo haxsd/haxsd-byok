@@ -688,6 +688,9 @@ impl RunEngine {
             )
             .await
             {
+                if matches!(error, crate::Error::Cancelled) || cancellation.is_cancelled() {
+                    return (RunOutcome::Cancelled, usage);
+                }
                 return (RunOutcome::Failed(error.into()), usage);
             }
             let mut request = crate::model::ModelRequest {
@@ -861,8 +864,8 @@ impl RunEngine {
                                 super::compaction::detail_retry_instructions(minimum_summary_chars)
                             );
                             if let Some(target) = &summary_target {
-                                request.history = super::compaction::compaction_history(
-                                    std::mem::take(&mut request.history),
+                                let compacted = super::compaction::compaction_history(
+                                    request.history.clone(),
                                     &super::compaction::SummaryInput {
                                         context_window: target.context_window,
                                         output_tokens: target.output_tokens,
@@ -874,6 +877,9 @@ impl RunEngine {
                                     },
                                     &compaction_settings,
                                 );
+                                if !compacted.is_empty() {
+                                    request.history = compacted;
+                                }
                             }
                             tracing::warn!(
                                 summary_chars = cycle.text.chars().count(),
@@ -1287,6 +1293,27 @@ impl RunEngine {
                     Ok(checkpoint) => checkpoint,
                     Err(error) => return (RunOutcome::Failed(error.into()), usage),
                 };
+                let (barrier, ready) = CommitBarrier::before_continue();
+                if emit(
+                    client,
+                    RunEvent::MessagesCommitted(MessagesCommitted {
+                        checkpoint_id: checkpoint,
+                        tool_round_version: 0,
+                        cause: CommitCause::Compaction {
+                            summary,
+                            summary_message_id,
+                        },
+                        barrier,
+                    }),
+                )
+                .await
+                .is_err()
+                {
+                    return (client_failure(), usage);
+                }
+                if let Err(outcome) = wait_for_state_ready(ready, cancellation).await {
+                    return (outcome, usage);
+                }
                 if !pending_insertions.is_empty() {
                     checkpoint = match super::messages::append_batches(
                         &self.store,
@@ -1308,7 +1335,7 @@ impl RunEngine {
                     Err(outcome) => return (outcome, usage),
                 };
                 if !closing_insertions.is_empty() {
-                    checkpoint = match super::messages::append_batches(
+                    let (next, inserted) = match super::messages::append_batches(
                         &self.store,
                         prepared,
                         client,
@@ -1318,30 +1345,32 @@ impl RunEngine {
                     )
                     .await
                     {
-                        Ok((next, _)) => next,
+                        Ok(result) => result,
                         Err(outcome) => return (outcome, usage),
                     };
-                }
-                let (barrier, ready) = CommitBarrier::before_continue();
-                if emit(
-                    client,
-                    RunEvent::MessagesCommitted(MessagesCommitted {
-                        checkpoint_id: checkpoint,
-                        tool_round_version: 0,
-                        cause: CommitCause::Compaction {
-                            summary,
-                            summary_message_id,
-                        },
-                        barrier,
-                    }),
-                )
-                .await
-                .is_err()
-                {
-                    return (client_failure(), usage);
-                }
-                if let Err(outcome) = wait_for_state_ready(ready, cancellation).await {
-                    return (outcome, usage);
+                    checkpoint = next;
+                    if inserted {
+                        let (barrier, ready) = CommitBarrier::before_continue();
+                        if emit(
+                            client,
+                            RunEvent::MessagesCommitted(MessagesCommitted {
+                                checkpoint_id: checkpoint,
+                                tool_round_version: 0,
+                                cause: CommitCause::RuntimeEvent {
+                                    event_id: format!("closing-insertions:{checkpoint}"),
+                                },
+                                barrier,
+                            }),
+                        )
+                        .await
+                        .is_err()
+                        {
+                            return (client_failure(), usage);
+                        }
+                        if let Err(outcome) = wait_for_state_ready(ready, cancellation).await {
+                            return (outcome, usage);
+                        }
+                    }
                 }
                 return (RunOutcome::Completed, usage);
             }
@@ -1419,7 +1448,7 @@ impl RunEngine {
                     Err(outcome) => return (outcome, usage),
                 };
                 if !closing_insertions.is_empty() {
-                    checkpoint = match super::messages::append_batches(
+                    let (next, inserted) = match super::messages::append_batches(
                         &self.store,
                         prepared,
                         client,
@@ -1429,11 +1458,14 @@ impl RunEngine {
                     )
                     .await
                     {
-                        Ok((next, _)) => next,
+                        Ok(result) => result,
                         Err(outcome) => return (outcome, usage),
                     };
-                    client.phase.resume_running();
-                    continue 'model;
+                    checkpoint = next;
+                    if inserted {
+                        client.phase.resume_running();
+                        continue 'model;
+                    }
                 }
                 let (barrier, ready) = CommitBarrier::before_continue();
                 if emit(
@@ -1956,7 +1988,15 @@ impl RunEngine {
                 )
                 .await
                 {
-                    return Err(RunOutcome::Failed(error.into()));
+                    if matches!(error, crate::Error::Cancelled) || cancellation.is_cancelled() {
+                        return Err(RunOutcome::Cancelled);
+                    }
+                    tracing::warn!(
+                        run_id = %prepared.run_id,
+                        error = %error,
+                        "vision fallback failed during auto-compaction; stripping images to continue"
+                    );
+                    super::vision::strip_images(&mut history);
                 }
                 let invocation = crate::model::ModelInvocation {
                     // 摘要调用的输入是被裁剪过的重放历史，不能当上下文用量锚点。

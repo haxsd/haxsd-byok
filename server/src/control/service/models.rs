@@ -252,7 +252,11 @@ fn connectivity_test_timeout_error(timeout: Duration) -> Error {
 /// 表单不回填明文 key，"留空 = 不修改"是这里唯一需要判断的事。模型已经被删掉时走的也是
 /// `Store::require_model` 那条统一文案（审计 11/P3-5：过去这里回 `RunNotFound`，界面会弹
 /// "run not found"，用户既不知道是模型没了、也不知道该刷新列表）。
-async fn discovery_api_key(store: &Store, input: &ModelDiscoveryInput) -> Result<String> {
+async fn discovery_api_key(
+    store: &Store,
+    input: &ModelDiscoveryInput,
+    target_base_url: &str,
+) -> Result<String> {
     let Some(hash) = input
         .model_hash
         .as_deref()
@@ -260,7 +264,23 @@ async fn discovery_api_key(store: &Store, input: &ModelDiscoveryInput) -> Result
     else {
         return Ok(input.api_key.trim().to_owned());
     };
-    Ok(store.require_model(hash).await?.api_key)
+    let stored = store.require_model(hash).await?;
+    let stored_base_url = crate::model::normalize_request_url(&stored.base_url)?;
+    if !same_url_origin(&stored_base_url, target_base_url)? {
+        return Err(Error::Config(
+            "cannot reuse stored API key for a different base URL; please re-enter the API key"
+                .into(),
+        ));
+    }
+    Ok(stored.api_key)
+}
+
+fn same_url_origin(left: &str, right: &str) -> Result<bool> {
+    let left = reqwest::Url::parse(left)
+        .map_err(|error| Error::Config(format!("invalid base_url: {error}")))?;
+    let right = reqwest::Url::parse(right)
+        .map_err(|error| Error::Config(format!("invalid base_url: {error}")))?;
+    Ok(left.origin() == right.origin())
 }
 
 impl ControlService {
@@ -417,7 +437,7 @@ impl ControlService {
     pub async fn discover_models(&self, input: &ModelDiscoveryInput) -> Result<DiscoveredModels> {
         let client = self.clients.default_client().await?;
         let base_url = crate::model::normalize_request_url(&input.base_url)?;
-        let api_key = discovery_api_key(&self.store, input).await?;
+        let api_key = discovery_api_key(&self.store, input, &base_url).await?;
         let discovery = discover_models_from_endpoint(
             &client,
             match input.model_type {
@@ -1074,27 +1094,54 @@ mod tests {
 
         // 留空 + 带哈希：沿用服务端保存的那份（表单不回填明文 key）。
         assert_eq!(
-            discovery_api_key(&store, &input("", Some(&model.model_hash)))
-                .await
-                .unwrap(),
+            discovery_api_key(
+                &store,
+                &input("", Some(&model.model_hash)),
+                "https://example.com/v1/chat/completions"
+            )
+            .await
+            .unwrap(),
             "saved-key"
         );
         // 表单给了 key：用它，不去查库。
         assert_eq!(
-            discovery_api_key(&store, &input(" typed-key ", Some(&model.model_hash)))
-                .await
-                .unwrap(),
+            discovery_api_key(
+                &store,
+                &input(" typed-key ", Some(&model.model_hash)),
+                "https://example.com/v1/chat/completions"
+            )
+            .await
+            .unwrap(),
             "typed-key"
         );
         // 新建（没有哈希）：空 key 就是空。
         assert_eq!(
-            discovery_api_key(&store, &input("", None)).await.unwrap(),
+            discovery_api_key(
+                &store,
+                &input("", None),
+                "https://example.com/v1/chat/completions"
+            )
+            .await
+            .unwrap(),
             ""
         );
+        // 跨 origin 留空复用 key：必须拒绝。
+        let cross_origin = discovery_api_key(
+            &store,
+            &input("", Some(&model.model_hash)),
+            "https://evil.example.com/v1",
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(cross_origin, Error::Config(_)), "{cross_origin:?}");
         // 模型没了：统一的配置问题文案，界面能给出下一步。
-        let error = discovery_api_key(&store, &input("", Some("gone-model")))
-            .await
-            .unwrap_err();
+        let error = discovery_api_key(
+            &store,
+            &input("", Some("gone-model")),
+            "https://example.com/v1/chat/completions",
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(error, Error::Config(_)), "{error:?}");
         let message = error.to_string();
         assert!(message.contains("gone-model"), "{message}");

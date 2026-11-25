@@ -290,17 +290,31 @@ fn cross_site_request(headers: &axum::http::HeaderMap) -> bool {
 /// 允许的页面来源：Tauri/VS Code 的 webview 自有来源与任何回环地址。
 fn is_local_origin(origin: &str) -> bool {
     let origin = origin.trim();
-    if matches!(origin, "tauri://localhost" | "http://tauri.localhost") {
+    if origin.eq_ignore_ascii_case("tauri://localhost")
+        || origin.eq_ignore_ascii_case("http://tauri.localhost")
+    {
         return true;
     }
-    let Some(rest) = origin.strip_prefix("http://") else {
+    let Ok(parsed) = reqwest::Url::parse(origin) else {
         return false;
     };
-    let authority = rest.split('/').next().unwrap_or_default();
-    let host = authority
-        .rsplit_once(':')
-        .map_or(authority, |(host, _)| host);
-    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return false;
+    }
+    match parsed.host() {
+        Some(url::Host::Domain(host)) => {
+            host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case("tauri.localhost")
+        }
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    }
 }
 
 async fn bind(port: u16) -> Result<TcpListener> {
@@ -495,7 +509,6 @@ async fn handle_request(
     };
     let is_compaction = method == "GetChatMessage"
         && super::request::string_field(&fields, 21).is_ok_and(|uid| uid == "compactor");
-    eprintln!("B03: method={method} is_compaction={is_compaction} session={session_id:?}");
     let inherited = if is_compaction {
         match state.store.devin_session_model(&session_id).await {
             Ok(Some(selection)) => Some(selection),
@@ -756,6 +769,22 @@ async fn handle_request(
     let cancellation = CancellationToken::new();
     let stream_cancellation = cancellation.clone();
     let reference = session_id.clone();
+    if let Err(error) = crate::run::vision::prepare_for_request(
+        &state.store,
+        state.provider.as_ref(),
+        &invocation.call_id,
+        &invocation.request.model,
+        &mut invocation.request.history,
+        &cancellation,
+    )
+    .await
+    {
+        let status = match error {
+            Error::Config(_) | Error::Protocol(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::BAD_GATEWAY,
+        };
+        return protocol_error(enveloped, status, error.to_string());
+    }
     let mut provider_stream = state.provider.stream(invocation, cancellation.clone());
     let mut response_state = ResponseState::new("devin-response", provider_type);
     response_state.set_fallback_input_tokens(fallback_input_tokens);
@@ -930,9 +959,12 @@ async fn forward_native_model_config(
             } else {
                 user_status::with_local_models(payload, &local_models, default_uid)?
             };
-            let harnesses = if method == "GetCliTeamSettings" {
-                // Team settings 不是模型目录：从它解析出来的 harness 映射是空的，整表
-                // 替换会把刚建立的 harness 分配清掉，随后 AssignModel 就不再返回 harness_uids。
+            let harnesses = if matches!(
+                method,
+                "GetCliTeamSettings" | "GetCommandModelConfigs"
+            ) {
+                // Team settings / command / CLI model configs 不含完整的 Cascade harness 映射：
+                // 整表替换会把刚建立的 harness 分配清掉，随后 AssignModel 就不再返回 harness_uids。
                 None
             } else {
                 Some(super::harness::local_assignments(

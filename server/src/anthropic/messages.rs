@@ -883,14 +883,83 @@ async fn image_part(
     }
 }
 
+fn is_disallowed_image_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0b1100_0000) == 64)
+        }
+        std::net::IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_disallowed_image_ip(std::net::IpAddr::V4(mapped));
+            }
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    pub(super) static ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST: bool;
+}
+
+async fn validate_public_image_url(parsed: &reqwest::Url) -> Result<(), ApiError> {
+    #[cfg(test)]
+    if ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+        .try_with(|allowed| *allowed)
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ApiError::invalid("image URL must use http or https"));
+    }
+    let Some(host) = parsed.host_str() else {
+        return Err(ApiError::invalid("image URL must include a host"));
+    };
+    let normalized = host.trim_start_matches('[').trim_end_matches(']');
+    if normalized.eq_ignore_ascii_case("localhost")
+        || normalized.to_ascii_lowercase().ends_with(".localhost")
+    {
+        return Err(ApiError::invalid("image URL must not target localhost"));
+    }
+    if let Ok(ip) = normalized.parse::<std::net::IpAddr>() {
+        if is_disallowed_image_ip(ip) {
+            return Err(ApiError::invalid(
+                "image URL must not target private or loopback networks",
+            ));
+        }
+        return Ok(());
+    }
+    if let Some(port) = parsed.port_or_known_default() {
+        if let Ok(addrs) = tokio::net::lookup_host((normalized, port)).await {
+            for addr in addrs {
+                if is_disallowed_image_ip(addr.ip()) {
+                    return Err(ApiError::invalid(
+                        "image URL must not resolve to private or loopback networks",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 下载 URL 图片。共享消息类型只存字节，没有 URL 形态，所以这里必须把图片取回来——
 /// 或者明确拒绝；让 URL 原样穿过投影会在出站适配器里变成一张空图片。
 async fn fetch_image(clients: &NetworkClients, url: &str) -> Result<(String, Vec<u8>), ApiError> {
     let parsed = reqwest::Url::parse(url)
         .map_err(|error| ApiError::invalid(format!("invalid image URL: {error}")))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(ApiError::invalid("image URL must use http or https"));
-    }
+    validate_public_image_url(&parsed).await?;
     let client = clients
         .default_client()
         .await
@@ -1398,11 +1467,7 @@ impl MessageAssembler {
                 match delta.get("type").and_then(Value::as_str) {
                     Some("text_delta") => append(block, "text", delta.get("text")),
                     Some("thinking_delta") => append(block, "thinking", delta.get("thinking")),
-                    Some("signature_delta") => {
-                        if let Some(signature) = delta.get("signature") {
-                            block["signature"] = signature.clone();
-                        }
-                    }
+                    Some("signature_delta") => append(block, "signature", delta.get("signature")),
                     Some("input_json_delta") => {
                         if let Some(partial) = delta.get("partial_json").and_then(Value::as_str) {
                             self.partial_json
@@ -1657,7 +1722,8 @@ mod tests {
             "tools": [{"name": "Bash", "input_schema": {"type": "object"}}],
             "messages": [{"role": "user", "content": "hello"}],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let model = &prepared.invocation.request.model;
@@ -1733,7 +1799,8 @@ mod tests {
             "tools": [{"name": "Bash", "description": "run", "input_schema": {"type": "object"}}],
             "messages": [{"role": "user", "content": "hello"}],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let request = &prepared.invocation.request;
@@ -1766,7 +1833,8 @@ mod tests {
                 ]},
             ],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let history = &prepared.invocation.request.history;
@@ -1801,7 +1869,8 @@ mod tests {
                 ]},
             ],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let request = &prepared.invocation.request;
@@ -1831,7 +1900,8 @@ mod tests {
                 {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "aGVsbG8="}},
             ]}],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let ProjectedContent::Parts(parts) = &prepared.invocation.request.history[0].content else {
@@ -1865,7 +1935,8 @@ mod tests {
                 {"type": "image", "source": {"type": "url", "url": url}},
             ]}],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         let ProjectedContent::Parts(parts) = &prepared.invocation.request.history[0].content else {
@@ -1953,19 +2024,22 @@ mod tests {
             "max_tokens": 100,
             "messages": [{"role": "user", "content": "hello"}],
         });
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         assert!(!prepared.stream, "缺省按 Anthropic 的非流式处理");
 
         body["stream"] = json!(true);
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         assert!(prepared.stream);
 
         body["stream"] = json!(false);
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         assert!(!prepared.stream);
@@ -1973,7 +2047,8 @@ mod tests {
 
     async fn project(body: Value) -> (Vec<ProjectedMessage>, String) {
         let (_directory, store, settings) = fixture().await;
-        let prepared = prepare(&store, &settings, &body, &clients(&store))
+        let prepared = ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST
+            .scope(true, prepare(&store, &settings, &body, &clients(&store)))
             .await
             .unwrap();
         (

@@ -499,7 +499,7 @@ fn chat_body(
     // 模型没配输出上限、客户端也没要求时干脆不写：交给上游自己的默认值，
     // 这才和"留空使用默认值"的说法一致。
     if let Some(max_tokens) = max_tokens {
-        body["max_tokens"] = json!(max_tokens);
+        body["max_completion_tokens"] = json!(max_tokens);
     }
     if !definitions.is_empty() {
         body["tools"] = json!(definitions);
@@ -1229,7 +1229,7 @@ mod tests {
     fn an_unconfigured_output_limit_does_not_cap_the_clients_request() {
         let source = json!({"input": "go", "max_output_tokens": 128_000});
         assert_eq!(
-            mapped(UpstreamFormat::Chat, source.clone(), None)["max_tokens"],
+            mapped(UpstreamFormat::Chat, source.clone(), None)["max_completion_tokens"],
             json!(128_000),
             "模型里留空时客户端更大的要求必须原样发出，不能被凭空造的 4096 压低"
         );
@@ -1244,7 +1244,7 @@ mod tests {
         let source = json!({"input": "go"});
         let chat = mapped(UpstreamFormat::Chat, source.clone(), None);
         assert!(
-            chat.get("max_tokens").is_none(),
+            chat.get("max_completion_tokens").is_none() && chat.get("max_tokens").is_none(),
             "留空就是交给上游默认值，不该自己造一个上限：{chat}"
         );
         // Anthropic 的 max_tokens 必填：给最小的公共上限，而不是按最大的模型取值。
@@ -1258,7 +1258,7 @@ mod tests {
     fn a_configured_output_limit_still_caps_the_clients_request() {
         let source = json!({"input": "go", "max_output_tokens": 128_000});
         assert_eq!(
-            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_tokens"],
+            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_completion_tokens"],
             json!(8_192)
         );
         assert_eq!(
@@ -1271,7 +1271,7 @@ mod tests {
     fn a_configured_output_limit_is_used_when_the_client_asks_for_nothing() {
         let source = json!({"input": "go"});
         assert_eq!(
-            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_tokens"],
+            mapped(UpstreamFormat::Chat, source.clone(), Some(8_192))["max_completion_tokens"],
             json!(8_192)
         );
         assert_eq!(
@@ -1287,7 +1287,7 @@ mod tests {
         assert_eq!(
             translate_request(&source, UpstreamFormat::Chat, "vendor-model", 4_096)
                 .unwrap()
-                .body["max_tokens"],
+                .body["max_completion_tokens"],
             json!(4_096)
         );
     }

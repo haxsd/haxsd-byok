@@ -33,14 +33,23 @@ pub(super) async fn list(store: &Store, plugins: &PluginRegistry) -> Result<Vec<
                     .and_then(|url| url.host_str().map(str::to_owned))
                     .unwrap_or_else(|| model.base_url.clone())
             });
-        let public_id = format!("{group}/{}", model.model_id);
-        if ids.insert(public_id.clone()) {
-            models.push(ListedModel {
-                public_id,
-                internal_id: model.model_hash,
-                display_name: model.display_name,
-            });
-        }
+        let base_id = format!("{group}/{}", model.model_id);
+        let public_id = if ids.insert(base_id.clone()) {
+            base_id
+        } else {
+            let short: String = model.model_hash.chars().take(6).collect();
+            let disambiguated = format!("{base_id}#{short}");
+            if ids.insert(disambiguated.clone()) {
+                disambiguated
+            } else {
+                format!("{base_id}#{}", model.model_hash)
+            }
+        };
+        models.push(ListedModel {
+            public_id,
+            internal_id: model.model_hash,
+            display_name: model.display_name,
+        });
     }
     for model in plugins.configured_models().await {
         let public_id = format!(
@@ -60,7 +69,7 @@ pub(super) async fn list(store: &Store, plugins: &PluginRegistry) -> Result<Vec<
 
 pub(super) fn response(models: &[ListedModel]) -> Value {
     json!({"object":"list","data":models.iter().map(|model| json!({
-        "id":model.public_id,"object":"model","created":0,"owned_by":"cursor-byok",
+        "id":model.public_id,"object":"model","created":0,"owned_by":"haxsd-byok",
         "name":model.display_name
     })).collect::<Vec<_>>()})
 }

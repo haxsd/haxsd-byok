@@ -177,17 +177,20 @@ fn parse_chat_messages(
         let role = required_string(message, "role")?;
         match role {
             "system" | "developer" => {
-                if !history.is_empty() {
-                    return Err(Error::Protocol(
-                        "system messages must precede conversation messages".into(),
-                    ));
-                }
                 let text = text_content(message.get("content"))
                     .ok_or_else(|| Error::Protocol("system content must be text".into()))?;
-                if !prompt.instructions.is_empty() {
-                    prompt.instructions.push('\n');
+                if history.is_empty() {
+                    if !prompt.instructions.is_empty() {
+                        prompt.instructions.push('\n');
+                    }
+                    prompt.instructions.push_str(&text);
+                } else {
+                    history.push(ProjectedMessage {
+                        message_id: format!("external:{index}"),
+                        role: Role::User,
+                        content: ProjectedContent::Parts(vec![ContentPart::Text { text }]),
+                    });
                 }
-                prompt.instructions.push_str(&text);
             }
             "user" => history.push(ProjectedMessage {
                 message_id: format!("external:{index}"),
@@ -295,10 +298,11 @@ fn parse_responses_input(value: &Value, history: &mut Vec<ProjectedMessage>) -> 
                     }],
                 },
             }),
+            Some("reasoning") => {}
             _ => {
                 let role = item.get("role").and_then(Value::as_str).unwrap_or("user");
                 let role = match role {
-                    "user" => Role::User,
+                    "user" | "developer" => Role::User,
                     "assistant" => Role::Assistant,
                     _ => return Err(Error::Protocol(format!("unsupported role: {role}"))),
                 };
@@ -369,6 +373,7 @@ fn parse_anthropic_messages(
                             }),
                         });
                     }
+                    Some("thinking" | "redacted_thinking") => {}
                     _ => text_parts.extend(parse_parts(Some(&Value::Array(vec![block.clone()])))?),
                 }
             }

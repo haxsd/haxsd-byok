@@ -11,7 +11,7 @@ mod model_cycle;
 mod model_retry;
 mod port;
 mod tool_round;
-mod vision;
+pub(crate) mod vision;
 
 pub use command::*;
 pub use engine::*;

@@ -10,6 +10,8 @@ use tokio::sync::mpsc;
 /// 而且没有任何信号。满了就断开这个订阅者：它的 SSE 流正常结束（EOF），客户端重连时
 /// 从 `history` 的重放里补齐——断线重连本来就是这份重放存在的原因。
 const SUBSCRIBER_QUEUE_FRAMES: usize = 1024;
+const MAX_HISTORY_FRAMES: usize = 8_192;
+const MAX_HISTORY_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct OutputHub {
@@ -19,6 +21,8 @@ pub struct OutputHub {
 #[derive(Default)]
 struct OutputState {
     history: Vec<Bytes>,
+    history_bytes: usize,
+    history_truncated: bool,
     subscribers: Vec<mpsc::Sender<Bytes>>,
     closed: bool,
 }
@@ -29,7 +33,17 @@ impl OutputHub {
         if state.closed {
             return false;
         }
-        state.history.push(frame.clone());
+        let mut truncated_now = false;
+        if !state.history_truncated {
+            let next_bytes = state.history_bytes.saturating_add(frame.len());
+            if state.history.len() < MAX_HISTORY_FRAMES && next_bytes <= MAX_HISTORY_BYTES {
+                state.history_bytes = next_bytes;
+                state.history.push(frame.clone());
+            } else {
+                state.history_truncated = true;
+                truncated_now = true;
+            }
+        }
         let mut dropped = 0_usize;
         state
             .subscribers
@@ -44,6 +58,13 @@ impl OutputHub {
                 Err(mpsc::error::TrySendError::Closed(_)) => false,
             });
         drop(state);
+        if truncated_now {
+            tracing::warn!(
+                max_frames = MAX_HISTORY_FRAMES,
+                max_bytes = MAX_HISTORY_BYTES,
+                "Cursor output replay history reached cap; further frames will stream live only"
+            );
+        }
         if dropped > 0 {
             tracing::warn!(
                 dropped,

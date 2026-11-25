@@ -92,8 +92,13 @@ async fn generate_local(
         return Err(Error::Protocol("diffs are required".into()));
     }
     let model_id = settings.model_id.trim();
-    ensure_configured_model(registry, model_id).await?;
-    let invocation = build_invocation(&settings, model_id, build_user_content(&request, &diffs));
+    let max_output_tokens = ensure_configured_model(registry, model_id).await?;
+    let invocation = build_invocation(
+        &settings,
+        model_id,
+        max_output_tokens,
+        build_user_content(&request, &diffs),
+    );
     let provider = registry.conversations().dependencies().provider.clone();
     let generated = generate(
         provider,
@@ -115,16 +120,23 @@ async fn generate_local(
     Ok(response)
 }
 
-async fn ensure_configured_model(registry: &TransportRegistry, model_id: &str) -> Result<()> {
+async fn ensure_configured_model(
+    registry: &TransportRegistry,
+    model_id: &str,
+) -> Result<Option<u64>> {
     if model_id.starts_with(ADAPTER_ID_PREFIX) {
         let plugins = registry.plugins().ok_or_else(|| {
             Error::Provider(format!("commit plugin model {model_id} is unavailable"))
         })?;
         plugins.model_descriptor(model_id).await?;
-        return Ok(());
+        return Ok(None);
     }
-    if registry.store().model(model_id).await?.is_some() {
-        return Ok(());
+    if let Some(model) = registry.store().model(model_id).await? {
+        let cap = match model.model_type {
+            crate::model::ModelType::OpenAi => model.max_completion_tokens,
+            crate::model::ModelType::Anthropic => model.anthropic_max_tokens,
+        };
+        return Ok(cap);
     }
     Err(Error::Provider(format!(
         "commit model {model_id} is not configured; select a configured model in the commit settings"
@@ -134,9 +146,13 @@ async fn ensure_configured_model(registry: &TransportRegistry, model_id: &str) -
 fn build_invocation(
     settings: &CommitSettings,
     model_id: &str,
+    model_max_output_tokens: Option<u64>,
     user_content: String,
 ) -> ModelInvocation {
     let call_id = format!("commit-message-{}", uuid::Uuid::new_v4());
+    let max_output_tokens = model_max_output_tokens
+        .map(|limit| limit.min(COMMIT_MAX_OUTPUT_TOKENS))
+        .unwrap_or(4096);
     ModelInvocation {
         purpose: crate::model::CallPurpose::Chat,
         client_source: crate::model::CallClient::Cursor,
@@ -150,7 +166,8 @@ fn build_invocation(
                 tools: Vec::new(),
             },
             model: ModelSpec {
-                max_output_tokens: Some(COMMIT_MAX_OUTPUT_TOKENS),
+                max_output_tokens: Some(max_output_tokens),
+                reasoning: crate::model::ReasoningSpec::default(),
                 ..ModelSpec::new(model_id.to_owned())
             },
             history: vec![ProjectedMessage {

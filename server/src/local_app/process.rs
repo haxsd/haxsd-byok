@@ -73,7 +73,7 @@ async fn terminate_platform_cursor() -> Result<()> {
         .args(["/F", "/T", "/IM", "Cursor.exe"])
         .status()
         .await?;
-    if terminated.success() {
+    if terminated.success() || terminated.code() == Some(128) {
         Ok(())
     } else {
         Err(Error::Config(

@@ -278,10 +278,12 @@ pub async fn available_models(
 ) -> Result<Response<Body>> {
     let mode = registry.store().cursor_mode().await?;
     let models = registry.store().models().await?;
-    let vision_fallback = matches!(
-        registry.store().vision_settings().await?,
-        crate::store::VisionSettings::Model { .. }
-    );
+    let vision_fallback = match registry.store().vision_settings().await? {
+        crate::store::VisionSettings::Model { model_hash } => models
+            .iter()
+            .any(|model| model.model_hash == model_hash && model.supports_images),
+        crate::store::VisionSettings::Disabled => false,
+    };
     let plugin_models = match registry.plugins() {
         Some(plugins) => plugins.configured_models().await,
         None => Vec::new(),

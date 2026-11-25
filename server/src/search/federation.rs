@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures_util::future::join_all;
+use futures_util::{stream::FuturesUnordered, StreamExt};
 use tokio::sync::OnceCell;
 
 use crate::store::Store;
@@ -95,31 +95,57 @@ impl WebSearch {
             return Ok(cached);
         }
         let client = self.client().await?;
-        let responses = join_all(
-            self.engines
-                .iter()
-                .map(|engine| engine.search(&client, query)),
-        )
-        .await;
+        let mut pending = self
+            .engines
+            .iter()
+            .map(|engine| {
+                let id = engine.id();
+                let client = client.clone();
+                async move { (id, engine.search(&client, query).await) }
+            })
+            .collect::<FuturesUnordered<_>>();
         let mut merged = HashMap::<String, SearchHit>::new();
         let mut failures = Vec::new();
-        for (engine, response) in self.engines.iter().zip(responses) {
-            match response {
-                Ok(results) if !results.is_empty() => {
-                    tracing::debug!(
-                        engine = engine.id(),
-                        results = results.len(),
-                        "search engine completed"
+        let mut successes = 0_usize;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            match tokio::time::timeout_at(deadline, pending.next()).await {
+                Ok(Some((engine_id, response))) => match response {
+                    Ok(results) if !results.is_empty() => {
+                        successes += 1;
+                        tracing::debug!(
+                            engine = engine_id,
+                            results = results.len(),
+                            "search engine completed"
+                        );
+                        merge(&mut merged, engine_id, results);
+                        if successes >= 4 && merged.len() >= MAX_RESULTS * 2 {
+                            tracing::debug!(
+                                successes,
+                                merged = merged.len(),
+                                "stopping search fan-out early after reaching target results"
+                            );
+                            break;
+                        }
+                    }
+                    Ok(_) => {
+                        tracing::debug!(engine = engine_id, "search engine returned no results");
+                        failures.push(engine_id.to_string());
+                    }
+                    Err(error) => {
+                        tracing::warn!(engine = engine_id, %error, "search engine failed");
+                        failures.push(engine_id.to_string());
+                    }
+                },
+                Ok(None) => break,
+                Err(_) => {
+                    tracing::warn!(
+                        successes,
+                        merged = merged.len(),
+                        "search fan-out reached 10s deadline; returning partial results"
                     );
-                    merge(&mut merged, engine.id(), results)
-                }
-                Ok(_) => {
-                    tracing::debug!(engine = engine.id(), "search engine returned no results");
-                    failures.push(engine.id().to_string());
-                }
-                Err(error) => {
-                    tracing::warn!(engine = engine.id(), %error, "search engine failed");
-                    failures.push(engine.id().to_string());
+                    failures.push("timeout".to_string());
+                    break;
                 }
             }
         }

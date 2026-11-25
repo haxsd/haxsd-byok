@@ -1039,7 +1039,7 @@ fn chat_text_stream_emits_full_lifecycle_and_terminal_usage() {
         mapped.body["stream_options"],
         json!({"include_usage": true})
     );
-    assert_eq!(mapped.body["max_tokens"], 4096);
+    assert_eq!(mapped.body["max_completion_tokens"], 4096);
     let mut bridge = stream(mapped, UpstreamFormat::Chat, "vendor-model");
     let events = drain(
         &mut bridge,

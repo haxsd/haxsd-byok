@@ -1,9 +1,12 @@
 //! Persists content-addressed blobs and their edges.
 //! Storage accounting and cleanup for disposable observability data.
 
-use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc,
+use std::{
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -124,6 +127,7 @@ pub(crate) struct StorageMaintenanceState {
     compacting: AtomicBool,
     compaction_failed: AtomicBool,
     wake: Arc<Notify>,
+    cached_stats: parking_lot::Mutex<Option<(Instant, StatisticsStorage)>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
@@ -145,6 +149,22 @@ impl Store {
     /// 变成数秒级全表扫描。消息与内容块则只扫正文列本身，用于说明“几十 MB 逻辑数据”
     /// 到底在哪，不把 SQLite 索引和空闲页混进去。
     pub async fn statistics_storage(&self) -> Result<StatisticsStorage> {
+        let compacting = self.storage_maintenance.compacting.load(Ordering::SeqCst);
+        if let Some((captured_at, mut cached)) = *self.storage_maintenance.cached_stats.lock() {
+            if compacting || captured_at.elapsed() < Duration::from_secs(5) {
+                cached.clearing = self.clear_progress();
+                cached.compaction_requested = self
+                    .storage_maintenance
+                    .compaction_requested
+                    .load(Ordering::SeqCst);
+                cached.compacting = compacting;
+                cached.compaction_failed = self
+                    .storage_maintenance
+                    .compaction_failed
+                    .load(Ordering::SeqCst);
+                return Ok(cached);
+            }
+        }
         let (
             database_bytes,
             database_free_bytes,
@@ -216,7 +236,7 @@ impl Store {
         let database_used_bytes = database_bytes - database_free_bytes;
         let call_record_bytes =
             call_count * CALL_RECORD_BYTES_ESTIMATE + trace_count * TRACE_RECORD_BYTES_ESTIMATE;
-        Ok(StatisticsStorage {
+        let stats = StatisticsStorage {
             database_bytes,
             database_used_bytes,
             database_free_bytes,
@@ -249,7 +269,13 @@ impl Store {
                 .storage_maintenance
                 .compaction_failed
                 .load(Ordering::SeqCst),
-        })
+        };
+        *self.storage_maintenance.cached_stats.lock() = Some((Instant::now(), stats));
+        Ok(stats)
+    }
+
+    fn invalidate_statistics_cache(&self) {
+        *self.storage_maintenance.cached_stats.lock() = None;
     }
 
     /// 此刻是否有后台清理在跑；有就带上进度。
@@ -393,6 +419,7 @@ impl Store {
         self.storage_maintenance
             .compacting
             .store(false, Ordering::SeqCst);
+        self.invalidate_statistics_cache();
         self.storage_maintenance
             .compaction_failed
             .store(result.is_err(), Ordering::SeqCst);
@@ -473,6 +500,7 @@ impl Store {
         let mut connection = self.maintenance_pool.acquire().await?;
         self.clear_details(&mut connection).await?;
         drop(connection);
+        self.invalidate_statistics_cache();
         self.statistics_storage().await
     }
 
@@ -493,6 +521,7 @@ impl Store {
         self.storage_maintenance
             .deleted_files
             .fetch_add(cleared.files, Ordering::Relaxed);
+        self.invalidate_statistics_cache();
         self.statistics_storage().await
     }
 
@@ -508,6 +537,7 @@ impl Store {
             self.delete_in_batches(&mut connection, statement).await?;
         }
         drop(connection);
+        self.invalidate_statistics_cache();
         self.statistics_storage().await
     }
 

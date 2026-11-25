@@ -117,6 +117,7 @@ pub fn capture(reason: &str, facts: serde_json::Value) {
         }
         None => body.push_str("\n\n--- application log tail: unavailable ---\n"),
     }
+    let body = crate::error::redact_unbounded(&body);
     if let Err(error) = std::fs::write(&path, body) {
         tracing::warn!(
             error = %error_chain(&error),

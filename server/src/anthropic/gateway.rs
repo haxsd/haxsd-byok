@@ -360,6 +360,18 @@ async fn messages_handler(
         .map(|running| running.shutdown.clone())
         .unwrap_or_default();
     let request_id = format!("req-{}", uuid::Uuid::new_v4());
+    if let Err(error) = crate::run::vision::prepare_for_request(
+        &gateway.inner.store,
+        gateway.inner.provider.as_ref(),
+        &request_id,
+        &prepared.invocation.request.model,
+        &mut prepared.invocation.request.history,
+        &cancellation,
+    )
+    .await
+    {
+        return super::ApiError::from_error(&error).into_response();
+    }
     if prepared.stream {
         streamed(&gateway, prepared, cancellation, request_id, active).await
     } else {
@@ -1138,7 +1150,7 @@ mod tests {
         let pending = tokio::spawn({
             let gateway = gateway.clone();
             let token = token.clone();
-            async move {
+            super::messages::ALLOW_LOOPBACK_IMAGE_URL_FOR_TEST.scope(true, async move {
                 use tower::ServiceExt;
                 gateway
                     .router()
@@ -1159,7 +1171,7 @@ mod tests {
                             .unwrap(),
                     )
                     .await
-            }
+            })
         });
 
         hit.notified().await;

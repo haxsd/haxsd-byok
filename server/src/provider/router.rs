@@ -376,7 +376,9 @@ fn conversation_error(
         crate::model::CallClient::Cursor
         | crate::model::CallClient::Devin
         | crate::model::CallClient::Codex => error.conversation(&recorder.call_id()),
-        crate::model::CallClient::Claude | crate::model::CallClient::Internal => error,
+        crate::model::CallClient::Claude
+        | crate::model::CallClient::ExternalApi
+        | crate::model::CallClient::Internal => error,
     }
 }
 

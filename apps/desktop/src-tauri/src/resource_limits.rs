@@ -25,9 +25,11 @@ pub(crate) fn raise_open_file_limit() -> io::Result<OpenFileLimit> {
     }
 
     let previous = limits.rlim_cur;
-    let target = limits
-        .rlim_max
-        .min(REQUESTED_OPEN_FILE_LIMIT as libc::rlim_t);
+    #[cfg(target_os = "macos")]
+    let max_requested = REQUESTED_OPEN_FILE_LIMIT.min(libc::OPEN_MAX as u64);
+    #[cfg(not(target_os = "macos"))]
+    let max_requested = REQUESTED_OPEN_FILE_LIMIT;
+    let target = limits.rlim_max.min(max_requested as libc::rlim_t);
     if previous < target {
         let requested = libc::rlimit {
             rlim_cur: target,
@@ -35,7 +37,19 @@ pub(crate) fn raise_open_file_limit() -> io::Result<OpenFileLimit> {
         };
         // SAFETY: `requested` is a valid `rlimit` value and does not raise the hard limit.
         if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &requested) } != 0 {
-            return Err(io::Error::last_os_error());
+            let error = io::Error::last_os_error();
+            let fallback_target = limits.rlim_max.min(10_240 as libc::rlim_t);
+            if error.raw_os_error() == Some(libc::EINVAL) && previous < fallback_target && fallback_target < target {
+                let fallback = libc::rlimit {
+                    rlim_cur: fallback_target,
+                    rlim_max: limits.rlim_max,
+                };
+                if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &fallback) } != 0 {
+                    return Err(io::Error::last_os_error());
+                }
+            } else {
+                return Err(error);
+            }
         }
     }
 

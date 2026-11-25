@@ -82,6 +82,7 @@ enum OAuthFlow {
         redirect_uri: String,
         code_verifier: String,
         callback: CallbackHandle,
+        exchanging: bool,
     },
 }
 
@@ -451,6 +452,7 @@ impl PluginRegistry {
                         redirect_uri,
                         code_verifier,
                         callback,
+                        exchanging: false,
                     },
                     None,
                 )
@@ -552,28 +554,39 @@ impl PluginRegistry {
                     redirect_uri,
                     code_verifier,
                     callback,
-                } => match callback.receiver.try_recv() {
-                    Ok(callback_request) => OAuthPollWork::AuthorizationCode {
-                        plugin_id: common.0,
-                        resource_type: common.1,
-                        method_id: common.2,
-                        session: common.3,
-                        redirect_uri: redirect_uri.clone(),
-                        code_verifier: code_verifier.clone(),
-                        callback_request,
-                    },
-                    Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                    exchanging,
+                } => {
+                    if *exchanging {
                         return Ok(OAuthPollResponse::Pending {
                             poll_interval_ms: state.poll_interval_ms,
                         });
                     }
-                    Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
-                        sessions.remove(session_id);
-                        return Ok(OAuthPollResponse::Failed {
-                            message: "authorization callback stopped before completion".into(),
-                        });
+                    match callback.receiver.try_recv() {
+                        Ok(callback_request) => {
+                            *exchanging = true;
+                            OAuthPollWork::AuthorizationCode {
+                                plugin_id: common.0,
+                                resource_type: common.1,
+                                method_id: common.2,
+                                session: common.3,
+                                redirect_uri: redirect_uri.clone(),
+                                code_verifier: code_verifier.clone(),
+                                callback_request,
+                            }
+                        }
+                        Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
+                            return Ok(OAuthPollResponse::Pending {
+                                poll_interval_ms: state.poll_interval_ms,
+                            });
+                        }
+                        Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+                            sessions.remove(session_id);
+                            return Ok(OAuthPollResponse::Failed {
+                                message: "authorization callback stopped before completion".into(),
+                            });
+                        }
                     }
-                },
+                }
             }
         };
 

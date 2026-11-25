@@ -52,17 +52,17 @@ pub async fn stream(registry: &TransportRegistry, request_id: &str) -> Result<Re
 }
 
 fn local_body_stream(
-    mut receiver: mpsc::Receiver<Bytes>,
+    receiver: mpsc::Receiver<Bytes>,
     handle: TransportHandle,
     trace: Option<CursorTraceRecorder>,
 ) -> impl tokio_stream::Stream<Item = std::result::Result<Bytes, Infallible>> {
     // guard 在生成器之外构造：响应体在第一次 poll 之前就被丢弃时，生成器从未执行，
     // 旧写法里的 guard 也从未存在，Disconnect 永远不会发出。构造在这里，stream 被
     // 丢弃时 guard 随状态一起 drop。
-    let mut guard = LocalRunGuard::new(handle);
+    let mut guard = LocalRunGuard::new(handle, receiver);
     async_stream::stream! {
         let mut trace = TraceStreamSink::new(trace, "byok_server");
-        while let Some(chunk) = receiver.recv().await {
+        while let Some(chunk) = guard.next_chunk().await {
             let terminal = is_end_stream_frame(&chunk);
             trace.chunk(&chunk);
             guard.frame_sent();
@@ -112,19 +112,25 @@ fn end_stream_error(frame: &Bytes) -> Option<String> {
 
 struct LocalRunGuard {
     handle: TransportHandle,
+    receiver: Option<mpsc::Receiver<Bytes>>,
     completed: bool,
     started: std::time::Instant,
     frames: usize,
 }
 
 impl LocalRunGuard {
-    fn new(handle: TransportHandle) -> Self {
+    fn new(handle: TransportHandle, receiver: mpsc::Receiver<Bytes>) -> Self {
         Self {
             handle,
+            receiver: Some(receiver),
             completed: false,
             started: std::time::Instant::now(),
             frames: 0,
         }
+    }
+
+    async fn next_chunk(&mut self) -> Option<Bytes> {
+        self.receiver.as_mut()?.recv().await
     }
 
     fn frame_sent(&mut self) {
@@ -141,13 +147,14 @@ impl Drop for LocalRunGuard {
         if self.completed {
             return;
         }
+        // 先关闭当前流的 receiver，再统计还活着的其它订阅者：无论是慢消费者被踢出
+        // 还是客户端重连后主动丢弃旧流，只要仍有至少 1 个活跃订阅者就不能取消本轮 Run。
+        self.receiver.take();
         let elapsed_ms = self.started.elapsed().as_millis() as u64;
         let request_id = self.handle.request_id().to_owned();
         let conversation_id = self.handle.conversation_id().map(str::to_owned);
         let frames = self.frames;
-        // 客户端可能先开新流、再丢弃旧流：旧流不是最后一个消费者时不能取消 run，
-        // 否则新流正在消费的这一轮会被"顺手"打断。只有确实没有别的订阅者才按断开处理。
-        if self.handle.live_subscriber_count() > 1 {
+        if self.handle.live_subscriber_count() > 0 {
             tracing::info!(
                 %request_id,
                 conversation_id = conversation_id.as_deref().unwrap_or("none"),

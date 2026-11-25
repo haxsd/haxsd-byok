@@ -136,10 +136,11 @@ impl InstallFailure {
 
 /// 提示文案本身。单独成函数是为了能直接断言它的用词与长度。
 fn proxy_hint_text(address: &str) -> String {
+    let redacted = crate::error::redact(address);
     shorten(
         &format!(
             "当前出网代理是「直连」，而本机配置了系统代理 {}；把它改成「系统代理」或「自定义」后再试。",
-            shorten(address, PROXY_ADDRESS_LIMIT)
+            shorten(&redacted, PROXY_ADDRESS_LIMIT)
         ),
         PROXY_HINT_LIMIT,
     )
@@ -156,7 +157,7 @@ impl From<Error> for InstallFailure {
         match error {
             Error::Cancelled => Self::cancelled(),
             Error::Io(error) => Self::from(error),
-            error => Self::other(crate::diagnostics::error_chain(&error)),
+            error => Self::other(crate::error::redact(&crate::diagnostics::error_chain(&error))),
         }
     }
 }
