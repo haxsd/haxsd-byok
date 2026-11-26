@@ -2,7 +2,14 @@ import type { JsonValue } from "cursor-byok:plugin";
 import type { ModelDefinition, ModelSnapshot, ModelSupport } from "cursor-byok:model";
 import { accountData, accountHeaders } from "./resources.ts";
 
-const MODELS_URL = "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0";
+const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models";
+/**
+ * Codex 模型目录的 API 客户端版本，不是 Codex CLI 的发布版本。
+ * 端点把它当作兼容性参数；只有官方目录契约变化时才调整，避免跟着 CLI 版本乱跳。
+ */
+export const CODEX_MODEL_CLIENT_VERSION = "1.0.0";
+export const CODEX_MODELS_URL_WITH_VERSION =
+  `${CODEX_MODELS_URL}?client_version=${CODEX_MODEL_CLIENT_VERSION}`;
 
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -12,6 +19,20 @@ function object(value: unknown): Record<string, unknown> | null {
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * 官方 Codex 在字段缺失时默认按“文本 + 图片”处理；只有上游显式给出
+ * input_modalities 且不含 image 时，才关闭图片能力。
+ */
+function inputImages(model: Record<string, unknown>): boolean {
+  const source = model.input_modalities ?? model.inputModalities;
+  if (!Array.isArray(source)) return true;
+  return source.some((item) => {
+    if (typeof item === "string") return item.toLowerCase() === "image";
+    const entry = object(item);
+    return text(entry?.type ?? entry?.id ?? entry?.value)?.toLowerCase() === "image";
+  });
 }
 
 function positiveInteger(value: unknown): number | null {
@@ -75,7 +96,7 @@ export function parseOfficialModels(body: unknown): ModelDefinition[] {
         id,
       ...(description ? { description } : {}),
       ...(maxOutputTokens !== null ? { maxOutputTokens } : {}),
-      capabilities: { images: true },
+      capabilities: { images: inputImages(model) },
       privateData: { reasoningEfforts: efforts },
     });
   }
@@ -106,7 +127,7 @@ export const codexModels: ModelSupport = {
   list: async ({ resource }, context): Promise<ModelDefinition[]> => {
     if (!resource) throw new Error("add a ChatGPT account before syncing Codex models");
     const data = accountData(resource);
-    const response = await context.network.fetch(MODELS_URL, {
+    const response = await context.network.fetch(CODEX_MODELS_URL_WITH_VERSION, {
       method: "GET",
       headers: accountHeaders(data),
     });

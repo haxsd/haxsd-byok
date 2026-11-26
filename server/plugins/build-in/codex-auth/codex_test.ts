@@ -7,7 +7,7 @@ import type {
 import type { LlmRequest, ModelEvent } from "cursor-byok:provider";
 import type { ResourceSnapshot } from "cursor-byok:resource";
 import { codexDeviceOAuth } from "./oauth.ts";
-import { codexModels, parseOfficialModels } from "./models.ts";
+import { CODEX_MODELS_URL_WITH_VERSION, codexModels, parseOfficialModels } from "./models.ts";
 import { buildResponsesBody } from "cursor-byok:protocol/openai-responses";
 import { codexProvider, isQuotaError } from "./provider.ts";
 import {
@@ -289,6 +289,23 @@ Deno.test("official model discovery excludes hidden models and puts the default 
   assertEquals(models.map((model) => model.id), ["gpt-second", "gpt-first"]);
   assertEquals(models[1].capabilities, { images: true });
   assertEquals(models[1].privateData, { reasoningEfforts: ["low", "medium"] });
+
+  const textOnly = parseOfficialModels({
+    models: [{
+      slug: "gpt-text",
+      supported_in_api: true,
+      visibility: "list",
+      input_modalities: ["text"],
+    }],
+  });
+  assertEquals(textOnly[0].capabilities, { images: false });
+});
+
+Deno.test("model discovery uses the versioned catalog endpoint", () => {
+  assertEquals(
+    CODEX_MODELS_URL_WITH_VERSION,
+    "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0",
+  );
 });
 
 Deno.test("model discovery reports a diagnostic error instead of an empty catalog", async () => {

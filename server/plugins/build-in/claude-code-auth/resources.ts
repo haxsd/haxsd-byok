@@ -41,7 +41,7 @@ export const CLAUDE_SCOPES =
  * 不伪造 `claude-cli/*` User-Agent。社区代理为了通过 Anthropic 的客户端校验会伪装成
  * Claude Code，本插件不这么做；因此上游可能把请求归为第三方并拒绝。
  */
-export const CLAUDE_USER_AGENT = "haxsd-byok-claude-code-auth/0.1.0";
+export const CLAUDE_USER_AGENT = "haxsd-byok-claude-code-auth/0.1.2";
 export const AUTH_INVALID_MESSAGE = "Claude authorization expired or revoked; sign in again";
 
 /** 提前 4 小时刷新：与 CLIProxyAPI 的做法一致，避免请求边界上刚好过期。 */

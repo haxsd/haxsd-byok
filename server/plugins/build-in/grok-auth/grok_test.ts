@@ -171,6 +171,10 @@ Deno.test("model discovery parses both language-models and standard list shapes"
   const plainModels = parseGrokModels({ data: [{ id: "grok-4-fast" }] });
   assertEquals(plainModels.map((model) => model.id), ["grok-4-fast"]);
   assertEquals(plainModels[0].displayName, "Grok 4 Fast");
+  assertEquals(plainModels[0].capabilities, { images: false });
+
+  const noModalities = parseGrokModels({ models: [{ id: "grok-text", input_modalities: [] }] });
+  assertEquals(noModalities[0].capabilities, { images: false });
 });
 
 Deno.test("model discovery propagates failures instead of substituting a static catalog", async () => {
@@ -199,6 +203,7 @@ Deno.test("model discovery propagates failures instead of substituting a static 
     rejected = true;
     const message = String(error);
     assert(message.includes("HTTP 403"), `expected the status in ${message}`);
+    assert(message.includes("spending limit"), `expected a spending-limit hint in ${message}`);
     assert(message.includes("previous catalog is kept"), `expected a hint in ${message}`);
   }
   assert(rejected, "a failed discovery must not resolve with a static catalog");

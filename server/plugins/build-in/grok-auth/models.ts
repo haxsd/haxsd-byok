@@ -47,7 +47,9 @@ export function parseGrokModels(body: unknown): ModelDefinition[] {
       id,
       displayName: displayName(id),
       capabilities: {
-        images: inputs.length === 0 || inputs.includes("image"),
+        // `/v1/models` 通常不返回模态信息；只有上游明确声明 image 时才允许附图，
+        // 否则纯文本模型会把图片带到请求阶段才失败。
+        images: inputs.includes("image"),
       },
     });
   }
@@ -61,6 +63,16 @@ function failure(attempts: Attempt[]): Error {
   if (unauthorized) {
     return new Error(
       `Grok model discovery was rejected (HTTP 401); sign in again to refresh the Grok credential: ${unauthorized.detail}`,
+    );
+  }
+  const spendingLimited = attempts.find((attempt) =>
+    attempt.status === 403 &&
+    /spending-limit|personal-team-blocked/i.test(attempt.detail)
+  );
+  if (spendingLimited) {
+    return new Error(
+      `Grok model discovery is unavailable for this account (HTTP 403; free/team spending limit). ` +
+        `Use a paid Grok account, then sync models again; the previous catalog is kept: ${spendingLimited.detail}`,
     );
   }
   const summary = attempts

@@ -208,7 +208,7 @@ export const STATIC_ANTIGRAVITY_MODELS: ModelDefinition[] = [
   },
   {
     id: "claude-opus-4-6-thinking",
-    displayName: "Claude 3.7 Opus Thinking (Antigravity)",
+    displayName: "Claude Opus 4.6 Thinking (Antigravity)",
     capabilities: { images: true },
     maxOutputTokens: 64000,
     privateData: { reasoningEfforts: ["low", "medium", "high"] },
@@ -311,14 +311,6 @@ export function parseAntigravityModels(payload: unknown): ModelDefinition[] {
     });
   }
 
-  // Merge static models from Antigravity catalog that might not be dynamically returned
-  for (const staticModel of STATIC_ANTIGRAVITY_MODELS) {
-    if (!seen.has(staticModel.id)) {
-      seen.add(staticModel.id);
-      models.push(staticModel);
-    }
-  }
-
   return models;
 }
 
@@ -331,17 +323,13 @@ export function reasoningEfforts(model: ModelSnapshot): string[] {
 export const antigravityModels: ModelSupport = {
   list: async ({ resource }, context): Promise<ModelDefinition[]> => {
     if (!resource) return STATIC_ANTIGRAVITY_MODELS;
-    let data;
-    try {
-      data = accountData(resource);
-    } catch {
-      return STATIC_ANTIGRAVITY_MODELS;
-    }
+    const data = accountData(resource);
 
     const payloads = [
       JSON.stringify({ project: data.projectId || "bamboo-precept-lgxtn" }),
       JSON.stringify({}),
     ];
+    let authRejected: string | null = null;
 
     for (const endpoint of ANTIGRAVITY_ENDPOINTS) {
       for (const bodyPayload of payloads) {
@@ -359,17 +347,32 @@ export const antigravityModels: ModelSupport = {
               body: bodyPayload,
             },
           );
+          if (response.status === 401 || response.status === 403) {
+            authRejected = `${endpoint} → HTTP ${response.status}: ${
+              response.body.trim().slice(0, 160)
+            }`;
+            continue;
+          }
           if (response.status >= 200 && response.status < 300) {
             const body = JSON.parse(response.body);
             const models = parseAntigravityModels(body);
             if (models.length > 0) return models;
           }
         } catch {
-          // Continue
+          // Continue trying the remaining endpoint/body combinations.
         }
       }
     }
 
+    // 授权被拒绝时返回静态目录会让失效账号看起来仍然可用；抛出诊断错误，
+    // 让宿主保留上一次成功目录，并把账号失效暴露给用户。
+    if (authRejected !== null) {
+      throw new Error(
+        `Google model discovery was rejected; sign in again to refresh the Antigravity credential: ${authRejected}`,
+      );
+    }
+
+    // 非授权类失败（网络、端点变更、空响应）保留静态兜底，避免首次配置后完全没有模型。
     return STATIC_ANTIGRAVITY_MODELS;
   },
 };

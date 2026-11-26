@@ -1,18 +1,26 @@
 import type { ModelDefinition, ModelSupport } from "cursor-byok:model";
 
 /**
- * 模型目录（2026-10-23 核实）：
- * - 当前官方阵容来自 https://platform.claude.com/docs/en/about-claude/models/overview
- *   （Fable 5.1 / Opus 5.5 / Sonnet 5.5 / Haiku 5.5）。
- * - ID、上下文窗口与输出上限与 LiteLLM 的
- *   https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json
- *   交叉核对；官方模型页要求 1M 上下文，LiteLLM 对 5.x 标 1,000,000 / 128,000。
+ * 模型目录（2026-11-26 核实）：
+ * - 当前官方阵容来自 Anthropic 官方 SDK 的模型联合类型
+ *   （`claude-fable-5-2`、`claude-fable-5-1`、`claude-opus-5-5`、`claude-sonnet-5-5`、
+ *   `claude-haiku-5-5` 等），并与官方 `skills/claude-api/shared/models.md`
+ *   的上下文/输出上限交叉核对。
+ * - Mythos 5.x 只对 Project Glasswing 开放，未加入普通订阅的模型目录。
+ * - 官方模型页要求 1M 上下文，LiteLLM 对 5.x 标 1,000,000 / 128,000。
  * - 4.5 系列仍是 200,000 上下文 / 64,000 输出；带日期后缀的是固定快照。
  *
  * SDK 的 ModelDefinition 没有 contextWindow 字段，因此这里只声明 host 能消费的
  * maxOutputTokens；上下文窗口写在文档与本节注释中，避免塞进 privateData 形成假字段。
  */
 export const CLAUDE_CODE_MODELS: ModelDefinition[] = [
+  {
+    id: "claude-fable-5-2",
+    displayName: "Claude Fable 5.2",
+    description: "Anthropic's latest flagship for demanding reasoning and long-horizon agent work.",
+    maxOutputTokens: 128_000,
+    capabilities: { images: true },
+  },
   {
     id: "claude-fable-5-1",
     displayName: "Claude Fable 5.1",
