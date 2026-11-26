@@ -355,6 +355,7 @@ mod tests {
             name: name.into(),
             description: format!("{name} the thing"),
             parameters: serde_json::json!({ "type": "object" }),
+            metadata: Default::default(),
         }
     }
 

@@ -87,5 +87,6 @@ fn parse_tool(tool: &Value) -> Result<ToolDefinition> {
             .get("parameters")
             .cloned()
             .ok_or_else(|| Error::Config("tool is missing parameters".into()))?,
+        metadata: Default::default(),
     })
 }

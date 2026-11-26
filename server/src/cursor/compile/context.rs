@@ -596,6 +596,7 @@ pub fn dynamic_mcp(
             name: name.clone(),
             description: wire.description.clone(),
             parameters,
+            metadata: Default::default(),
         };
         if output
             .insert(name.clone(), (wire.clone(), definition))

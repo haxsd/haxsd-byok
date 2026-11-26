@@ -161,6 +161,11 @@ pub async fn consume_model_cycle(
                 // `Done(Stop)`，而且停止序列在这里本来就由 provider 执行完。
                 Ok(())
             }
+            ModelEvent::ContextManagement(_) => {
+                // 上下文管理响应只属于 Anthropic 入站协议；Cursor/Devin/Codex
+                // 没有这个字段，不能把它当成内容或用量。
+                Ok(())
+            }
             ModelEvent::ThinkingEnd => {
                 if let Some(started) = thinking_started.take() {
                     send(

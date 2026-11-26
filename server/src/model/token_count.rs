@@ -297,6 +297,7 @@ mod tests {
                 name: "Read".into(),
                 description: "Read a file".into(),
                 parameters: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
+                metadata: Default::default(),
             }],
         }
     }

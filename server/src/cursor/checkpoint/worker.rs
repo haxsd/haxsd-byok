@@ -152,6 +152,14 @@ impl CheckpointWorker {
     }
 }
 
+impl Drop for CheckpointWorker {
+    fn drop(&mut self) {
+        // 调用方在错误路径上提前 `?` 返回时也必须停掉 worker；JoinHandle 单独 drop
+        // 只是 detach，会让任务继续等最长的 blob SET 超时。
+        self.task.abort();
+    }
+}
+
 async fn publish_settled(
     store: &Store,
     builder: &mut CheckpointBuilder,

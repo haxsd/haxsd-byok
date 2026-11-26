@@ -111,6 +111,7 @@ pub fn stream_event(state: &mut ResponseState, event: ModelEvent) -> Result<Vec<
             state.replay_state = Some(replay_state);
             Ok(Vec::new())
         }
+        ModelEvent::ContextManagement(_) => Ok(Vec::new()),
         ModelEvent::Usage(usage) => {
             state.merge_usage(usage);
             Ok(Vec::new())

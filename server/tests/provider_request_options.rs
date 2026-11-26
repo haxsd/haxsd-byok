@@ -31,6 +31,7 @@ fn invocation() -> ModelInvocation {
                     name: "read_file".into(),
                     description: "read a test file".into(),
                     parameters: json!({"type":"object"}),
+                    metadata: Default::default(),
                 }],
             },
             model: ModelSpec::new("fixture"),

@@ -1332,6 +1332,19 @@ pub(crate) fn finish_success(handle: &TransportHandle) {
     handle.close_output();
 }
 
+/// 只有上游明确可重试的状态才让 Cursor 自动重试。
+///
+/// 401/403/404/400 这类请求错误重试只会重复失败，甚至放大计费；429 和 5xx 才是
+/// 暂时性失败。没有状态码的流错误保持可重试，避免把网络抖动误判成永久错误。
+fn provider_error_is_retryable(error: &Error) -> bool {
+    match error.upstream_status() {
+        Some(408 | 425 | 429) => true,
+        Some(status) if status >= 500 => true,
+        Some(_) => false,
+        None => true,
+    }
+}
+
 pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<()> {
     use crate::cursor::protocol::connect::{
         encode_end_stream, encode_error_end_stream, ConnectCode, ConnectErrorDetail,
@@ -1376,7 +1389,7 @@ pub(crate) fn finish_failed(handle: &TransportHandle, error: &Error) -> Result<(
                     title: "Provider Error".into(),
                     detail: summary.clone(),
                     allow_command_links_potentially_unsafe_please_only_use_for_handwritten_trusted_markdown: Some(false),
-                    is_retryable: Some(true),
+                    is_retryable: Some(provider_error_is_retryable(error)),
                     show_request_id: Some(true),
                     should_show_immediate_error: Some(false),
                 }),
@@ -1425,7 +1438,10 @@ fn checkpoint_context_tokens(checkpoint: &pb::ConversationStateStructure) -> Opt
 
 #[cfg(test)]
 mod tests {
-    use super::{accept_tool_completion, checkpoint_context_tokens, client_error_summary};
+    use super::{
+        accept_tool_completion, checkpoint_context_tokens, client_error_summary,
+        provider_error_is_retryable,
+    };
     use crate::{cursor::protocol::proto::agent::v1 as pb, run::CommandResult, Error};
 
     /// 客户端可见的错误文本只能是服务端自己拼的那一段；上游正文（可能带 markdown 与
@@ -1583,5 +1599,31 @@ mod tests {
             accept_tool_completion(CommandResult::StaleTarget, "request", "run", "call"),
             Err(Error::RunNotFound(request_id)) if request_id == "request"
         ));
+    }
+
+    #[test]
+    fn only_transient_upstream_errors_are_retryable() {
+        for (status, expected) in [
+            (400, false),
+            (401, false),
+            (404, false),
+            (408, true),
+            (429, true),
+            (500, true),
+        ] {
+            let error = Error::UpstreamRejected {
+                label: "test".into(),
+                status,
+                body: String::new(),
+            };
+            assert_eq!(
+                provider_error_is_retryable(&error),
+                expected,
+                "HTTP {status}"
+            );
+        }
+        assert!(provider_error_is_retryable(&Error::Network(
+            "offline".into()
+        )));
     }
 }

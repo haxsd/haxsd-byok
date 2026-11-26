@@ -423,6 +423,7 @@ fn dynamic_mcp_tools_are_appended_after_the_stable_mode_tool_prefix() {
                 name: "mcp_repo_lookup".into(),
                 description: "lookup".into(),
                 parameters: serde_json::json!({"type": "object"}),
+                metadata: Default::default(),
             }],
             false,
         )
@@ -448,6 +449,7 @@ fn dynamic_mcp_tool_cannot_replace_a_mode_tool() {
                 name: "Read".into(),
                 description: "replacement".into(),
                 parameters: serde_json::json!({"type": "object"}),
+                metadata: Default::default(),
             }],
             false,
         )

@@ -695,7 +695,10 @@ pub fn undo(
     Ok(status)
 }
 
-/// 只读查询 `claude.exe` 与 `cowork-svc.exe` 是否在运行；查询失败时按运行中保守拒写。
+/// 只读查询 `claude.exe` 是否在运行；查询失败时按运行中保守拒写。
+///
+/// `cowork-svc.exe` 是 Claude 包里的 LocalSystem 服务，安装后可能一直驻留，
+/// 即使桌面主进程已经退出；把它当成桌面运行中会让 apply/undo 永远失败。
 pub async fn process_running() -> bool {
     #[cfg(windows)]
     {
@@ -706,12 +709,7 @@ pub async fn process_running() -> bool {
         match command.args(["/NH", "/FO", "CSV"]).output().await {
             Ok(output) if output.status.success() => {
                 let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
-                text.lines().any(|line| {
-                    line.split(',')
-                        .next()
-                        .map(|name| name.trim().trim_matches('"'))
-                        .is_some_and(|name| name == "claude.exe" || name == "cowork-svc.exe")
-                })
+                text.lines().any(is_claude_desktop_process_line)
             }
             Ok(output) => {
                 tracing::warn!(status = %output.status, "cannot inspect the Claude Desktop process");
@@ -746,6 +744,13 @@ pub async fn process_running() -> bool {
     {
         false
     }
+}
+
+fn is_claude_desktop_process_line(line: &str) -> bool {
+    line.split(',')
+        .next()
+        .map(|name| name.trim().trim_matches('"'))
+        .is_some_and(|name| name.eq_ignore_ascii_case("claude.exe"))
 }
 
 fn local_app_data_root() -> Result<PathBuf> {
@@ -948,6 +953,16 @@ mod tests {
 
     use super::*;
     use crate::claude_client::ownership::DesktopPolicy;
+
+    #[test]
+    fn cowork_service_does_not_count_as_the_desktop_process() {
+        assert!(is_claude_desktop_process_line(
+            "\"claude.exe\",\"1234\",\"Console\",\"1\",\"1,000 K\""
+        ));
+        assert!(!is_claude_desktop_process_line(
+            "\"cowork-svc.exe\",\"9492\",\"Services\",\"0\",\"14,724 K\""
+        ));
+    }
 
     struct Fixture {
         _root: tempfile::TempDir,

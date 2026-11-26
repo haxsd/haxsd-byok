@@ -17,7 +17,8 @@ use uuid::Uuid;
 use crate::{
     model::{
         ContentPart, ModelInvocation, ModelSpec, ProjectedContent, ProjectedMessage, PromptSpec,
-        ProviderReplayState, Role, ToolCallContent, ToolDefinition, ToolResultContent, Usage,
+        ProviderReplayState, Role, ToolCallContent, ToolDefinition, ToolMetadata,
+        ToolResultContent, Usage,
     },
     network::NetworkClients,
     provider::{FinishReason, ModelEvent},
@@ -235,6 +236,43 @@ fn apply_client_options(
             .ok_or_else(|| ApiError::invalid("temperature must be a number"))?;
         spec.client.temperature = Some(temperature);
     }
+    if let Some(value) = object.get("top_p").filter(|value| !value.is_null()) {
+        let top_p = value
+            .as_f64()
+            .ok_or_else(|| ApiError::invalid("top_p must be a number"))?;
+        if !(0.0..=1.0).contains(&top_p) {
+            return Err(ApiError::invalid("top_p must be between 0 and 1"));
+        }
+        spec.client.top_p = Some(top_p);
+    }
+    if let Some(value) = object.get("top_k").filter(|value| !value.is_null()) {
+        let top_k = value
+            .as_u64()
+            .ok_or_else(|| ApiError::invalid("top_k must be a non-negative integer"))?;
+        if top_k == 0 {
+            return Err(ApiError::invalid("top_k must be greater than zero"));
+        }
+        spec.client.top_k = Some(top_k);
+    }
+    if let Some(service_tier) = object
+        .get("service_tier")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        spec.client.service_tier = Some(service_tier.to_owned());
+    }
+    if let Some(context_management) = object
+        .get("context_management")
+        .filter(|value| !value.is_null())
+    {
+        if !context_management.is_object() && !context_management.is_array() {
+            return Err(ApiError::invalid(
+                "context_management must be an object or array",
+            ));
+        }
+        spec.client.context_management = Some(context_management.clone());
+    }
     if let Some(effort) = object
         .get("output_config")
         .and_then(|config| config.get("effort"))
@@ -395,6 +433,14 @@ fn tool_definitions(value: Option<&Value>) -> Result<Vec<ToolDefinition>, ApiErr
                     .unwrap_or_default()
                     .to_owned(),
                 parameters,
+                metadata: ToolMetadata {
+                    strict: tool.get("strict").and_then(Value::as_bool).unwrap_or(false),
+                    cache_control: tool
+                        .get("cache_control")
+                        .filter(|value| !value.is_null())
+                        .cloned(),
+                    ..Default::default()
+                },
             })
         })
         .collect()
@@ -1015,6 +1061,7 @@ pub struct ResponseTranslator {
     /// `message_start` 里的输入估算；`message_delta` 的权威用量会覆盖它。
     estimated_input_tokens: u64,
     usage: Usage,
+    context_management: Option<serde_json::Value>,
     finish: Option<FinishReason>,
     stopped_by: Option<String>,
     text: StopFilter,
@@ -1059,6 +1106,7 @@ impl ResponseTranslator {
             tools: BTreeMap::new(),
             estimated_input_tokens,
             usage: Usage::default(),
+            context_management: None,
             finish: None,
             stopped_by: None,
             text: StopFilter::new(stop_sequences),
@@ -1077,6 +1125,7 @@ impl ResponseTranslator {
                 "content": [],
                 "stop_reason": null,
                 "stop_sequence": null,
+                "context_management": null,
                 // 客户端在 `message_start` 就要显示上下文占用，而权威用量要到
                 // `message_delta` 才到；这里给共享估算器的值，后者仍然覆盖它。
                 "usage": {
@@ -1098,6 +1147,9 @@ impl ResponseTranslator {
                 ModelEvent::Usage(usage) => self.usage = usage,
                 ModelEvent::Done(reason) => self.finish = Some(reason),
                 ModelEvent::ProviderReplayState(state) => self.redacted_blocks(&mut out, state),
+                ModelEvent::ContextManagement(context) => {
+                    self.context_management = Some(context);
+                }
                 _ => {}
             }
             return out;
@@ -1199,6 +1251,9 @@ impl ResponseTranslator {
             ModelEvent::ProviderReplayState(state) => {
                 self.redacted_blocks(&mut out, state);
             }
+            ModelEvent::ContextManagement(context) => {
+                self.context_management = Some(context);
+            }
             ModelEvent::StopSequence(sequence) => {
                 // 上游命中的停止序列是权威答案：本地过滤器只能在文本里看见序列时
                 // 才命中，模型在序列前就收尾时它无从得知。以它为准并关掉当前块，
@@ -1226,14 +1281,17 @@ impl ResponseTranslator {
             self.flush_tool(&mut out, block, tool);
         }
         self.close(&mut out);
-        out.push(json!({
+        let mut message_delta = json!({
             "type": "message_delta",
             "delta": {
                 "stop_reason": self.stop_reason(),
                 "stop_sequence": self.stopped_by,
             },
             "usage": self.usage_json(),
-        }));
+        });
+        message_delta["context_management"] =
+            self.context_management.clone().unwrap_or(Value::Null);
+        out.push(message_delta);
         out.push(json!({"type": "message_stop"}));
         out
     }
@@ -1502,6 +1560,9 @@ impl MessageAssembler {
                 if let Some(usage) = event.get("usage") {
                     self.message["usage"] = usage.clone();
                 }
+                if let Some(context_management) = event.get("context_management") {
+                    self.message["context_management"] = context_management.clone();
+                }
             }
             _ => {}
         }
@@ -1520,6 +1581,7 @@ impl MessageAssembler {
                 "content": [],
                 "stop_reason": null,
                 "stop_sequence": null,
+                "context_management": null,
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             });
         }
@@ -1718,6 +1780,10 @@ mod tests {
             ],
             "tool_choice": {"type": "tool", "name": "Bash"},
             "temperature": 0.2,
+            "top_p": 0.9,
+            "top_k": 40,
+            "service_tier": "standard",
+            "context_management": {"edits": [{"type": "clear_tool_uses", "keep": 3}]},
             "output_config": {"effort": "low"},
             "tools": [{"name": "Bash", "input_schema": {"type": "object"}}],
             "messages": [{"role": "user", "content": "hello"}],
@@ -1732,6 +1798,13 @@ mod tests {
         assert!(blocks[1].get("cache_control").is_none());
         assert_eq!(model.client.tool_choice.as_ref().unwrap()["name"], "Bash");
         assert_eq!(model.client.temperature, Some(0.2));
+        assert_eq!(model.client.top_p, Some(0.9));
+        assert_eq!(model.client.top_k, Some(40));
+        assert_eq!(model.client.service_tier.as_deref(), Some("standard"));
+        assert_eq!(
+            model.client.context_management,
+            Some(json!({"edits": [{"type": "clear_tool_uses", "keep": 3}]}))
+        );
         assert_eq!(model.reasoning.effort.as_deref(), Some("low"));
         // 拼接后的 instructions 仍然在，异协议上游照旧使用它。
         assert_eq!(
@@ -2153,6 +2226,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn tool_level_cache_and_strict_metadata_survive_request_parsing() {
+        let tools = tool_definitions(Some(&json!([{
+            "name": "Bash",
+            "description": "run",
+            "input_schema": {"type": "object"},
+            "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            "strict": true
+        }])))
+        .unwrap();
+
+        assert_eq!(
+            tools[0].metadata.cache_control,
+            Some(json!({"type": "ephemeral", "ttl": "1h"}))
+        );
+        assert!(tools[0].metadata.strict);
+    }
+
     /// `message_start` 先给估算值（客户端一开始就要显示上下文占用），
     /// `message_delta` 再用上游报的权威用量覆盖它。
     #[test]
@@ -2176,6 +2267,36 @@ mod tests {
             "权威用量必须覆盖估算值"
         );
         assert_eq!(finish[0]["usage"]["output_tokens"], 2);
+    }
+
+    /// `context_management` 是响应元数据；流式写在 `message_delta`，非流式折叠后
+    /// 保留在完整消息顶层。Claude Desktop 依赖这个字段显示被清理的上下文。
+    #[test]
+    fn context_management_is_carried_to_message_delta_and_non_streaming_message() {
+        let context = json!({
+            "applied_edits": [{
+                "type": "clear_tool_uses_20250919",
+                "cleared_input_tokens": 120,
+                "cleared_tool_uses": 2
+            }]
+        });
+
+        let mut streamed = ResponseTranslator::new("msg_1", "m", Vec::new(), 0);
+        streamed.push(ModelEvent::ContextManagement(context.clone()));
+        let finish = streamed.finish();
+        assert_eq!(finish[0]["context_management"], context);
+
+        let mut folded = ResponseTranslator::new("msg_1", "m", Vec::new(), 0);
+        let mut assembler = MessageAssembler::new();
+        assembler.push(&folded.start()).unwrap();
+        for value in folded.push(ModelEvent::ContextManagement(context.clone())) {
+            assembler.push(&value).unwrap();
+        }
+        for value in folded.finish() {
+            assembler.push(&value).unwrap();
+        }
+        let message = assembler.finish().unwrap();
+        assert_eq!(message["context_management"], context);
     }
 
     /// 停止序列、思考签名与工具参数拼接都只在 translator 里实现一次；非流式折叠必须

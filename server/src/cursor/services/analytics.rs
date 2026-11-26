@@ -70,7 +70,16 @@ fn patch_upstream(response: proxy::BufferedResponse) -> Result<Response<Body>> {
     let mut message = BootstrapStatsigResponse::decode(payload)?;
     let mut config = serde_json::from_str::<Value>(&message.config)?;
     apply_gate_overrides(&mut config)?;
+    // Cursor 用 `has_updates` 决定是否覆盖本地缓存；保留上游的 false 会让旧的
+    // Agent Host 门禁在启动后继续生效。时间也一起前移，避免客户端把它当过期配置。
+    let now = chrono::Utc::now().timestamp_millis() as u64;
+    let object = config
+        .as_object_mut()
+        .ok_or_else(|| Error::Protocol("Statsig bootstrap config must be an object".into()))?;
+    object.insert("has_updates".into(), Value::Bool(true));
+    object.insert("time".into(), json!(now));
     message.config = serde_json::to_string(&config)?;
+    message.generated_at_ms = now;
     Ok(response.with_body(encode_unary(&message, framed)))
 }
 
@@ -117,6 +126,14 @@ fn local_response() -> Result<Response<Body>> {
 /// 本地网关需要的门禁取值：打开 agent 重试，关掉 Agent Run 的 WebSocket 传输，
 /// 关掉 Agent Host（总开关与本地循环）让客户端留在网关实现了的 legacy `RunSSE` 链路。
 fn apply_gate_overrides(config: &mut Value) -> Result<()> {
+    match config.get("hash_used").and_then(Value::as_str) {
+        None | Some("none" | "djb2" | "sha256") => {}
+        Some(other) => {
+            return Err(Error::Protocol(format!(
+                "unsupported Statsig hash_used value: {other}"
+            )))
+        }
+    }
     set_gate(config, AGENT_RETRIES_GATE, true)?;
     set_gate(config, AGENT_WEBSOCKET_GATE, false)?;
     set_gate(config, RUN_INFERENCE_WEBSOCKET_GATE, false)?;
@@ -276,8 +293,10 @@ mod tests {
         let (framed, payload) = unary_payload(&body).unwrap();
         assert!(framed, "上游是 Connect 帧，补丁后也必须是帧");
         let message = BootstrapStatsigResponse::decode(payload).unwrap();
-        assert_eq!(message.generated_at_ms, 7);
+        assert!(message.generated_at_ms > 7);
         let config: Value = serde_json::from_str(&message.config).unwrap();
+        assert_eq!(config["has_updates"], json!(true));
+        assert!(config["time"].as_u64().unwrap() > 7);
         assert_eq!(gate(&config, AGENT_WEBSOCKET_GATE), &json!(false));
         assert_eq!(gate(&config, AGENT_RETRIES_GATE), &json!(true));
         assert_eq!(gate(&config, CURSOR_AGENT_HOST_GATE), &json!(false));

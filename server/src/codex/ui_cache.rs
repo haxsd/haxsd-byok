@@ -292,7 +292,7 @@ fn codex_profile() -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn codex_running() -> bool {
+pub(crate) fn codex_running() -> bool {
     use std::os::windows::process::CommandExt;
     let mut command = std::process::Command::new("tasklist");
     // tasklist 会弹控制台窗口；页面每次读取缓存状态都会调用它，必须隐藏。
@@ -309,7 +309,7 @@ fn codex_running() -> bool {
 }
 
 #[cfg(not(windows))]
-fn codex_running() -> bool {
+pub(crate) fn codex_running() -> bool {
     false
 }
 

@@ -629,7 +629,6 @@ export function DevinSettingsPage() {
           : hostStatus
             ? <StatusPill tone="warn">{t("配置冲突")}</StatusPill>
             : undefined}
-      action={<Button size="small" disabled={hostBusy || saving} onClick={() => void inspectHost()}>{hostBusy ? t("检查中…") : t("重新检查")}</Button>}
     >
       <div className={styles.hostNotes}>
         <p role={hostFailure ? "alert" : undefined}>{hostPrimaryText}</p>

@@ -243,6 +243,7 @@ fn event_name(event: &super::ModelEvent) -> &'static str {
         super::ModelEvent::ToolCallArgumentsDelta { .. } => "ToolCallArgsDelta",
         super::ModelEvent::ToolCallEnd { .. } => "ToolCallEnd",
         super::ModelEvent::ProviderReplayState(_) => "ReplayState",
+        super::ModelEvent::ContextManagement(_) => "ContextManagement",
         super::ModelEvent::Usage(_) => "Usage",
         super::ModelEvent::StopSequence(_) => "StopSequence",
         super::ModelEvent::Done(_) => "Done",

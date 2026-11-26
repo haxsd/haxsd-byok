@@ -447,6 +447,13 @@ fn parse_tools(value: Option<&Value>, protocol: Protocol, prompt: &mut PromptSpe
                 .or_else(|| function.get("input_schema"))
                 .cloned()
                 .unwrap_or(serde_json::json!({"type":"object","properties":{}})),
+            metadata: crate::model::ToolMetadata {
+                strict: function
+                    .get("strict")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                ..Default::default()
+            },
         });
     }
     Ok(())

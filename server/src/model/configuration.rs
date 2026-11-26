@@ -672,6 +672,18 @@ pub struct ClientRequestOptions {
     pub tool_choice: Option<serde_json::Value>,
     #[serde(default)]
     pub temperature: Option<f64>,
+    /// 客户端请求级 `top_p`；目前由 Anthropic/OpenAI 适配器按各自协议转发。
+    #[serde(default)]
+    pub top_p: Option<f64>,
+    /// 客户端请求级 `top_k`；目前只有 Anthropic 协议接受这个字段。
+    #[serde(default)]
+    pub top_k: Option<u64>,
+    /// 客户端请求级 `service_tier`；只有上游明确支持时才转发。
+    #[serde(default)]
+    pub service_tier: Option<String>,
+    /// Anthropic `context_management` 请求字段；只在上游同为 Anthropic 时透传。
+    #[serde(default)]
+    pub context_management: Option<serde_json::Value>,
     /// 客户端的 `anthropic-beta` 头（已滤掉只对官方 OAuth 账号有意义的项）。
     /// 只在上游同为 Anthropic 协议时转发。
     #[serde(default)]

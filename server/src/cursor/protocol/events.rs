@@ -44,6 +44,7 @@ pub fn response_event(
         | ModelEvent::ThinkingSignature(_)
         | ModelEvent::ThinkingEnd
         | ModelEvent::ProviderReplayState(_)
+        | ModelEvent::ContextManagement(_)
         | ModelEvent::Usage(_)
         | ModelEvent::StopSequence(_)
         | ModelEvent::Done(_) => return Ok(None),

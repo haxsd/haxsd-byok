@@ -11,7 +11,7 @@ use crate::{
     config::ProviderConfig,
     model::{
         ContentPart, ModelInvocation, ModelLatency, ProjectedContent, ProjectedMessage, Role,
-        ToolCallContent, Usage,
+        ToolCallContent, ToolDefinition, Usage,
     },
     network::OutboundClient,
     Error, Result,
@@ -83,6 +83,12 @@ fn apply_client_options(body: &mut serde_json::Value, client: &crate::model::Cli
             body["temperature"] = json!(temperature);
         }
     }
+    if let Some(top_p) = client.top_p {
+        body["top_p"] = json!(top_p);
+    }
+    if let Some(service_tier) = &client.service_tier {
+        body["service_tier"] = json!(service_tier);
+    }
 }
 
 impl Provider for OpenAiChatProvider {
@@ -118,9 +124,7 @@ impl Provider for OpenAiChatProvider {
                 "stream_options": {"include_usage": true}
             });
             if !request.prompt.tools.is_empty() {
-                body["tools"] = json!(request.prompt.tools.iter().map(|tool| json!({"type":"function","function":{
-                    "name": tool.name, "description": tool.description, "parameters": tool.parameters
-                }})).collect::<Vec<_>>());
+                body["tools"] = openai_chat_tools(&request.prompt.tools);
             }
             if !request.model.stop_sequences.is_empty() {
                 // OpenAI Chat 最多接受 4 条停止序列；多出来的由入站网关在事件层截断。
@@ -465,6 +469,23 @@ fn chat_content(_role: &Role, parts: &[ContentPart]) -> Result<Value> {
     ))
 }
 
+fn openai_chat_tools(tools: &[ToolDefinition]) -> Value {
+    json!(tools
+        .iter()
+        .map(|tool| {
+            let mut function = json!({
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters
+            });
+            if tool.metadata.strict {
+                function["strict"] = json!(true);
+            }
+            json!({"type": "function", "function": function})
+        })
+        .collect::<Vec<_>>())
+}
+
 fn openai_tool_call(call: &ToolCallContent) -> Result<Value> {
     Ok(json!({
         "id": call.call_id,
@@ -552,8 +573,43 @@ pub(crate) fn openai_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ProviderReplayState;
+    use crate::model::{ProviderReplayState, ToolMetadata};
     use crate::provider::testing;
+
+    #[test]
+    fn strict_tool_metadata_is_forwarded_only_when_requested() {
+        let strict = vec![ToolDefinition {
+            name: "read_file".into(),
+            description: "Read".into(),
+            parameters: serde_json::json!({"type": "object"}),
+            metadata: ToolMetadata {
+                strict: true,
+                ..Default::default()
+            },
+        }];
+        let body = openai_chat_tools(&strict);
+        assert_eq!(body[0]["function"]["strict"], serde_json::json!(true));
+
+        let plain = vec![ToolDefinition {
+            metadata: ToolMetadata::default(),
+            ..strict[0].clone()
+        }];
+        let body = openai_chat_tools(&plain);
+        assert!(body[0]["function"].get("strict").is_none());
+    }
+
+    #[test]
+    fn client_top_p_and_service_tier_are_forwarded_to_chat_completions() {
+        let client = crate::model::ClientRequestOptions {
+            top_p: Some(0.8),
+            service_tier: Some("priority".into()),
+            ..Default::default()
+        };
+        let mut body = json!({"messages": []});
+        apply_client_options(&mut body, &client);
+        assert_eq!(body["top_p"], 0.8);
+        assert_eq!(body["service_tier"], "priority");
+    }
 
     #[test]
     fn chat_completions_reports_pdf_documents_as_an_explicit_omission() {

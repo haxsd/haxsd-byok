@@ -35,6 +35,10 @@ pub enum ModelEvent {
         index: usize,
     },
     ProviderReplayState(ProviderReplayState),
+    /// Anthropic `context_management` 响应元数据（`message_start` 或
+    /// `message_delta` 上出现）。只有入站 Anthropic 网关会把它写回客户端；
+    /// 其它客户端没有这个字段，显式忽略。
+    ContextManagement(serde_json::Value),
     Usage(Usage),
     /// 上游明确报告了命中的停止序列（Anthropic 的 `delta.stop_sequence`）。
     ///

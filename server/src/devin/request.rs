@@ -5,9 +5,9 @@ use uuid::Uuid;
 use crate::{
     devin::{wire::FieldValue, DevinModelBinding, DEVIN_CALL_ID_PREFIX, DEVIN_EXECUTION_ID_PREFIX},
     model::{
-        ClientRequestOptions, ContentPart, ModelConfig, ModelRequest, ModelSpec, ProjectedContent,
-        ProjectedMessage, PromptSpec, ProviderReplayState, Role, ToolCallContent, ToolDefinition,
-        ToolResultContent,
+        ClientRequestOptions, ComputerUseToolConfig, ContentPart, ModelConfig, ModelRequest,
+        ModelSpec, ProjectedContent, ProjectedMessage, PromptSpec, ProviderReplayState, Role,
+        ToolCallContent, ToolDefinition, ToolMetadata, ToolResultContent,
     },
     Error, Result,
 };
@@ -36,6 +36,10 @@ pub struct DevinChatRequest {
     pub execution_id: String,
     pub context_tokens: u64,
     pub context_token_source: ContextTokenSource,
+    /// Devin 的 `CompletionConfiguration.max_tokens`。模型库上限仍会再夹一次。
+    pub max_output_tokens: Option<u64>,
+    /// Devin 的 `CompletionConfiguration.stop_patterns`。
+    pub stop_sequences: Vec<String>,
     /// Devin 的工具策略来自官方 `GetChatMessageRequest` 字段 11/12。
     pub client: ClientRequestOptions,
 }
@@ -74,7 +78,8 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
     let tools = super::wire::all_fields(&fields, 10)
         .map(|field| parse_tool(bytes_value(field)?))
         .collect::<Result<Vec<_>>>()?;
-    let client = parse_client_options(&fields)?;
+    let mut client = parse_client_options(&fields)?;
+    let (max_output_tokens, stop_sequences) = parse_completion_configuration(&fields, &mut client)?;
     let requested_model = string_field(&fields, 21)?;
     let cascade_id = string_field(&fields, 16)?;
     let session_id = string_field(&fields, 28)?;
@@ -109,6 +114,8 @@ pub fn parse_chat_request(payload: &[u8]) -> Result<DevinChatRequest> {
         execution_id,
         context_tokens,
         context_token_source,
+        max_output_tokens,
+        stop_sequences,
         client,
     })
 }
@@ -180,6 +187,14 @@ pub fn to_invocation(
             (!binding.display_name.trim().is_empty()).then(|| binding.display_name.clone())
         });
     model_spec.max_output_tokens = model.max_output_tokens();
+    if let Some(requested) = request.max_output_tokens {
+        model_spec.max_output_tokens = Some(
+            model_spec
+                .max_output_tokens
+                .map_or(requested, |limit| requested.min(limit)),
+        );
+    }
+    model_spec.stop_sequences = request.stop_sequences;
     model_spec.context_window_tokens = model
         .context_window_tokens
         .or(binding.context_window_tokens);
@@ -285,6 +300,74 @@ fn parse_client_options(fields: &[super::wire::Field]) -> Result<ClientRequestOp
         tool_choice,
         ..ClientRequestOptions::default()
     })
+}
+
+/// Devin `GetChatMessageRequest.configuration`（field 8）里的官方采样参数。
+///
+/// `CompletionConfiguration` 的字段号来自官方扩展的 protobuf descriptor：
+/// 2 max_tokens、3 max_newlines、4 min_log_probability、5 temperature、
+/// 7 top_k、8 top_p、9 stop_patterns、17 service_tier。这里只映射共享请求层
+/// 能表达的参数；不支持的字段不会被猜成别的含义。
+fn parse_completion_configuration(
+    fields: &[super::wire::Field],
+    client: &mut ClientRequestOptions,
+) -> Result<(Option<u64>, Vec<String>)> {
+    let Some(configuration) = super::wire::first_field(fields, 8) else {
+        return Ok((None, Vec::new()));
+    };
+    let FieldValue::Bytes(bytes) = &configuration.value else {
+        return Err(Error::Protocol(
+            "Devin configuration must be a nested message".into(),
+        ));
+    };
+    let config = super::wire::parse_fields(bytes)?;
+    let max_output_tokens = varint_field(&config, 2)?.filter(|value| *value > 0);
+    if let Some(value) = double_field(&config, 5)? {
+        client.temperature = Some(value);
+    }
+    if let Some(value) = varint_field(&config, 7)? {
+        if value == 0 {
+            return Err(Error::Protocol(
+                "Devin configuration.top_k must be greater than zero".into(),
+            ));
+        }
+        client.top_k = Some(value);
+    }
+    if let Some(value) = double_field(&config, 8)? {
+        if !(0.0..=1.0).contains(&value) {
+            return Err(Error::Protocol(
+                "Devin configuration.top_p must be between 0 and 1".into(),
+            ));
+        }
+        client.top_p = Some(value);
+    }
+    let stop_sequences = super::wire::all_fields(&config, 9)
+        .map(|field| match &field.value {
+            FieldValue::Bytes(bytes) => String::from_utf8(bytes.clone())
+                .map_err(|_| Error::Protocol("Devin stop_patterns must be UTF-8".into())),
+            _ => Err(Error::Protocol(
+                "Devin stop_patterns must be string fields".into(),
+            )),
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let service_tier = string_field(&config, 17)?;
+    let service_tier = service_tier.trim();
+    if !service_tier.is_empty() {
+        client.service_tier = Some(service_tier.to_owned());
+    }
+    Ok((max_output_tokens, stop_sequences))
+}
+
+fn double_field(fields: &[super::wire::Field], number: u32) -> Result<Option<f64>> {
+    let Some(field) = super::wire::first_field(fields, number) else {
+        return Ok(None);
+    };
+    let FieldValue::Fixed64(bytes) = &field.value else {
+        return Err(Error::Protocol(format!(
+            "Devin protobuf field {number} must be a fixed64 double"
+        )));
+    };
+    Ok(Some(f64::from_le_bytes(*bytes)))
 }
 
 fn parse_message(
@@ -396,6 +479,22 @@ fn parse_tool_call(bytes: &[u8], index: usize) -> Result<ToolCallContent> {
 fn parse_tool(bytes: &[u8]) -> Result<ToolDefinition> {
     let fields = super::wire::parse_fields(bytes)?;
     let parameters = string_field(&fields, 3)?;
+    let metadata = ToolMetadata {
+        attribution_field_names: super::wire::all_fields(&fields, 5)
+            .map(|field| {
+                String::from_utf8(bytes_value(field)?.to_vec())
+                    .map_err(|_| Error::Protocol("Devin tool attribution must be UTF-8".into()))
+            })
+            .collect::<Result<Vec<_>>>()?,
+        server_name: optional_string_field(&fields, 6)?,
+        read_only_hint: bool_field(&fields, 7)?,
+        computer_use_config: parse_computer_use_config(&fields)?,
+        is_custom_tool: bool_field(&fields, 9)?,
+        custom_tool_grammar: optional_string_field(&fields, 10)?,
+        custom_tool_grammar_syntax: optional_string_field(&fields, 11)?,
+        cache_control: None,
+        strict: varint_field(&fields, 12)?.unwrap_or_default() != 0,
+    };
     Ok(ToolDefinition {
         name: string_field(&fields, 1)?,
         description: string_field(&fields, 2)?,
@@ -405,7 +504,43 @@ fn parse_tool(bytes: &[u8]) -> Result<ToolDefinition> {
             serde_json::from_str(&parameters)
                 .map_err(|error| Error::Protocol(format!("invalid Devin tool schema: {error}")))?
         },
+        metadata,
     })
+}
+
+fn parse_computer_use_config(
+    fields: &[super::wire::Field],
+) -> Result<Option<ComputerUseToolConfig>> {
+    let Some(field) = super::wire::first_field(fields, 8) else {
+        return Ok(None);
+    };
+    let config = super::wire::parse_fields(bytes_value(field)?)?;
+    Ok(Some(ComputerUseToolConfig {
+        display_width_px: u32_field(&config, 1)?,
+        display_height_px: u32_field(&config, 2)?,
+        display_number: u32_field(&config, 3)?,
+    }))
+}
+
+fn u32_field(fields: &[super::wire::Field], number: u32) -> Result<u32> {
+    let Some(value) = varint_field(fields, number)? else {
+        return Ok(0);
+    };
+    u32::try_from(value)
+        .map_err(|_| Error::Protocol(format!("Devin protobuf field {number} does not fit in u32")))
+}
+
+fn bool_field(fields: &[super::wire::Field], number: u32) -> Result<Option<bool>> {
+    Ok(varint_field(fields, number)?.map(|value| value != 0))
+}
+
+fn optional_string_field(fields: &[super::wire::Field], number: u32) -> Result<Option<String>> {
+    match super::wire::first_field(fields, number) {
+        Some(field) => Ok(Some(
+            String::from_utf8_lossy(bytes_value(field)?).into_owned(),
+        )),
+        None => Ok(None),
+    }
 }
 
 fn parse_image(bytes: &[u8]) -> Result<ContentPart> {
@@ -588,6 +723,63 @@ mod tests {
     }
 
     #[test]
+    fn parses_official_tool_metadata() {
+        let computer_use = serialize_fields(&[
+            Field::varint(1, 1_200),
+            Field::varint(2, 800),
+            Field::varint(3, 2),
+        ])
+        .unwrap();
+        let tool = serialize_fields(&[
+            Field::bytes(1, b"read_file"),
+            Field::bytes(2, b"Read a file"),
+            Field::bytes(3, br#"{"type":"object","properties":{}}"#),
+            Field::bytes(5, b"path"),
+            Field::bytes(5, b"line"),
+            Field::bytes(6, b"filesystem"),
+            Field::varint(7, 1),
+            Field::bytes(8, computer_use),
+            Field::varint(9, 1),
+            Field::bytes(10, b"start: \"read_file\" end"),
+            Field::bytes(11, b"lark"),
+            Field::varint(12, 1),
+        ])
+        .unwrap();
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"user-1"),
+                Field::varint(2, 1),
+                Field::bytes(3, b"hello"),
+            ]),
+            Field::bytes(10, tool),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+        let metadata = &request.tools[0].metadata;
+        assert_eq!(metadata.attribution_field_names, vec!["path", "line"]);
+        assert_eq!(metadata.server_name.as_deref(), Some("filesystem"));
+        assert_eq!(metadata.read_only_hint, Some(true));
+        assert_eq!(
+            metadata.computer_use_config,
+            Some(ComputerUseToolConfig {
+                display_width_px: 1_200,
+                display_height_px: 800,
+                display_number: 2,
+            })
+        );
+        assert_eq!(metadata.is_custom_tool, Some(true));
+        assert_eq!(
+            metadata.custom_tool_grammar.as_deref(),
+            Some("start: \"read_file\" end")
+        );
+        assert_eq!(metadata.custom_tool_grammar_syntax.as_deref(), Some("lark"));
+        assert!(metadata.strict);
+    }
+
+    #[test]
     fn parses_official_tool_policy_fields() {
         let choice = serialize_fields(&[Field::bytes(1, b"any")]).unwrap();
         let payload = serialize_fields(&[
@@ -611,6 +803,40 @@ mod tests {
                 "disable_parallel_tool_use": true
             }))
         );
+    }
+
+    #[test]
+    fn parses_official_completion_configuration() {
+        // 官方 exa.codeium_common_pb.CompletionConfiguration 把 temperature/top_p
+        // 声明为 protobuf double（wire type fixed64），不是 fixed32 float。
+        let configuration = serialize_fields(&[
+            Field::varint(2, 4_096),
+            Field::fixed64(5, 0.2f64.to_le_bytes()),
+            Field::varint(7, 40),
+            Field::fixed64(8, 0.9f64.to_le_bytes()),
+            Field::bytes(9, b"STOP"),
+            Field::bytes(17, b"standard"),
+        ])
+        .unwrap();
+        let payload = serialize_fields(&[
+            Field::bytes(2, b"system instructions"),
+            message(vec![
+                Field::bytes(1, b"user-1"),
+                Field::varint(2, 1),
+                Field::bytes(3, b"hello"),
+            ]),
+            Field::bytes(8, configuration),
+            Field::bytes(21, b"MODEL_CLAUDE_4_SONNET_BYOK"),
+        ])
+        .unwrap();
+
+        let request = parse_chat_request(&payload).unwrap();
+        assert_eq!(request.max_output_tokens, Some(4_096));
+        assert_eq!(request.stop_sequences, vec!["STOP"]);
+        assert_eq!(request.client.temperature, Some(0.2));
+        assert_eq!(request.client.top_k, Some(40));
+        assert_eq!(request.client.top_p, Some(0.9));
+        assert_eq!(request.client.service_tier.as_deref(), Some("standard"));
     }
 
     #[test]

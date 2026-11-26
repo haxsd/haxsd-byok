@@ -77,10 +77,20 @@ async fn apply(
     State(state): State<CodexControl>,
     request: Option<Json<ApplyRequest>>,
 ) -> Result<Json<CodexStatus>> {
+    if crate::codex::ui_cache::codex_running() {
+        return Err(crate::Error::Config(
+            "quit Codex before applying the local route, then reopen it".into(),
+        ));
+    }
     let force = request.map(|Json(request)| request.force).unwrap_or(false);
     Ok(Json(state.gateway.apply_with_force(force).await?))
 }
 async fn restore(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
+    if crate::codex::ui_cache::codex_running() {
+        return Err(crate::Error::Config(
+            "quit Codex before restoring its configuration, then reopen it".into(),
+        ));
+    }
     Ok(Json(state.gateway.restore().await?))
 }
 

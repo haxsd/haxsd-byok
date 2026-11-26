@@ -7,7 +7,10 @@ use serde_json::{json, Value};
 
 use crate::{
     config::ProviderConfig,
-    model::{ContentPart, ModelInvocation, ProjectedContent, ProjectedMessage, Role, Usage},
+    model::{
+        ContentPart, ModelInvocation, ProjectedContent, ProjectedMessage, Role, ToolDefinition,
+        Usage,
+    },
     network::OutboundClient,
     Error, Result,
 };
@@ -98,16 +101,7 @@ impl Provider for AnthropicProvider {
                 "max_tokens": max_tokens, "stream": true
             });
             if !request.prompt.tools.is_empty() {
-                let tool_count = request.prompt.tools.len();
-                body["tools"] = json!(request.prompt.tools.iter().enumerate().map(|(index, tool)| {
-                    let mut value = json!({
-                        "name": tool.name, "description": tool.description, "input_schema": tool.parameters
-                    });
-                    if mark_tools && index + 1 == tool_count {
-                        value["cache_control"] = json!({"type": "ephemeral"});
-                    }
-                    value
-                }).collect::<Vec<_>>());
+                body["tools"] = anthropic_tools(&request.prompt.tools, mark_tools);
             }
             if !request.model.stop_sequences.is_empty() {
                 body["stop_sequences"] = json!(request.model.stop_sequences);
@@ -173,9 +167,17 @@ impl Provider for AnthropicProvider {
                     kind => kind,
                 };
                 match kind {
-                    "message_start" => if let Some(usage) = value.pointer("/message/usage") {
-                        merge_usage(final_usage.get_or_insert_default(), anthropic_usage(usage));
-                    },
+                    "message_start" => {
+                        if let Some(context_management) = value
+                            .pointer("/message/context_management")
+                            .filter(|value| !value.is_null())
+                        {
+                            yield ModelEvent::ContextManagement(context_management.clone());
+                        }
+                        if let Some(usage) = value.pointer("/message/usage") {
+                            merge_usage(final_usage.get_or_insert_default(), anthropic_usage(usage));
+                        }
+                    }
                     "content_block_start" => {
                         let index = required_u64(&value, "index")? as usize;
                         let block = value.get("content_block").unwrap_or(&Value::Null);
@@ -264,6 +266,12 @@ impl Provider for AnthropicProvider {
                         }
                     }
                     "message_delta" => {
+                        if let Some(context_management) = value
+                            .get("context_management")
+                            .filter(|value| !value.is_null())
+                        {
+                            yield ModelEvent::ContextManagement(context_management.clone());
+                        }
                         if let Some(usage) = value.get("usage") {
                             merge_usage(final_usage.get_or_insert_default(), anthropic_usage(usage));
                         }
@@ -449,6 +457,31 @@ fn cache_breakpoint_plan(client_system: Option<&[Value]>, messages: &[Value]) ->
 /// 强制工具调用（`any` / `tool`）与 thinking 互斥，`temperature` 也只能在不开 thinking 时
 /// 发：上游对这两种组合都直接 400。强制调用优先：thinking 已开时关掉 thinking 与
 /// `output_config.effort`，保留客户端的强制选择；这也与 Codex 桥接的取舍一致。
+fn anthropic_tools(tools: &[ToolDefinition], mark_tools: bool) -> Value {
+    let tool_count = tools.len();
+    let has_client_cache_breakpoint = tools
+        .iter()
+        .any(|tool| tool.metadata.cache_control.is_some());
+    json!(tools
+        .iter()
+        .enumerate()
+        .map(|(index, tool)| {
+            let mut value = json!({
+                "name": tool.name, "description": tool.description, "input_schema": tool.parameters
+            });
+            if let Some(cache_control) = &tool.metadata.cache_control {
+                value["cache_control"] = cache_control.clone();
+            } else if mark_tools && index + 1 == tool_count && !has_client_cache_breakpoint {
+                value["cache_control"] = json!({"type": "ephemeral"});
+            }
+            if tool.metadata.strict {
+                value["strict"] = json!(true);
+            }
+            value
+        })
+        .collect::<Vec<_>>())
+}
+
 fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOptions) {
     let mut thinking = body.get("thinking").is_some();
     if body.get("tools").is_some() {
@@ -469,6 +502,18 @@ fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOp
         if let Some(temperature) = client.temperature {
             body["temperature"] = json!(temperature);
         }
+    }
+    if let Some(top_p) = client.top_p {
+        body["top_p"] = json!(top_p);
+    }
+    if let Some(top_k) = client.top_k {
+        body["top_k"] = json!(top_k);
+    }
+    if let Some(service_tier) = &client.service_tier {
+        body["service_tier"] = json!(service_tier);
+    }
+    if let Some(context_management) = &client.context_management {
+        body["context_management"] = context_management.clone();
     }
 }
 
@@ -737,6 +782,43 @@ fn anthropic_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_sampling_and_context_fields_are_forwarded_to_anthropic() {
+        let client = crate::model::ClientRequestOptions {
+            top_p: Some(0.9),
+            top_k: Some(40),
+            service_tier: Some("standard".into()),
+            context_management: Some(json!({"edits": [{"type": "clear_tool_uses"}]})),
+            ..Default::default()
+        };
+        let mut body = json!({"messages": []});
+        apply_client_options(&mut body, &client);
+        assert_eq!(body["top_p"], 0.9);
+        assert_eq!(body["top_k"], 40);
+        assert_eq!(body["service_tier"], "standard");
+        assert_eq!(
+            body["context_management"]["edits"][0]["type"],
+            "clear_tool_uses"
+        );
+    }
+
+    #[test]
+    fn anthropic_tools_preserve_client_cache_control_and_strict() {
+        let tools = vec![ToolDefinition {
+            name: "Bash".into(),
+            description: "run".into(),
+            parameters: json!({"type": "object"}),
+            metadata: crate::model::ToolMetadata {
+                cache_control: Some(json!({"type": "ephemeral", "ttl": "1h"})),
+                strict: true,
+                ..Default::default()
+            },
+        }];
+        let body = anthropic_tools(&tools, true);
+        assert_eq!(body[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(body[0]["strict"], true);
+    }
 
     #[test]
     fn forced_tool_choice_disables_thinking_instead_of_degrading() {
@@ -1031,6 +1113,49 @@ mod tests {
 
         assert_eq!(testing::text_of(&events), "你好");
         assert_eq!(testing::finish_of(&events), Some(FinishReason::Stop));
+    }
+
+    /// 上游 `message_delta.context_management` 必须作为事件交给入站 Anthropic
+    /// 网关，不能当成未知字段丢掉。
+    #[tokio::test]
+    async fn context_management_from_message_delta_is_forwarded() {
+        let context = json!({
+            "applied_edits": [{
+                "type": "clear_tool_uses_20250919",
+                "cleared_input_tokens": 12,
+                "cleared_tool_uses": 1
+            }]
+        });
+        let url = testing::sse_upstream(
+            "/v1/messages",
+            vec![
+                json!({"type":"message_start","message":{"usage":{"input_tokens":3}}}),
+                json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"完成"}}),
+                json!({"type":"content_block_stop","index":0}),
+                json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"context_management":context,"usage":{"output_tokens":2}}),
+                json!({"type":"message_stop"}),
+            ],
+        )
+        .await;
+        let provider = AnthropicProvider::new(
+            crate::network::OutboundClient::fixed(reqwest::Client::new()),
+            testing::provider_config(crate::config::ProviderKind::Anthropic, url),
+        );
+
+        let events = testing::drain(provider.stream(
+            testing::invocation("claude-sonnet-4"),
+            tokio_util::sync::CancellationToken::new(),
+        ))
+        .await
+        .unwrap();
+
+        assert!(
+            events.iter().any(
+                |event| matches!(event, ModelEvent::ContextManagement(value) if value == &context)
+            ),
+            "context_management 应作为独立事件转发"
+        );
     }
 
     /// 结束条件二：上游发了 stop_reason 却没发 message_stop 就断开——内容与收尾都要交付，

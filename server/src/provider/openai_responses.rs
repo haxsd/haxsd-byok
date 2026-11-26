@@ -393,6 +393,12 @@ fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOp
             body["temperature"] = json!(temperature);
         }
     }
+    if let Some(top_p) = client.top_p {
+        body["top_p"] = json!(top_p);
+    }
+    if let Some(service_tier) = &client.service_tier {
+        body["service_tier"] = json!(service_tier);
+    }
 }
 
 fn apply_model(
@@ -418,6 +424,9 @@ fn apply_model(
 }
 
 fn apply_service_tier(body: &mut Value, model: &crate::model::ModelSpec) {
+    if body.get("service_tier").is_some() {
+        return;
+    }
     if let Some(tier) = model.latency.responses_tier() {
         body["service_tier"] = json!(tier);
     }
@@ -474,7 +483,7 @@ fn responses_tools(tools: &[ToolDefinition]) -> Value {
             "name": tool.name,
             "description": tool.description,
             "parameters": normalize_schema_integers(&tool.parameters),
-            "strict": false
+            "strict": tool.metadata.strict
         }))
         .collect::<Vec<_>>())
 }
@@ -672,8 +681,23 @@ fn responses_usage(value: &Value) -> Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ProviderReplayState;
+    use crate::model::{ProviderReplayState, ToolMetadata};
     use crate::provider::testing;
+
+    #[test]
+    fn strict_tool_metadata_is_forwarded_to_responses() {
+        let tools = vec![ToolDefinition {
+            name: "read_file".into(),
+            description: "Read".into(),
+            parameters: json!({"type": "object"}),
+            metadata: ToolMetadata {
+                strict: true,
+                ..Default::default()
+            },
+        }];
+        let body = responses_tools(&tools);
+        assert_eq!(body[0]["strict"], json!(true));
+    }
 
     #[test]
     fn pdf_documents_become_input_files_on_the_responses_wire() {
@@ -770,6 +794,19 @@ mod tests {
     }
 
     #[test]
+    fn client_top_p_and_service_tier_are_forwarded_to_responses() {
+        let client = crate::model::ClientRequestOptions {
+            top_p: Some(0.8),
+            service_tier: Some("priority".into()),
+            ..Default::default()
+        };
+        let mut body = json!({});
+        apply_client_options(&mut body, &client);
+        assert_eq!(body["top_p"], 0.8);
+        assert_eq!(body["service_tier"], "priority");
+    }
+
+    #[test]
     fn tool_schemas_normalize_float_written_integer_keywords() {
         // Cursor 内置工具会给出 `"maxLength": 20000.0` 这种浮点写法，OpenAI 的 Responses
         // 接口按整数校验这些关键字，直接回 `keyword "maxLength" must use an integer JSON
@@ -797,6 +834,7 @@ mod tests {
                     "ratio": { "type": "number", "minimum": 0.5, "maximum": 2.0 }
                 }
             }),
+            metadata: Default::default(),
         }];
 
         let body = responses_tools(&tools);
