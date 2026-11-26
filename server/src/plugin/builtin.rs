@@ -1,4 +1,5 @@
 //! Pre-installs bundled built-in plugins into the user's installed directory.
+use std::fs;
 use std::path::Path;
 
 use super::definition::write_if_changed;
@@ -241,20 +242,42 @@ const PLUGINS: &[(&str, &[(&str, &str)])] = &[
     ("claude-code-auth", CLAUDE_CODE_AUTH),
 ];
 
+/// 发布构建只加载随应用签名的内置插件。第三方插件没有独立安装入口，
+/// 不应仅凭一个用户目录里的 `plugin.json` 就获得账号 token 的读取能力。
+/// 调试构建保留扫描全部目录，方便开发时热改插件。
+pub(super) const BUILTIN_PLUGIN_IDS: &[&str] = &[
+    "dev.cursorbyok.examples.codex-auth",
+    "dev.cursorbyok.examples.grok-auth",
+    "dev.cursorbyok.plugins.antigravity-auth",
+    "dev.cursorbyok.plugins.claude-code-auth",
+];
+
 /// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
-/// 版本一致时零写盘;版本变化时整目录同步并清理旧版本残留文件。
+/// 版本一致且受管文件逐字节匹配时零写盘;内容变化或版本变化时整目录同步并清理旧版本残留文件。
 ///
-/// **改动任何内置插件的内容都必须同时升 `plugin.json` 的 version**, 否则已有安装永远
-/// 保留旧副本（版本一致即跳过写盘）——曾因此让"新增授权域"在旧安装上不生效。
+/// **改动任何内置插件的内容都必须同时升 `plugin.json` 的 version**, 否则已有安装的
+/// 版本号不会变；内容校验会负责恢复被改动的受管文件，但版本号仍是明确的发布标识。
 pub(super) fn install(installed: &Path) -> Result<()> {
     for (name, files) in PLUGINS {
         let directory = installed.join(name);
-        if disk_version(&directory) == Some(embedded_version(files)?) {
+        if disk_version(&directory) == Some(embedded_version(files)?)
+            && directory_matches(&directory, files)
+        {
             continue;
         }
         write_plugin(&directory, files)?;
     }
     Ok(())
+}
+
+/// 版本号相同不代表内容没被改过；内置插件目录里的受管文件必须逐字节匹配，
+/// 否则恢复到嵌入副本。这样本地误改或替换不会在下次启动继续运行。
+fn directory_matches(directory: &Path, files: &[(&str, &str)]) -> bool {
+    files.iter().all(|(relative, content)| {
+        fs::read(directory.join(relative))
+            .map(|actual| actual == content.as_bytes())
+            .unwrap_or(false)
+    })
 }
 
 fn embedded_version(files: &[(&str, &str)]) -> Result<String> {
@@ -333,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn install_is_version_gated_and_syncs_on_version_change() {
+    fn install_restores_managed_files_when_version_is_unchanged() {
         let root = tempfile::tempdir().unwrap();
         let plugin = root.path().join("codex-auth");
 
@@ -352,17 +375,17 @@ mod tests {
             .is_file());
         assert!(root.path().join("claude-code-auth/provider.ts").is_file());
 
-        // 版本一致:本地改动与额外文件保持原样,不发生任何写盘。
+        // 版本一致但受管文件被改动：启动时恢复嵌入副本并清理额外文件。
         std::fs::write(plugin.join("main.ts"), "edited").unwrap();
         std::fs::write(plugin.join("stale.ts"), "extra").unwrap();
         install(root.path()).unwrap();
         assert_eq!(
             std::fs::read_to_string(plugin.join("main.ts")).unwrap(),
-            "edited"
+            embedded_main()
         );
-        assert!(plugin.join("stale.ts").exists());
+        assert!(!plugin.join("stale.ts").exists());
 
-        // 版本变化:整目录同步回嵌入内容并清理残留。
+        // 版本变化：整目录同步回嵌入内容。
         let manifest = std::fs::read_to_string(plugin.join("plugin.json")).unwrap();
         let mut value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         value["version"] = serde_json::Value::String("0.0.1".into());
@@ -372,8 +395,30 @@ mod tests {
             std::fs::read_to_string(plugin.join("main.ts")).unwrap(),
             embedded_main()
         );
-        assert!(!plugin.join("stale.ts").exists());
     }
+    #[test]
+    fn every_built_in_manifest_is_in_the_release_allowlist() {
+        let mut seen = std::collections::HashSet::new();
+        for (name, files) in PLUGINS {
+            let manifest = files
+                .iter()
+                .find(|(path, _)| *path == "plugin.json")
+                .map(|(_, content)| *content)
+                .unwrap();
+            let value: serde_json::Value = serde_json::from_str(manifest).unwrap();
+            let id = value["id"].as_str().unwrap();
+            assert!(
+                BUILTIN_PLUGIN_IDS.contains(&id),
+                "{name}: {id} is missing from BUILTIN_PLUGIN_IDS"
+            );
+            assert!(
+                seen.insert(id.to_owned()),
+                "{name}: duplicate built-in id {id}"
+            );
+        }
+        assert_eq!(seen.len(), BUILTIN_PLUGIN_IDS.len());
+    }
+
     /// 内置插件的相对导入必须全部在嵌入清单里。
     ///
     /// 发布构建只预装清单里的文件：漏一个运行时模块，插件在真实安装里就会

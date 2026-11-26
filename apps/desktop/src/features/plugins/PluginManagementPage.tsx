@@ -5,6 +5,7 @@ import { PageContent } from "../../shell/layout/PageContent";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { ActionMenu, type ActionMenuItem } from "../../shared/ui/ActionMenu";
 import { Card } from "../../shared/ui/Card";
+import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { Icon } from "../../shared/ui/Icon";
 import { Modal } from "../../shared/ui/Modal";
@@ -266,6 +267,7 @@ function PluginCard({ plugin, onOpen }: {
   const message = useMessage();
   const importInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [confirmExport, setConfirmExport] = useState(false);
   const configured = plugin.providers.some((provider) => provider.configured);
   const accountCount = plugin.resources.reduce((count, resource) => count + resource.resources.length, 0);
   const modelCount = plugin.providers.reduce((count, provider) => count + provider.models.length, 0);
@@ -277,6 +279,9 @@ function PluginCard({ plugin, onOpen }: {
   const subtitle = plugin.providers.map((provider) => pluginText(provider.displayName, locale)).join(" · ") || plugin.id;
   const importResource = plugin.resources.find((resource) => resource.import);
   const exportResource = plugin.resources.find((resource) => resource.resources.length > 0);
+  const exportUrl = exportResource
+    ? api.pluginResourceExportUrl(plugin.id, exportResource.type)
+    : null;
 
   const importFiles = async (files: FileList | null) => {
     if (!files?.length || !importResource) return;
@@ -353,56 +358,66 @@ function PluginCard({ plugin, onOpen }: {
           {
             id: "export",
             label: t("批量导出"),
-            onSelect: () =>
-              void api.openExternalUrl(
-                // 导出地址与页面同源：已保存的服务端口是下次启动的期望值，
-                // 改完还没重启时它并不在监听。
-                api.pluginResourceExportUrl(plugin.id, exportResource.type),
-              ),
+            onSelect: () => setConfirmExport(true),
           },
         ]
       : []),
   ];
 
   return (
-    <Card className={styles.pluginCard}>
-      <div className={styles.pluginCardTop}>
-        <img className={styles.pluginIcon} src={plugin.icon} alt="" />
-        <div className={styles.pluginIdentity}>
-          <span className={styles.pluginName}>{plugin.name}</span>
-          <span className={styles.pluginId}>{subtitle}</span>
+    <>
+      <Card className={styles.pluginCard}>
+        <div className={styles.pluginCardTop}>
+          <img className={styles.pluginIcon} src={plugin.icon} alt="" />
+          <div className={styles.pluginIdentity}>
+            <span className={styles.pluginName}>{plugin.name}</span>
+            <span className={styles.pluginId}>{subtitle}</span>
+          </div>
+          <StatusPill tone={configured ? "ok" : "idle"}>{configured ? t("已配置") : t("未配置")}</StatusPill>
         </div>
-        <StatusPill tone={configured ? "ok" : "idle"}>{configured ? t("已配置") : t("未配置")}</StatusPill>
-      </div>
-      <div className={styles.pluginStats}>
-        <span><strong>{accountCount}</strong>{t("个账号")}</span>
-        <span><strong>{modelCount}</strong>{t("个模型")}</span>
-        <span><strong>{enabledModelCount}</strong>{t("个已启用")}</span>
-        {plugin.version && <span className={styles.pluginVersion}>v{plugin.version}</span>}
-      </div>
-      {plugin.author && <div className={styles.pluginAuthor}>{plugin.author}</div>}
-      <div className={styles.cardActions}>
-        <button type="button" className={styles.primaryAction} onClick={() => onOpen(plugin.id, "add")}>
-          <Icon icon={downloadIcon} size="1em" />{t("添加账号")}
-        </button>
-        {configured && <button type="button" className={styles.secondaryAction} onClick={() => onOpen(plugin.id, "settings")}>
-          <Icon icon={uploadIcon} size="1em" />{t("账号管理")}
-        </button>}
-        {moreItems.length > 0 && <span className={styles.moreAction}>
-          <ActionMenu label={t("更多")} items={moreItems} />
-        </span>}
-        {importResource && (
-          <input
-            ref={importInput}
-            type="file"
-            hidden
-            accept={importResource.import?.accept.join(",")}
-            multiple={importResource.import?.multiple ?? false}
-            onChange={(event) => void importFiles(event.target.files)}
-          />
-        )}
-      </div>
-    </Card>
+        <div className={styles.pluginStats}>
+          <span><strong>{accountCount}</strong>{t("个账号")}</span>
+          <span><strong>{modelCount}</strong>{t("个模型")}</span>
+          <span><strong>{enabledModelCount}</strong>{t("个已启用")}</span>
+          {plugin.version && <span className={styles.pluginVersion}>v{plugin.version}</span>}
+        </div>
+        {plugin.author && <div className={styles.pluginAuthor}>{plugin.author}</div>}
+        <div className={styles.cardActions}>
+          <button type="button" className={styles.primaryAction} onClick={() => onOpen(plugin.id, "add")}>
+            <Icon icon={downloadIcon} size="1em" />{t("添加账号")}
+          </button>
+          {configured && <button type="button" className={styles.secondaryAction} onClick={() => onOpen(plugin.id, "settings")}>
+            <Icon icon={uploadIcon} size="1em" />{t("账号管理")}
+          </button>}
+          {moreItems.length > 0 && <span className={styles.moreAction}>
+            <ActionMenu label={t("更多")} items={moreItems} />
+          </span>}
+          {importResource && (
+            <input
+              ref={importInput}
+              type="file"
+              hidden
+              accept={importResource.import?.accept.join(",")}
+              multiple={importResource.import?.multiple ?? false}
+              onChange={(event) => void importFiles(event.target.files)}
+            />
+          )}
+        </div>
+      </Card>
+      <ConfirmDialog
+        open={confirmExport}
+        title={t("导出账号凭据")}
+        destructive
+        confirmLabel={t("继续导出")}
+        onCancel={() => setConfirmExport(false)}
+        onConfirm={() => {
+          setConfirmExport(false);
+          if (exportUrl) void api.openExternalUrl(exportUrl);
+        }}
+      >
+        <p>{t("导出文件包含账号的访问令牌和刷新令牌，可被他人用来登录该账号。请只保存在可信位置，不要发送给他人。")}</p>
+      </ConfirmDialog>
+    </>
   );
 }
 

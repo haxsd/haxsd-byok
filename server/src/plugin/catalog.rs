@@ -1,6 +1,6 @@
 //! Discovers plugin manifests and evaluates serializable TypeScript definitions.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -22,6 +22,8 @@ pub struct PluginCatalog {
     roots: Vec<PathBuf>,
     definition_loader: PluginDefinitionLoader,
     app_version: String,
+    /// 发布构建只允许随应用签名发布的内置插件；调试构建为 None，允许加载本地插件。
+    allowed_ids: Option<HashSet<String>>,
 }
 
 #[derive(Clone)]
@@ -53,15 +55,41 @@ impl PluginCatalog {
         ];
         #[cfg(not(debug_assertions))]
         let roots = vec![installed];
+        let allowed_ids = if cfg!(debug_assertions) {
+            None
+        } else {
+            Some(
+                super::builtin::BUILTIN_PLUGIN_IDS
+                    .iter()
+                    .map(|id| (*id).to_owned())
+                    .collect(),
+            )
+        };
         Ok(Self {
             roots,
             definition_loader: PluginDefinitionLoader::managed()?,
             app_version,
+            allowed_ids,
         })
     }
 
     pub(crate) fn loader(&self) -> &PluginDefinitionLoader {
         &self.definition_loader
+    }
+
+    /// 发布构建在读取/求值插件定义之前先按 manifest ID 过滤，避免未知目录
+    /// 仅凭一个 `plugin.json` 就进入 Deno 求值并接触账号资源。
+    fn allows_directory(&self, directory: &Path) -> bool {
+        let Some(allowed) = &self.allowed_ids else {
+            return true;
+        };
+        let Ok(bytes) = fs::read(directory.join(MANIFEST_FILE_NAME)) else {
+            return false;
+        };
+        let Ok(manifest) = serde_json::from_slice::<PluginManifest>(&bytes) else {
+            return false;
+        };
+        allowed.contains(&manifest.id)
     }
 
     /// 插件目录的当前指纹：每个根目录、每个插件子目录、以及子目录里每个文件的
@@ -111,6 +139,13 @@ impl PluginCatalog {
             };
             directories.sort();
             for directory in directories {
+                if !self.allows_directory(&directory) {
+                    tracing::warn!(
+                        path = %directory.display(),
+                        "ignoring plugin outside the release allowlist"
+                    );
+                    continue;
+                }
                 match load_plugin(
                     &directory,
                     &self.definition_loader,
@@ -143,6 +178,9 @@ impl PluginCatalog {
             };
             directories.sort();
             for directory in directories {
+                if !self.allows_directory(&directory) {
+                    continue;
+                }
                 let loaded = (|| -> Result<_> {
                     let manifest: PluginManifest =
                         serde_json::from_slice(&fs::read(directory.join(MANIFEST_FILE_NAME))?)?;
@@ -397,6 +435,7 @@ pub(super) mod tests {
             roots: vec![root.join("installed")],
             definition_loader: PluginDefinitionLoader::for_test(root).unwrap(),
             app_version: "1.4.2".into(),
+            allowed_ids: None,
         }
     }
 
@@ -451,6 +490,31 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn release_allowlist_rejects_unknown_plugin_before_evaluation() {
+        let root = tempfile::tempdir().unwrap();
+        let unknown = root.path().join("installed/unknown");
+        fs::create_dir_all(&unknown).unwrap();
+        fs::write(
+            unknown.join("plugin.json"),
+            r#"{
+                "apiVersion": 1,
+                "id": "com.example.unknown",
+                "name": "Unknown",
+                "version": "0.1.0",
+                "icon": "icon.svg",
+                "entry": "main.ts"
+            }"#,
+        )
+        .unwrap();
+
+        let mut catalog = catalog(root.path());
+        catalog.allowed_ids = Some(HashSet::from([
+            "dev.cursorbyok.examples.codex-auth".to_owned()
+        ]));
+        assert!(!catalog.allows_directory(&unknown));
+    }
+
+    #[test]
     fn repository_examples_have_valid_static_manifests() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins/build-in");
         let sdk = tempfile::tempdir().unwrap();
@@ -458,6 +522,7 @@ pub(super) mod tests {
             roots: vec![root],
             definition_loader: PluginDefinitionLoader::for_test(sdk.path()).unwrap(),
             app_version: env!("CARGO_PKG_VERSION").into(),
+            allowed_ids: None,
         };
         assert!(!catalog.manifests().is_empty());
     }
