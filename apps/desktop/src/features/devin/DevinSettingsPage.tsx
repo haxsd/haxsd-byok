@@ -25,7 +25,7 @@ import {
 import { devinDefaultModelOptions, devinModelOptions } from "./devinModelOptions";
 import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { getUiPreferences, saveUiPreferences, useUiPreferences } from "../../shared/store/uiPreferences";
-import { optionalPositiveInteger, portInputValue } from "../../shared/utils/portInput";
+import { portInputValue } from "../../shared/utils/portInput";
 import { probeHostPath } from "./hostPathProbe";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
 import styles from "./DevinSettingsPage.module.scss";
@@ -575,9 +575,6 @@ export function DevinSettingsPage() {
               </div>
             </div>
             {expanded && <div className={styles.bindingExtra}>
-              <div className={styles.bindingFields}>
-                <FormField label={t("上下文 token")} hint={t("一般不用改；留空表示使用模型库中的设置。")}><TextInput type="number" min={1} value={binding.context_window_tokens ?? ""} onChange={(event) => updateBinding(index, { context_window_tokens: optionalPositiveInteger(event.target.value) })} /></FormField>
-              </div>
               <div className={styles.routes}>
                 <div className={styles.routesHeader}>
                   <span>{t("备用模型")}</span>

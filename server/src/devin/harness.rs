@@ -19,6 +19,10 @@ struct ModelProfile {
     prompt_templater: Option<Field>,
     tool_formatter: Option<Field>,
     compaction: Option<Field>,
+    /// Context window the official model's compaction thresholds were sized for.
+    /// Thresholds are absolute token counts, so they cannot be copied unchanged
+    /// to a local model with a different context window.
+    context_window_tokens: Option<u64>,
     default: bool,
     model_uid: String,
     /// `swe-2.1` 这类模型版本；只用于选择最新的自研 SWE 系列配置。
@@ -48,6 +52,7 @@ impl HarnessCatalog {
             let prompt_templater = wire::first_field(&info, 14).cloned();
             let tool_formatter = wire::first_field(&info, 15).cloned();
             let compaction = wire::first_field(&info, 26).cloned();
+            let context_window_tokens = varint(&info, 4).filter(|tokens| *tokens > 0);
             if harnesses.is_empty()
                 && prompt_templater.is_none()
                 && tool_formatter.is_none()
@@ -63,6 +68,7 @@ impl HarnessCatalog {
                 prompt_templater,
                 tool_formatter,
                 compaction,
+                context_window_tokens,
                 default,
                 model_uid: uid.clone(),
                 swe_version: swe_version(&uid, &model_name),
@@ -102,6 +108,7 @@ impl HarnessCatalog {
         let mut info = nested(info_field)?;
         let model_id = strings(&info, 8).into_iter().next().unwrap_or_default();
         let key = normalize(&model_id);
+        let local_context = varint(&info, 4).filter(|tokens| *tokens > 0);
         let profile = if self.models.contains_key(&key) {
             self.resolve(&key)
         } else {
@@ -113,7 +120,7 @@ impl HarnessCatalog {
         // 都要先清掉这些字段，避免旧值继续冒充官方配置。
         info.retain(|field| !matches!(field.number, 14 | 15 | 20 | 26));
         if let Some(profile) = profile {
-            apply_profile(&mut info, profile);
+            apply_profile(&mut info, profile, local_context)?;
         }
         info_field.value = FieldValue::Bytes(wire::serialize_fields(&info)?);
         Ok(Field::bytes(1, wire::serialize_fields(&model)?))
@@ -143,7 +150,11 @@ impl HarnessCatalog {
 
 /// 把选中的官方 harness 字段搬到本地模型。保留本地模型自己的 UID、推理地址、
 /// 上下文和模型名称；只替换会改变 agent 行为的配置。
-fn apply_profile(info: &mut Vec<Field>, profile: &ModelProfile) {
+fn apply_profile(
+    info: &mut Vec<Field>,
+    profile: &ModelProfile,
+    local_context: Option<u64>,
+) -> Result<()> {
     if let Some(field) = &profile.prompt_templater {
         info.push(field.clone());
     }
@@ -154,8 +165,53 @@ fn apply_profile(info: &mut Vec<Field>, profile: &ModelProfile) {
         info.push(Field::bytes(20, harness));
     }
     if let Some(field) = &profile.compaction {
-        info.push(field.clone());
+        if let Some(scaled) =
+            scaled_compaction(field, profile.context_window_tokens, local_context)?
+        {
+            info.push(scaled);
+        }
     }
+    Ok(())
+}
+
+/// Compaction thresholds are absolute token counts. Keep the official ratio,
+/// but apply it to the context window selected for the local model. Copying the
+/// official SWE values unchanged makes a 600K local model compact at the SWE
+/// model's much smaller token count. If the source context is unknown while the
+/// user has selected a context, omit the field instead of guessing.
+fn scaled_compaction(
+    field: &Field,
+    source_context: Option<u64>,
+    local_context: Option<u64>,
+) -> Result<Option<Field>> {
+    let (Some(source), Some(local)) = (source_context, local_context) else {
+        return Ok(local_context.is_none().then(|| field.clone()));
+    };
+    if source == 0 || local == 0 || source == local {
+        return Ok(Some(field.clone()));
+    }
+    let FieldValue::Bytes(bytes) = &field.value else {
+        return Ok(Some(field.clone()));
+    };
+    let mut nested = wire::parse_fields(bytes)?;
+    for nested_field in &mut nested {
+        if let FieldValue::Varint(value) = &mut nested_field.value {
+            *value = scale_tokens(*value, source, local);
+        }
+    }
+    Ok(Some(Field::bytes(
+        field.number,
+        wire::serialize_fields(&nested)?,
+    )))
+}
+
+fn scale_tokens(value: u64, source: u64, target: u64) -> u64 {
+    if value == 0 {
+        return 0;
+    }
+    let scaled =
+        (u128::from(value) * u128::from(target) + u128::from(source) / 2) / u128::from(source);
+    scaled.min(u128::from(target)) as u64
 }
 
 fn better_swe_profile(candidate: &ModelProfile, current: &ModelProfile) -> bool {
@@ -259,12 +315,30 @@ fn boolean(fields: &[Field], number: u32) -> bool {
         .is_some_and(|field| matches!(field.value, FieldValue::Varint(value) if value != 0))
 }
 
+fn varint(fields: &[Field], number: u32) -> Option<u64> {
+    wire::first_field(fields, number).and_then(|field| match field.value {
+        FieldValue::Varint(value) => Some(value),
+        _ => None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::devin::wire::{first_field, serialize_fields};
 
     fn official_model(uid: &str, model_name: &str, harness: &str, prompt: u64, tool: u64) -> Field {
+        official_model_with_context(uid, model_name, harness, prompt, tool, 200_000)
+    }
+
+    fn official_model_with_context(
+        uid: &str,
+        model_name: &str,
+        harness: &str,
+        prompt: u64,
+        tool: u64,
+        context: u64,
+    ) -> Field {
         Field::bytes(
             1,
             serialize_fields(&[
@@ -274,10 +348,19 @@ mod tests {
                     23,
                     serialize_fields(&[
                         Field::bytes(8, uid),
+                        Field::varint(4, context),
                         Field::varint(14, prompt),
                         Field::varint(15, tool),
                         Field::bytes(20, harness),
-                        Field::bytes(26, serialize_fields(&[Field::varint(1, 100_000)]).unwrap()),
+                        Field::bytes(
+                            26,
+                            serialize_fields(&[
+                                Field::varint(1, 100_000),
+                                Field::varint(2, 150_000),
+                                Field::varint(3, 200_000),
+                            ])
+                            .unwrap(),
+                        ),
                     ])
                     .unwrap(),
                 ),
@@ -299,6 +382,31 @@ mod tests {
             ])
             .unwrap(),
         )
+    }
+
+    fn local_model_with_context(model_name: &str, context: u64) -> Field {
+        Field::bytes(
+            1,
+            serialize_fields(&[
+                Field::bytes(1, "Local"),
+                Field::bytes(22, "haxsd-byok:local"),
+                Field::bytes(
+                    23,
+                    serialize_fields(&[Field::bytes(8, model_name), Field::varint(4, context)])
+                        .unwrap(),
+                ),
+            ])
+            .unwrap(),
+        )
+    }
+
+    fn compaction_values(info: &[Field]) -> Vec<u64> {
+        let compaction = first_field(info, 26).unwrap();
+        let fields = nested(compaction).unwrap();
+        [1, 2, 3]
+            .into_iter()
+            .filter_map(|number| version(&fields, number))
+            .collect()
     }
 
     fn info(field: &Field) -> Vec<Field> {
@@ -331,6 +439,50 @@ mod tests {
             "应该选择最新 SWE 系列的 harness"
         );
         assert!(first_field(&info, 26).is_some(), "压缩阈值也要跟随 harness");
+    }
+
+    #[test]
+    fn compaction_thresholds_scale_to_the_selected_context_window() {
+        let official = official_model("swe-2-high", "SWE-2.1", "new-harness", 14, 15);
+        let payload = serialize_fields(&[official]).unwrap();
+        let fields = wire::parse_fields(&payload).unwrap();
+        let catalog = HarnessCatalog::from_fields(&fields).unwrap();
+
+        let attached = catalog
+            .attach(&local_model_with_context("deepseek-flash", 600_000))
+            .unwrap();
+        assert_eq!(
+            compaction_values(&info(&attached)),
+            vec![300_000, 450_000, 600_000]
+        );
+    }
+
+    #[test]
+    fn compaction_thresholds_stay_unchanged_without_a_selected_context() {
+        let official = official_model("swe-2-high", "SWE-2.1", "new-harness", 14, 15);
+        let payload = serialize_fields(&[official]).unwrap();
+        let fields = wire::parse_fields(&payload).unwrap();
+        let catalog = HarnessCatalog::from_fields(&fields).unwrap();
+
+        let attached = catalog.attach(&local_model("deepseek-flash")).unwrap();
+        assert_eq!(
+            compaction_values(&info(&attached)),
+            vec![100_000, 150_000, 200_000]
+        );
+    }
+
+    #[test]
+    fn compaction_is_omitted_when_the_source_context_is_unknown() {
+        let official =
+            official_model_with_context("swe-2-high", "SWE-2.1", "new-harness", 14, 15, 0);
+        let payload = serialize_fields(&[official]).unwrap();
+        let fields = wire::parse_fields(&payload).unwrap();
+        let catalog = HarnessCatalog::from_fields(&fields).unwrap();
+
+        let attached = catalog
+            .attach(&local_model_with_context("deepseek-flash", 600_000))
+            .unwrap();
+        assert!(first_field(&info(&attached), 26).is_none());
     }
 
     #[test]
