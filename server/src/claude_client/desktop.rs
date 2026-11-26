@@ -746,6 +746,7 @@ pub async fn process_running() -> bool {
     }
 }
 
+#[cfg(windows)]
 fn is_claude_desktop_process_line(line: &str) -> bool {
     line.split(',')
         .next()
@@ -954,6 +955,7 @@ mod tests {
     use super::*;
     use crate::claude_client::ownership::DesktopPolicy;
 
+    #[cfg(windows)]
     #[test]
     fn cowork_service_does_not_count_as_the_desktop_process() {
         assert!(is_claude_desktop_process_line(
