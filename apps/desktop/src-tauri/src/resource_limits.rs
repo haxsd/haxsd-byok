@@ -6,6 +6,11 @@ use std::io;
 #[cfg(unix)]
 pub(crate) const REQUESTED_OPEN_FILE_LIMIT: u64 = 65_536;
 
+/// macOS exposes `OPEN_MAX` in `sys/syslimits.h`, not through the `libc` crate.
+/// Beyond this value `setrlimit` returns `EINVAL` on macOS.
+#[cfg(target_os = "macos")]
+const MACOS_OPEN_MAX: libc::rlim_t = 10_240;
+
 #[cfg(unix)]
 pub(crate) struct OpenFileLimit {
     pub(crate) previous: u64,
@@ -26,7 +31,7 @@ pub(crate) fn raise_open_file_limit() -> io::Result<OpenFileLimit> {
 
     let previous = limits.rlim_cur;
     #[cfg(target_os = "macos")]
-    let max_requested = REQUESTED_OPEN_FILE_LIMIT.min(libc::OPEN_MAX as u64);
+    let max_requested = REQUESTED_OPEN_FILE_LIMIT.min(MACOS_OPEN_MAX as u64);
     #[cfg(not(target_os = "macos"))]
     let max_requested = REQUESTED_OPEN_FILE_LIMIT;
     let target = limits.rlim_max.min(max_requested as libc::rlim_t);
