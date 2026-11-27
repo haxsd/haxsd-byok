@@ -271,6 +271,10 @@ impl CodexGateway {
     }
 
     pub async fn status(&self) -> Result<CodexStatus> {
+        self.status_with_restore(Vec::new()).await
+    }
+
+    async fn status_with_restore(&self, restore_preserved: Vec<String>) -> Result<CodexStatus> {
         let settings = self.inner.store.codex_settings().await?;
         let home = settings.resolved_home()?;
         let inspected = config::inspect(&home, &self.inner.requirements);
@@ -332,6 +336,7 @@ impl CodexGateway {
             restorable,
             conflicts,
             managed_conflicts,
+            restore_preserved,
             conflict_kind,
             route_owned,
             managed_error,
@@ -495,8 +500,8 @@ impl CodexGateway {
             ));
         }
         let settings = self.inner.store.codex_settings().await?;
-        config::restore(&settings.resolved_home()?, &self.inner.requirements)?;
-        self.status().await
+        let restored = config::restore(&settings.resolved_home()?, &self.inner.requirements)?;
+        self.status_with_restore(restored.restore_preserved).await
     }
 
     pub async fn shutdown(&self) -> Result<()> {

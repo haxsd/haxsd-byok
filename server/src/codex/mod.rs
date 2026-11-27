@@ -114,6 +114,8 @@ pub struct CodexStatus {
     /// 管理员 requirements 中真正改变请求出口的要求；非空时本地文件即使与快照一致，
     /// 实际路由也不归本应用。
     pub managed_conflicts: Vec<ManagedRequirementConflict>,
+    /// 最近一次撤销因用户后来改过而保留的受管字段；普通状态读取为空。
+    pub restore_preserved: Vec<String>,
     /// 冲突的机器可读分类，见 `codex::config::ConfigStatus::conflict_kind`。
     pub conflict_kind: &'static str,
     /// 当前 provider/base_url/token 仍等于接管时发布的那一条。

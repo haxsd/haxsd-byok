@@ -229,10 +229,17 @@ export function CompactionSettingsCard({ visible }: { visible: boolean }) {
     }
   };
 
-  return <TitledCard title={t("上下文压缩")} action={editing ? <div className={styles.cardActions}>
-    <Button size="small" disabled={saving} onClick={cancel}>{t("取消")}</Button>
-    <Button size="small" variant="primary" disabled={saving || !draft} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
-  </div> : settings ? <Button size="small" onClick={edit}>{t("编辑")}</Button> : undefined}>
+  return <TitledCard
+    title={t("上下文压缩")}
+    description={t("会话接近上下文上限时自动摘要旧消息")}
+    action={editing ? <div className={styles.cardActions}>
+      <Button size="small" disabled={saving} onClick={cancel}>{t("取消")}</Button>
+      <Button size="small" variant="primary" disabled={saving || !draft} onClick={() => void save()}>{saving ? t("保存中…") : t("保存")}</Button>
+    </div> : settings ? <Button size="small" onClick={edit}>{t("编辑")}</Button> : undefined}
+    actionWhenCollapsed={false}
+    collapsible
+    storageKey="settings-compaction"
+  >
     <div className={styles.portSettings}>
       {editing && draft
         ? <CompactionSettingsFields draft={draft} models={models} disabled={saving} onChange={setDraft} />

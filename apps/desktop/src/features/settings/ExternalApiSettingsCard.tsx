@@ -103,9 +103,15 @@ export function ExternalApiSettingsCard({ visible }: { visible: boolean }) {
   const sampleModel = availableModelIds[0] ?? "<group>/<model_id>";
   const sampleCurl = `curl ${openaiBaseUrl}/chat/completions -H "Authorization: Bearer ${saved?.api_key || "<YOUR_KEY>"}" -H "Content-Type: application/json" -d '{"model":"${sampleModel}","messages":[{"role":"user","content":"Hi"}]}'`;
 
-  return <TitledCard title={t("外部 API")} action={actions}>
+  return <TitledCard
+    title={t("外部 API")}
+    description={t("让脚本或其他客户端通过 OpenAI / Anthropic 兼容接口使用同一套模型库。只监听本机，默认关闭。")}
+    action={actions}
+    actionWhenCollapsed={false}
+    collapsible
+    storageKey="settings-external-api"
+  >
     <div className={styles.content}>
-      <p className={styles.description}>{t("让脚本或其他客户端通过 OpenAI / Anthropic 兼容接口使用同一套模型库。只监听本机，默认关闭。")}</p>
       {editing ? <>
         <div className={styles.row}>
           <div><strong>{t("开启外部 API")}</strong><small>{t("关闭后，所有请求都会返回 403。")}</small></div>

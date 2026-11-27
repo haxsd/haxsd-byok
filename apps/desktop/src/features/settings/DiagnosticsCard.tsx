@@ -92,7 +92,12 @@ export function DiagnosticsCard({ visible }: { visible: boolean }) {
     }
   };
 
-  return <TitledCard title={t("诊断")} description={t("出问题时，把这里的信息和日志发给开发者")}>
+  return <TitledCard
+    title={t("诊断")}
+    description={t("出问题时，把这里的信息和日志发给开发者")}
+    collapsible
+    storageKey="settings-diagnostics"
+  >
     <div className={styles.runtimeRow}>
       <strong>{t("应用版本")}</strong>
       <small>{appInfo?.version ?? (appInfoError ? failed : loading)}</small>

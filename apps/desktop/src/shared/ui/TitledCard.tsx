@@ -18,7 +18,7 @@ import styles from "./TitledCard.module.scss";
  * card titles were the only thing on a page, so a reader had to open every card to
  * find out which one was worth opening.
  */
-export function TitledCard({ title, description, icon, badge, action, collapsible = false, storageKey, expanded, onToggle, children }: {
+export function TitledCard({ title, description, icon, badge, action, collapsible = false, storageKey, expanded, onToggle, actionWhenCollapsed = true, children }: {
   title: ReactNode;
   description?: ReactNode;
   icon?: IconifyIcon;
@@ -29,6 +29,8 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
   /** 受控展开状态；不传时沿用卡片自己记住的状态。 */
   expanded?: boolean;
   onToggle?: () => void;
+  /** 折叠时是否继续在标题栏显示 action；编辑按钮通常应随正文一起收起。 */
+  actionWhenCollapsed?: boolean;
   children: ReactNode;
 }) {
   const remembered = useUiPreferences().disclosure?.[storageKey ?? ""];
@@ -82,7 +84,7 @@ export function TitledCard({ title, description, icon, badge, action, collapsibl
         <span className={styles.chevron} data-open={open} aria-hidden="true"><Icon icon={chevronRightIcon} size="1em" /></span>
         {heading}
       </button>
-      {action}
+      {(open || actionWhenCollapsed) && action}
     </header>
     {open && children}
   </Card>;

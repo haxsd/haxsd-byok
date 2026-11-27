@@ -137,7 +137,14 @@ export function PricingSettingsCard() {
     >
       <p>{t("这会清空该模型在所有币种下的单价配置，相关用量将显示为未定价。")}</p>
     </ConfirmDialog>
-    <TitledCard title={t("模型定价")} action={actions}>
+    <TitledCard
+      title={t("模型定价")}
+      description={t("按模型单价估算用量费用")}
+      action={actions}
+      actionWhenCollapsed={false}
+      collapsible
+      storageKey="settings-pricing"
+    >
     <div className={styles.content}>
       <small className={styles.rule}>{t("按模型单价估算；未定价用量不计入金额。")}</small>
       <small className={styles.rule}>{t("价格币种跟随界面语言：中文用人民币，其它语言用美元，两套价格各自独立维护。")}</small>

@@ -120,7 +120,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     : 0;
   const freeBytes = storage?.database_free_bytes ?? 0;
   const conversationDetail = conversationDays > 0
-    ? t("{messages} 条消息 · {blobs} 个内容块；服务端副本闲置 {days} 天后自动回收", {
+    ? t("{messages} 条消息 · {blobs} 个内容块；客户端保留主副本，服务端续聊缓存闲置 {days} 天后自动回收", {
       messages: storage?.message_count ?? 0,
       blobs: storage?.blob_count ?? 0,
       days: conversationDays,
@@ -148,7 +148,12 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     : t("清理详细记录");
 
   return <>
-    <TitledCard title={t("存储管理")}>
+    <TitledCard
+      title={t("存储管理")}
+      description={t("占用、清理与数据库维护")}
+      collapsible
+      storageKey="settings-storage"
+    >
       <div className={styles.storageSummary}>
         <div>
           <span>{t("数据库文件")}</span>
@@ -187,7 +192,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
           label={t("对话与附件")}
           value={formatBytes(storage?.conversation_bytes ?? 0)}
           detail={conversationDetail}
-          tag={t("保留")}
+          tag={t("续聊缓存")}
           tagTone="idle"
         />
         <StorageRow

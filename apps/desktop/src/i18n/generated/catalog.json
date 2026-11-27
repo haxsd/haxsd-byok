@@ -163,7 +163,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 221,
+          "line": 226,
           "column": 163
         }
       ]
@@ -384,8 +384,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 235,
-          "column": 60
+          "line": 238,
+          "column": 62
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
@@ -633,7 +633,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 315,
+          "line": 320,
           "column": 17
         }
       ]
@@ -961,7 +961,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 212,
+          "line": 217,
           "column": 16
         }
       ]
@@ -1207,7 +1207,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 238,
+          "line": 243,
           "column": 18
         }
       ]
@@ -1248,8 +1248,8 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 151,
-          "column": 24
+          "line": 152,
+          "column": 14
         }
       ]
     },
@@ -1421,7 +1421,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 175,
+          "line": 180,
           "column": 18
         }
       ]
@@ -1652,12 +1652,12 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 111,
+          "line": 117,
           "column": 25
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 112,
+          "line": 118,
           "column": 68
         }
       ]
@@ -1710,7 +1710,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 211,
+          "line": 216,
           "column": 19
         }
       ]
@@ -1722,7 +1722,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 143,
+          "line": 149,
           "column": 93
         }
       ]
@@ -1992,7 +1992,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 97,
+          "line": 102,
           "column": 16
         }
       ]
@@ -2288,7 +2288,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 155,
+          "line": 160,
           "column": 88
         }
       ]
@@ -2398,7 +2398,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 291,
+          "line": 296,
           "column": 15
         }
       ]
@@ -2597,7 +2597,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 176,
+          "line": 181,
           "column": 18
         }
       ]
@@ -2717,7 +2717,7 @@
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
           "line": 108,
-          "column": 42
+          "column": 18
         }
       ]
     },
@@ -3455,7 +3455,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 181,
+          "line": 186,
           "column": 10
         }
       ]
@@ -3501,7 +3501,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 219,
+          "line": 224,
           "column": 16
         }
       ]
@@ -3654,8 +3654,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 233,
-          "column": 62
+          "line": 236,
+          "column": 64
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
@@ -3684,12 +3684,12 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 303,
+          "line": 308,
           "column": 100
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 312,
+          "line": 317,
           "column": 84
         },
         {
@@ -3841,6 +3841,22 @@
         }
       ]
     },
+    "2f46947df8581429": {
+      "source": "{messages} 条消息 · {blobs} 个内容块；客户端保留主副本，服务端续聊缓存闲置 {days} 天后自动回收",
+      "kind": "template",
+      "placeholders": [
+        "messages",
+        "blobs",
+        "days"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 123,
+          "column": 7
+        }
+      ]
+    },
     "2f4a361f878176d1": {
       "source": "{label} 必须是有效 JSON",
       "kind": "template",
@@ -3891,7 +3907,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 142,
+          "line": 149,
           "column": 39
         }
       ]
@@ -4029,7 +4045,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 154,
+          "line": 159,
           "column": 18
         }
       ]
@@ -4258,17 +4274,17 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 146,
+          "line": 153,
           "column": 27
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 146,
+          "line": 153,
           "column": 181
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 152,
+          "line": 159,
           "column": 46
         }
       ]
@@ -4550,7 +4566,7 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 241,
+          "line": 248,
           "column": 21
         },
         {
@@ -4905,12 +4921,12 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 218,
+          "line": 223,
           "column": 19
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 226,
+          "line": 231,
           "column": 74
         }
       ]
@@ -5591,7 +5607,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 293,
+          "line": 298,
           "column": 13
         }
       ]
@@ -5700,8 +5716,8 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 95,
-          "column": 29
+          "line": 96,
+          "column": 12
         },
         {
           "file": "features/settings/settingsNavigation.ts",
@@ -5819,7 +5835,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 126,
+          "line": 132,
           "column": 20
         }
       ]
@@ -5891,17 +5907,17 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 204,
+          "line": 209,
           "column": 16
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 227,
+          "line": 232,
           "column": 16
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 234,
+          "line": 239,
           "column": 16
         }
       ]
@@ -6234,12 +6250,12 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 216,
+          "line": 221,
           "column": 18
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 271,
+          "line": 276,
           "column": 22
         }
       ]
@@ -6385,22 +6401,6 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 75,
           "column": 70
-        }
-      ]
-    },
-    "491e42e030ccaeef": {
-      "source": "{messages} 条消息 · {blobs} 个内容块；服务端副本闲置 {days} 天后自动回收",
-      "kind": "template",
-      "placeholders": [
-        "messages",
-        "blobs",
-        "days"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 123,
-          "column": 7
         }
       ]
     },
@@ -6583,7 +6583,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 269,
+          "line": 274,
           "column": 58
         }
       ]
@@ -6818,7 +6818,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 133,
+          "line": 139,
           "column": 20
         }
       ]
@@ -6980,7 +6980,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 143,
+          "line": 149,
           "column": 103
         }
       ]
@@ -8020,7 +8020,7 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 156,
+          "line": 163,
           "column": 39
         }
       ]
@@ -8241,12 +8241,12 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 114,
+          "line": 120,
           "column": 27
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 140,
+          "line": 146,
           "column": 20
         }
       ]
@@ -8398,7 +8398,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 144,
+          "line": 150,
           "column": 69
         }
       ]
@@ -8753,7 +8753,7 @@
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 124,
+          "line": 130,
           "column": 46
         }
       ]
@@ -8820,7 +8820,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 314,
+          "line": 319,
           "column": 17
         }
       ]
@@ -8854,17 +8854,17 @@
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 129,
+          "line": 135,
           "column": 92
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 136,
+          "line": 142,
           "column": 98
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 144,
+          "line": 150,
           "column": 87
         }
       ]
@@ -9141,12 +9141,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 190,
-          "column": 16
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 197,
+          "line": 202,
           "column": 16
         }
       ]
@@ -9185,7 +9180,7 @@
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 124,
+          "line": 130,
           "column": 97
         }
       ]
@@ -9200,7 +9195,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 306,
+          "line": 311,
           "column": 13
         }
       ]
@@ -9229,7 +9224,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 157,
+          "line": 163,
           "column": 87
         }
       ]
@@ -9350,7 +9345,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 307,
+          "line": 312,
           "column": 13
         }
       ]
@@ -9386,7 +9381,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 185,
+          "line": 190,
           "column": 54
         }
       ]
@@ -9462,7 +9457,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 155,
+          "line": 160,
           "column": 76
         },
         {
@@ -9721,7 +9716,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 129,
+          "line": 135,
           "column": 69
         }
       ]
@@ -9781,7 +9776,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 121,
+          "line": 126,
           "column": 77
         }
       ]
@@ -9978,7 +9973,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 157,
+          "line": 163,
           "column": 66
         }
       ]
@@ -10451,12 +10446,12 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 148,
+          "line": 155,
           "column": 50
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 153,
+          "line": 160,
           "column": 123
         }
       ]
@@ -10897,7 +10892,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 283,
+          "line": 288,
           "column": 10
         }
       ]
@@ -11181,8 +11176,8 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 140,
-          "column": 24
+          "line": 141,
+          "column": 14
         },
         {
           "file": "features/settings/settingsNavigation.ts",
@@ -11432,8 +11427,8 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 106,
-          "column": 29
+          "line": 107,
+          "column": 12
         },
         {
           "file": "features/settings/settingsNavigation.ts",
@@ -11483,7 +11478,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 148,
+          "line": 154,
           "column": 21
         }
       ]
@@ -11581,7 +11576,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 174,
+          "line": 179,
           "column": 18
         }
       ]
@@ -11643,8 +11638,8 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 95,
-          "column": 51
+          "line": 97,
+          "column": 18
         }
       ]
     },
@@ -11681,6 +11676,18 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 63,
           "column": 69
+        }
+      ]
+    },
+    "8968e301451091da": {
+      "source": "会话接近上下文上限时自动摘要旧消息",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/CompactionSettingsCard.tsx",
+          "line": 234,
+          "column": 18
         }
       ]
     },
@@ -11744,7 +11751,7 @@
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 124,
+          "line": 130,
           "column": 86
         }
       ]
@@ -11876,7 +11883,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 240,
+          "line": 245,
           "column": 19
         }
       ]
@@ -11934,7 +11941,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 101,
+          "line": 106,
           "column": 16
         }
       ]
@@ -12018,7 +12025,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 154,
+          "line": 161,
           "column": 21
         }
       ]
@@ -12596,7 +12603,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 105,
+          "line": 110,
           "column": 16
         }
       ]
@@ -12620,7 +12627,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 111,
+          "line": 117,
           "column": 56
         }
       ]
@@ -12680,7 +12687,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 292,
+          "line": 297,
           "column": 15
         }
       ]
@@ -12818,7 +12825,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 252,
+          "line": 257,
           "column": 22
         }
       ]
@@ -12866,7 +12873,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 187,
+          "line": 192,
           "column": 18
         }
       ]
@@ -12956,7 +12963,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 144,
+          "line": 151,
           "column": 41
         }
       ]
@@ -13016,7 +13023,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 280,
+          "line": 285,
           "column": 10
         }
       ]
@@ -13340,7 +13347,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 312,
+          "line": 317,
           "column": 46
         }
       ]
@@ -13369,7 +13376,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 155,
+          "line": 162,
           "column": 99
         }
       ]
@@ -13771,7 +13778,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 262,
+          "line": 267,
           "column": 23
         }
       ]
@@ -13843,8 +13850,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 234,
-          "column": 122
+          "line": 237,
+          "column": 124
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
@@ -14223,12 +14230,12 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 146,
+          "line": 153,
           "column": 100
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 152,
+          "line": 159,
           "column": 122
         }
       ]
@@ -14481,7 +14488,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 250,
+          "line": 255,
           "column": 58
         }
       ]
@@ -14498,12 +14505,12 @@
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 149,
+          "line": 156,
           "column": 50
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 153,
+          "line": 160,
           "column": 222
         }
       ]
@@ -14515,12 +14522,12 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 201,
+          "line": 206,
           "column": 18
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 260,
+          "line": 265,
           "column": 22
         }
       ]
@@ -14712,7 +14719,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 316,
+          "line": 321,
           "column": 58
         }
       ]
@@ -14893,7 +14900,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 254,
+          "line": 259,
           "column": 23
         }
       ]
@@ -14905,7 +14912,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 194,
+          "line": 199,
           "column": 18
         }
       ]
@@ -14953,8 +14960,20 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 164,
+          "line": 169,
           "column": 14
+        }
+      ]
+    },
+    "ae88772e95c6441e": {
+      "source": "按模型单价估算用量费用",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/PricingSettingsCard.tsx",
+          "line": 142,
+          "column": 20
         }
       ]
     },
@@ -15301,7 +15320,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 226,
+          "line": 231,
           "column": 22
         }
       ]
@@ -15313,7 +15332,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 312,
+          "line": 317,
           "column": 107
         }
       ]
@@ -15771,7 +15790,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 156,
+          "line": 161,
           "column": 31
         }
       ]
@@ -15914,7 +15933,7 @@
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 122,
+          "line": 128,
           "column": 76
         },
         {
@@ -15924,7 +15943,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 299,
+          "line": 304,
           "column": 11
         },
         {
@@ -16102,7 +16121,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 114,
+          "line": 120,
           "column": 46
         }
       ]
@@ -16273,7 +16292,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 286,
+          "line": 291,
           "column": 10
         }
       ]
@@ -16514,8 +16533,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 232,
-          "column": 29
+          "line": 233,
+          "column": 12
         },
         {
           "file": "features/settings/settingsNavigation.ts",
@@ -16754,7 +16773,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 241,
+          "line": 246,
           "column": 16
         }
       ]
@@ -16778,7 +16797,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 231,
+          "line": 236,
           "column": 18
         }
       ]
@@ -16973,7 +16992,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 247,
+          "line": 252,
           "column": 19
         }
       ]
@@ -17064,7 +17083,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 209,
+          "line": 214,
           "column": 18
         }
       ]
@@ -17090,6 +17109,18 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 137,
           "column": 6
+        }
+      ]
+    },
+    "c3e798ca141ba52d": {
+      "source": "占用、清理与数据库维护",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 153,
+          "column": 20
         }
       ]
     },
@@ -17153,12 +17184,12 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 146,
+          "line": 153,
           "column": 149
         },
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 152,
+          "line": 159,
           "column": 137
         }
       ]
@@ -17271,7 +17302,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 121,
+          "line": 127,
           "column": 17
         }
       ]
@@ -17347,7 +17378,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 253,
+          "line": 258,
           "column": 22
         }
       ]
@@ -17700,7 +17731,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 145,
+          "line": 152,
           "column": 39
         }
       ]
@@ -17796,7 +17827,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 136,
+          "line": 142,
           "column": 72
         }
       ]
@@ -18371,7 +18402,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 152,
+          "line": 158,
           "column": 101
         }
       ]
@@ -18514,7 +18545,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 117,
+          "line": 122,
           "column": 16
         }
       ]
@@ -18933,7 +18964,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 170,
+          "line": 175,
           "column": 69
         }
       ]
@@ -19111,7 +19142,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 160,
+          "line": 166,
           "column": 21
         }
       ]
@@ -20046,7 +20077,7 @@
       "refs": [
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
-          "line": 117,
+          "line": 123,
           "column": 111
         }
       ]
@@ -20058,7 +20089,7 @@
       "refs": [
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 122,
+          "line": 127,
           "column": 80
         }
       ]
@@ -20149,7 +20180,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 206,
+          "line": 211,
           "column": 179
         }
       ]
@@ -20273,7 +20304,7 @@
       "refs": [
         {
           "file": "features/settings/PricingSettingsCard.tsx",
-          "line": 143,
+          "line": 150,
           "column": 39
         }
       ]
@@ -20512,7 +20543,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 113,
+          "line": 118,
           "column": 16
         }
       ]
@@ -20536,7 +20567,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 267,
+          "line": 272,
           "column": 23
         }
       ]
@@ -20794,7 +20825,7 @@
         },
         {
           "file": "features/settings/DiagnosticsCard.tsx",
-          "line": 109,
+          "line": 114,
           "column": 16
         }
       ]
@@ -21080,6 +21111,18 @@
           "file": "shell/commandPaletteCommands.ts",
           "line": 42,
           "column": 50
+        }
+      ]
+    },
+    "f416a960f79a43e4": {
+      "source": "续聊缓存",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 195,
+          "column": 16
         }
       ]
     },
@@ -21685,7 +21728,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 224,
+          "line": 229,
           "column": 18
         }
       ]
@@ -21729,7 +21772,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 162,
+          "line": 167,
           "column": 46
         }
       ]
@@ -21743,7 +21786,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 273,
+          "line": 278,
           "column": 23
         }
       ]
@@ -22036,8 +22079,8 @@
         },
         {
           "file": "features/settings/CompactionSettingsCard.tsx",
-          "line": 234,
-          "column": 110
+          "line": 237,
+          "column": 112
         },
         {
           "file": "features/settings/ExternalApiSettingsCard.tsx",
