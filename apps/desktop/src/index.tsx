@@ -10,7 +10,16 @@ import "./styles/globals.scss";
 
 initializeI18n();
 applyTheme(appStore.getSnapshot().theme);
-void appStore.refresh();
+/**
+ * 管理服务可能比 webview 晚几百毫秒起来。启动时的一次刷新如果正好撞上它启动，
+ * 失败后不会有人再拉数据，页面就会停在空数据/旧价格；这里做有限次退避重试。
+ */
+async function bootData(attempt = 0) {
+  if (await appStore.refresh()) return;
+  if (attempt >= 5) return;
+  window.setTimeout(() => void bootData(attempt + 1), 1_500);
+}
+void bootData();
 // 界面偏好（主题、语言、折叠、教程已读、待核对升级、宿主路径）现在存服务端：启动时读回来，
 // 首次会把旧 localStorage 里那份一次性搬上去（见 shared/store/uiPreferences.ts）。
 // 管理服务可能比 webview 晚几百毫秒起来；失败后定时重试，语言/主题才不会一直停在默认值，

@@ -34,6 +34,13 @@ pub const DRAIN_BUDGET: Duration = Duration::from_secs(10);
 /// 上面两段之外再留的余量：文件写入与 SQLite 无法逐一给出超时，得给它们一个上界。
 const SHUTDOWN_BUDGET_MARGIN: Duration = Duration::from_secs(5);
 
+/// 启动后的第一轮存储维护延迟。
+///
+/// 维护循环的第一拍会立刻执行；如果数据库正好需要整库压缩，`VACUUM` 会占住写锁
+/// 十几秒，而桌面页恰在此时发首屏请求，表现就是"打开应用后要刷新很久才正常"。
+/// 先让首屏把数据读出来，再在没有活跃请求时做维护。
+const STORAGE_MAINTENANCE_STARTUP_GRACE: Duration = Duration::from_secs(15);
+
 /// 桌面壳等 `serve_on` 返回的上界。
 ///
 /// 壳一到点就 `app.exit(0)`（tauri 直接 `process::exit`，不 drop 任何任务），所以它必须
@@ -241,6 +248,8 @@ impl App {
 
         let storage_wake = registry.store().storage_wake();
         let maintenance = async {
+            // 首屏先读数据；否则启动第一拍的整库压缩会和首屏请求抢写锁。
+            tokio::time::sleep(STORAGE_MAINTENANCE_STARTUP_GRACE).await;
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
