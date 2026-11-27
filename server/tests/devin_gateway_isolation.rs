@@ -275,6 +275,11 @@ async fn model_assignment_is_answered_locally_and_unknown_methods_go_upstream() 
 async fn a_disabled_gateway_binds_no_port_and_leaves_cursor_serving() {
     let (_directory, store) = fixtures::temp_store().await;
     let provider: Arc<dyn Provider> = Arc::new(fake_provider::FakeProvider::default());
+    // The disabled gateway never binds, so it cannot use Gateway::start's retry
+    // loop. Hold the same startup lock while selecting and checking the ports;
+    // otherwise a parallel test can claim them after free_ports() releases them,
+    // and this test observes the other gateway as a false "disabled port" failure.
+    let _guard = STARTUP_LOCK.lock().await;
     let (api_port, inference_port, local_api_port) = free_ports();
     // Default settings are disabled, which is what a fresh install looks like.
     let mut configured = settings(api_port, inference_port, local_api_port);
