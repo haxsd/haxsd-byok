@@ -128,6 +128,12 @@ export function DevinSettingsPage() {
   // page should read as two decisions per mapping, not as a form of five fields.
   const [expandedBindings, setExpandedBindings] = useState<Record<string, boolean>>({});
   const devinStatus = useAppStoreSelector((state) => state.devinStatus);
+  // 普通模式不展开内部路径；只有排障信息存在时，才把同一份技术详情作为诊断入口
+  // 显示出来，避免页面提示“查看技术详情”却没有任何可看的内容。
+  const showTechnicalDetails = developerMode
+    || Boolean(hostFailure)
+    || Boolean(hostStatus?.message)
+    || Boolean(hostStatus?.extension.message);
 
   const persistHostPath = (value: string) => {
     if (hostPathSaveTimer.current !== null) {
@@ -664,7 +670,7 @@ export function DevinSettingsPage() {
           <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
-      {developerMode && <details className={styles.technical}>
+      {showTechnicalDetails && <details className={styles.technical}>
         <summary>{t("技术详情")}</summary>
         <div className={styles.technicalBody}>
           {hostStatus?.path && <p>{t("设置文件：{path}", { path: hostStatus.path })}</p>}
