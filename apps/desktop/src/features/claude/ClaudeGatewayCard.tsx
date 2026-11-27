@@ -66,8 +66,6 @@ export function ClaudeGatewayCard({
     title={t("本机网关")}
     description={t("Claude 使用这个网关")}
     icon={providerIcon}
-    collapsible
-    storageKey="claude-gateway"
     badge={status
       ? <StatusPill tone={listening ? "ok" : status.enabled ? "warn" : "idle"}>
         {listening ? t("已监听") : status.enabled ? t("未监听") : t("未启用")}
@@ -126,82 +124,91 @@ export function ClaudeGatewayCard({
         </FormField>
       </div>
 
-      <div className={styles.fields}>
-        <FormField label={t("Sonnet 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
-          <ModelSelect
-            mode="single"
-            label={t("选择 Sonnet 别名模型")}
-            options={claudeAliasOptions(models, selectedHashes)}
-            value={draft?.sonnet_model_hash ?? ""}
-            disabled={!draft || busy}
-            onChange={(hash) => { if (draft) onChange({ ...draft, sonnet_model_hash: hash || null }); }}
-          />
-        </FormField>
-        <FormField label={t("Opus 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
-          <ModelSelect
-            mode="single"
-            label={t("选择 Opus 别名模型")}
-            options={claudeAliasOptions(models, selectedHashes)}
-            value={draft?.opus_model_hash ?? ""}
-            disabled={!draft || busy}
-            onChange={(hash) => { if (draft) onChange({ ...draft, opus_model_hash: hash || null }); }}
-          />
-        </FormField>
-        <FormField label={t("Haiku 别名")} hint={t("客户端按家族请求时使用；留空回落到默认模型")}>
-          <ModelSelect
-            mode="single"
-            label={t("选择 Haiku 别名模型")}
-            options={claudeAliasOptions(models, selectedHashes)}
-            value={draft?.haiku_model_hash ?? ""}
-            disabled={!draft || busy}
-            onChange={(hash) => { if (draft) onChange({ ...draft, haiku_model_hash: hash || null }); }}
-          />
-        </FormField>
-      </div>
+      <details className={styles.advanced}>
+        <summary>
+          <strong>{t("高级")}</strong>
+          <span>{t("Sonnet 别名")} / {t("Opus 别名")} / {t("Haiku 别名")} · {t("网关地址")} · {t("访问令牌")}</span>
+        </summary>
+        <div className={styles.advancedBody}>
+          <p className={styles.note}>{t("客户端按家族请求时使用；留空回落到默认模型")}</p>
+          <div className={styles.fields}>
+            <FormField label={t("Sonnet 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Sonnet 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.sonnet_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, sonnet_model_hash: hash || null }); }}
+              />
+            </FormField>
+            <FormField label={t("Opus 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Opus 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.opus_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, opus_model_hash: hash || null }); }}
+              />
+            </FormField>
+            <FormField label={t("Haiku 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Haiku 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.haiku_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, haiku_model_hash: hash || null }); }}
+              />
+            </FormField>
+          </div>
 
-      <div className={styles.facts}>
-        <div className={styles.fact}>
-          <Icon icon={terminalIcon} size="1.1em" />
-          <div>
-            <strong>{t("网关地址")}</strong>
-            <span className={styles.copyValue}>
-              <code>{status?.base_url || t("读取中…")}</code>
-              <TooltipTrigger label={t("复制网关地址")}>
-                <button
-                  type="button"
-                  aria-label={t("复制网关地址")}
-                  disabled={!status?.base_url}
-                  onClick={() => onCopy(status?.base_url ?? "", t("网关地址已复制"))}
-                ><Icon icon={copyIcon} size="1em" /></button>
-              </TooltipTrigger>
-            </span>
+          <div className={styles.facts}>
+            <div className={styles.fact}>
+              <Icon icon={terminalIcon} size="1.1em" />
+              <div>
+                <strong>{t("网关地址")}</strong>
+                <span className={styles.copyValue}>
+                  <code>{status?.base_url || t("读取中…")}</code>
+                  <TooltipTrigger label={t("复制网关地址")}>
+                    <button
+                      type="button"
+                      aria-label={t("复制网关地址")}
+                      disabled={!status?.base_url}
+                      onClick={() => onCopy(status?.base_url ?? "", t("网关地址已复制"))}
+                    ><Icon icon={copyIcon} size="1em" /></button>
+                  </TooltipTrigger>
+                </span>
+              </div>
+            </div>
+            <div className={styles.fact}>
+              <Icon icon={keyIcon} size="1.1em" />
+              <div>
+                <strong>{t("访问令牌")}</strong>
+                <span className={styles.copyValue}>
+                  <code>{status?.token || t("读取中…")}</code>
+                  <TooltipTrigger label={t("复制 token")}>
+                    <button
+                      type="button"
+                      aria-label={t("复制 token")}
+                      disabled={!status?.token}
+                      onClick={() => onCopy(status?.token ?? "", t("token 已复制"))}
+                    ><Icon icon={copyIcon} size="1em" /></button>
+                  </TooltipTrigger>
+                  <Button
+                    size="small"
+                    disabled={!status?.token || rotating || busy || rotateBlockedReason !== null}
+                    title={rotateBlockedReason ?? undefined}
+                    onClick={onRotate}
+                  >{rotating ? t("轮换中…") : t("重新生成")}</Button>
+                </span>
+                {rotateBlockedReason && <small className={styles.rotateHint}>{rotateBlockedReason}</small>}
+              </div>
+            </div>
           </div>
         </div>
-        <div className={styles.fact}>
-          <Icon icon={keyIcon} size="1.1em" />
-          <div>
-            <strong>{t("访问令牌")}</strong>
-            <span className={styles.copyValue}>
-              <code>{status?.token || t("读取中…")}</code>
-              <TooltipTrigger label={t("复制 token")}>
-                <button
-                  type="button"
-                  aria-label={t("复制 token")}
-                  disabled={!status?.token}
-                  onClick={() => onCopy(status?.token ?? "", t("token 已复制"))}
-                ><Icon icon={copyIcon} size="1em" /></button>
-              </TooltipTrigger>
-              <Button
-                size="small"
-                disabled={!status?.token || rotating || busy || rotateBlockedReason !== null}
-                title={rotateBlockedReason ?? undefined}
-                onClick={onRotate}
-              >{rotating ? t("轮换中…") : t("重新生成")}</Button>
-            </span>
-            {rotateBlockedReason && <small className={styles.rotateHint}>{rotateBlockedReason}</small>}
-          </div>
-        </div>
-      </div>
+      </details>
 
       <div className={styles.gatewayFooter}>
         <span>{t("可发现 {count} 个模型", { count: status?.models ?? 0 })}</span>

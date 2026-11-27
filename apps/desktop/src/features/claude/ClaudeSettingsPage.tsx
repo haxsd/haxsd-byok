@@ -216,7 +216,6 @@ export function ClaudeSettingsPage() {
         action={<>
           {claudeTakeover?.desktop.state === "conflict" && <Button size="small" disabled={busy !== null || claudeTakeover.desktop.running} onClick={() => setConfirmForce(true)}>{t("强制接管")}</Button>}
           {gate.undo && <Button size="small" disabled={busy !== null} onClick={undoDesktop}>{t("撤销 Claude 接管")}</Button>}
-          {view.state === "taken-over" && gate.apply && !dirty && !desktopModelsDirty && <Button size="small" disabled={busy !== null} onClick={applyDesktop}>{t("重新应用")}</Button>}
           <Button size="small" variant="primary" disabled={primaryAction.disabled} onClick={primaryAction.run}>{primaryAction.label}</Button>
         </>}
       />
@@ -237,11 +236,9 @@ export function ClaudeSettingsPage() {
       rotateBlockedReason={rotation.reason}
     />
     <TitledCard
-      title={t("接管 Claude")}
-      description={t("只写 Claude 自己的第三方推理 profile；网关设置共用")}
+      title="Claude Desktop"
+      description={t("Desktop 模型列表")}
       icon={terminalIcon}
-      collapsible
-      storageKey="claude-desktop"
       action={busy?.scope === "desktop"
         ? <StatusPill tone="warn">{t("应用中…")}</StatusPill>
         : desktopModelsDirty ? <StatusPill tone="warn">{t("待重新应用")}</StatusPill> : undefined}
@@ -283,7 +280,7 @@ export function ClaudeSettingsPage() {
         status={<StatusPill tone={view.tone}>{view.label}</StatusPill>}
         meta={t("把 Claude 的模型请求接到本机网关")}
       />}
-      sections={[{ key: "claude", estimatedHeight: 1080, content }]}
+      sections={[{ key: "claude", estimatedHeight: 900, content }]}
     />
   </>;
 }

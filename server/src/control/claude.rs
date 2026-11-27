@@ -222,7 +222,13 @@ pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
                     }
                 }
                 Ok(status) if take_over(&status.state, status.restorable) => {
-                    match claude_desktop::undo(&paths, &state_dir, &policy, false) {
+                    match claude_desktop::undo(
+                        &paths,
+                        &state_dir,
+                        &policy,
+                        false,
+                        gateway_values.as_ref(),
+                    ) {
                         Ok(_) => {
                             tracing::info!("restored the Claude Desktop profile during shutdown");
                         }
@@ -259,7 +265,7 @@ pub async fn restore_on_forced_exit() -> bool {
     if !take_over(&status.state, status.restorable) {
         return false;
     }
-    claude_desktop::undo(&paths, &state_dir, &policy, false).is_ok()
+    claude_desktop::undo(&paths, &state_dir, &policy, false, None).is_ok()
 }
 
 fn take_over(state: &TakeoverState, restorable: bool) -> bool {
@@ -303,6 +309,7 @@ async fn takeover_desktop(
             &state_dir,
             &policy,
             state.takeover.desktop_running().await,
+            Some(&facts.gateway_values()),
         )?,
     };
     Ok(Json(status))

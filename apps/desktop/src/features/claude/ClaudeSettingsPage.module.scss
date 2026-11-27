@@ -135,7 +135,7 @@
 
 .tabHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
@@ -143,6 +143,7 @@
 .tabHeader > div { min-width: 0; display: grid; gap: 4px; }
 .tabHeader strong { font-size: type.$font-size-base; }
 .tabHeader small { color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; }
+.tabLead { min-width: 0; }
 
 .headerBadges {
   display: flex;
@@ -172,6 +173,61 @@
   font-size: type.$font-size-xs;
   overflow-wrap: anywhere;
 }
+
+/* 安装/运行/配置来源只保留三枚摘要；路径与备份收进技术详情。 */
+.summaryFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+}
+
+.summaryFacts > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--oa-border);
+  border-radius: 999px;
+  background: var(--vscode-list-hoverBackground);
+}
+
+.summaryFacts dt { color: var(--vscode-descriptionForeground); font-size: type.$font-size-2xs; }
+.summaryFacts dd { margin: 0; font-size: type.$font-size-xs; }
+
+/* 高级内容默认折叠，避免把地址、令牌和别名一次铺满页面。 */
+.advanced {
+  margin: 0 16px 14px;
+  border-top: 1px solid var(--oa-border);
+}
+
+.settingsBody .advanced { margin-left: 0; margin-right: 0; }
+
+.advanced summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  color: var(--vscode-descriptionForeground);
+  font-size: type.$font-size-xs;
+  list-style: none;
+  cursor: pointer;
+
+  &::-webkit-details-marker { display: none; }
+  &::before { content: "›"; color: var(--vscode-descriptionForeground); font-size: type.$font-size-base; line-height: 1; }
+  &:hover { color: var(--vscode-foreground); }
+  &:focus-visible { outline: none; box-shadow: var(--oa-focus-ring); }
+}
+
+.advanced[open] > summary::before { transform: rotate(90deg); }
+.advanced summary strong { color: var(--vscode-foreground); font-weight: type.$font-weight-semibold; }
+.advanced summary span { min-width: 0; font-size: type.$font-size-2xs; overflow-wrap: anywhere; }
+.advancedBody { display: grid; gap: 10px; padding-bottom: 4px; }
+.advancedBody .fields { padding: 0 0 12px; }
+.advancedBody .facts { padding: 0 0 12px; }
 
 /* ---- 冲突 / 阻断 ---- */
 .conflict,

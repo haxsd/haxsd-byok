@@ -271,8 +271,15 @@ pub fn inspect(
         {
             if let Some(text) = read_optional(profile)? {
                 profile_present = true;
-                profile_matches = content_hash(&text) == receipt.applied_profile_hash;
-                if profile_matches {
+                let exact_match = content_hash(&text) == receipt.applied_profile_hash;
+                let sealed_match = !exact_match
+                    && profile_matches_sealed(
+                        &text,
+                        &receipt.applied_profile_hash,
+                        gateway.map(|gateway| gateway.token),
+                    );
+                profile_matches = exact_match || sealed_match;
+                if profile_matches && exact_match {
                     if let Some(gateway) = gateway {
                         profile_gateway_matches = profile_points_at(&text, gateway);
                     }
@@ -583,6 +590,7 @@ pub fn undo(
     state_dir: &Path,
     policy: &super::ownership::DesktopPolicy,
     running: bool,
+    gateway: Option<&GatewayValues>,
 ) -> Result<DesktopTakeoverStatus> {
     if running {
         // 运行中不写客户端文件，也不做中断恢复；有收据或写前日志时都要求先退出。
@@ -627,8 +635,16 @@ pub fn undo(
 
     let mut kept = Vec::new();
     // profile 被用户改过就不再是我们的文件：保留它和条目，只报告，不静默删除。
+    // Claude Desktop 自己把令牌密封不算用户改动，和 inspect 使用同一判定。
     if let Some(text) = read_optional(profile)? {
-        if content_hash(&text) != receipt.applied_profile_hash {
+        let exact_match = content_hash(&text) == receipt.applied_profile_hash;
+        if !exact_match
+            && !profile_matches_sealed(
+                &text,
+                &receipt.applied_profile_hash,
+                gateway.map(|gateway| gateway.token),
+            )
+        {
             kept.push(TakeoverConflict::new(
                 "undo_kept_profile",
                 "the gateway profile changed after the takeover; undo kept it and the configLibrary entry",
@@ -893,6 +909,35 @@ fn profile_value(route: &DesktopRoute) -> Result<Value> {
     }))
 }
 
+/// Claude Desktop 启动后会把我们写入的明文网关令牌替换成 `__sealed__:` 加密值。
+/// 这是客户端自己的规范化，不是用户修改 profile；只要其余字段与接管时完全一致，
+/// 重新用当前令牌替换密封值后应该得到原来的 profile。否则仍按冲突处理。
+fn profile_matches_sealed(text: &str, applied_hash: &str, token: Option<&str>) -> bool {
+    let Some(token) = token else {
+        return false;
+    };
+    let Ok(mut profile) = parse_json(text) else {
+        return false;
+    };
+    let Some(key) = profile
+        .get("inferenceGatewayApiKey")
+        .and_then(Value::as_str)
+    else {
+        return false;
+    };
+    if !key.starts_with("__sealed__:") {
+        return false;
+    }
+    let Some(object) = profile.as_object_mut() else {
+        return false;
+    };
+    object.insert(
+        "inferenceGatewayApiKey".to_owned(),
+        Value::String(token.to_owned()),
+    );
+    pretty(&profile).is_ok_and(|reconstructed| content_hash(&reconstructed) == applied_hash)
+}
+
 /// profile 里的网关入口、令牌与模型列表是否仍对应当前网关。解析失败按不匹配处理：
 /// 文件哈希仍对得上时它只可能是损坏或手改，状态会显示 stale 让用户重新应用。
 fn profile_points_at(text: &str, gateway: &GatewayValues) -> bool {
@@ -1013,6 +1058,7 @@ mod tests {
                 self.state.path(),
                 &DesktopPolicy::default(),
                 false,
+                None,
             )
             .unwrap()
         }
@@ -1091,6 +1137,59 @@ mod tests {
         assert_eq!(models[0]["anthropicFamilyTier"], "sonnet");
         assert_eq!(models[1]["name"], "claude-opus-hash");
         assert_eq!(models[1]["anthropicFamilyTier"], "opus");
+    }
+
+    #[test]
+    fn claude_sealing_the_gateway_key_is_not_a_profile_conflict_and_undo_still_works() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile_path = fixture.paths.profile(&uuid);
+        let mut sealed = fixture.profile(&uuid);
+        sealed["inferenceGatewayApiKey"] = serde_json::json!("__sealed__:v1:test-sealed-value");
+        fs::write(
+            &profile_path,
+            format!("{}\n", serde_json::to_string_pretty(&sealed).unwrap()),
+        )
+        .unwrap();
+
+        let hashes = model_hashes(&["sonnet-hash", "opus-hash"]);
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "local-test-token",
+            available: true,
+            model_hashes: &hashes,
+        };
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            Some(&gateway),
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        assert!(
+            !status
+                .conflicts
+                .iter()
+                .any(|conflict| conflict.code == "profile_modified"),
+            "Claude sealing the token must not be treated as a user edit"
+        );
+
+        let status = undo(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            Some(&gateway),
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(
+            !profile_path.exists(),
+            "undo removes the sealed profile we wrote"
+        );
     }
 
     #[test]
@@ -1234,6 +1333,7 @@ mod tests {
             fixture.state.path(),
             &DesktopPolicy::default(),
             true,
+            None,
         )
         .unwrap_err();
         assert!(error.to_string().contains("quit Claude Desktop"), "{error}");
@@ -1383,6 +1483,7 @@ mod tests {
             fixture.state.path(),
             &DesktopPolicy::default(),
             false,
+            None,
         )
         .unwrap_err();
         assert!(error.to_string().contains("belongs to"), "{error}");

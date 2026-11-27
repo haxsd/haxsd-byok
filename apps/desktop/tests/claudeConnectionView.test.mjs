@@ -357,7 +357,20 @@ test("the guided view lists the exact fields Claude Desktop asks for", async () 
 test("a running Claude Desktop is called out and cannot be applied or undone", async () => {
   const { ClaudeDesktopTab } = await loader.load("/src/features/claude/ClaudeDesktopTab.tsx");
   const { claudeActionGate } = await loadClaude();
-  const running = { ...takeover.desktop, state: "applied", restorable: true, running: true };
+  const running = {
+    ...takeover.desktop,
+    state: "applied",
+    restorable: true,
+    running: true,
+    conflicts: [
+      {
+        code: "desktop_running",
+        key: null,
+        message: "quit Claude Desktop before changing its configuration",
+        blocking: true,
+      },
+    ],
+  };
   const gate = claudeActionGate(gateInput({ takeover: { desktop: running } }));
   const markup = await renderWithTooltip(createElement(ClaudeDesktopTab, {
     draft: settings,
@@ -377,6 +390,7 @@ test("a running Claude Desktop is called out and cannot be applied or undone", a
   assert.match(markup, /Claude Desktop 正在运行，请先完全退出。/);
   assert.match(markup, /已接管/, "the configuration state stays visible while running");
   assert.match(markup, /正在运行/, "running is shown as its own condition");
+  assert.doesNotMatch(markup, /冲突与阻断/, "running is not a configuration conflict");
   assert.equal(gate.apply, false);
   assert.equal(gate.undo, false, "the server refuses undo while the client is running");
   assert.doesNotMatch(markup, /应用接管<\/button>/, "takeover commands belong to the page header");

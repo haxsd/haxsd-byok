@@ -13,8 +13,11 @@ import styles from "./ClaudeSettingsPage.module.scss";
  * `takeover_stale` 提示里自己推断。
  */
 export function ClaudeConflictList({ conflicts, stale = false }: { conflicts: ClaudeTakeoverConflict[]; stale?: boolean }) {
-  const { blocking, hints } = claudeConflictGroups(conflicts);
-  if (!conflicts.length && !stale) return null;
+  // `desktop_running` 是“客户端开着，暂时不能写”的运行条件，不是配置冲突；
+  // 它由 ClaudeDesktopTab 的独立提示区表达，不能在这里再渲染成红色冲突。
+  const visible = conflicts.filter((conflict) => conflict.code !== "desktop_running");
+  const { blocking, hints } = claudeConflictGroups(visible);
+  if (!visible.length && !stale) return null;
 
   return <>
     {stale && <section className={styles.stale} aria-label={t("配置已过期")}>

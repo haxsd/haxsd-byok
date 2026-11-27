@@ -67,17 +67,14 @@ export function ClaudeDesktopTab({
 
   return <div className={styles.tab}>
     <div className={styles.tabHeader}>
-      <div>
-        <strong>Claude Desktop</strong>
-        <small>{claudeTakeoverDescription(takeover?.state ?? null)}</small>
-      </div>
+      <small className={styles.tabLead}>{claudeTakeoverDescription(takeover?.state ?? null)}</small>
       {takeover && <span className={styles.headerBadges}>
         <StatusPill tone={claudeTakeoverStateTone(takeover.state)}>{claudeTakeoverStateLabel(takeover.state)}</StatusPill>
         {running && <StatusPill tone="warn">{t("正在运行")}</StatusPill>}
       </span>}
     </div>
 
-    <dl className={styles.factList}>
+    <dl className={styles.summaryFacts}>
       <div>
         <dt>{t("安装状态")}</dt>
         <dd>{takeover
@@ -94,15 +91,23 @@ export function ClaudeDesktopTab({
         <dt>{t("配置来源")}</dt>
         <dd>{takeover ? claudeConfigSourceLabel(takeover.config_source) : t("读取中…")}</dd>
       </div>
-      <div>
-        <dt>{t("profile 路径")}</dt>
-        <dd>{takeover?.profile_path ? <code>{takeover.profile_path}</code> : t("未检测到")}</dd>
-      </div>
-      <div>
-        <dt>{t("备份")}</dt>
-        <dd>{takeover?.backup_path ? <code>{takeover.backup_path}</code> : t("还没有接管备份")}</dd>
-      </div>
     </dl>
+
+    <details className={styles.advanced}>
+      <summary>{t("技术详情")}</summary>
+      <div className={styles.advancedBody}>
+        <dl className={styles.factList}>
+          <div>
+            <dt>{t("profile 路径")}</dt>
+            <dd>{takeover?.profile_path ? <code>{takeover.profile_path}</code> : t("未检测到")}</dd>
+          </div>
+          <div>
+            <dt>{t("备份")}</dt>
+            <dd>{takeover?.backup_path ? <code>{takeover.backup_path}</code> : t("还没有接管备份")}</dd>
+          </div>
+        </dl>
+      </div>
+    </details>
 
     <ClaudeConflictList conflicts={takeover?.conflicts ?? []} stale={takeover?.state === "stale"} />
 
@@ -118,8 +123,10 @@ export function ClaudeDesktopTab({
 
     {running && <section className={styles.blocker} role="alert">
       <strong>{t("先完全退出 Claude Desktop")}</strong>
-      <small>{t("它正在运行，配置文件可能被占用。请从托盘或任务管理器完全退出（不是只关窗口），再回到这里应用。")}</small>
+      <small>{t("Claude Desktop 正在运行，请先完全退出。")} {t("它正在运行，配置文件可能被占用。请从托盘或任务管理器完全退出（不是只关窗口），再回到这里应用。")}</small>
     </section>}
+
+    {!running && !gate.apply && gate.applyBlockedReason && <p className={styles.note}>{gate.applyBlockedReason}</p>}
 
     {guided
       ? <section className={styles.section} aria-label={t("手工配置引导")}>
@@ -205,17 +212,6 @@ export function ClaudeDesktopTab({
               </div>
             </li>)}
           </ol>}
-
-        <section className={styles.section} aria-label={t("撤销接管")}>
-          <div className={styles.sectionHeading}>
-            <strong>{t("撤销会移除本应用写入的内容")}</strong>
-            <small>{t("撤销移除本应用写入的 profile 与 configLibrary 条目，并还原原来的 appliedId；你之后改过 profile 时会保留并报告，不会静默删除。")}</small>
-          </div>
-        </section>
-
-        <div className={styles.actions}>
-          {!gate.apply && gate.applyBlockedReason && <small>{gate.applyBlockedReason}</small>}
-        </div>
       </section>}
 
     {error != null && <p className={styles.error} role="alert">{writeFailureText(error)}</p>}
