@@ -101,6 +101,7 @@ function storageFixture() {
     observability_bytes: 1024,
     call_record_bytes: 768,
     call_detail_bytes: 256,
+    call_detail_retention_days: 3,
     call_count: 3,
     trace_count: 0,
     database_bytes: 2048,

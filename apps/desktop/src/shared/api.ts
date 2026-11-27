@@ -464,6 +464,8 @@ export interface StatisticsStorage {
   call_detail_bytes: number;
   /** 清空调用历史会回收的估算总量。 */
   observability_bytes: number;
+  /** 请求/响应明细的自动回收窗口（天）：只读，来自服务端的回收常量。 */
+  call_detail_retention_days: number;
   call_count: number;
   trace_count: number;
   /** 对话消息正文与内容块正文的估算大小；清理统计不碰它们。 */

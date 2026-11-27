@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type StatisticsStorage, type StatisticsStorageScope } from "../../shared/api";
-import { appStore } from "../../shared/store/appStore";
+import { appStore, useAppStoreSelector } from "../../shared/store/appStore";
 import { Button } from "../../shared/ui/Button";
 import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
+import { StatusPill } from "../../shared/ui/StatusPill";
 import { TitledCard } from "../../shared/ui/TitledCard";
 import { browserTimers, type PollTimers } from "../../shared/utils/pollTimers";
 import { loadWhenVisible } from "../../shared/utils/visibleLoad";
 import { loadStatisticsStorage } from "./settingsLoaders";
-import { clearingCounter, formatBytes, hasWebCache, LOG_RETENTION_DAYS, retentionDays, storageHint } from "./storageHint";
+import { clearingCounter, formatBytes, hasWebCache, LOG_RETENTION_DAYS, retentionDays } from "./storageHint";
 import styles from "./SettingsPage.module.scss";
 
 /** 清理或压缩在服务端后台跑：完成之前每隔这么久问一次进度。 */
 const CLEAR_POLL_MS = 1_500;
 
 export function StorageSettingsCard({ visible, timers = browserTimers }: { visible: boolean; timers?: PollTimers }) {
+  const developerMode = useAppStoreSelector((state) => state.developerMode);
   const [storage, setStorage] = useState<StatisticsStorage | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 轮询失败与操作失败分开：轮询成功后要能自己消失，不能把上一次操作的真实错误一起清掉。
@@ -97,8 +99,8 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     finally { setBusy(false); }
   };
 
-  const hint = storage ? storageHint(storage) : null;
   const conversationDays = retentionDays(storage?.conversation_retention_days);
+  const callDetailDays = retentionDays(storage?.call_detail_retention_days);
   const artifactDays = retentionDays(storage?.artifact_retention_days);
   const progress = clearing ? clearingCounter(clearingScope, clearing) : 0;
   const maintenanceActive = Boolean(clearing || storage?.compaction_requested || storage?.compacting);
@@ -116,6 +118,7 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
   const usedPercent = totalBytes > 0
     ? Math.min(100, Math.max(0, Math.round((usedBytes / totalBytes) * 100)))
     : 0;
+  const freeBytes = storage?.database_free_bytes ?? 0;
   const conversationDetail = conversationDays > 0
     ? t("{messages} 条消息 · {blobs} 个内容块；服务端副本闲置 {days} 天后自动回收", {
       messages: storage?.message_count ?? 0,
@@ -125,6 +128,16 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
     : t("{messages} 条消息 · {blobs} 个内容块", {
       messages: storage?.message_count ?? 0,
       blobs: storage?.blob_count ?? 0,
+    });
+  const callDetail = callDetailDays > 0
+    ? t("{calls} 次调用 · {traces} 条追踪；请求/响应明细保留 {days} 天后自动回收", {
+      calls: storage?.call_count ?? 0,
+      traces: storage?.trace_count ?? 0,
+      days: callDetailDays,
+    })
+    : t("{calls} 次调用 · {traces} 条追踪", {
+      calls: storage?.call_count ?? 0,
+      traces: storage?.trace_count ?? 0,
     });
   const artifactDetail = artifactDays > 0
     ? t("随会话一起回收；没有引用的文件最多再留 {days} 天", { days: artifactDays })
@@ -152,9 +165,12 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
             free: formatBytes(storage.database_free_bytes),
           })}</small>}
         </div>
-        <Button size="small" disabled={!canCompact} onClick={() => { setError(null); setCompactOpen(true); }}>
-          {t("压缩数据库")}
-        </Button>
+        <div className={styles.storageSummaryActions}>
+          {storage && <StatusPill tone="ok">{t("自动维护已开启")}</StatusPill>}
+          {canCompact && <Button size="small" onClick={() => { setError(null); setCompactOpen(true); }}>
+            {t("压缩数据库")}
+          </Button>}
+        </div>
       </div>
 
       {storage && <>
@@ -168,57 +184,101 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
         </div>
       </>}
 
-      {hint && <p className={styles.storageHint} role="status">
-        {hint === "reclaim-space"
-          ? t("这 {size} 是数据删除后留下的空闲页，不是仍在使用的数据；清理不会让文件更小，压缩数据库才会归还磁盘。", { size: formatBytes(storage?.database_free_bytes ?? 0) })
-          : t("可清理的观测数据约 {size}。清理详细记录或清空调用历史只影响调用记录，不删对话。", { size: formatBytes(storage?.observability_bytes ?? 0) })}
-      </p>}
+      <p className={styles.storageMaintenance}>
+        {t("空闲时每 60 秒检查一次：过期调用明细、闲置会话、日志和临时文件会自动回收；空闲页超过 512 MB 时自动压缩数据库。")}
+      </p>
 
       <div className={styles.storageBreakdown}>
-        <div className={styles.storageSectionLabel}>{t("数据库内部明细（估算，不与文件大小相加）")}</div>
+        <div className={styles.storageSectionLabel}>{t("空间去向")}</div>
         <StorageRow
-          label={t("调用摘要与用量")}
-          value={t("约 {size}", { size: formatBytes(storage?.call_record_bytes ?? 0) })}
-          detail={t("{calls} 次调用 · {traces} 条追踪；清空后费用和用量历史会消失", {
-            calls: storage?.call_count ?? 0,
-            traces: storage?.trace_count ?? 0,
-          })}
-          action={<Button size="small" disabled={!storage || actionBlocked || ((storage?.call_count ?? 0) === 0 && (storage?.trace_count ?? 0) === 0)} onClick={() => { setError(null); setDialog("all"); }}>{t("清空调用历史")}</Button>}
-        />
-        <StorageRow
-          label={t("请求、响应正文与追踪附件")}
-          value={formatBytes(storage?.call_detail_bytes ?? 0)}
-          detail={t("清理详细记录只删这部分；调用摘要、用量和对话都会保留")}
-          action={<Button size="small" disabled={!storage || actionBlocked || (storage?.call_detail_bytes ?? 0) === 0} onClick={() => { setError(null); setDialog("details"); }}>{t("清理详细记录")}</Button>}
-        />
-        <StorageRow
-          label={t("对话消息与内容块")}
+          label={t("对话与附件")}
           value={formatBytes(storage?.conversation_bytes ?? 0)}
           detail={conversationDetail}
+          tag={t("保留")}
+          tagTone="idle"
         />
-        <div className={styles.storageSectionLabel}>{t("文件系统（独立于数据库）")}</div>
+        <StorageRow
+          label={t("调用记录")}
+          value={formatBytes(storage?.observability_bytes ?? 0)}
+          detail={callDetail}
+          tag={t("可清理")}
+          tagTone="warn"
+          action={<Button size="small" disabled={!storage || actionBlocked || (storage?.call_detail_bytes ?? 0) === 0} onClick={() => { setError(null); setDialog("details"); }}>{t("清理详细记录")}</Button>}
+        />
+        {freeBytes > 0 && <StorageRow
+          label={t("数据库空闲页")}
+          value={formatBytes(freeBytes)}
+          detail={t("不是仍在使用的数据；压缩数据库后会归还磁盘。")}
+          tag={t("可回收")}
+          tagTone="warn"
+        />}
         <StorageRow
           label={t("抓取缓存")}
           value={formatBytes(storage?.web_cache_bytes ?? 0)}
           detail={t("{files} 个文件 · 位于文件系统，不占用数据库文件", { files: storage?.web_cache_files ?? 0 })}
+          tag={t("可清理")}
+          tagTone="warn"
           action={<Button size="small" disabled={!storage || actionBlocked || !hasWebCache(storage)} onClick={() => { setError(null); setDialog("web_cache"); }}>{t("清除抓取缓存")}</Button>}
-        />
-        <StorageRow
-          label={t("大工具结果与压缩历史")}
-          value={formatBytes(storage?.artifact_bytes ?? 0)}
-          detail={artifactDetail}
         />
         <StorageRow
           label={t("运行日志")}
           value={formatBytes(storage?.log_bytes ?? 0)}
           detail={`${t("保留 {days} 天", { days: LOG_RETENTION_DAYS })} · ${t("{files} 个文件 · 位于文件系统，不占用数据库文件", { files: storage?.log_files ?? 0 })}`}
+          tag={t("自动清理")}
+          tagTone="info"
+        />
+        <StorageRow
+          label={t("大工具结果与压缩历史")}
+          value={formatBytes(storage?.artifact_bytes ?? 0)}
+          detail={artifactDetail}
+          tag={t("自动清理")}
+          tagTone="info"
         />
         <StorageRow
           label={t("插件运行时与插件数据")}
           value={formatBytes(storage?.plugin_bytes ?? 0)}
           detail={t("{files} 个文件 · 插件运行时、已安装插件和账号数据；在插件页管理", { files: storage?.plugin_files ?? 0 })}
+          tag={t("手动管理")}
+          tagTone="idle"
         />
       </div>
+
+      <details className={styles.storageAdvanced}>
+        <summary>{t("更多清理与存储明细")}</summary>
+        <div className={styles.storageAdvancedBody}>
+          <div className={styles.storageActions}>
+            <Button size="small" disabled={!storage || actionBlocked || ((storage?.call_count ?? 0) === 0 && (storage?.trace_count ?? 0) === 0)} onClick={() => { setError(null); setDialog("all"); }}>{t("清空调用历史")}</Button>
+            <small>{t("会删除调用摘要与用量历史；对话和配置不受影响。")}</small>
+          </div>
+          {developerMode && <div className={styles.storageTechnical}>
+            <div className={styles.storageSectionLabel}>{t("数据库内部明细（估算，不与文件大小相加）")}</div>
+            <StorageRow
+              label={t("调用摘要与用量")}
+              value={t("约 {size}", { size: formatBytes(storage?.call_record_bytes ?? 0) })}
+              detail={t("{calls} 次调用 · {traces} 条追踪；清空后费用和用量历史会消失", {
+                calls: storage?.call_count ?? 0,
+                traces: storage?.trace_count ?? 0,
+              })}
+            />
+            <StorageRow
+              label={t("请求、响应正文与追踪附件")}
+              value={formatBytes(storage?.call_detail_bytes ?? 0)}
+              detail={t("清理详细记录只删这部分；调用摘要、用量和对话都会保留")}
+            />
+            <StorageRow
+              label="WAL"
+              value={formatBytes(storage?.wal_bytes ?? 0)}
+              detail={t("SQLite 的独立日志文件；正常由 checkpoint 自动截断。")}
+            />
+            <div className={styles.storageSectionLabel}>{t("文件系统（独立于数据库）")}</div>
+            <StorageRow
+              label={t("抓取缓存")}
+              value={formatBytes(storage?.web_cache_bytes ?? 0)}
+              detail={t("{files} 个文件", { files: storage?.web_cache_files ?? 0 })}
+            />
+          </div>}
+        </div>
+      </details>
 
       {storage?.compaction_requested && !storage.compacting && <p className={styles.storageStatus} role="status">
         {t("压缩已排队，正在等待当前 Agent 请求结束；不会打断正在进行的调用。")}
@@ -242,9 +302,6 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
         else setAttempt(value => value + 1);
       }}>{t("重试")}</Button></div>}
       {pollError && <div className={styles.inlineError} role="alert"><span>{pollError}</span></div>}
-      <p className={styles.storageHint}>
-        {t("SQLite 删除数据后只把页留作复用，不会立刻缩小文件。压缩会重写整个数据库，只在没有活跃 Agent 请求时执行；完成后后续清理会小步归还空闲页。")}
-      </p>
     </TitledCard>
 
     <ConfirmDialog open={dialog !== null} destructive title={dialogTitle} busy={busy} cancelLabel={t("取消")} confirmLabel={dialogConfirm} onCancel={() => setDialog(null)} onConfirm={() => { if (dialog) void clear(dialog); }}>
@@ -269,13 +326,21 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
   </>;
 }
 
-function StorageRow({ label, value, detail, action }: { label: string; value: string; detail: string; action?: ReactNode }) {
+function StorageRow({ label, value, detail, action, tag, tagTone = "idle" }: {
+  label: string;
+  value: string;
+  detail: string;
+  action?: ReactNode;
+  tag?: string;
+  tagTone?: "ok" | "warn" | "info" | "idle";
+}) {
   return <div className={styles.storageItem}>
     <div className={styles.storageItemText}>
       <strong>{label}</strong>
       <small>{detail}</small>
     </div>
     <div className={styles.storageItemValue}>
+      {tag && <StatusPill tone={tagTone}>{tag}</StatusPill>}
       <span>{value}</span>
       {action}
     </div>

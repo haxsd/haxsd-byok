@@ -24,6 +24,7 @@ const STORAGE_FIXTURE = {
   call_record_bytes: 24_000_000,
   call_detail_bytes: 2_004_480,
   observability_bytes: 26_004_480,
+  call_detail_retention_days: 3,
   conversation_bytes: 44_040_192,
   message_count: 922,
   blob_count: 183,
@@ -173,6 +174,18 @@ test("the storage card keeps WAL and plugin disk usage apart from database pages
   assert.match(source, /storage\?\.plugin_files \?\? 0/, "插件目录文件数也单独显示");
   assert.match(source, /数据库内部明细/, "库内明细与文件大小分开解释");
   assert.match(source, /文件系统（独立于数据库）/, "文件系统项目不能与数据库页相加");
+});
+
+test("the storage card explains automatic maintenance and separates kept from cleanable data", async () => {
+  const source = await readFile(new URL("../src/features/settings/StorageSettingsCard.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /自动维护已开启/, "users should see that cleanup runs automatically");
+  assert.match(source, /空间去向/, "the card should lead with where the space goes");
+  assert.match(source, /t\("保留"\)/, "conversation data must be marked as kept");
+  assert.match(source, /t\("可清理"\)/, "observability data must be marked as cleanable");
+  assert.match(source, /t\("可回收"\)/, "free pages must be marked as reclaimable");
+  assert.match(source, /formatBytes\(storage\?\.conversation_bytes \?\? 0\)/, "conversation size stays visible");
+  assert.match(source, /formatBytes\(storage\?\.observability_bytes \?\? 0\)/, "call log size stays visible");
 });
 
 test("the storage card separates used pages from free pages and asks for compaction", async () => {

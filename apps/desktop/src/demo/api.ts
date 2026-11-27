@@ -223,6 +223,7 @@ let storage: StatisticsStorage = {
   call_record_bytes: 39_014_400,
   call_detail_bytes: 2_004_480,
   observability_bytes: 41_018_880,
+  call_detail_retention_days: 3,
   conversation_bytes: 44_040_192,
   message_count: 922,
   blob_count: 183,
