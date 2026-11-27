@@ -135,6 +135,11 @@ struct Receipt {
     #[serde(default)]
     original_applied_id: Option<Value>,
     applied_profile_hash: String,
+    /// 只把网关令牌替换成占位符后的 profile 哈希。Claude Desktop 启动后会把令牌
+    /// 密封成 `__sealed__:`，这个指纹允许在没有当前令牌的强杀清理路径里仍认出
+    /// 这份 profile；旧收据没有该字段时回退到令牌重建。
+    #[serde(default)]
+    applied_profile_keyless_hash: String,
     applied_meta_hash: String,
 }
 
@@ -276,12 +281,17 @@ pub fn inspect(
                     && profile_matches_sealed(
                         &text,
                         &receipt.applied_profile_hash,
+                        &receipt.applied_profile_keyless_hash,
                         gateway.map(|gateway| gateway.token),
                     );
                 profile_matches = exact_match || sealed_match;
-                if profile_matches && exact_match {
+                if profile_matches {
                     if let Some(gateway) = gateway {
-                        profile_gateway_matches = profile_points_at(&text, gateway);
+                        if exact_match {
+                            profile_gateway_matches = profile_points_at(&text, gateway);
+                        } else if let Some(normalized) = sealed_profile_text(&text, gateway.token) {
+                            profile_gateway_matches = profile_points_at(&normalized, gateway);
+                        }
                     }
                 }
             }
@@ -504,7 +514,15 @@ pub fn apply_with_force(
     let before_profile = read_optional(&profile_path)?;
     if let Some(receipt) = &previous {
         if let Some(text) = &before_profile {
-            if !force && content_hash(text) != receipt.applied_profile_hash {
+            if !force
+                && content_hash(text) != receipt.applied_profile_hash
+                && !profile_matches_sealed(
+                    text,
+                    &receipt.applied_profile_hash,
+                    &receipt.applied_profile_keyless_hash,
+                    Some(&route.token),
+                )
+            {
                 return Err(Error::Config(
                     "the gateway profile was modified after the takeover; undo before applying again"
                         .into(),
@@ -547,6 +565,7 @@ pub fn apply_with_force(
         applied_id_present,
         original_applied_id,
         applied_profile_hash: content_hash(&profile_text),
+        applied_profile_keyless_hash: profile_keyless_hash(&profile)?,
         applied_meta_hash: content_hash(&meta_text),
     };
     let pending = PendingUpdate::new(
@@ -642,6 +661,7 @@ pub fn undo(
             && !profile_matches_sealed(
                 &text,
                 &receipt.applied_profile_hash,
+                &receipt.applied_profile_keyless_hash,
                 gateway.map(|gateway| gateway.token),
             )
         {
@@ -911,31 +931,66 @@ fn profile_value(route: &DesktopRoute) -> Result<Value> {
 
 /// Claude Desktop 启动后会把我们写入的明文网关令牌替换成 `__sealed__:` 加密值。
 /// 这是客户端自己的规范化，不是用户修改 profile；只要其余字段与接管时完全一致，
-/// 重新用当前令牌替换密封值后应该得到原来的 profile。否则仍按冲突处理。
-fn profile_matches_sealed(text: &str, applied_hash: &str, token: Option<&str>) -> bool {
-    let Some(token) = token else {
-        return false;
-    };
-    let Ok(mut profile) = parse_json(text) else {
-        return false;
-    };
-    let Some(key) = profile
+/// 重新用当前令牌替换密封值后应该得到原来的 profile。
+fn sealed_profile_text(text: &str, token: &str) -> Option<String> {
+    let mut profile = parse_json(text).ok()?;
+    let key = profile
         .get("inferenceGatewayApiKey")
-        .and_then(Value::as_str)
-    else {
-        return false;
-    };
+        .and_then(Value::as_str)?;
     if !key.starts_with("__sealed__:") {
-        return false;
+        return None;
     }
-    let Some(object) = profile.as_object_mut() else {
-        return false;
-    };
-    object.insert(
+    profile.as_object_mut()?.insert(
         "inferenceGatewayApiKey".to_owned(),
         Value::String(token.to_owned()),
     );
-    pretty(&profile).is_ok_and(|reconstructed| content_hash(&reconstructed) == applied_hash)
+    pretty(&profile).ok()
+}
+
+/// 只把令牌替换为固定占位符后的哈希，不依赖当前网关令牌。
+fn profile_keyless_hash(profile: &Value) -> Result<String> {
+    let mut copy = profile.clone();
+    copy.as_object_mut()
+        .ok_or_else(|| Error::Config("Claude profile must be a JSON object".into()))?
+        .insert(
+            "inferenceGatewayApiKey".to_owned(),
+            Value::String("__haxsd_byok_profile_key__".into()),
+        );
+    Ok(content_hash(&pretty(&copy)?))
+}
+
+fn keyless_profile_hash(text: &str) -> Option<String> {
+    let mut profile = parse_json(text).ok()?;
+    let key = profile
+        .get("inferenceGatewayApiKey")
+        .and_then(Value::as_str)?;
+    if !key.starts_with("__sealed__:") {
+        return None;
+    }
+    profile.as_object_mut()?.insert(
+        "inferenceGatewayApiKey".to_owned(),
+        Value::String("__haxsd_byok_profile_key__".into()),
+    );
+    pretty(&profile).ok().map(|text| content_hash(&text))
+}
+
+/// 旧收据没有 keyless 指纹时仍可用当前令牌重建；新收据不依赖令牌。
+fn profile_matches_sealed(
+    text: &str,
+    applied_hash: &str,
+    keyless_hash: &str,
+    token: Option<&str>,
+) -> bool {
+    if let Some(actual) = keyless_profile_hash(text) {
+        if !keyless_hash.is_empty() && actual == keyless_hash {
+            return true;
+        }
+    }
+    let Some(token) = token else {
+        return false;
+    };
+    sealed_profile_text(text, token)
+        .is_some_and(|reconstructed| content_hash(&reconstructed) == applied_hash)
 }
 
 /// profile 里的网关入口、令牌与模型列表是否仍对应当前网关。解析失败按不匹配处理：
@@ -1190,6 +1245,87 @@ mod tests {
             !profile_path.exists(),
             "undo removes the sealed profile we wrote"
         );
+    }
+
+    #[test]
+    fn a_sealed_profile_can_be_reapplied_and_tracks_gateway_changes() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile_path = fixture.paths.profile(&uuid);
+        let mut sealed = fixture.profile(&uuid);
+        sealed["inferenceGatewayApiKey"] = serde_json::json!("__sealed__:v1:reapply");
+        fs::write(
+            &profile_path,
+            format!("{}\n", serde_json::to_string_pretty(&sealed).unwrap()),
+        )
+        .unwrap();
+
+        let status = fixture.apply(two_models());
+        assert_eq!(status.state, TakeoverState::Applied);
+
+        let mut sealed = fixture.profile(&uuid);
+        sealed["inferenceGatewayApiKey"] = serde_json::json!("__sealed__:v1:stale");
+        fs::write(
+            &profile_path,
+            format!("{}\n", serde_json::to_string_pretty(&sealed).unwrap()),
+        )
+        .unwrap();
+        let hashes = model_hashes(&["sonnet-hash"]);
+        let gateway = GatewayValues {
+            base_url: "http://127.0.0.1:43121",
+            token: "local-test-token",
+            available: true,
+            model_hashes: &hashes,
+        };
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            Some(&gateway),
+        )
+        .unwrap();
+        assert_eq!(
+            status.state,
+            TakeoverState::Stale,
+            "a sealed profile must still reveal a removed model"
+        );
+    }
+
+    #[test]
+    fn a_sealed_profile_can_be_undone_without_the_current_token() {
+        let fixture = Fixture::installed();
+        fixture.apply(two_models());
+        let uuid = fixture.applied_uuid();
+        let profile_path = fixture.paths.profile(&uuid);
+        let mut sealed = fixture.profile(&uuid);
+        sealed["inferenceGatewayApiKey"] = serde_json::json!("__sealed__:v1:forced-exit");
+        fs::write(
+            &profile_path,
+            format!("{}\n", serde_json::to_string_pretty(&sealed).unwrap()),
+        )
+        .unwrap();
+
+        let status = inspect(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Applied);
+        let status = undo(
+            &fixture.paths,
+            fixture.state.path(),
+            &DesktopPolicy::default(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(status.state, TakeoverState::Ready);
+        assert!(!profile_path.exists());
     }
 
     #[test]

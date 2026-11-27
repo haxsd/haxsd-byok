@@ -1,6 +1,6 @@
 //! Discovers plugin manifests and evaluates serializable TypeScript definitions.
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
 };
@@ -23,7 +23,8 @@ pub struct PluginCatalog {
     definition_loader: PluginDefinitionLoader,
     app_version: String,
     /// 发布构建只允许随应用签名发布的内置插件；调试构建为 None，允许加载本地插件。
-    allowed_ids: Option<HashSet<String>>,
+    /// 映射是“目录名 -> manifest ID”，两者必须同时匹配，不能只信 plugin.json。
+    allowed_ids: Option<HashMap<String, String>>,
 }
 
 #[derive(Clone)]
@@ -59,9 +60,9 @@ impl PluginCatalog {
             None
         } else {
             Some(
-                super::builtin::BUILTIN_PLUGIN_IDS
+                super::builtin::BUILTIN_PLUGIN_DIRECTORIES
                     .iter()
-                    .map(|id| (*id).to_owned())
+                    .map(|(directory, id)| ((*directory).to_owned(), (*id).to_owned()))
                     .collect(),
             )
         };
@@ -79,9 +80,16 @@ impl PluginCatalog {
 
     /// 发布构建在读取/求值插件定义之前先按 manifest ID 过滤，避免未知目录
     /// 仅凭一个 `plugin.json` 就进入 Deno 求值并接触账号资源。
+    /// 目录名也必须命中固定内置目录，防止同 ID 的用户目录顶替真正内置插件。
     fn allows_directory(&self, directory: &Path) -> bool {
         let Some(allowed) = &self.allowed_ids else {
             return true;
+        };
+        let Some(name) = directory.file_name().and_then(|name| name.to_str()) else {
+            return false;
+        };
+        let Some(expected_id) = allowed.get(name) else {
+            return false;
         };
         let Ok(bytes) = fs::read(directory.join(MANIFEST_FILE_NAME)) else {
             return false;
@@ -89,7 +97,7 @@ impl PluginCatalog {
         let Ok(manifest) = serde_json::from_slice::<PluginManifest>(&bytes) else {
             return false;
         };
-        allowed.contains(&manifest.id)
+        manifest.id == *expected_id
     }
 
     /// 插件目录的当前指纹：每个根目录、每个插件子目录、以及子目录里每个文件的
@@ -508,10 +516,44 @@ pub(super) mod tests {
         .unwrap();
 
         let mut catalog = catalog(root.path());
-        catalog.allowed_ids = Some(HashSet::from([
-            "dev.cursorbyok.examples.codex-auth".to_owned()
-        ]));
+        catalog.allowed_ids = Some(HashMap::from([(
+            "codex-auth".to_owned(),
+            "dev.cursorbyok.examples.codex-auth".to_owned(),
+        )]));
         assert!(!catalog.allows_directory(&unknown));
+    }
+
+    #[test]
+    fn release_allowlist_rejects_a_same_id_directory_with_a_different_name() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = root.path().join("installed");
+        let manifest = r#"{
+            "apiVersion": 1,
+            "id": "dev.cursorbyok.examples.codex-auth",
+            "name": "Fake Codex",
+            "version": "0.1.0",
+            "icon": "icon.svg",
+            "entry": "main.ts"
+        }"#;
+        for name in ["0codex-auth", "codex-auth"] {
+            let directory = installed.join(name);
+            fs::create_dir_all(&directory).unwrap();
+            fs::write(directory.join("plugin.json"), manifest).unwrap();
+        }
+
+        let mut catalog = catalog(root.path());
+        catalog.allowed_ids = Some(HashMap::from([(
+            "codex-auth".to_owned(),
+            "dev.cursorbyok.examples.codex-auth".to_owned(),
+        )]));
+        assert!(
+            !catalog.allows_directory(&installed.join("0codex-auth")),
+            "a same-id directory must not replace the fixed built-in directory"
+        );
+        assert!(
+            catalog.allows_directory(&installed.join("codex-auth")),
+            "the fixed built-in directory with the matching id remains allowed"
+        );
     }
 
     #[test]

@@ -245,11 +245,20 @@ const PLUGINS: &[(&str, &[(&str, &str)])] = &[
 /// 发布构建只加载随应用签名的内置插件。第三方插件没有独立安装入口，
 /// 不应仅凭一个用户目录里的 `plugin.json` 就获得账号 token 的读取能力。
 /// 调试构建保留扫描全部目录，方便开发时热改插件。
-pub(super) const BUILTIN_PLUGIN_IDS: &[&str] = &[
-    "dev.cursorbyok.examples.codex-auth",
-    "dev.cursorbyok.examples.grok-auth",
-    "dev.cursorbyok.plugins.antigravity-auth",
-    "dev.cursorbyok.plugins.claude-code-auth",
+///
+/// 目录名和 manifest ID 必须同时匹配：只看 ID 时，用户可写目录里的同名 ID
+/// 会顶替真正的内置插件，拿到该账号资源的 `privateData`。
+pub(super) const BUILTIN_PLUGIN_DIRECTORIES: &[(&str, &str)] = &[
+    ("codex-auth", "dev.cursorbyok.examples.codex-auth"),
+    ("grok-auth", "dev.cursorbyok.examples.grok-auth"),
+    (
+        "antigravity-auth",
+        "dev.cursorbyok.plugins.antigravity-auth",
+    ),
+    (
+        "claude-code-auth",
+        "dev.cursorbyok.plugins.claude-code-auth",
+    ),
 ];
 
 /// 把内置插件预装到 installed 目录。manifest 的 version 是缓存键:
@@ -408,15 +417,17 @@ mod tests {
             let value: serde_json::Value = serde_json::from_str(manifest).unwrap();
             let id = value["id"].as_str().unwrap();
             assert!(
-                BUILTIN_PLUGIN_IDS.contains(&id),
-                "{name}: {id} is missing from BUILTIN_PLUGIN_IDS"
+                BUILTIN_PLUGIN_DIRECTORIES
+                    .iter()
+                    .any(|(directory, expected)| *directory == *name && *expected == id),
+                "{name}: {id} is missing from BUILTIN_PLUGIN_DIRECTORIES"
             );
             assert!(
                 seen.insert(id.to_owned()),
                 "{name}: duplicate built-in id {id}"
             );
         }
-        assert_eq!(seen.len(), BUILTIN_PLUGIN_IDS.len());
+        assert_eq!(seen.len(), BUILTIN_PLUGIN_DIRECTORIES.len());
     }
 
     /// 内置插件的相对导入必须全部在嵌入清单里。

@@ -77,7 +77,7 @@ async fn apply(
     State(state): State<CodexControl>,
     request: Option<Json<ApplyRequest>>,
 ) -> Result<Json<CodexStatus>> {
-    if crate::codex::ui_cache::codex_running() {
+    if codex_is_running().await {
         return Err(crate::Error::Config(
             "quit Codex before applying the local route, then reopen it".into(),
         ));
@@ -86,12 +86,19 @@ async fn apply(
     Ok(Json(state.gateway.apply_with_force(force).await?))
 }
 async fn restore(State(state): State<CodexControl>) -> Result<Json<CodexStatus>> {
-    if crate::codex::ui_cache::codex_running() {
+    if codex_is_running().await {
         return Err(crate::Error::Config(
             "quit Codex before restoring its configuration, then reopen it".into(),
         ));
     }
     Ok(Json(state.gateway.restore().await?))
+}
+
+/// `tasklist` 是同步子进程查询；在 async handler 里直接调用会占住运行时线程。
+async fn codex_is_running() -> bool {
+    tokio::task::spawn_blocking(crate::codex::ui_cache::codex_running)
+        .await
+        .unwrap_or(true)
 }
 
 #[derive(Default, serde::Deserialize)]

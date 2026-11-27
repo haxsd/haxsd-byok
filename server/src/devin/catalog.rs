@@ -114,7 +114,16 @@ pub(super) fn with_local_models(
     let mut local_labels = HashSet::new();
     let mut additions = Vec::new();
     for local in local_models {
-        let local = harnesses.attach(local)?;
+        let local = match harnesses.attach(local) {
+            Ok(local) => local,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to attach Devin harness metadata; keeping this local model unchanged"
+                );
+                local.clone()
+            }
+        };
         let uid = client_model_uid(&local).ok_or_else(|| {
             Error::Protocol("generated Devin local model has no model UID".into())
         })?;

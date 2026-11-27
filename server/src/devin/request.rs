@@ -326,12 +326,10 @@ fn parse_completion_configuration(
         client.temperature = Some(value);
     }
     if let Some(value) = varint_field(&config, 7)? {
-        if value == 0 {
-            return Err(Error::Protocol(
-                "Devin configuration.top_k must be greater than zero".into(),
-            ));
+        // protobuf 的 0 表示未设置；官方客户端不会用 0 表达“禁用采样”。
+        if value > 0 {
+            client.top_k = Some(value);
         }
-        client.top_k = Some(value);
     }
     if let Some(value) = double_field(&config, 8)? {
         if !(0.0..=1.0).contains(&value) {
@@ -349,7 +347,10 @@ fn parse_completion_configuration(
                 "Devin stop_patterns must be string fields".into(),
             )),
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .filter(|sequence| !sequence.is_empty())
+        .collect::<Vec<_>>();
     let service_tier = string_field(&config, 17)?;
     let service_tier = service_tier.trim();
     if !service_tier.is_empty() {

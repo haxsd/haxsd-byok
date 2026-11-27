@@ -192,7 +192,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 543,
+          "line": 546,
           "column": 39
         },
         {
@@ -585,7 +585,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 506,
           "column": 51
         }
       ]
@@ -1361,18 +1361,6 @@
         }
       ]
     },
-    "0fa53484fc59435d": {
-      "source": "只写 Claude 自己的第三方推理 profile；网关设置共用",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 241,
-          "column": 20
-        }
-      ]
-    },
     "0fbc24eea3fbdce6": {
       "source": "网关地址",
       "kind": "text",
@@ -1380,8 +1368,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 166,
-          "column": 22
+          "line": 130,
+          "column": 72
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 171,
+          "column": 26
         }
       ]
     },
@@ -1736,7 +1729,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 271,
+          "line": 268,
           "column": 14
         }
       ]
@@ -1760,7 +1753,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 506,
           "column": 39
         }
       ]
@@ -1794,8 +1787,8 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 99,
-          "column": 78
+          "line": 102,
+          "column": 82
         }
       ]
     },
@@ -1845,18 +1838,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 49
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 140,
-          "column": 47
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 150,
-          "column": 48
+          "line": 133,
+          "column": 39
         }
       ]
     },
@@ -1883,7 +1866,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 161,
+          "line": 168,
           "column": 27
         },
         {
@@ -1893,7 +1876,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 548,
+          "line": 551,
           "column": 92
         },
         {
@@ -2018,7 +2001,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 671,
+          "line": 670,
           "column": 46
         }
       ]
@@ -2208,7 +2191,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 201,
+          "line": 208,
           "column": 31
         }
       ]
@@ -2549,7 +2532,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 106,
+          "line": 104,
           "column": 27
         },
         {
@@ -2571,8 +2554,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 98,
-          "column": 14
+          "line": 101,
+          "column": 18
         }
       ]
     },
@@ -2692,7 +2675,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 94,
+          "line": 91,
           "column": 14
         }
       ]
@@ -3107,7 +3090,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 652,
+          "line": 651,
           "column": 27
         }
       ]
@@ -3582,7 +3565,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 272,
+          "line": 269,
           "column": 20
         },
         {
@@ -3607,7 +3590,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 694,
+          "line": 693,
           "column": 20
         },
         {
@@ -3982,18 +3965,13 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 209,
-          "column": 57
-        },
-        {
           "file": "features/codex/CodexSettingsPage.tsx",
           "line": 170,
           "column": 97
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 533,
+          "line": 536,
           "column": 150
         },
         {
@@ -4082,8 +4060,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 199,
-          "column": 28
+          "line": 204,
+          "column": 32
         }
       ]
     },
@@ -4126,8 +4104,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 199,
-          "column": 40
+          "line": 204,
+          "column": 44
         }
       ]
     },
@@ -4172,7 +4150,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 116,
+          "line": 121,
           "column": 15
         }
       ]
@@ -4285,7 +4263,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 161,
+          "line": 168,
           "column": 44
         },
         {
@@ -4302,8 +4280,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 156,
+          "line": 163,
           "column": 57
+        },
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 240,
+          "column": 67
         }
       ]
     },
@@ -4436,38 +4419,38 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 85,
+          "line": 82,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 91,
+          "line": 88,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 95,
+          "line": 92,
           "column": 75
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 135,
+          "line": 142,
           "column": 72
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 223,
+          "line": 219,
           "column": 55
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 168,
-          "column": 42
+          "line": 173,
+          "column": 46
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 185,
-          "column": 39
+          "line": 190,
+          "column": 43
         },
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
@@ -5133,11 +5116,6 @@
           "file": "features/claude/ClaudeSettingsPage.tsx",
           "line": 164,
           "column": 25
-        },
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 219,
-          "column": 160
         }
       ]
     },
@@ -5199,12 +5177,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 116,
+          "line": 114,
           "column": 27
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 118,
+          "line": 116,
           "column": 25
         }
       ]
@@ -5408,12 +5386,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 661,
+          "line": 660,
           "column": 165
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 664,
+          "line": 663,
           "column": 186
         }
       ]
@@ -5427,7 +5405,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 195,
+          "line": 202,
           "column": 31
         }
       ]
@@ -5491,6 +5469,11 @@
         {
           "file": "features/claude/claudeConnectionView.ts",
           "line": 168,
+          "column": 15
+        },
+        {
+          "file": "features/claude/ClaudeDesktopTab.tsx",
+          "line": 126,
           "column": 15
         }
       ]
@@ -5859,8 +5842,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 140,
-          "column": 27
+          "line": 130,
+          "column": 37
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 145,
+          "column": 31
         }
       ]
     },
@@ -6094,7 +6082,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 247,
+          "line": 244,
           "column": 57
         }
       ]
@@ -6343,7 +6331,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 520,
+          "line": 523,
           "column": 40
         },
         {
@@ -6459,7 +6447,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 84,
+          "line": 81,
           "column": 44
         }
       ]
@@ -6550,18 +6538,6 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 59,
           "column": 21
-        }
-      ]
-    },
-    "4ab33be20f029134": {
-      "source": "一般不用改；留空表示使用模型库中的设置。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 579,
-          "column": 57
         }
       ]
     },
@@ -6692,7 +6668,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 127,
+          "line": 134,
           "column": 20
         }
       ]
@@ -6976,8 +6952,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 121,
-          "column": 15
+          "line": 126,
+          "column": 50
         }
       ]
     },
@@ -7222,7 +7198,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 166,
+          "line": 173,
           "column": 35
         }
       ]
@@ -7444,12 +7420,12 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 94,
+          "line": 92,
           "column": 19
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 683,
+          "line": 682,
           "column": 14
         }
       ]
@@ -7728,18 +7704,6 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 421,
           "column": 22
-        }
-      ]
-    },
-    "56f7e70bb6631861": {
-      "source": "上下文 token",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 579,
-          "column": 35
         }
       ]
     },
@@ -8435,12 +8399,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 204,
+          "line": 211,
           "column": 19
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 574,
+          "line": 577,
           "column": 151
         },
         {
@@ -8596,7 +8560,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 90,
+          "line": 87,
           "column": 35
         }
       ]
@@ -9072,7 +9036,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 246,
+          "line": 243,
           "column": 36
         }
       ]
@@ -9337,7 +9301,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 706,
+          "line": 705,
           "column": 35
         },
         {
@@ -9724,7 +9688,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 48,
+          "line": 51,
           "column": 15
         }
       ]
@@ -9820,8 +9784,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 183,
-          "column": 22
+          "line": 130,
+          "column": 86
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 188,
+          "column": 26
         }
       ]
     },
@@ -9856,8 +9825,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 102,
-          "column": 14
+          "line": 105,
+          "column": 18
         }
       ]
     },
@@ -9966,7 +9935,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 189,
+          "line": 196,
           "column": 31
         }
       ]
@@ -10115,8 +10084,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 150,
-          "column": 27
+          "line": 130,
+          "column": 54
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 155,
+          "column": 31
         }
       ]
     },
@@ -10223,7 +10197,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 654,
+          "line": 653,
           "column": 27
         }
       ]
@@ -10550,7 +10524,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 509,
+          "line": 512,
           "column": 23
         }
       ]
@@ -10656,7 +10630,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 660,
+          "line": 659,
           "column": 27
         }
       ]
@@ -10991,7 +10965,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 73,
+          "line": 71,
           "column": 50
         },
         {
@@ -11037,8 +11011,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 191,
-          "column": 62
+          "line": 196,
+          "column": 66
         }
       ]
     },
@@ -11061,7 +11035,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 110,
+          "line": 115,
           "column": 16
         }
       ]
@@ -11175,7 +11149,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 185,
+          "line": 192,
           "column": 54
         },
         {
@@ -11397,7 +11371,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 116,
+          "line": 114,
           "column": 44
         }
       ]
@@ -11721,8 +11695,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 133,
-          "column": 20
+          "line": 138,
+          "column": 24
         }
       ]
     },
@@ -11797,7 +11771,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 177,
+          "line": 184,
           "column": 41
         }
       ]
@@ -12092,7 +12066,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 540,
+          "line": 543,
           "column": 20
         }
       ]
@@ -12104,12 +12078,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 152,
-          "column": 21
-        },
-        {
-          "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 212,
+          "line": 159,
           "column": 21
         }
       ]
@@ -12172,12 +12141,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 76,
+          "line": 73,
           "column": 46
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 90,
+          "line": 87,
           "column": 23
         }
       ]
@@ -12261,12 +12230,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 20,
+          "line": 23,
           "column": 61
         },
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 21,
+          "line": 24,
           "column": 16
         },
         {
@@ -12293,7 +12262,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 120,
+          "line": 125,
           "column": 16
         },
         {
@@ -12310,7 +12279,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 679,
+          "line": 678,
           "column": 55
         }
       ]
@@ -12464,13 +12433,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 186,
-          "column": 38
+          "line": 191,
+          "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 189,
-          "column": 31
+          "line": 194,
+          "column": 35
         }
       ]
     },
@@ -12670,7 +12639,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 645,
+          "line": 644,
           "column": 20
         }
       ]
@@ -12682,7 +12651,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 660,
+          "line": 659,
           "column": 52
         }
       ]
@@ -12770,7 +12739,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 574,
+          "line": 577,
           "column": 77
         }
       ]
@@ -12806,7 +12775,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 693,
+          "line": 692,
           "column": 14
         }
       ]
@@ -12894,7 +12863,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 653,
+          "line": 652,
           "column": 27
         }
       ]
@@ -12990,7 +12959,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 654,
+          "line": 653,
           "column": 49
         }
       ]
@@ -13127,7 +13096,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 106,
+          "line": 104,
           "column": 44
         }
       ]
@@ -13156,7 +13125,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 685,
+          "line": 684,
           "column": 84
         }
       ]
@@ -13168,7 +13137,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 166,
+          "line": 173,
           "column": 57
         },
         {
@@ -13321,7 +13290,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 564,
+          "line": 567,
           "column": 51
         }
       ]
@@ -13548,7 +13517,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 539,
+          "line": 542,
           "column": 14
         }
       ]
@@ -13708,17 +13677,17 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 499,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 500,
+          "line": 503,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 686,
+          "line": 685,
           "column": 149
         },
         {
@@ -13885,12 +13854,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 25,
+          "line": 28,
           "column": 78
         },
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 26,
+          "line": 29,
           "column": 16
         }
       ]
@@ -14053,7 +14022,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 672,
+          "line": 671,
           "column": 62
         }
       ]
@@ -14101,8 +14070,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 103,
-          "column": 76
+          "line": 106,
+          "column": 80
         }
       ]
     },
@@ -14144,12 +14113,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 136,
+          "line": 143,
           "column": 40
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 139,
+          "line": 146,
           "column": 33
         }
       ]
@@ -14299,7 +14268,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 84,
+          "line": 81,
           "column": 72
         }
       ]
@@ -14311,7 +14280,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 570,
+          "line": 573,
           "column": 78
         }
       ]
@@ -14645,7 +14614,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 22,
+          "line": 25,
           "column": 15
         }
       ]
@@ -14857,7 +14826,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 670,
+          "line": 669,
           "column": 36
         }
       ]
@@ -14929,7 +14898,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 572,
+          "line": 575,
           "column": 31
         },
         {
@@ -14960,8 +14929,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 174,
-          "column": 65
+          "line": 179,
+          "column": 69
         }
       ]
     },
@@ -14989,7 +14958,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 109,
+          "line": 114,
           "column": 79
         }
       ]
@@ -15025,7 +14994,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 546,
+          "line": 549,
           "column": 50
         }
       ]
@@ -15111,7 +15080,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 674,
+          "line": 673,
           "column": 49
         }
       ]
@@ -15271,7 +15240,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 506,
+          "line": 509,
           "column": 23
         },
         {
@@ -15418,7 +15387,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 128,
+          "line": 135,
           "column": 19
         }
       ]
@@ -15456,7 +15425,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 208,
+          "line": 215,
           "column": 16
         },
         {
@@ -15725,7 +15694,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 80,
+          "line": 78,
           "column": 65
         },
         {
@@ -15745,7 +15714,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 522,
+          "line": 525,
           "column": 147
         },
         {
@@ -15902,18 +15871,6 @@
           "file": "features/settings/ProxySettingsCard.tsx",
           "line": 103,
           "column": 48
-        }
-      ]
-    },
-    "ba2d546bc6c0844f": {
-      "source": "接管 Claude",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 240,
-          "column": 14
         }
       ]
     },
@@ -16107,7 +16064,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 35,
+          "line": 38,
           "column": 15
         }
       ]
@@ -16450,7 +16407,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "line": 566,
           "column": 48
         }
       ]
@@ -16783,12 +16740,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 151,
-          "column": 22
-        },
-        {
-          "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 211,
+          "line": 158,
           "column": 22
         }
       ]
@@ -16805,13 +16757,13 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 511,
-          "column": 21
+          "line": 496,
+          "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 635,
-          "column": 125
+          "line": 514,
+          "column": 21
         }
       ]
     },
@@ -16821,8 +16773,13 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/claude/ClaudeDesktopTab.tsx",
+          "line": 97,
+          "column": 17
+        },
+        {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 668,
+          "line": 667,
           "column": 19
         }
       ]
@@ -16937,13 +16894,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 169,
-          "column": 38
+          "line": 174,
+          "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 172,
-          "column": 31
+          "line": 177,
+          "column": 35
         }
       ]
     },
@@ -16954,7 +16911,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 651,
+          "line": 650,
           "column": 27
         }
       ]
@@ -17031,7 +16988,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 95,
+          "line": 93,
           "column": 19
         },
         {
@@ -17084,8 +17041,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 143,
-          "column": 20
+          "line": 148,
+          "column": 24
         }
       ]
     },
@@ -17360,7 +17317,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "line": 566,
           "column": 33
         },
         {
@@ -17457,7 +17414,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 532,
+          "line": 535,
           "column": 184
         },
         {
@@ -17597,7 +17554,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 73,
+          "line": 71,
           "column": 22
         }
       ]
@@ -17768,7 +17725,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 673,
+          "line": 672,
           "column": 30
         }
       ]
@@ -17780,7 +17737,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 700,
+          "line": 699,
           "column": 11
         }
       ]
@@ -17977,7 +17934,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 212,
+          "line": 219,
           "column": 10
         }
       ]
@@ -18027,7 +17984,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 273,
+          "line": 270,
           "column": 21
         },
         {
@@ -18037,7 +17994,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 695,
+          "line": 694,
           "column": 21
         }
       ]
@@ -18131,7 +18088,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 82,
+          "line": 79,
           "column": 14
         }
       ]
@@ -18160,7 +18117,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 551,
+          "line": 554,
           "column": 60
         }
       ]
@@ -18172,7 +18129,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 284,
+          "line": 281,
           "column": 15
         }
       ]
@@ -18466,13 +18423,18 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 129,
+          "column": 20
+        },
+        {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 572,
+          "line": 575,
           "column": 41
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 644,
+          "line": 643,
           "column": 14
         },
         {
@@ -18677,7 +18639,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 708,
+          "line": 707,
           "column": 13
         }
       ]
@@ -18918,7 +18880,12 @@
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
           "line": 130,
-          "column": 27
+          "column": 18
+        },
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 135,
+          "column": 31
         }
       ]
     },
@@ -19004,7 +18971,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 92,
+          "line": 90,
           "column": 17
         }
       ]
@@ -19305,7 +19272,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 658,
+          "line": 657,
           "column": 35
         }
       ]
@@ -19444,8 +19411,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 153,
-          "column": 20
+          "line": 158,
+          "column": 24
         }
       ]
     },
@@ -19552,7 +19519,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 663,
+          "line": 662,
           "column": 50
         }
       ]
@@ -19590,12 +19557,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 88,
+          "line": 86,
           "column": 20
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 98,
+          "line": 96,
           "column": 18
         }
       ]
@@ -19638,7 +19605,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 571,
+          "line": 574,
           "column": 100
         }
       ]
@@ -19770,7 +19737,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 88,
+          "line": 85,
           "column": 14
         },
         {
@@ -20106,8 +20073,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 125,
+          "line": 132,
           "column": 57
+        },
+        {
+          "file": "features/claude/ClaudeSettingsPage.tsx",
+          "line": 240,
+          "column": 53
         }
       ]
     },
@@ -20186,7 +20158,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeSettingsPage.tsx",
-          "line": 278,
+          "line": 275,
           "column": 11
         }
       ]
@@ -20258,7 +20230,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 158,
+          "line": 165,
           "column": 20
         }
       ]
@@ -20270,7 +20242,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 663,
+          "line": 662,
           "column": 27
         }
       ]
@@ -20335,7 +20307,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 546,
+          "line": 549,
           "column": 23
         }
       ]
@@ -20409,7 +20381,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 109,
+          "line": 107,
           "column": 20
         }
       ]
@@ -20421,7 +20393,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 673,
+          "line": 672,
           "column": 99
         }
       ]
@@ -20695,7 +20667,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 141,
+          "line": 148,
           "column": 55
         }
       ]
@@ -20733,7 +20705,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 164,
+          "line": 171,
           "column": 20
         }
       ]
@@ -20879,7 +20851,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 79,
+          "line": 77,
           "column": 16
         }
       ]
@@ -20992,12 +20964,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 38,
+          "line": 41,
           "column": 71
         },
         {
           "file": "features/claude/ClaudeConflictList.tsx",
-          "line": 39,
+          "line": 42,
           "column": 16
         }
       ]
@@ -21185,7 +21157,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 73,
+          "line": 71,
           "column": 61
         },
         {
@@ -21324,7 +21296,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 159,
+          "line": 166,
           "column": 19
         }
       ]
@@ -21418,11 +21390,6 @@
           "file": "features/devin/devinConnectionView.ts",
           "line": 266,
           "column": 36
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 635,
-          "column": 113
         },
         {
           "file": "features/plugins/PluginManagementPage.tsx",
@@ -21533,7 +21500,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 553,
+          "line": 556,
           "column": 72
         }
       ]
@@ -21627,7 +21594,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 673,
+          "line": 672,
           "column": 88
         }
       ]
@@ -21753,7 +21720,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 90,
+          "line": 88,
           "column": 15
         },
         {
@@ -21773,7 +21740,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 686,
+          "line": 685,
           "column": 137
         },
         {
@@ -21829,7 +21796,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 207,
+          "line": 214,
           "column": 16
         }
       ]

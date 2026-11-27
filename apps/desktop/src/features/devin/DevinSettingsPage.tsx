@@ -492,6 +492,9 @@ export function DevinSettingsPage() {
   const primaryAction = (() => {
     if (loading || loadError) return { label: t("读取中…"), disabled: true, run: () => undefined };
     if (!models.length) return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
+    if (hostNeedsInspect) {
+      return { label: t("重新检查"), disabled: hostBusy, run: () => void inspectHost() };
+    }
     if (view.pendingChanges) {
       return { label: t("保存"), disabled: saving || Boolean(defaultMissingReason), run: save };
     }

@@ -746,7 +746,13 @@ async fn handle_request(
         Err(error) => return protocol_error(enveloped, StatusCode::BAD_REQUEST, error.to_string()),
     };
     if let Some(selection) = inherited {
+        // 只继承会话的模型身份；压缩请求自己的输出上限、停止序列和客户端选项
+        // 不能被首轮聊天的快照覆盖，否则摘要会按错误的预算或协议参数发送。
+        let current = invocation.request.model.clone();
         invocation.request.model = selection.model;
+        invocation.request.model.max_output_tokens = current.max_output_tokens;
+        invocation.request.model.stop_sequences = current.stop_sequences;
+        invocation.request.model.client = current.client;
         invocation.purpose = crate::model::CallPurpose::CompactionSummary;
     } else {
         let selection = crate::store::DevinSessionModel {

@@ -237,7 +237,7 @@ export function ClaudeSettingsPage() {
     />
     <TitledCard
       title="Claude Desktop"
-      description={t("Desktop 模型列表")}
+      description={claudeTakeover?.desktop.guided ? t("手工配置引导") : t("Desktop 模型列表")}
       icon={terminalIcon}
       action={busy?.scope === "desktop"
         ? <StatusPill tone="warn">{t("应用中…")}</StatusPill>

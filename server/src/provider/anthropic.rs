@@ -70,8 +70,13 @@ impl Provider for AnthropicProvider {
             // system 断点已经覆盖它前面的工具前缀，再给 tools 加一个默认 5 分钟断点
             // 会把短 TTL 放在客户端 1 小时断点之前，既多余又可能违反上游顺序。
             let client_system = request.model.client.anthropic_system_blocks.clone();
-            let (mark_messages, mark_tools) =
-                cache_breakpoint_plan(client_system.as_deref(), &messages);
+            let default_system = client_system.is_none() && !request.prompt.instructions.is_empty();
+            let (mark_messages, mark_tools, mark_system) = cache_breakpoint_plan(
+                client_system.as_deref(),
+                &messages,
+                &request.prompt.tools,
+                default_system,
+            );
             if mark_messages {
                 mark_cache_breakpoint(&mut messages);
             }
@@ -83,7 +88,7 @@ impl Provider for AnthropicProvider {
                 Value::Array(blocks)
             } else if request.prompt.instructions.is_empty() {
                 Value::String(String::new())
-            } else if one_hour_cache {
+            } else if one_hour_cache || !mark_system {
                 json!([{
                     "type": "text",
                     "text": request.prompt.instructions,
@@ -412,44 +417,57 @@ fn beta_header(beta: Option<&str>) -> reqwest::header::HeaderMap {
     headers
 }
 
-/// 客户端 `system` 或历史消息是否自带缓存断点，以及我们还能补哪些断点。
+/// 客户端 `system`、历史消息或工具是否自带缓存断点，以及我们还能补哪些断点。
 ///
-/// 返回 `(mark_messages, mark_tools)`。客户端断点已经缓存了它前面的工具表；
-/// 再给 tools 加默认 5 分钟断点会把短 TTL 排在客户端的 1 小时断点之前，
-/// 因此在客户端自带断点时不再补 tools。1 小时断点也可能出现在历史消息的
-/// document 块上，同样不能在前面插 5 分钟断点。
-fn cache_breakpoint_plan(client_system: Option<&[Value]>, messages: &[Value]) -> (bool, bool) {
-    let client_breakpoints = client_system
-        .map(|blocks| {
-            blocks
-                .iter()
-                .filter(|block| {
-                    block
-                        .get("cache_control")
-                        .is_some_and(|value| !value.is_null())
-                })
-                .count()
-        })
-        .unwrap_or(0);
+/// 返回 `(mark_messages, mark_tools, mark_system)`。Anthropic 一次请求最多 4 个
+/// 断点；预算按 system、tools、messages 的整份请求计算。客户端断点已经缓存了它
+/// 前面的工具表；再给 tools 加默认 5 分钟断点会把短 TTL 排在客户端的 1 小时断点
+/// 之前，因此在客户端自带断点时不再补 tools。1 小时断点也可能出现在历史消息的
+/// document 块或工具定义上，同样不能在前面插 5 分钟断点。
+fn cache_breakpoint_plan(
+    client_system: Option<&[Value]>,
+    messages: &[Value],
+    tools: &[ToolDefinition],
+    default_system: bool,
+) -> (bool, bool, bool) {
+    fn count_breaks(blocks: &[Value]) -> usize {
+        blocks
+            .iter()
+            .filter(|block| {
+                block
+                    .get("cache_control")
+                    .is_some_and(|value| !value.is_null())
+            })
+            .count()
+    }
+
+    let system_breakpoints = client_system.map(count_breaks).unwrap_or(0);
     let message_breakpoints = messages
         .iter()
-        .filter(|message| {
-            message
-                .get("content")
-                .and_then(Value::as_array)
-                .is_some_and(|blocks| {
-                    blocks.iter().any(|block| {
-                        block
-                            .get("cache_control")
-                            .is_some_and(|value| !value.is_null())
-                    })
-                })
-        })
+        .filter_map(|message| message.get("content").and_then(Value::as_array))
+        .map(|blocks| count_breaks(blocks))
+        .sum::<usize>();
+    let tool_breakpoints = tools
+        .iter()
+        .filter(|tool| tool.metadata.cache_control.is_some())
         .count();
+    let existing = system_breakpoints + message_breakpoints + tool_breakpoints;
     let one_hour = client_system.is_some_and(|blocks| blocks.iter().any(has_one_hour_cache))
-        || messages.iter().any(has_one_hour_cache);
-    let budget = 4_usize.saturating_sub(client_breakpoints + message_breakpoints);
-    (budget >= 1, client_breakpoints == 0 && !one_hour)
+        || messages.iter().any(has_one_hour_cache)
+        || tools.iter().any(|tool| {
+            tool.metadata
+                .cache_control
+                .as_ref()
+                .is_some_and(has_one_hour_cache)
+        });
+    // 默认 system 断点先占预算；客户端已有断点时不再补 tools。
+    let mark_system = default_system && existing < 4 && !one_hour;
+    let mark_tools = existing == 0 && !one_hour && !tools.is_empty();
+    let mut remaining = 4_usize.saturating_sub(existing + usize::from(mark_system));
+    if mark_tools {
+        remaining = remaining.saturating_sub(1);
+    }
+    (remaining > 0, mark_tools, mark_system)
 }
 
 /// 客户端给的 `tool_choice` / `temperature`。
@@ -502,12 +520,12 @@ fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOp
         if let Some(temperature) = client.temperature {
             body["temperature"] = json!(temperature);
         }
-    }
-    if let Some(top_p) = client.top_p {
-        body["top_p"] = json!(top_p);
-    }
-    if let Some(top_k) = client.top_k {
-        body["top_k"] = json!(top_k);
+        if let Some(top_p) = client.top_p {
+            body["top_p"] = json!(top_p);
+        }
+        if let Some(top_k) = client.top_k {
+            body["top_k"] = json!(top_k);
+        }
     }
     if let Some(service_tier) = &client.service_tier {
         body["service_tier"] = json!(service_tier);
@@ -801,6 +819,17 @@ mod tests {
             body["context_management"]["edits"][0]["type"],
             "clear_tool_uses"
         );
+
+        let mut thinking = json!({"messages": [], "thinking": {"type": "adaptive"}});
+        apply_client_options(&mut thinking, &client);
+        assert!(
+            thinking.get("top_p").is_none(),
+            "thinking 开启时不能发送 top_p"
+        );
+        assert!(
+            thinking.get("top_k").is_none(),
+            "thinking 开启时不能发送 top_k"
+        );
     }
 
     #[test]
@@ -859,8 +888,8 @@ mod tests {
             "cache_control": {"type": "ephemeral", "ttl": "1h"},
         })];
         assert_eq!(
-            cache_breakpoint_plan(Some(&one_hour), &[]),
-            (true, false),
+            cache_breakpoint_plan(Some(&one_hour), &[], &[], false),
+            (true, false, false),
             "system 的 1 小时断点已覆盖工具前缀，不能再加 5 分钟工具断点"
         );
 
@@ -870,14 +899,20 @@ mod tests {
             "cache_control": {"type": "ephemeral"},
         })];
         assert_eq!(
-            cache_breakpoint_plan(Some(&cache_control_only), &[]),
-            (true, false)
+            cache_breakpoint_plan(Some(&cache_control_only), &[], &[], false),
+            (true, false, false)
         );
 
         let plain = vec![json!({"type": "text", "text": "stable"})];
+        let one_tool = vec![ToolDefinition {
+            name: "read".into(),
+            description: String::new(),
+            parameters: json!({"type": "object"}),
+            metadata: crate::model::ToolMetadata::default(),
+        }];
         assert_eq!(
-            cache_breakpoint_plan(Some(&plain), &[]),
-            (true, true),
+            cache_breakpoint_plan(Some(&plain), &[], &one_tool, false),
+            (true, true, false),
             "客户端没放断点时仍按原逻辑补 tools 和末条消息"
         );
 
@@ -890,11 +925,38 @@ mod tests {
             }],
         })];
         assert_eq!(
-            cache_breakpoint_plan(None, &one_hour_message),
-            (true, false),
+            cache_breakpoint_plan(None, &one_hour_message, &[], false),
+            (true, false, false),
             "历史消息里的 1 小时文档断点也不能被前面的 5 分钟工具断点抢先生效"
         );
-        assert_eq!(cache_breakpoint_plan(None, &[]), (true, true));
+        assert_eq!(
+            cache_breakpoint_plan(None, &[], &[], false),
+            (true, false, false)
+        );
+
+        let tools = (0..4)
+            .map(|index| ToolDefinition {
+                name: format!("tool-{index}"),
+                description: String::new(),
+                parameters: json!({"type": "object"}),
+                metadata: crate::model::ToolMetadata {
+                    cache_control: Some(json!({"type": "ephemeral"})),
+                    ..Default::default()
+                },
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            cache_breakpoint_plan(None, &[], &tools, true),
+            (false, false, false),
+            "四个工具断点已经占满预算，不能再加 system 或消息断点"
+        );
+
+        let three = &tools[..3];
+        assert_eq!(
+            cache_breakpoint_plan(None, &[], three, true),
+            (false, false, true),
+            "三个工具断点后只能再加一个 system 断点"
+        );
     }
 
     #[test]

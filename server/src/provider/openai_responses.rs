@@ -392,9 +392,9 @@ fn apply_client_options(body: &mut Value, client: &crate::model::ClientRequestOp
         if let Some(temperature) = client.temperature {
             body["temperature"] = json!(temperature);
         }
-    }
-    if let Some(top_p) = client.top_p {
-        body["top_p"] = json!(top_p);
+        if let Some(top_p) = client.top_p {
+            body["top_p"] = json!(top_p);
+        }
     }
     if let Some(service_tier) = &client.service_tier {
         body["service_tier"] = json!(service_tier);
@@ -804,6 +804,11 @@ mod tests {
         apply_client_options(&mut body, &client);
         assert_eq!(body["top_p"], 0.8);
         assert_eq!(body["service_tier"], "priority");
+
+        let mut reasoning = json!({"reasoning": {"effort": "high"}});
+        apply_client_options(&mut reasoning, &client);
+        assert!(reasoning.get("top_p").is_none(), "推理模型不能用 top_p");
+        assert_eq!(reasoning["service_tier"], "priority");
     }
 
     #[test]
