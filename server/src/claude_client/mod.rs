@@ -3,6 +3,7 @@
 //! 网关本身不写用户文件；只有显式应用/撤销才改 Claude Desktop 的 configLibrary
 //! entry/profile。首次写入前留整份备份，收据放在应用数据目录；撤销按收据逐项还原，
 //! 用户改过的值保留并报告，不静默覆盖。
+pub(crate) mod code_settings;
 pub mod desktop;
 pub mod ownership;
 mod recovery;

@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::{
     anthropic::{ClaudeGateway, ClaudeSettings, ClaudeStatus},
     claude_client::{
-        self,
+        self, code_settings,
         desktop::{self as claude_desktop, DesktopModel, DesktopPaths, DesktopRoute},
         ownership::DesktopPolicy,
         DesktopTakeoverStatus, Family, TakeoverState, TakeoverStatus,
@@ -230,6 +230,9 @@ pub async fn shutdown_cleanup(gateway: ClaudeGateway, store: Store) {
                         gateway_values.as_ref(),
                     ) {
                         Ok(_) => {
+                            if let Err(error) = code_settings::undo(&state_dir) {
+                                tracing::warn!(%error, "cannot restore the Claude Code auto-compact setting during shutdown");
+                            }
                             tracing::info!("restored the Claude Desktop profile during shutdown");
                         }
                         Err(error) => {
@@ -265,7 +268,9 @@ pub async fn restore_on_forced_exit() -> bool {
     if !take_over(&status.state, status.restorable) {
         return false;
     }
-    claude_desktop::undo(&paths, &state_dir, &policy, false, None).is_ok()
+    let desktop_ok = claude_desktop::undo(&paths, &state_dir, &policy, false, None).is_ok();
+    let settings_ok = code_settings::undo(&state_dir).is_ok();
+    desktop_ok && settings_ok
 }
 
 fn take_over(state: &TakeoverState, restorable: bool) -> bool {
@@ -293,24 +298,39 @@ async fn takeover_desktop(
             let route = DesktopRoute {
                 base_url: facts.status.base_url.clone(),
                 token: facts.status.token.clone(),
-                models,
+                models: models.clone(),
             };
-            claude_desktop::apply_with_force(
+            let status = claude_desktop::apply_with_force(
                 &paths,
                 &state_dir,
                 &policy,
                 state.takeover.desktop_running().await,
                 &route,
                 request.force,
-            )?
+            )?;
+            if let Err(error) = code_settings::apply(&state_dir, &models) {
+                let _ = claude_desktop::undo(
+                    &paths,
+                    &state_dir,
+                    &policy,
+                    false,
+                    Some(&facts.gateway_values()),
+                );
+                return Err(error);
+            }
+            status
         }
-        TakeoverAction::Undo => claude_desktop::undo(
-            &paths,
-            &state_dir,
-            &policy,
-            state.takeover.desktop_running().await,
-            Some(&facts.gateway_values()),
-        )?,
+        TakeoverAction::Undo => {
+            let status = claude_desktop::undo(
+                &paths,
+                &state_dir,
+                &policy,
+                state.takeover.desktop_running().await,
+                Some(&facts.gateway_values()),
+            )?;
+            code_settings::undo(&state_dir)?;
+            status
+        }
     };
     Ok(Json(status))
 }
@@ -489,6 +509,7 @@ fn desktop_models(request: &DesktopTakeoverRequest, facts: &Facts) -> Result<Vec
             model_hash: model.model_hash.clone(),
             label: Some(label),
             tier: family_for(model, &facts.settings),
+            context_window_tokens: model.context_window_tokens,
         });
     }
     Ok(models)

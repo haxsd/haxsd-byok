@@ -114,6 +114,9 @@ pub struct DesktopModel {
     pub model_hash: String,
     pub label: Option<String>,
     pub tier: Option<Family>,
+    /// 模型真实输入窗口。大于 200K 时 profile 声明 1M 变体，Claude Code
+    /// 再按这个值设置自动压缩窗口，避免把 1M 当成真实窗口。
+    pub context_window_tokens: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -913,6 +916,16 @@ fn profile_value(route: &DesktopRoute) -> Result<Value> {
                     Value::String(tier.tier().to_owned()),
                 );
             }
+            // Desktop 只支持 200K 默认窗口或 1M 变体；真实窗口由 Claude Code
+            // 的 autoCompactWindow 控制，见 code_settings。没有真实大窗口的模型
+            // 不能声明 1M，否则会诱使客户端按 1M 发送。
+            if model
+                .context_window_tokens
+                .is_some_and(|window| window > 200_000)
+            {
+                entry.insert("supports1m".to_owned(), Value::Bool(true));
+                entry.insert("prefer1m".to_owned(), Value::Bool(true));
+            }
             Value::Object(entry)
         })
         .collect::<Vec<_>>();
@@ -1141,6 +1154,7 @@ mod tests {
             model_hash: hash.into(),
             label: Some(label.into()),
             tier,
+            context_window_tokens: None,
         }
     }
 
@@ -1192,6 +1206,20 @@ mod tests {
         assert_eq!(models[0]["anthropicFamilyTier"], "sonnet");
         assert_eq!(models[1]["name"], "claude-opus-hash");
         assert_eq!(models[1]["anthropicFamilyTier"], "opus");
+    }
+
+    #[test]
+    fn only_models_with_a_real_long_window_advertise_one_million_context() {
+        let fixture = Fixture::installed();
+        let mut models = two_models();
+        models[0].context_window_tokens = Some(600_000);
+        fixture.apply(models);
+
+        let profile = fixture.profile(&fixture.applied_uuid());
+        let models = profile["inferenceModels"].as_array().unwrap();
+        assert_eq!(models[0]["supports1m"], true);
+        assert_eq!(models[0]["prefer1m"], true);
+        assert!(models[1].get("supports1m").is_none());
     }
 
     #[test]
