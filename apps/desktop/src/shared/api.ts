@@ -238,6 +238,8 @@ export interface CodexStatus {
   route_owned: boolean;
   /** 管理员 requirements 中真正改变请求出口的要求。 */
   managed_conflicts: CodexManagedConflict[];
+  /** 撤销时因为用户后来改过而保留下来的受管字段；普通状态读取为空。 */
+  restore_preserved: string[];
   /** requirements 读取/解析失败的原因；此时仍可凭有效收据撤销。 */
   managed_error: string | null;
   /** 当前只核对本地系统 requirements 层。 */
@@ -1174,11 +1176,15 @@ function usableCodexStatus(payload: unknown): CodexStatus {
     console.warn(`[api] Codex 状态：丢弃了 ${raw.length - conflicts.length} 条结构不完整的冲突记录`);
   }
   const managed_conflicts = codexManagedConflicts(status.managed_conflicts);
+  const restore_preserved = Array.isArray(status.restore_preserved)
+    ? status.restore_preserved.filter((field): field is string => typeof field === "string")
+    : [];
   return {
     ...status,
     mode: status.mode === "hybrid" ? "hybrid" : "local",
     conflicts,
     managed_conflicts,
+    restore_preserved,
   };
 }
 

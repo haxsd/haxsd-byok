@@ -114,7 +114,7 @@ function codexStatus(): CodexStatus {
   return { enabled: codexSettings.enabled, listening: codexSettings.enabled, port: codexSettings.port,
     mode: codexSettings.mode,
     configured: codexConfigured, config_conflict: false, restorable: codexConfigured, conflicts: [],
-    conflict_kind: "none", route_owned: codexConfigured, managed_conflicts: [], managed_error: null,
+    conflict_kind: "none", route_owned: codexConfigured, managed_conflicts: [], restore_preserved: [], managed_error: null,
     managed_scope: "local_system_only",
     chatgpt_signed_in: true,
     home: codexSettings.home || "~/.codex", calls: 0, last_error: null };

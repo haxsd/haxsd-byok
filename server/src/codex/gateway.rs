@@ -507,7 +507,7 @@ impl CodexGateway {
         // 配置仍指向本应用即将停止的端口，应当收回；provider/端点/令牌已被别家接管时
         // 不碰别人的配置。
         let restored = if config::owned_route_active(&home)? {
-            config::restore(&home, &self.inner.requirements).map(|_| ())
+            config::restore_forced(&home, &self.inner.requirements).map(|_| ())
         } else {
             Ok(())
         };

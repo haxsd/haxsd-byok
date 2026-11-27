@@ -182,12 +182,12 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 166,
+          "line": 171,
           "column": 66
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 188,
+          "line": 193,
           "column": 127
         },
         {
@@ -270,7 +270,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 165,
+          "line": 170,
           "column": 36
         },
         {
@@ -2631,7 +2631,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 165,
+          "line": 170,
           "column": 80
         },
         {
@@ -3599,7 +3599,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 208,
+          "line": 213,
           "column": 20
         },
         {
@@ -4007,7 +4007,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 170,
+          "line": 175,
           "column": 97
         },
         {
@@ -4515,12 +4515,12 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 144,
+          "line": 149,
           "column": 43
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 180,
+          "line": 185,
           "column": 119
         },
         {
@@ -4708,7 +4708,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 179,
+          "line": 184,
           "column": 18
         }
       ]
@@ -5303,12 +5303,12 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 152,
+          "line": 157,
           "column": 23
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 171,
+          "line": 176,
           "column": 108
         }
       ]
@@ -5768,7 +5768,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 179,
+          "line": 184,
           "column": 75
         }
       ]
@@ -6105,7 +6105,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 214,
+          "line": 219,
           "column": 11
         }
       ]
@@ -6411,7 +6411,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 193,
+          "line": 198,
           "column": 41
         },
         {
@@ -8054,7 +8054,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 179,
+          "line": 184,
           "column": 63
         }
       ]
@@ -8597,7 +8597,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 197,
+          "line": 202,
           "column": 14
         }
       ]
@@ -8721,22 +8721,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1036,
+          "line": 1038,
           "column": 21
         },
         {
           "file": "shared/api.ts",
-          "line": 1200,
+          "line": 1206,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1225,
+          "line": 1231,
           "column": 29
         },
         {
           "file": "shared/api.ts",
-          "line": 1350,
+          "line": 1356,
           "column": 29
         }
       ]
@@ -9088,7 +9088,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 188,
+          "line": 193,
           "column": 24
         },
         {
@@ -9241,7 +9241,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 224,
+          "line": 229,
           "column": 11
         }
       ]
@@ -9398,7 +9398,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 218,
+          "line": 223,
           "column": 14
         }
       ]
@@ -9422,7 +9422,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 192,
+          "line": 197,
           "column": 49
         },
         {
@@ -9477,22 +9477,22 @@
         },
         {
           "file": "shared/api.ts",
-          "line": 1044,
+          "line": 1046,
           "column": 20
         },
         {
           "file": "shared/api.ts",
-          "line": 1200,
+          "line": 1206,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1225,
+          "line": 1231,
           "column": 41
         },
         {
           "file": "shared/api.ts",
-          "line": 1350,
+          "line": 1356,
           "column": 41
         }
       ]
@@ -9757,7 +9757,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1609,
+          "line": 1615,
           "column": 23
         }
       ]
@@ -10417,7 +10417,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1596,
+          "line": 1602,
           "column": 43
         }
       ]
@@ -10509,7 +10509,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 141,
+          "line": 146,
           "column": 13
         }
       ]
@@ -10971,7 +10971,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 988,
+          "line": 990,
           "column": 11
         },
         {
@@ -11097,7 +11097,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 165,
+          "line": 170,
           "column": 91
         }
       ]
@@ -11261,6 +11261,20 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 55,
           "column": 14
+        }
+      ]
+    },
+    "8442eecf2230e1ba": {
+      "source": "Codex 配置已恢复；这些你后来改过的字段已保留：{fields}",
+      "kind": "template",
+      "placeholders": [
+        "fields"
+      ],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsPage.tsx",
+          "line": 141,
+          "column": 9
         }
       ]
     },
@@ -11836,7 +11850,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1547,
+          "line": 1553,
           "column": 23
         }
       ]
@@ -12121,7 +12135,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 207,
+          "line": 212,
           "column": 14
         }
       ]
@@ -12966,7 +12980,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1001,
+          "line": 1003,
           "column": 11
         }
       ]
@@ -13014,7 +13028,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 180,
+          "line": 185,
           "column": 86
         }
       ]
@@ -13050,7 +13064,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 166,
+          "line": 171,
           "column": 108
         }
       ]
@@ -13247,7 +13261,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 199,
+          "line": 204,
           "column": 95
         },
         {
@@ -13274,7 +13288,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 166,
+          "line": 171,
           "column": 35
         },
         {
@@ -13779,12 +13793,12 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 146,
+          "line": 151,
           "column": 23
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 200,
+          "line": 205,
           "column": 118
         },
         {
@@ -14455,7 +14469,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 181,
+          "line": 186,
           "column": 73
         }
       ]
@@ -14864,8 +14878,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 138,
-          "column": 80
+          "line": 142,
+          "column": 9
         }
       ]
     },
@@ -15406,7 +15420,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 154,
+          "line": 159,
           "column": 21
         },
         {
@@ -15601,7 +15615,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 178,
+          "line": 183,
           "column": 18
         }
       ]
@@ -15870,7 +15884,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 192,
+          "line": 197,
           "column": 133
         },
         {
@@ -16323,7 +16337,7 @@
       "refs": [
         {
           "file": "shared/api.ts",
-          "line": 1620,
+          "line": 1626,
           "column": 43
         }
       ]
@@ -17009,7 +17023,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 230,
+          "line": 235,
           "column": 15
         }
       ]
@@ -18205,7 +18219,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 209,
+          "line": 214,
           "column": 21
         },
         {
@@ -19352,7 +19366,7 @@
         },
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 149,
+          "line": 154,
           "column": 23
         },
         {
@@ -20560,7 +20574,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 219,
+          "line": 224,
           "column": 21
         }
       ]
@@ -20830,7 +20844,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsPage.tsx",
-          "line": 181,
+          "line": 186,
           "column": 40
         }
       ]

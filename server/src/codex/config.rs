@@ -72,6 +72,8 @@ pub struct ConfigStatus {
     /// 管理员 requirements 中真正改变请求出口的要求。非空时本地文件即使与快照一致，
     /// 实际路由也由管理员要求决定，不能再报告已接管。
     pub managed_conflicts: Vec<ManagedRequirementConflict>,
+    /// 撤销时因为用户后来改过而保留下来的受管字段；普通状态读取为空。
+    pub restore_preserved: Vec<String>,
     /// 冲突的机器可读分类：`none`/`managed`/`local_drift`/`foreign_provider`/
     /// `policy_unavailable`/`incomplete_update`。
     pub conflict_kind: &'static str,
@@ -488,6 +490,71 @@ fn restore_owned(doc: &mut DocumentMut, reference: &DocumentMut) {
     }
 }
 
+/// 撤销时只把仍等于 `applied` 的受管字段还原；用户在接管后自己改过的字段保留下来。
+///
+/// 这是撤销语义的三方合并：`original` 是接管前，`applied` 是我们写的，`doc` 是现在。
+/// 用户改过的字段已经不再等于 `applied`，继续按 `original` 覆盖就等于把用户后来的选择
+/// 也一起撤销掉，违背“只撤回自己的字段”。
+fn restore_owned_preserving_user_changes(
+    doc: &mut DocumentMut,
+    original: &DocumentMut,
+    applied: &DocumentMut,
+) -> Vec<String> {
+    let mut preserved = Vec::new();
+    for key in OWNED_KEYS {
+        let current = doc.get(key).map(Item::to_string);
+        let published = applied.get(key).map(Item::to_string);
+        if current == published {
+            if let Some(item) = original.get(key) {
+                doc[key] = item.clone();
+            } else {
+                doc.remove(key);
+            }
+        } else if current != original.get(key).map(Item::to_string) {
+            preserved.push((*key).to_owned());
+        }
+    }
+    let current_provider = doc
+        .get("model_providers")
+        .and_then(|providers| providers.get(PROVIDER))
+        .map(Item::to_string);
+    let published_provider = applied
+        .get("model_providers")
+        .and_then(|providers| providers.get(PROVIDER))
+        .map(Item::to_string);
+    if current_provider == published_provider {
+        if let Some(providers) = doc
+            .get_mut("model_providers")
+            .and_then(Item::as_table_like_mut)
+        {
+            if let Some(item) = original
+                .get("model_providers")
+                .and_then(|providers| providers.get(PROVIDER))
+            {
+                providers.insert(PROVIDER, item.clone());
+            } else {
+                providers.remove(PROVIDER);
+            }
+        }
+    } else if current_provider
+        != original
+            .get("model_providers")
+            .and_then(|providers| providers.get(PROVIDER))
+            .map(Item::to_string)
+    {
+        preserved.push("model_providers.haxsd-byok".into());
+    }
+    if original.get("model_providers").is_none()
+        && doc
+            .get("model_providers")
+            .and_then(Item::as_table_like)
+            .is_some_and(|table| table.is_empty())
+    {
+        doc.remove("model_providers");
+    }
+    preserved
+}
+
 /// 新收据的原值基线：当前文件内容（用户可能又改过别的键）加上旧收据记下的受管字段原值。
 ///
 /// 没有这一步，"用户手动把路由改回原样、但 `web_search` 还是我们写的 disabled"这种半还原
@@ -645,6 +712,7 @@ pub fn inspect(home: &Path, requirements: &RequirementsSource) -> Result<ConfigS
         conflict_kind,
         route_owned: route_is_owned,
         managed_conflicts,
+        restore_preserved: Vec::new(),
         managed_error,
         managed_scope: MANAGED_SCOPE,
         chatgpt_signed_in: chatgpt_signed_in(home),
@@ -845,6 +913,22 @@ pub fn apply_with_force(
     inspect(home, requirements)
 }
 pub fn restore(home: &Path, requirements: &RequirementsSource) -> Result<ConfigStatus> {
+    restore_with_policy(home, requirements, true)
+}
+
+/// 退出/崩溃清理用的强制收回：不保留用户后来改过的受管字段。
+///
+/// 正常撤销走 [`restore`] 的三方合并；但如果应用已经退出，路由仍指向一个没人监听的
+/// 本地端口，用户的每次 Codex 请求都会失败。这里优先保证把我们的路由收干净。
+pub fn restore_forced(home: &Path, requirements: &RequirementsSource) -> Result<ConfigStatus> {
+    restore_with_policy(home, requirements, false)
+}
+
+fn restore_with_policy(
+    home: &Path,
+    requirements: &RequirementsSource,
+    preserve_user_changes: bool,
+) -> Result<ConfigStatus> {
     absolute(home)?;
     let Some(receipt) = effective_receipt(home)? else {
         return inspect(home, requirements);
@@ -854,14 +938,13 @@ pub fn restore(home: &Path, requirements: &RequirementsSource) -> Result<ConfigS
     let mut doc = parse(current.as_deref().unwrap_or(""))?;
     let original_source = original_text(&receipt);
     let original = parse(original_source.unwrap_or(""))?;
-    // 受管字段被外部改过也照样撤销：撤销的意思就是"把我们的字段还回去"，而下面这段只动
-    // `OWNED_KEYS`（含 provider 表），不碰其它键。以前这里整体拒绝，于是用户在"应用不了、
-    // 也撤销不了"的状态里出不来。
-    //
-    // 过去还有一条"路由已经回到原样 → 只删收据"的短路。它漏掉了 `OWNED_KEYS` 里不属于
-    // 路由的字段（`web_search`）：用户手动把路由清干净之后撤销，我们写的
-    // `web_search = "disabled"` 会留在文件里，下一次接管又会把它当成用户的原值。
-    restore_owned(&mut doc, &original);
+    // 正常撤销只还原仍等于 applied 的字段；退出清理则强制收回路由，避免留下死端口。
+    let preserved = if preserve_user_changes {
+        restore_owned_preserving_user_changes(&mut doc, &original, &parse(&receipt.applied)?)
+    } else {
+        restore_owned(&mut doc, &original);
+        Vec::new()
+    };
     let updated = doc.to_string();
     if Some(updated.as_str()) != current.as_deref() {
         if read(&path)? != current {
@@ -889,7 +972,15 @@ pub fn restore(home: &Path, requirements: &RequirementsSource) -> Result<ConfigS
             "Codex configuration restored, but the restore receipt could not be removed: {error}"
         )));
     }
-    inspect(home, requirements)
+    let mut status = inspect(home, requirements)?;
+    if !preserved.is_empty() {
+        status.message = format!(
+            "Codex configuration restored; kept user changes to {}",
+            preserved.join(", ")
+        );
+    }
+    status.restore_preserved = preserved;
+    Ok(status)
 }
 
 /// 退出的收回判断：当前请求出口是否仍是本机网关。
@@ -1457,10 +1548,10 @@ mod tests {
         assert_eq!(config_text(directory.path()), original);
     }
 
-    /// 路由字段被外部改动：仍然报冲突（应用不能覆盖别家的路由），但撤销永远可用——
-    /// 只把 `OWNED_KEYS` 与 provider 表还回接管前的样子，用户自己的其它键原样保留。
+    /// 路由字段被外部改动：仍然报冲突（应用不能覆盖别家的路由），撤销只还原仍属于我们的
+    /// 字段；用户后来改过的 provider/catalog 保留并报告，用户自己的其它键原样保留。
     #[test]
-    fn external_edits_to_routing_fields_are_conflicts_but_restore_still_returns_them() {
+    fn external_edits_to_routing_fields_are_conflicts_and_user_edits_survive_restore() {
         let original = "model = 'user-choice'\nweb_search = 'live'\n\n[projects.'x']\ntrust_level = 'trusted'\n\n[desktop]\nscale = 1.25\n";
         let changes: [fn(&mut DocumentMut); 3] = [
             |doc| doc["model_providers"][PROVIDER]["base_url"] = value("http://127.0.0.1:43121/v1"),
@@ -1478,25 +1569,27 @@ mod tests {
             assert!(!status.conflicts.is_empty(), "{}", status.message);
             let restored = restore(directory.path()).unwrap();
             assert!(
-                !restored.applied && !restored.conflict && !restored.restorable,
+                !restored.applied && !restored.restorable,
                 "{}",
                 restored.message
             );
-            assert!(restored.conflicts.is_empty(), "{:?}", restored.conflicts);
+            assert!(
+                !restored.restore_preserved.is_empty(),
+                "冲突字段必须被报告为保留，而不是静默覆盖"
+            );
             let text = fs::read_to_string(directory.path().join("config.toml")).unwrap();
-            assert_ne!(text, edited, "撤销没有把受管字段还回去");
+            assert_ne!(text, edited, "撤销至少要还原仍属于我们的字段");
             let doc = parse(&text).unwrap();
             assert_eq!(doc.get("model").and_then(Item::as_str), Some("user-choice"));
             assert_eq!(doc.get("web_search").and_then(Item::as_str), Some("live"));
-            for key in [
-                "model_provider",
-                "model_catalog_json",
-                "model_context_window",
-                "model_auto_compact_token_limit",
-                "model_providers",
-            ] {
-                assert!(doc.get(key).is_none(), "{key} 在撤销后仍然存在: {text}");
-            }
+            assert!(
+                doc.get("model_provider").is_none(),
+                "untouched route selection must be restored: {text}"
+            );
+            assert!(
+                doc.get("model_providers").is_some() || doc.get("model_catalog_json").is_some(),
+                "the user-edited field must survive: {text}"
+            );
             assert!(
                 text.contains("trust_level = 'trusted'") && text.contains("scale = 1.25"),
                 "用户自己的配置项被撤销动过: {text}"
@@ -1505,9 +1598,9 @@ mod tests {
     }
 
     /// 客户端在它自己的界面里打开联网搜索（写 `web_search = "live"`）：路由照旧可用，
-    /// 只在 `conflicts` 里给出"快照写的是 disabled、现在是 live"，撤销时按快照还原。
+    /// 只在 `conflicts` 里给出"快照写的是 disabled、现在是 live"；撤销保留用户的选择。
     #[test]
-    fn a_client_web_search_switch_is_reported_without_blocking_the_route() {
+    fn a_client_web_search_switch_is_reported_and_preserved_on_restore() {
         let directory = applied_home(Some("model = 'user-choice'\n"));
         edit(directory.path(), |doc| doc["web_search"] = value("live"));
         let status = inspect(directory.path()).unwrap();
@@ -1522,7 +1615,11 @@ mod tests {
         restore(directory.path()).unwrap();
         let doc =
             parse(&fs::read_to_string(directory.path().join("config.toml")).unwrap()).unwrap();
-        assert!(doc.get("web_search").is_none(), "接管前的配置里没有这一项");
+        assert_eq!(
+            doc.get("web_search").and_then(Item::as_str),
+            Some("live"),
+            "用户后来打开联网搜索，撤销不能把它改回 disabled"
+        );
     }
 
     /// 与接管快照完全一致的配置没有字段冲突。
@@ -1535,17 +1632,25 @@ mod tests {
         assert!(status.conflicts.is_empty(), "{:?}", status.conflicts);
     }
 
-    /// 客户端切过模型之后仍然可以恢复，并且 model 回到收据里的原值。
+    /// 客户端切过模型之后撤销：用户选的模型保留，路由自身的字段仍被收回。
     #[test]
-    fn restore_after_a_client_model_switch_puts_back_the_original_model() {
+    fn restore_after_a_client_model_switch_keeps_the_user_model() {
         let directory = applied_home(Some("model = 'user-choice'\n"));
         switch_client_model(directory.path(), "model-b");
-        restore(directory.path()).unwrap();
+        let status = restore(directory.path()).unwrap();
         let text = fs::read_to_string(directory.path().join("config.toml")).unwrap();
-        assert!(text.contains("model = 'user-choice'"), "{text}");
+        assert!(text.contains("model = \"model-b\""), "{text}");
         assert!(!text.contains("local-test-token"), "{text}");
+        assert!(
+            status
+                .restore_preserved
+                .iter()
+                .any(|field| field == "model"),
+            "{:?}",
+            status.restore_preserved
+        );
         let status = inspect(directory.path()).unwrap();
-        assert!(!status.applied && !status.conflict, "{}", status.message);
+        assert!(!status.applied && !status.restorable, "{}", status.message);
     }
 
     /// 目录文件还没生成或已被删除时，没有切换过模型的配置仍然算我们的路由。

@@ -194,7 +194,7 @@ async fn restore_codex_routing_at(
     if !crate::codex::config::owned_route_active(&home)? {
         return Ok(false);
     }
-    crate::codex::config::restore(&home, requirements)?;
+    crate::codex::config::restore_forced(&home, requirements)?;
     tracing::info!(home = %home.display(), "exit cleanup restored the Codex route");
     Ok(true)
 }

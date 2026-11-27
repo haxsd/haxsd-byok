@@ -135,7 +135,12 @@ export function CodexSettingsPage() {
     }
     void apply();
   };
-  const restore = () => action(async () => { await api.restoreCodex(); message(t("Codex 配置已恢复")); });
+  const restore = () => action(async () => {
+    const status = await api.restoreCodex();
+    message(status.restore_preserved.length > 0
+      ? t("Codex 配置已恢复；这些你后来改过的字段已保留：{fields}", { fields: status.restore_preserved.join(", ") })
+      : t("Codex 配置已恢复"));
+  });
   const forceApply = () => action(async () => {
     await api.applyCodex(true);
     message(t("已强制接管 Codex 配置。请完全退出 Codex 后重开。"));

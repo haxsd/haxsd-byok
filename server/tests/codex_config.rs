@@ -70,9 +70,9 @@ fn restoring_keeps_user_changes_to_unmanaged_fields() {
     assert!(text.contains("model = 'old'"));
     assert!(!text.contains("local-test-token"), "restored TOML: {text}");
 }
-/// 别家的 provider 不覆盖；受管字段被外部改过只报冲突，撤销永远可用。
+/// 别家的 provider 不覆盖；用户在接管后改过的受管字段在撤销时保留。
 #[test]
-fn a_foreign_provider_is_refused_and_modified_managed_fields_still_restore() {
+fn a_foreign_provider_is_refused_and_user_edits_survive_restore() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.toml");
     std::fs::write(&path, "model_provider = 'other'\n").unwrap();
@@ -92,19 +92,76 @@ fn a_foreign_provider_is_refused_and_modified_managed_fields_still_restore() {
     assert!(status.restorable, "{}", status.message);
     assert_eq!(status.conflicts.len(), 1, "{:?}", status.conflicts);
     assert_eq!(status.conflicts[0].key, "model_providers.haxsd-byok");
-    restore(dir.path()).unwrap();
+    let status = restore(dir.path()).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("model = 'old'"), "restored TOML: {text}");
     assert!(
         text.contains("trust_level = 'trusted'"),
         "restored TOML: {text}"
     );
-    assert!(!text.contains("haxsd-byok"), "restored TOML: {text}");
-    let status = inspect(dir.path()).unwrap();
     assert!(
-        !status.applied && !status.conflict && !status.restorable,
+        text.contains("haxsd-byok = {") && text.contains("43121"),
+        "user-edited provider must survive: {text}"
+    );
+    assert!(
+        !text.contains("model_provider = 'haxsd-byok'"),
+        "the route selection itself must be restored: {text}"
+    );
+    assert!(!status.applied && !status.restorable, "{}", status.message);
+    assert!(
+        status.message.contains("model_providers.haxsd-byok"),
         "{}",
         status.message
+    );
+    assert_eq!(status.restore_preserved, vec!["model_providers.haxsd-byok"]);
+}
+
+/// 用户接管后改过 `model`/`web_search`，撤销只还原我们仍拥有的字段，不覆盖用户的选择。
+#[test]
+fn restore_preserves_user_edits_and_removes_only_untouched_managed_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    apply(dir.path(), &route(dir.path())).unwrap();
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("web_search = \"disabled\"", "web_search = \"live\"")
+        .replace("model = \"", "model = \"user-choice-");
+    std::fs::write(&path, &text).unwrap();
+
+    let status = restore(dir.path()).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("web_search = \"live\""),
+        "restored TOML: {text}"
+    );
+    assert!(
+        text.contains("model = \"user-choice-"),
+        "restored TOML: {text}"
+    );
+    assert!(
+        !text.contains("model_providers.haxsd-byok"),
+        "the untouched provider must be removed: {text}"
+    );
+    assert!(
+        !text.contains("haxsd-byok-models-"),
+        "the untouched catalog must be removed: {text}"
+    );
+    assert!(
+        status.message.contains("web_search") && status.message.contains("model"),
+        "{}",
+        status.message
+    );
+    assert!(
+        status
+            .restore_preserved
+            .iter()
+            .any(|field| field == "web_search")
+            && status
+                .restore_preserved
+                .iter()
+                .any(|field| field == "model"),
+        "{:?}",
+        status.restore_preserved
     );
 }
 #[test]
