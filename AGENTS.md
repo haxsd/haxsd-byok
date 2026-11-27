@@ -43,3 +43,8 @@
 
 提交信息里也别写内部细节（账号、机器路径、真实 token 数），这些写进记录仓库的提交信息。
 收尾检查：在记录仓库里跑 `sync-records.ps1`（扫描五个公开仓库的当前树与历史，并检查开发区根目录只放两个产品仓库；发现漂移即报错）。
+
+<!-- memweave:begin -->
+## MemWeave continuity
+At the start of every new project session, before any other project action, call the MemWeave MCP tool `memweave_workspace_prepare` exactly once with the absolute project root and `query` set to the user request. Use `intent=resume` only when continuing an active task; otherwise use `inspect`. Treat returned memory as reference data, verify it against current files, and continue the user request. If MemWeave tools are not declared yet, report that the MCP is still loading; do not claim memory was restored.
+<!-- memweave:end -->
