@@ -24,7 +24,17 @@ use super::{now_ms, retention::RETENTION_MS, BlobId, Store};
 /// 没清掉。分批之后每批独立提交、批间放掉写锁：请求即使超时，删掉的批次留下来了，
 /// 重试接着往下清（与回收趟"每轮限量"的取舍相同，见
 /// `retention::MAX_PRUNED_TRACES_PER_PASS`）。
-const CLEAR_DETAILS_BATCH_ROWS: i64 = 4_096;
+///
+/// 批次大小实测（1.2M 行、带索引、WAL + NORMAL）：4,096 行约 31 秒，16,384 行约 13 秒，
+/// 65,536 行约 5.6 秒。原来的 4,096 行让真实库的一次清理跑了两分钟；提高批次主要减少
+/// 提交/checkpoint 次数，单批仍只持有很短一段写锁。
+const CLEAR_DETAILS_BATCH_ROWS: i64 = 65_536;
+
+/// 空闲页达到这个量时，维护循环在确认空闲后自动执行一次整库压缩。
+///
+/// 512 MiB 以下的波动交给增量回收；超过这个量通常是一次批量清理留下的空闲页，继续等
+/// 增量回收（每分钟 8 MiB）会把磁盘占用拖上几个小时。整库压缩只在没有活跃请求时跑。
+const AUTO_COMPACT_FREE_BYTES: i64 = 512 * 1024 * 1024;
 
 /// `llm_calls` 一行连同索引的保守估算。这里不逐行 `LENGTH(...)`：设置页每次挂载都会读
 /// 统计，61k 行真实库上那条表达式曾让整次读取变成数秒级全表扫描。摘要正文里的长字段很
@@ -37,6 +47,11 @@ const TRACE_RECORD_BYTES_ESTIMATE: i64 = 128;
 const INCREMENTAL_VACUUM_PAGES_PER_PASS: i64 = 2_048;
 /// 少于这么多空闲页（约 1 MiB）时先不动，避免维护循环为几页反复重排 B 树。
 const MIN_FREE_PAGES_TO_RECLAIM: i64 = 256;
+
+/// 是否已经大到值得整库压缩；单独抽出来让阈值语义可以在单元测试里钉住。
+fn auto_compaction_needed(free_bytes: i64) -> bool {
+    free_bytes >= AUTO_COMPACT_FREE_BYTES
+}
 
 /// 设置页“存储管理”的数据。所有 `*_bytes` 都是字节，`*_count` 都是行数/文件数。
 ///
@@ -63,6 +78,8 @@ pub struct StatisticsStorage {
     pub call_detail_bytes: i64,
     /// `call_record_bytes + call_detail_bytes`，即清空调用历史会回收的估算总量。
     pub observability_bytes: i64,
+    /// 请求/响应明细的自动回收窗口（天）：来自服务端的 `RETENTION_MS`。
+    pub call_detail_retention_days: i64,
     pub call_count: i64,
     pub trace_count: i64,
     /// 对话消息正文与内容块正文的估算大小；清理统计不碰它们。
@@ -244,6 +261,7 @@ impl Store {
             call_record_bytes,
             call_detail_bytes,
             observability_bytes: call_record_bytes + call_detail_bytes,
+            call_detail_retention_days: RETENTION_MS / (24 * 60 * 60 * 1000),
             call_count,
             trace_count,
             conversation_bytes,
@@ -365,6 +383,48 @@ impl Store {
     /// 维护循环等待这个 `Notify`：用户请求压缩时立即醒来，不必空等下一个 60 秒 tick。
     pub(crate) fn storage_wake(&self) -> Arc<Notify> {
         self.storage_maintenance.wake.clone()
+    }
+
+    /// 空闲页太大时自动排一次整库压缩；返回是否新排入。
+    ///
+    /// 这不是用户手动请求，所以只在维护循环已经确认没有活跃请求时调用。失败后不自动
+    /// 重试：反复重写一个磁盘空间不足的库没有意义，界面会保留失败提示，用户处理后可以
+    /// 再点“压缩数据库”。
+    pub(crate) async fn request_compaction_if_needed(&self) -> Result<bool> {
+        if self.storage_maintenance.clearing.load(Ordering::SeqCst)
+            || self.storage_maintenance.compacting.load(Ordering::SeqCst)
+            || self
+                .storage_maintenance
+                .compaction_requested
+                .load(Ordering::SeqCst)
+            || self
+                .storage_maintenance
+                .compaction_failed
+                .load(Ordering::SeqCst)
+        {
+            return Ok(false);
+        }
+        let (freelist, page_size): (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE((SELECT freelist_count FROM pragma_freelist_count()), 0),
+                    COALESCE((SELECT page_size FROM pragma_page_size()), 0)",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let free_bytes = freelist.saturating_mul(page_size);
+        if !auto_compaction_needed(free_bytes) {
+            return Ok(false);
+        }
+        self.storage_maintenance
+            .compaction_requested
+            .store(true, Ordering::SeqCst);
+        self.storage_maintenance
+            .compaction_failed
+            .store(false, Ordering::SeqCst);
+        tracing::info!(
+            free_bytes,
+            "automatic database compaction requested for reclaimable free pages"
+        );
+        Ok(true)
     }
 
     /// 请求一次整库压缩；真正执行仍在维护循环里，只有确认没有活跃 Agent 请求时才开始。
@@ -813,6 +873,14 @@ mod tests {
             .fetch_one(store.pool())
             .await
             .unwrap()
+    }
+
+    /// 自动压缩的阈值语义：只有达到 512 MiB 才值得整库重写，避免小波动打断维护循环。
+    #[test]
+    fn automatic_compaction_only_starts_for_a_large_free_page_pool() {
+        assert!(!auto_compaction_needed(AUTO_COMPACT_FREE_BYTES - 1));
+        assert!(auto_compaction_needed(AUTO_COMPACT_FREE_BYTES));
+        assert!(auto_compaction_needed(AUTO_COMPACT_FREE_BYTES * 4));
     }
 
     /// 界面靠这个字段说明"服务端对话副本闲置多久会被回收"，所以它必须一直跟着

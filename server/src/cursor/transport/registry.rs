@@ -214,6 +214,10 @@ impl TransportRegistry {
             // 删掉。放在这里而不是写入路径，既躲开工具热路径的同步目录扫描，也保证
             // "提示里的路径"与"文件"同生共死。
             self.inner.store.prune_artifact_files().await?;
+            // 批量清理留下的空闲页要先自动排压缩：只靠增量回收每分钟 8 MiB，几 GiB
+            // 的空闲页会拖很久。排入后同一拍就会执行，因为下面马上调用
+            // `compact_if_requested`。
+            self.inner.store.request_compaction_if_needed().await?;
             if !self.inner.store.compact_if_requested().await? {
                 self.inner.store.reclaim_free_pages().await?;
             }
