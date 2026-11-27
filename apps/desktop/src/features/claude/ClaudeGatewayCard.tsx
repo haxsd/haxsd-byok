@@ -10,6 +10,7 @@ import { TitledCard } from "../../shared/ui/TitledCard";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import { copyIcon, keyIcon, providerIcon, terminalIcon } from "../../shared/ui/icons";
 import { clientErrorText, writeFailureText } from "../harness/harnessErrorText";
+import { DeveloperSettings, SettingsGroup } from "../harness/SettingsLayers";
 import { claudeAliasOptions } from "./claudeTakeoverPlan";
 import styles from "./ClaudeSettingsPage.module.scss";
 
@@ -111,59 +112,14 @@ export function ClaudeGatewayCard({
             onChange={(hash) => { if (draft) onChange({ ...draft, default_model_hash: hash || null }); }}
           />
         </FormField>
-        <FormField label={t("网关端口")} hint={t("保存后立即按新端口监听")}>
-          <TextInput
-            aria-label={t("网关端口")}
-            type="number"
-            min={1}
-            max={65535}
-            value={draft?.port ?? 0}
-            disabled={!draft || busy}
-            onChange={(event) => { if (draft) onChange({ ...draft, port: portInputValue(event.target.value) }); }}
-          />
-        </FormField>
       </div>
 
-      <details className={styles.advanced}>
-        <summary>
-          <strong>{t("高级")}</strong>
-          <span>{t("Sonnet 别名")} / {t("Opus 别名")} / {t("Haiku 别名")} · {t("网关地址")} · {t("访问令牌")}</span>
-        </summary>
-        <div className={styles.advancedBody}>
-          <p className={styles.note}>{t("客户端按家族请求时使用；留空回落到默认模型")}</p>
-          <div className={styles.fields}>
-            <FormField label={t("Sonnet 别名")}>
-              <ModelSelect
-                mode="single"
-                label={t("选择 Sonnet 别名模型")}
-                options={claudeAliasOptions(models, selectedHashes)}
-                value={draft?.sonnet_model_hash ?? ""}
-                disabled={!draft || busy}
-                onChange={(hash) => { if (draft) onChange({ ...draft, sonnet_model_hash: hash || null }); }}
-              />
-            </FormField>
-            <FormField label={t("Opus 别名")}>
-              <ModelSelect
-                mode="single"
-                label={t("选择 Opus 别名模型")}
-                options={claudeAliasOptions(models, selectedHashes)}
-                value={draft?.opus_model_hash ?? ""}
-                disabled={!draft || busy}
-                onChange={(hash) => { if (draft) onChange({ ...draft, opus_model_hash: hash || null }); }}
-              />
-            </FormField>
-            <FormField label={t("Haiku 别名")}>
-              <ModelSelect
-                mode="single"
-                label={t("选择 Haiku 别名模型")}
-                options={claudeAliasOptions(models, selectedHashes)}
-                value={draft?.haiku_model_hash ?? ""}
-                disabled={!draft || busy}
-                onChange={(hash) => { if (draft) onChange({ ...draft, haiku_model_hash: hash || null }); }}
-              />
-            </FormField>
-          </div>
-
+      <DeveloperSettings
+        title={t("高级配置")}
+        description={t("端口、连接信息与模型别名")}
+        className={styles.gatewayAdvanced}
+      >
+        <SettingsGroup title={t("连接信息")} description={t("手工配置 Claude Desktop 时需要")}>
           <div className={styles.facts}>
             <div className={styles.fact}>
               <Icon icon={terminalIcon} size="1.1em" />
@@ -207,8 +163,56 @@ export function ClaudeGatewayCard({
               </div>
             </div>
           </div>
-        </div>
-      </details>
+          <div className={styles.fields}>
+            <FormField label={t("网关端口")} hint={t("保存后立即按新端口监听")}>
+              <TextInput
+                aria-label={t("网关端口")}
+                type="number"
+                min={1}
+                max={65535}
+                value={draft?.port ?? 0}
+                disabled={!draft || busy}
+                onChange={(event) => { if (draft) onChange({ ...draft, port: portInputValue(event.target.value) }); }}
+              />
+            </FormField>
+          </div>
+        </SettingsGroup>
+
+        <SettingsGroup title={t("模型别名")} description={t("客户端按家族请求时使用；留空回落到默认模型")}>
+          <div className={styles.fields}>
+            <FormField label={t("Sonnet 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Sonnet 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.sonnet_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, sonnet_model_hash: hash || null }); }}
+              />
+            </FormField>
+            <FormField label={t("Opus 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Opus 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.opus_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, opus_model_hash: hash || null }); }}
+              />
+            </FormField>
+            <FormField label={t("Haiku 别名")}>
+              <ModelSelect
+                mode="single"
+                label={t("选择 Haiku 别名模型")}
+                options={claudeAliasOptions(models, selectedHashes)}
+                value={draft?.haiku_model_hash ?? ""}
+                disabled={!draft || busy}
+                onChange={(hash) => { if (draft) onChange({ ...draft, haiku_model_hash: hash || null }); }}
+              />
+            </FormField>
+          </div>
+        </SettingsGroup>
+      </DeveloperSettings>
 
       <div className={styles.gatewayFooter}>
         <span>{t("可发现 {count} 个模型", { count: status?.models ?? 0 })}</span>

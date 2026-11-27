@@ -198,36 +198,15 @@
 .summaryFacts dd { margin: 0; font-size: type.$font-size-xs; }
 
 /* 高级内容默认折叠，避免把地址、令牌和别名一次铺满页面。 */
-.advanced {
+.gatewayAdvanced {
   margin: 0 16px 14px;
-  border-top: 1px solid var(--oa-border);
+
+  .facts,
+  .fields { padding-left: 0; padding-right: 0; }
+  .facts { padding-bottom: 0; }
 }
 
-.settingsBody .advanced { margin-left: 0; margin-right: 0; }
-
-.advanced summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  color: var(--vscode-descriptionForeground);
-  font-size: type.$font-size-xs;
-  list-style: none;
-  cursor: pointer;
-
-  &::-webkit-details-marker { display: none; }
-  &::before { content: "›"; color: var(--vscode-descriptionForeground); font-size: type.$font-size-base; line-height: 1; }
-  &:hover { color: var(--vscode-foreground); }
-  &:focus-visible { outline: none; box-shadow: var(--oa-focus-ring); }
-}
-
-.advanced[open] > summary::before { transform: rotate(90deg); }
-.advanced summary strong { color: var(--vscode-foreground); font-weight: type.$font-weight-semibold; }
-.advanced summary span { min-width: 0; font-size: type.$font-size-2xs; overflow-wrap: anywhere; }
-.advancedBody { display: grid; gap: 10px; padding-bottom: 4px; }
-.advancedBody .fields { padding: 0 0 12px; }
-.advancedBody .facts { padding: 0 0 12px; }
+.settingsAdvanced { margin: 0; }
 
 /* ---- 冲突 / 阻断 ---- */
 .conflict,

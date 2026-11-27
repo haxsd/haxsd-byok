@@ -80,12 +80,6 @@
    说明紧一档。 */
 .hostNotes { display: grid; gap: 6px; padding: 16px; }
 .hostNotes p { margin: 0; color: var(--vscode-descriptionForeground); font-size: type.$font-size-xs; overflow-wrap: anywhere; }
-.technical summary {
-  width: fit-content;
-  color: var(--vscode-textLink-foreground);
-  font-size: type.$font-size-xs;
-  cursor: pointer;
-}
 .technicalBody {
   display: grid;
   gap: 4px;

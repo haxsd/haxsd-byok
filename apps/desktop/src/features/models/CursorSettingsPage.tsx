@@ -23,6 +23,7 @@ import { copyIcon, keyIcon, shieldIcon, terminalIcon } from "../../shared/ui/ico
 import { useMessage } from "../../shared/ui/message";
 import { appStore, useAppStore } from "../../shared/store/appStore";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
+import { DeveloperSettings } from "../harness/SettingsLayers";
 import { cursorAvailableModels } from "./cursorAvailableModels";
 
 /** 触发终端后的等待节奏：最长 30 秒，够一次 UAC 授权或一次密码输入。 */
@@ -441,13 +442,9 @@ export function CursorSettingsPage() {
       </div>
     </TitledCard>
 
-    <TitledCard
+    <DeveloperSettings
       title={t("本地证书详情")}
       description={t("安装命令、平台授权方式和证书状态。")}
-      icon={shieldIcon}
-      badge={<StatusPill tone={caTone}>{caLabel}</StatusPill>}
-      collapsible
-      storageKey="cursor-ca-details"
     >
       <CursorCaGate busy={cursorBusy} waitingForRefresh={waitingForCaRefresh} onInitialize={() => void initializeCa()} onRefresh={() => void refreshCa()}>
         <div className={styles.caBody}>
@@ -480,7 +477,7 @@ export function CursorSettingsPage() {
           </div>}
         </div>
       </CursorCaGate>
-    </TitledCard>
+    </DeveloperSettings>
 
     <HarnessCapabilities client="cursor" collapsible />
   </>;

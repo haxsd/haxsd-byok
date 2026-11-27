@@ -6,6 +6,7 @@ import { StatusPill } from "../../shared/ui/StatusPill";
 import { TooltipTrigger } from "../../shared/ui/TooltipTrigger";
 import { copyIcon } from "../../shared/ui/icons";
 import { writeFailureText } from "../harness/harnessErrorText";
+import { DeveloperSettings } from "../harness/SettingsLayers";
 import { ClaudeConflictList } from "./ClaudeConflictList";
 import {
   claudeConfigSourceLabel,
@@ -96,21 +97,18 @@ export function ClaudeDesktopTab({
       </div>
     </dl>
 
-    {developerMode && <details className={styles.advanced}>
-      <summary>{t("技术详情")}</summary>
-      <div className={styles.advancedBody}>
-        <dl className={styles.factList}>
-          <div>
-            <dt>{t("profile 路径")}</dt>
-            <dd>{takeover?.profile_path ? <code>{takeover.profile_path}</code> : t("未检测到")}</dd>
-          </div>
-          <div>
-            <dt>{t("备份")}</dt>
-            <dd>{takeover?.backup_path ? <code>{takeover.backup_path}</code> : t("还没有接管备份")}</dd>
-          </div>
-        </dl>
-      </div>
-    </details>}
+    <DeveloperSettings title={t("技术详情")} forceVisible={developerMode} className={styles.settingsAdvanced}>
+      <dl className={styles.factList}>
+        <div>
+          <dt>{t("profile 路径")}</dt>
+          <dd>{takeover?.profile_path ? <code>{takeover.profile_path}</code> : t("未检测到")}</dd>
+        </div>
+        <div>
+          <dt>{t("备份")}</dt>
+          <dd>{takeover?.backup_path ? <code>{takeover.backup_path}</code> : t("还没有接管备份")}</dd>
+        </div>
+      </dl>
+    </DeveloperSettings>
 
     <ClaudeConflictList conflicts={takeover?.conflicts ?? []} stale={takeover?.state === "stale"} />
 

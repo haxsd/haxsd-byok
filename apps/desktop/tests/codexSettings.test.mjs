@@ -153,8 +153,8 @@ test("a Codex configuration conflict locks settings until the takeover is restor
     draft: { enabled: true, port: 43120, home: "", model_hashes: ["hash"], default_model_hash: "hash" },
     models: [], pluginModels: [], locked: true, onChange: () => {},
   })));
-  assert.match(markup, /aria-label="Codex 配置目录"[^>]*disabled/);
-  assert.match(markup, /aria-label="Codex 网关端口"[^>]*disabled/);
+  assert.doesNotMatch(markup, /aria-label="Codex 配置目录"/, "normal mode does not expose the config path");
+  assert.doesNotMatch(markup, /aria-label="Codex 网关端口"/, "normal mode does not expose the gateway port");
   assert.match(markup, /撤销接管后才能修改/);
 });
 
@@ -189,8 +189,8 @@ test("an applied Codex gateway still allows changing the available model catalog
     /data-disabled="true"><button[^>]*aria-label="筛选项：选择 Codex 默认模型/,
     "默认模型不能在接管中改变",
   );
-  assert.match(markup, /aria-label="Codex 配置目录"[^>]*disabled/);
-  assert.match(markup, /aria-label="Codex 网关端口"[^>]*disabled/);
+  assert.doesNotMatch(markup, /aria-label="Codex 配置目录"/, "normal mode does not expose the config path");
+  assert.doesNotMatch(markup, /aria-label="Codex 网关端口"/, "normal mode does not expose the gateway port");
   assert.match(markup, /当前默认模型不能移除/);
 });
 

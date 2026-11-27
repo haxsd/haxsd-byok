@@ -28,6 +28,7 @@ import { getUiPreferences, saveUiPreferences, useUiPreferences } from "../../sha
 import { portInputValue } from "../../shared/utils/portInput";
 import { probeHostPath } from "./hostPathProbe";
 import { HarnessCapabilities } from "../harness/HarnessCapabilities";
+import { DeveloperSettings, SettingsGroup } from "../harness/SettingsLayers";
 import styles from "./DevinSettingsPage.module.scss";
 
 const emptySettings: DevinSettings = {
@@ -128,8 +129,8 @@ export function DevinSettingsPage() {
   // page should read as two decisions per mapping, not as a form of five fields.
   const [expandedBindings, setExpandedBindings] = useState<Record<string, boolean>>({});
   const devinStatus = useAppStoreSelector((state) => state.devinStatus);
-  // 普通模式不展开内部路径；只有排障信息存在时，才把同一份技术详情作为诊断入口
-  // 显示出来，避免页面提示“查看技术详情”却没有任何可看的内容。
+  // 普通模式不展开内部路径；只有排障信息存在时，才把同一份开发者诊断显示出来，
+  // 避免页面提示“查看高级配置”却没有任何可看的内容。
   const showTechnicalDetails = developerMode
     || Boolean(hostFailure)
     || Boolean(hostStatus?.message)
@@ -486,7 +487,7 @@ export function DevinSettingsPage() {
               : defaultMissingReason
                 ?? t("关闭 Devin，然后点上方主按钮“应用到 Devin”。")
             : extensionMissing
-              ? t("找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。")
+              ? t("找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级配置”里填写安装目录。")
               : extensionUnsupported
                 ? hostStatus.extension.patched && hostRestorable
                   ? t("接管配置需要恢复。点上方“撤销接管”，再重新应用。")
@@ -494,8 +495,8 @@ export function DevinSettingsPage() {
                 : hostStatus.configured
                   ? hostRestorable
                     ? t("接管配置需要恢复。点上方“撤销接管”，再重新应用。")
-                    : t("Devin 配置存在冲突，请查看下面的技术详情。")
-                  : t("暂时不能自动接入，请查看下面的技术详情。");
+                    : t("Devin 配置存在冲突，请查看下面的高级配置。")
+                  : t("暂时不能自动接入，请查看下面的高级配置。");
   const primaryAction = (() => {
     if (loading || loadError) return { label: t("读取中…"), disabled: true, run: () => undefined };
     if (!models.length) return { label: t("管理模型"), disabled: false, run: () => void navigate("/models") };
@@ -646,32 +647,34 @@ export function DevinSettingsPage() {
         {hostStatus && !hostStatus.unconfigured && !hostStatus.configured && hostStatus.message && <p>{clientErrorText(hostStatus.message)}</p>}
       </div>
     </TitledCard>}
-    <TitledCard
-      title={t("高级")}
-      description={t("通常不用改；端口、Devin 文件路径和安装目录都在这里。")}
-      collapsible
-      storageKey="devin-advanced"
+    <DeveloperSettings
+      title={t("高级配置")}
+      description={t("端口、上游地址、文件路径与诊断")}
+      forceVisible={showTechnicalDetails}
     >
-      <div className={styles.fields}>
-        {/* 端口是整数：空值或非数字交给服务端拒绝（它会说不清是哪种错），超范围的在这里夹住。 */}
-        <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portInputValue(event.target.value))} /></FormField>
-        <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portInputValue(event.target.value))} /></FormField>
-        <FormField label={t("本地 API 端口")}><TextInput type="number" min={1} max={65535} value={settings.local_api_port} onChange={(event) => update("local_api_port", portInputValue(event.target.value))} /></FormField>
-        <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
-          <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.codeium.com" />
-        </FormField>
-      </div>
-      <p className={styles.note}>{t("网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，本机网关负责模型调用和事件转发。")}</p>
-      <div className={styles.fields}>
-        <FormField label={t("Devin 设置文件路径")} hint={t("留空即自动探测；也可以填 Devin 数据目录，或 User\\settings.json 的完整路径。")}>
-          <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} onBlur={(event) => flushHostPath(event.target.value)} placeholder={t("留空自动探测")} />
-        </FormField>
-        <FormField label={t("Devin 安装目录")} hint={t("留空即自动探测；也可以填安装目录，或其中 extension.js 的完整路径。")}>
-          <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
-        </FormField>
-      </div>
-      {showTechnicalDetails && <details className={styles.technical}>
-        <summary>{t("技术详情")}</summary>
+      <SettingsGroup title={t("端口与上游")} description={t("通常不用改；网关固定监听 127.0.0.1。")}>
+        <div className={styles.fields}>
+          {/* 端口是整数：空值或非数字交给服务端拒绝（它会说不清是哪种错），超范围的在这里夹住。 */}
+          <FormField label={t("API 端口")}><TextInput type="number" min={1} max={65535} value={settings.api_port} onChange={(event) => update("api_port", portInputValue(event.target.value))} /></FormField>
+          <FormField label={t("推理端口")}><TextInput type="number" min={1} max={65535} value={settings.inference_port} onChange={(event) => update("inference_port", portInputValue(event.target.value))} /></FormField>
+          <FormField label={t("本地 API 端口")}><TextInput type="number" min={1} max={65535} value={settings.local_api_port} onChange={(event) => update("local_api_port", portInputValue(event.target.value))} /></FormField>
+          <FormField label={t("上游 API 地址")} hint={t("登录、账号与遥测等本地不处理的方法会转发到这里；模型请求不经过它。")}>
+            <TextInput value={settings.upstream_api_url} onChange={(event) => update("upstream_api_url", event.target.value)} placeholder="https://server.codeium.com" />
+          </FormField>
+        </div>
+        <p className={styles.note}>{t("Devin 负责执行工具，本机网关负责模型调用和事件转发。")}</p>
+      </SettingsGroup>
+      <SettingsGroup title={t("路径")} description={t("留空自动探测；只在自定义安装位置时需要填写。")}>
+        <div className={styles.fields}>
+          <FormField label={t("Devin 设置文件路径")} hint={t("留空即自动探测；也可以填 Devin 数据目录，或 User\\settings.json 的完整路径。")}>
+            <TextInput value={hostPath} onChange={(event) => rememberHostPath(event.target.value)} onBlur={(event) => flushHostPath(event.target.value)} placeholder={t("留空自动探测")} />
+          </FormField>
+          <FormField label={t("Devin 安装目录")} hint={t("留空即自动探测；也可以填安装目录，或其中 extension.js 的完整路径。")}>
+            <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
+          </FormField>
+        </div>
+      </SettingsGroup>
+      {showTechnicalDetails && <SettingsGroup title={t("诊断")} description={t("设置文件、扩展版本与兼容补丁状态。")}>
         <div className={styles.technicalBody}>
           {hostStatus?.path && <p>{t("设置文件：{path}", { path: hostStatus.path })}</p>}
           {hostStatus?.extension.path && <p>{t("扩展文件：{path}", { path: hostStatus.extension.path })}</p>}
@@ -681,9 +684,9 @@ export function DevinSettingsPage() {
           {hostStatus?.message && <p>{clientErrorText(hostStatus.message)}</p>}
           {hostStatus?.extension.message && <p>{clientErrorText(hostStatus.extension.message)}</p>}
         </div>
-      </details>}
+      </SettingsGroup>}
       {!hostRestorable && <p className={styles.note}>{t("只有本应用写入的配置才能一键恢复。")}</p>}
-    </TitledCard>
+    </DeveloperSettings>
     <HarnessCapabilities client="devin" collapsible />
     {view.pendingChanges && <div className={styles.saveBar}>
       <span>{t("有未保存的改动")}</span>

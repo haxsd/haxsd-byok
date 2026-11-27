@@ -1,0 +1,60 @@
+.layer {
+  border-top: 1px solid var(--oa-border);
+}
+
+.layer > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 0;
+  color: var(--vscode-descriptionForeground);
+  list-style: none;
+  cursor: pointer;
+}
+
+.layer > summary::-webkit-details-marker { display: none; }
+.layer > summary::before {
+  content: "\203A";
+  color: var(--vscode-descriptionForeground);
+  line-height: 1;
+}
+.layer[open] > summary::before { display: inline-block; transform: rotate(90deg); }
+.layer > summary:hover { color: var(--vscode-foreground); }
+.layer > summary:focus-visible { outline: none; box-shadow: var(--oa-focus-ring); }
+.layer > summary strong { color: var(--vscode-foreground); font-weight: 600; }
+.layer > summary span { min-width: 0; overflow-wrap: anywhere; opacity: .85; }
+
+.body {
+  display: grid;
+  gap: 14px;
+  padding: 2px 0 12px;
+}
+
+.group {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--oa-border);
+}
+
+.group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.groupHeading {
+  display: grid;
+  gap: 3px;
+}
+
+.groupHeading strong {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.groupHeading small {
+  color: var(--vscode-descriptionForeground);
+  opacity: .85;
+}

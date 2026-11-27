@@ -19,7 +19,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 72,
+          "line": 73,
           "column": 25
         },
         {
@@ -110,7 +110,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 360,
+          "line": 361,
           "column": 15
         }
       ]
@@ -192,17 +192,17 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 553,
+          "line": 554,
           "column": 39
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 250,
+          "line": 251,
           "column": 32
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 432,
+          "line": 433,
           "column": 51
         }
       ]
@@ -260,7 +260,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 66,
+          "line": 67,
           "column": 12
         },
         {
@@ -340,7 +340,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 355,
+          "line": 356,
           "column": 54
         }
       ]
@@ -462,7 +462,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 594,
+          "line": 595,
           "column": 86
         }
       ]
@@ -542,12 +542,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 472,
+          "line": 469,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 475,
+          "line": 472,
           "column": 29
         }
       ]
@@ -571,7 +571,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 513,
+          "line": 514,
           "column": 51
         }
       ]
@@ -609,7 +609,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 591,
+          "line": 592,
           "column": 119
         }
       ]
@@ -693,7 +693,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 199,
+          "line": 200,
           "column": 13
         },
         {
@@ -710,7 +710,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 598,
+          "line": 599,
           "column": 39
         }
       ]
@@ -750,7 +750,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 593,
+          "line": 594,
           "column": 69
         }
       ]
@@ -935,7 +935,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 262,
+          "line": 263,
           "column": 16
         }
       ]
@@ -963,6 +963,18 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 212,
           "column": 16
+        }
+      ]
+    },
+    "0ad6d5c8a34b1573": {
+      "source": "端口、上游地址、文件路径与诊断",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 652,
+          "column": 20
         }
       ]
     },
@@ -1275,12 +1287,12 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 47,
+          "line": 48,
           "column": 18
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 54,
+          "line": 55,
           "column": 22
         }
       ]
@@ -1330,7 +1342,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 331,
+          "line": 332,
           "column": 64
         }
       ]
@@ -1366,12 +1378,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 72
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 171,
+          "line": 127,
           "column": 26
         }
       ]
@@ -1489,12 +1496,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 61,
+          "line": 62,
           "column": 25
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 73,
+          "line": 74,
           "column": 52
         },
         {
@@ -1619,7 +1626,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 505,
+          "line": 502,
           "column": 53
         }
       ]
@@ -1763,7 +1770,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 513,
+          "line": 514,
           "column": 39
         }
       ]
@@ -1775,8 +1782,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 98,
-          "column": 110
+          "line": 102,
+          "column": 112
         }
       ]
     },
@@ -1797,8 +1804,8 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 105,
-          "column": 82
+          "line": 104,
+          "column": 80
         }
       ]
     },
@@ -1848,8 +1855,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 133,
-          "column": 39
+          "line": 181,
+          "column": 55
         }
       ]
     },
@@ -1876,7 +1883,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 171,
+          "line": 169,
           "column": 27
         },
         {
@@ -1886,12 +1893,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 558,
+          "line": 559,
           "column": 92
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 281,
+          "line": 282,
           "column": 23
         },
         {
@@ -1918,7 +1925,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 96,
+          "line": 97,
           "column": 70
         }
       ]
@@ -2011,7 +2018,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 677,
+          "line": 680,
           "column": 46
         }
       ]
@@ -2201,7 +2208,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 211,
+          "line": 209,
           "column": 31
         }
       ]
@@ -2213,7 +2220,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 51,
+          "line": 52,
           "column": 15
         }
       ]
@@ -2259,12 +2266,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 204,
+          "line": 205,
           "column": 12
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 374,
+          "line": 375,
           "column": 42
         }
       ]
@@ -2293,7 +2300,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 256,
+          "line": 257,
           "column": 52
         }
       ]
@@ -2317,7 +2324,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 264,
+          "line": 265,
           "column": 13
         }
       ]
@@ -2329,7 +2336,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 259,
+          "line": 260,
           "column": 39
         }
       ]
@@ -2408,6 +2415,18 @@
         }
       ]
     },
+    "1cb6c50f7cb97196": {
+      "source": "端口、连接信息与模型别名",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 119,
+          "column": 22
+        }
+      ]
+    },
     "1cc0eb50e4883eff": {
       "source": "需要先信任本地 CA",
       "kind": "text",
@@ -2415,7 +2434,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 378,
+          "line": 379,
           "column": 79
         }
       ]
@@ -2492,7 +2511,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 392,
+          "line": 393,
           "column": 25
         }
       ]
@@ -2518,7 +2537,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 81,
+          "line": 82,
           "column": 12
         }
       ]
@@ -2542,17 +2561,17 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 104,
+          "line": 105,
           "column": 27
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 96,
+          "line": 97,
           "column": 25
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 618,
+          "line": 619,
           "column": 23
         }
       ]
@@ -2564,8 +2583,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 104,
-          "column": 18
+          "line": 103,
+          "column": 16
         }
       ]
     },
@@ -2685,7 +2704,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 94,
+          "line": 95,
           "column": 14
         }
       ]
@@ -2699,18 +2718,6 @@
           "file": "features/settings/ExternalApiSettingsCard.tsx",
           "line": 108,
           "column": 42
-        }
-      ]
-    },
-    "1ffaa10e41043e8d": {
-      "source": "找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级”里填写安装目录。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 489,
-          "column": 17
         }
       ]
     },
@@ -2815,7 +2822,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 64,
+          "line": 65,
           "column": 57
         }
       ]
@@ -2841,18 +2848,6 @@
           "file": "features/plugins/PluginResourcePanels.tsx",
           "line": 497,
           "column": 50
-        }
-      ]
-    },
-    "21c6503a425e4ccd": {
-      "source": "暂时不能自动接入，请查看下面的技术详情。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 498,
-          "column": 21
         }
       ]
     },
@@ -2887,7 +2882,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 534,
+          "line": 531,
           "column": 13
         }
       ]
@@ -3100,8 +3095,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 658,
-          "column": 27
+          "line": 659,
+          "column": 29
         }
       ]
     },
@@ -3112,7 +3107,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 287,
+          "line": 288,
           "column": 23
         }
       ]
@@ -3210,7 +3205,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 417,
+          "line": 418,
           "column": 27
         }
       ]
@@ -3224,7 +3219,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 399,
+          "line": 400,
           "column": 28
         }
       ]
@@ -3376,7 +3371,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 225,
+          "line": 226,
           "column": 11
         }
       ]
@@ -3400,7 +3395,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 209,
+          "line": 210,
           "column": 12
         }
       ]
@@ -3624,7 +3619,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 700,
+          "line": 703,
           "column": 20
         },
         {
@@ -3634,7 +3629,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 506,
+          "line": 503,
           "column": 20
         },
         {
@@ -3901,6 +3896,18 @@
         }
       ]
     },
+    "2f9bd68a1a161129": {
+      "source": "模型别名",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 181,
+          "column": 31
+        }
+      ]
+    },
     "2f9daa828907b93f": {
       "source": "删除",
       "kind": "text",
@@ -3935,7 +3942,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 478,
+          "line": 479,
           "column": 11
         }
       ]
@@ -4005,12 +4012,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 543,
+          "line": 544,
           "column": 150
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 342,
+          "line": 343,
           "column": 94
         }
       ]
@@ -4070,7 +4077,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 196,
+          "line": 197,
           "column": 11
         }
       ]
@@ -4094,7 +4101,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 204,
+          "line": 160,
           "column": 32
         }
       ]
@@ -4138,7 +4145,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 204,
+          "line": 160,
           "column": 44
         }
       ]
@@ -4150,7 +4157,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 510,
+          "line": 507,
           "column": 13
         }
       ]
@@ -4184,7 +4191,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 124,
+          "line": 122,
           "column": 15
         }
       ]
@@ -4297,12 +4304,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 171,
+          "line": 169,
           "column": 44
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 72,
+          "line": 73,
           "column": 42
         }
       ]
@@ -4314,7 +4321,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 166,
+          "line": 164,
           "column": 57
         },
         {
@@ -4331,7 +4338,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 508,
+          "line": 505,
           "column": 11
         }
       ]
@@ -4381,7 +4388,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 603,
+          "line": 604,
           "column": 160
         }
       ]
@@ -4419,7 +4426,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 93,
+          "line": 94,
           "column": 12
         }
       ]
@@ -4431,7 +4438,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 208,
+          "line": 209,
           "column": 12
         }
       ]
@@ -4453,37 +4460,37 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 85,
+          "line": 86,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 91,
+          "line": 92,
           "column": 13
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 95,
+          "line": 96,
           "column": 75
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 145,
+          "line": 143,
           "column": 72
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 222,
+          "line": 220,
           "column": 55
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 173,
+          "line": 129,
           "column": 46
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 190,
+          "line": 146,
           "column": 43
         },
         {
@@ -4518,22 +4525,22 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 500,
+          "line": 501,
           "column": 47
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 192,
+          "line": 193,
           "column": 7
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 212,
+          "line": 213,
           "column": 7
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 323,
+          "line": 324,
           "column": 48
         },
         {
@@ -4604,7 +4611,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 468,
+          "line": 465,
           "column": 39
         }
       ]
@@ -4684,7 +4691,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 445,
+          "line": 446,
           "column": 14
         }
       ]
@@ -4696,7 +4703,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 57,
+          "line": 58,
           "column": 25
         },
         {
@@ -4727,6 +4734,33 @@
           "file": "features/tutorial/TutorialPage.tsx",
           "line": 127,
           "column": 17
+        }
+      ]
+    },
+    "36a045ebcc6da95f": {
+      "source": "高级配置",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 118,
+          "column": 16
+        },
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 99,
+          "column": 31
+        },
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 651,
+          "column": 14
+        },
+        {
+          "file": "features/harness/SettingsLayers.tsx",
+          "line": 15,
+          "column": 44
         }
       ]
     },
@@ -5211,13 +5245,13 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 114,
-          "column": 27
+          "line": 167,
+          "column": 31
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 116,
-          "column": 25
+          "line": 169,
+          "column": 29
         }
       ]
     },
@@ -5420,13 +5454,13 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 667,
-          "column": 165
+          "line": 670,
+          "column": 167
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 670,
-          "column": 186
+          "line": 673,
+          "column": 188
         }
       ]
     },
@@ -5439,7 +5473,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 205,
+          "line": 203,
           "column": 31
         }
       ]
@@ -5475,7 +5509,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 528,
+          "line": 525,
           "column": 80
         },
         {
@@ -5507,7 +5541,7 @@
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 129,
+          "line": 127,
           "column": 15
         }
       ]
@@ -5569,7 +5603,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 525,
+          "line": 522,
           "column": 11
         }
       ]
@@ -5660,6 +5694,11 @@
       "placeholders": [],
       "refs": [
         {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 677,
+          "column": 54
+        },
+        {
           "file": "features/settings/DiagnosticsCard.tsx",
           "line": 95,
           "column": 29
@@ -5724,7 +5763,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 63,
+          "line": 64,
           "column": 38
         },
         {
@@ -5840,7 +5879,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 347,
+          "line": 348,
           "column": 38
         }
       ]
@@ -5898,12 +5937,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 37
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 145,
+          "line": 193,
           "column": 31
         }
       ]
@@ -6007,12 +6041,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 640,
+          "line": 641,
           "column": 40
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 346,
+          "line": 347,
           "column": 61
         },
         {
@@ -6150,7 +6184,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 622,
+          "line": 623,
           "column": 20
         }
       ]
@@ -6306,7 +6340,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 409,
+          "line": 410,
           "column": 49
         }
       ]
@@ -6392,7 +6426,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 530,
+          "line": 531,
           "column": 40
         },
         {
@@ -6508,7 +6542,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 84,
+          "line": 85,
           "column": 44
         }
       ]
@@ -6585,7 +6619,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 618,
+          "line": 619,
           "column": 50
         }
       ]
@@ -6729,7 +6763,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 137,
+          "line": 135,
           "column": 20
         }
       ]
@@ -6832,7 +6866,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 482,
+          "line": 483,
           "column": 15
         }
       ]
@@ -6996,7 +7030,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 129,
+          "line": 127,
           "column": 50
         }
       ]
@@ -7008,12 +7042,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 360,
+          "line": 361,
           "column": 22
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 369,
+          "line": 370,
           "column": 26
         }
       ]
@@ -7086,7 +7120,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 381,
+          "line": 382,
           "column": 65
         }
       ]
@@ -7120,7 +7154,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 19,
+          "line": 20,
           "column": 14
         }
       ]
@@ -7137,7 +7171,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 250,
+          "line": 251,
           "column": 74
         }
       ]
@@ -7161,7 +7195,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 603,
+          "line": 604,
           "column": 432
         }
       ]
@@ -7213,7 +7247,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 403,
+          "line": 404,
           "column": 25
         }
       ]
@@ -7242,7 +7276,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 176,
+          "line": 174,
           "column": 35
         }
       ]
@@ -7316,7 +7350,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 17,
+          "line": 18,
           "column": 14
         }
       ]
@@ -7405,7 +7439,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 331,
+          "line": 332,
           "column": 53
         },
         {
@@ -7464,12 +7498,12 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 92,
+          "line": 93,
           "column": 19
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 689,
+          "line": 692,
           "column": 14
         }
       ]
@@ -7529,7 +7563,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 21,
+          "line": 22,
           "column": 14
         }
       ]
@@ -7707,7 +7741,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 189,
+          "line": 190,
           "column": 11
         }
       ]
@@ -7746,7 +7780,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 421,
+          "line": 422,
           "column": 22
         }
       ]
@@ -7998,12 +8032,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 492,
+          "line": 493,
           "column": 21
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 496,
+          "line": 497,
           "column": 23
         }
       ]
@@ -8015,7 +8049,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 64,
+          "line": 65,
           "column": 39
         },
         {
@@ -8090,7 +8124,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 237,
+          "line": 238,
           "column": 13
         }
       ]
@@ -8154,7 +8188,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 293,
+          "line": 294,
           "column": 37
         }
       ]
@@ -8178,12 +8212,12 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 598,
           "column": 39
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 597,
+          "line": 598,
           "column": 84
         }
       ]
@@ -8195,7 +8229,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 256,
+          "line": 257,
           "column": 30
         }
       ]
@@ -8352,7 +8386,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 148,
+          "line": 149,
           "column": 17
         }
       ]
@@ -8378,7 +8412,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 604,
+          "line": 605,
           "column": 83
         }
       ]
@@ -8458,17 +8492,17 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 214,
+          "line": 212,
           "column": 19
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 584,
+          "line": 585,
           "column": 151
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 604,
+          "line": 605,
           "column": 218
         },
         {
@@ -8619,7 +8653,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 90,
+          "line": 91,
           "column": 35
         }
       ]
@@ -8772,7 +8806,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 511,
+          "line": 508,
           "column": 46
         }
       ]
@@ -9059,7 +9093,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 353,
+          "line": 354,
           "column": 14
         }
       ]
@@ -9071,7 +9105,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 633,
+          "line": 634,
           "column": 14
         }
       ]
@@ -9219,7 +9253,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 603,
+          "line": 604,
           "column": 420
         }
       ]
@@ -9262,7 +9296,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 314,
+          "line": 315,
           "column": 15
         }
       ]
@@ -9318,6 +9352,30 @@
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 307,
           "column": 13
+        }
+      ]
+    },
+    "6a09e2843fed9ee8": {
+      "source": "开发者诊断",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/harness/SettingsLayers.tsx",
+          "line": 31,
+          "column": 11
+        }
+      ]
+    },
+    "6a41c745f680f0af": {
+      "source": "暂时不能自动接入，请查看下面的高级配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 499,
+          "column": 21
         }
       ]
     },
@@ -9389,7 +9447,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 712,
+          "line": 715,
           "column": 35
         },
         {
@@ -9583,7 +9641,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 487,
+          "line": 488,
           "column": 20
         }
       ]
@@ -9860,12 +9918,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 86
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 188,
+          "line": 144,
           "column": 26
         }
       ]
@@ -9901,8 +9954,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 108,
-          "column": 18
+          "line": 107,
+          "column": 16
         }
       ]
     },
@@ -9997,7 +10050,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 90,
+          "line": 91,
           "column": 12
         }
       ]
@@ -10011,7 +10064,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 199,
+          "line": 197,
           "column": 31
         }
       ]
@@ -10023,7 +10076,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 219,
+          "line": 220,
           "column": 13
         }
       ]
@@ -10052,7 +10105,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 531,
+          "line": 528,
           "column": 13
         }
       ]
@@ -10076,7 +10129,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 409,
+          "line": 410,
           "column": 70
         }
       ]
@@ -10088,7 +10141,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 60,
+          "line": 61,
           "column": 22
         }
       ]
@@ -10160,12 +10213,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 54
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 155,
+          "line": 203,
           "column": 31
         }
       ]
@@ -10189,7 +10237,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 316,
+          "line": 317,
           "column": 17
         }
       ]
@@ -10201,7 +10249,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 436,
+          "line": 437,
           "column": 17
         }
       ]
@@ -10266,6 +10314,18 @@
         }
       ]
     },
+    "77e1ea5c5688eea4": {
+      "source": "路径",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 667,
+          "column": 29
+        }
+      ]
+    },
     "7826c8c8530cd492": {
       "source": "上游 API 地址",
       "kind": "text",
@@ -10273,8 +10333,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 660,
-          "column": 27
+          "line": 661,
+          "column": 29
         }
       ]
     },
@@ -10420,7 +10480,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 87,
+          "line": 88,
           "column": 12
         }
       ]
@@ -10574,7 +10634,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 519,
+          "line": 520,
           "column": 23
         }
       ]
@@ -10586,7 +10646,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 67,
+          "line": 68,
           "column": 18
         }
       ]
@@ -10680,8 +10740,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 666,
-          "column": 27
+          "line": 669,
+          "column": 29
         }
       ]
     },
@@ -10887,7 +10947,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 15,
+          "line": 16,
           "column": 14
         }
       ]
@@ -10899,7 +10959,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 306,
+          "line": 307,
           "column": 7
         }
       ]
@@ -10984,6 +11044,18 @@
         }
       ]
     },
+    "82479cb6ca73042d": {
+      "source": "连接信息",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 122,
+          "column": 31
+        }
+      ]
+    },
     "829ed17633dde839": {
       "source": "只有模型请求被本地处理，其余原样转发。",
       "kind": "text",
@@ -11015,7 +11087,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 71,
+          "line": 72,
           "column": 50
         },
         {
@@ -11061,7 +11133,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 196,
+          "line": 152,
           "column": 66
         }
       ]
@@ -11085,7 +11157,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 118,
+          "line": 116,
           "column": 16
         }
       ]
@@ -11158,7 +11230,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 235,
+          "line": 236,
           "column": 11
         }
       ]
@@ -11199,12 +11271,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 195,
+          "line": 193,
           "column": 54
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 61,
+          "line": 62,
           "column": 42
         }
       ]
@@ -11421,8 +11493,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 114,
-          "column": 44
+          "line": 167,
+          "column": 48
         }
       ]
     },
@@ -11545,7 +11617,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 226,
+          "line": 227,
           "column": 11
         }
       ]
@@ -11682,7 +11754,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 504,
+          "line": 501,
           "column": 11
         }
       ]
@@ -11740,7 +11812,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 138,
+          "line": 186,
           "column": 24
         }
       ]
@@ -11776,7 +11848,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 485,
+          "line": 486,
           "column": 17
         }
       ]
@@ -11802,7 +11874,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 187,
+          "line": 185,
           "column": 41
         }
       ]
@@ -11973,7 +12045,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 458,
+          "line": 455,
           "column": 23
         }
       ]
@@ -11999,6 +12071,18 @@
           "file": "features/cursor/TabSettingsCard.tsx",
           "line": 76,
           "column": 21
+        }
+      ]
+    },
+    "8fcc2e2567113ea2": {
+      "source": "端口与上游",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 655,
+          "column": 29
         }
       ]
     },
@@ -12061,7 +12145,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 447,
+          "line": 448,
           "column": 9
         }
       ]
@@ -12085,7 +12169,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 404,
+          "line": 405,
           "column": 25
         }
       ]
@@ -12097,7 +12181,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 550,
+          "line": 551,
           "column": 20
         }
       ]
@@ -12109,7 +12193,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 162,
+          "line": 160,
           "column": 21
         }
       ]
@@ -12172,12 +12256,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 76,
+          "line": 77,
           "column": 46
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 90,
+          "line": 91,
           "column": 23
         }
       ]
@@ -12293,7 +12377,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 128,
+          "line": 126,
           "column": 16
         },
         {
@@ -12310,7 +12394,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 685,
+          "line": 688,
           "column": 55
         }
       ]
@@ -12344,7 +12428,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 347,
+          "line": 348,
           "column": 22
         }
       ]
@@ -12416,7 +12500,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 188,
+          "line": 189,
           "column": 11
         }
       ]
@@ -12464,12 +12548,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 191,
+          "line": 147,
           "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 194,
+          "line": 150,
           "column": 35
         }
       ]
@@ -12510,7 +12594,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 505,
+          "line": 502,
           "column": 40
         }
       ]
@@ -12594,7 +12678,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 63,
+          "line": 64,
           "column": 56
         }
       ]
@@ -12663,15 +12747,15 @@
         }
       ]
     },
-    "981cb8ee071864cb": {
-      "source": "通常不用改；端口、Devin 文件路径和安装目录都在这里。",
+    "9815e37bc789a2fc": {
+      "source": "找不到 Devin。请先安装或打开一次 Devin；如果装在自定义位置，请在“高级配置”里填写安装目录。",
       "kind": "text",
       "placeholders": [],
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 651,
-          "column": 20
+          "line": 490,
+          "column": 17
         }
       ]
     },
@@ -12682,8 +12766,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 666,
-          "column": 52
+          "line": 669,
+          "column": 54
         }
       ]
     },
@@ -12732,8 +12816,8 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 97,
-          "column": 48
+          "line": 101,
+          "column": 50
         }
       ]
     },
@@ -12782,7 +12866,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 584,
+          "line": 585,
           "column": 77
         }
       ]
@@ -12818,7 +12902,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 699,
+          "line": 702,
           "column": 14
         }
       ]
@@ -12906,8 +12990,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 659,
-          "column": 27
+          "line": 660,
+          "column": 29
         }
       ]
     },
@@ -13002,8 +13086,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 660,
-          "column": 49
+          "line": 661,
+          "column": 51
         }
       ]
     },
@@ -13139,7 +13223,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 104,
+          "line": 105,
           "column": 44
         }
       ]
@@ -13168,7 +13252,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 691,
+          "line": 694,
           "column": 84
         }
       ]
@@ -13180,7 +13264,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 176,
+          "line": 174,
           "column": 57
         },
         {
@@ -13205,12 +13289,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 249,
+          "line": 250,
           "column": 14
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 431,
+          "line": 432,
           "column": 22
         },
         {
@@ -13283,7 +13367,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 402,
+          "line": 403,
           "column": 15
         }
       ]
@@ -13333,7 +13417,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 574,
+          "line": 575,
           "column": 51
         }
       ]
@@ -13450,7 +13534,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 284,
+          "line": 285,
           "column": 23
         }
       ]
@@ -13498,7 +13582,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 511,
+          "line": 508,
           "column": 33
         }
       ]
@@ -13560,7 +13644,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 549,
+          "line": 550,
           "column": 14
         }
       ]
@@ -13620,7 +13704,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 223,
+          "line": 224,
           "column": 62
         }
       ]
@@ -13649,7 +13733,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 310,
+          "line": 311,
           "column": 11
         }
       ]
@@ -13720,17 +13804,17 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 506,
+          "line": 507,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 510,
+          "line": 511,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 692,
+          "line": 695,
           "column": 149
         },
         {
@@ -13921,6 +14005,18 @@
         }
       ]
     },
+    "a4e5b3c7f517548a": {
+      "source": "留空自动探测；只在自定义安装位置时需要填写。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 667,
+          "column": 51
+        }
+      ]
+    },
     "a4f8fa8787750b9d": {
       "source": "Codex 配置无法读取，无法确认 ChatGPT 登录状态",
       "kind": "text",
@@ -14053,7 +14149,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 678,
+          "line": 681,
           "column": 62
         }
       ]
@@ -14101,8 +14197,8 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 109,
-          "column": 80
+          "line": 108,
+          "column": 78
         }
       ]
     },
@@ -14144,12 +14240,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 146,
+          "line": 144,
           "column": 40
         },
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 149,
+          "line": 147,
           "column": 33
         }
       ]
@@ -14299,7 +14395,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 84,
+          "line": 85,
           "column": 72
         }
       ]
@@ -14311,7 +14407,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 580,
+          "line": 581,
           "column": 78
         }
       ]
@@ -14458,7 +14554,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 258,
+          "line": 259,
           "column": 69
         }
       ]
@@ -14484,7 +14580,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 610,
+          "line": 611,
           "column": 58
         }
       ]
@@ -14496,7 +14592,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 194,
+          "line": 195,
           "column": 9
         },
         {
@@ -14513,7 +14609,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 312,
+          "line": 313,
           "column": 13
         }
       ]
@@ -14614,7 +14710,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 265,
+          "line": 266,
           "column": 13
         }
       ]
@@ -14626,7 +14722,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 634,
+          "line": 635,
           "column": 20
         }
       ]
@@ -14669,6 +14765,18 @@
           "file": "features/codex/codexModelOptions.ts",
           "line": 68,
           "column": 53
+        }
+      ]
+    },
+    "ace74927d37cf2cd": {
+      "source": "Devin 负责执行工具，本机网关负责模型调用和事件转发。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 665,
+          "column": 37
         }
       ]
     },
@@ -14889,7 +14997,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 676,
+          "line": 679,
           "column": 36
         }
       ]
@@ -14961,7 +15069,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 582,
+          "line": 583,
           "column": 31
         },
         {
@@ -14992,7 +15100,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 179,
+          "line": 135,
           "column": 69
         }
       ]
@@ -15021,7 +15129,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 117,
+          "line": 115,
           "column": 79
         }
       ]
@@ -15033,7 +15141,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 446,
+          "line": 447,
           "column": 20
         }
       ]
@@ -15045,7 +15153,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 638,
+          "line": 639,
           "column": 38
         }
       ]
@@ -15057,7 +15165,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 556,
+          "line": 557,
           "column": 50
         }
       ]
@@ -15093,7 +15201,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 413,
+          "line": 414,
           "column": 20
         }
       ]
@@ -15143,7 +15251,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 680,
+          "line": 683,
           "column": 49
         }
       ]
@@ -15220,12 +15328,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 143,
+          "line": 144,
           "column": 15
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 176,
+          "line": 177,
           "column": 15
         }
       ]
@@ -15249,7 +15357,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 338,
+          "line": 339,
           "column": 15
         }
       ]
@@ -15303,12 +15411,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 516,
+          "line": 517,
           "column": 23
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 303,
+          "line": 304,
           "column": 21
         }
       ]
@@ -15402,7 +15510,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 322,
+          "line": 323,
           "column": 23
         }
       ]
@@ -15426,7 +15534,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 73,
+          "line": 74,
           "column": 69
         }
       ]
@@ -15450,7 +15558,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 138,
+          "line": 136,
           "column": 19
         }
       ]
@@ -15488,7 +15596,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 215,
+          "line": 219,
           "column": 16
         },
         {
@@ -15634,7 +15742,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 476,
+          "line": 477,
           "column": 9
         }
       ]
@@ -15757,7 +15865,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 78,
+          "line": 79,
           "column": 65
         },
         {
@@ -15777,7 +15885,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 532,
+          "line": 533,
           "column": 147
         },
         {
@@ -15848,7 +15956,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 528,
+          "line": 525,
           "column": 103
         }
       ]
@@ -16072,7 +16180,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 393,
+          "line": 394,
           "column": 25
         }
       ]
@@ -16098,7 +16206,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 601,
+          "line": 602,
           "column": 60
         }
       ]
@@ -16139,7 +16247,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 336,
+          "line": 337,
           "column": 13
         }
       ]
@@ -16177,7 +16285,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 414,
+          "line": 415,
           "column": 20
         }
       ]
@@ -16229,7 +16337,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 388,
+          "line": 389,
           "column": 28
         }
       ]
@@ -16272,7 +16380,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 223,
+          "line": 224,
           "column": 9
         }
       ]
@@ -16325,7 +16433,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 270,
+          "line": 271,
           "column": 15
         }
       ]
@@ -16409,7 +16517,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 426,
+          "line": 427,
           "column": 15
         }
       ]
@@ -16455,7 +16563,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 574,
           "column": 48
         }
       ]
@@ -16500,7 +16608,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 410,
+          "line": 411,
           "column": 20
         }
       ]
@@ -16512,12 +16620,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 203,
+          "line": 204,
           "column": 12
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 373,
+          "line": 374,
           "column": 42
         }
       ]
@@ -16606,7 +16714,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 70,
+          "line": 71,
           "column": 50
         }
       ]
@@ -16661,6 +16769,18 @@
         }
       ]
     },
+    "c06b8485d795b96c": {
+      "source": "配置目录与网关端口",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/codex/CodexSettingsForm.tsx",
+          "line": 99,
+          "column": 55
+        }
+      ]
+    },
     "c08658f79b604412": {
       "source": "Devin 接管补丁已修复；重新打开 Devin 后生效",
       "kind": "text",
@@ -16668,7 +16788,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 379,
+          "line": 380,
           "column": 15
         }
       ]
@@ -16716,7 +16836,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 320,
+          "line": 321,
           "column": 21
         }
       ]
@@ -16788,7 +16908,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 214,
+          "line": 215,
           "column": 9
         }
       ]
@@ -16800,7 +16920,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 161,
+          "line": 159,
           "column": 22
         }
       ]
@@ -16817,12 +16937,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 503,
+          "line": 504,
           "column": 23
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 521,
+          "line": 522,
           "column": 21
         }
       ]
@@ -16835,12 +16955,7 @@
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
           "line": 100,
-          "column": 17
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 674,
-          "column": 19
+          "column": 31
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
@@ -16906,7 +17021,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 448,
+          "line": 449,
           "column": 9
         }
       ]
@@ -16971,12 +17086,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 174,
+          "line": 130,
           "column": 42
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 177,
+          "line": 133,
           "column": 35
         }
       ]
@@ -16988,8 +17103,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 657,
-          "column": 27
+          "line": 658,
+          "column": 29
         }
       ]
     },
@@ -17065,12 +17180,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 93,
+          "line": 94,
           "column": 19
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 52,
+          "line": 53,
           "column": 15
         }
       ]
@@ -17106,7 +17221,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 437,
+          "line": 438,
           "column": 17
         }
       ]
@@ -17118,7 +17233,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 148,
+          "line": 196,
           "column": 24
         }
       ]
@@ -17130,7 +17245,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 401,
+          "line": 402,
           "column": 23
         }
       ]
@@ -17154,7 +17269,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 390,
+          "line": 391,
           "column": 23
         }
       ]
@@ -17259,7 +17374,7 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 301,
+          "line": 302,
           "column": 23
         }
       ]
@@ -17360,7 +17475,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 198,
+          "line": 199,
           "column": 13
         }
       ]
@@ -17394,7 +17509,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 573,
+          "line": 574,
           "column": 33
         },
         {
@@ -17457,7 +17572,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 207,
+          "line": 208,
           "column": 15
         }
       ]
@@ -17491,12 +17606,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 542,
+          "line": 543,
           "column": 184
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 341,
+          "line": 342,
           "column": 104
         }
       ]
@@ -17537,12 +17652,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 292,
+          "line": 293,
           "column": 51
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 298,
+          "line": 299,
           "column": 23
         }
       ]
@@ -17600,6 +17715,18 @@
         }
       ]
     },
+    "cc3fa67a75481e23": {
+      "source": "通常不用改；网关固定监听 127.0.0.1。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 655,
+          "column": 54
+        }
+      ]
+    },
     "cc5cb36c0c99ead1": {
       "source": "云端浏览器与厂商托管工具",
       "kind": "text",
@@ -17631,7 +17758,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 71,
+          "line": 72,
           "column": 22
         }
       ]
@@ -17679,7 +17806,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 496,
+          "line": 493,
           "column": 15
         }
       ]
@@ -17759,7 +17886,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 480,
+          "line": 481,
           "column": 13
         }
       ]
@@ -17802,7 +17929,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 679,
+          "line": 682,
           "column": 30
         }
       ]
@@ -17814,7 +17941,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 706,
+          "line": 709,
           "column": 11
         }
       ]
@@ -17886,6 +18013,18 @@
           "file": "features/harness/harnessErrorText.ts",
           "line": 69,
           "column": 88
+        }
+      ]
+    },
+    "cf9b00f47a09aefc": {
+      "source": "Devin 配置存在冲突，请查看下面的高级配置。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 498,
+          "column": 23
         }
       ]
     },
@@ -17985,7 +18124,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 354,
+          "line": 355,
           "column": 20
         }
       ]
@@ -18011,7 +18150,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 219,
+          "line": 223,
           "column": 10
         }
       ]
@@ -18071,7 +18210,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 701,
+          "line": 704,
           "column": 21
         }
       ]
@@ -18107,7 +18246,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 243,
+          "line": 244,
           "column": 14
         }
       ]
@@ -18148,13 +18287,13 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 100,
-          "column": 25
+          "line": 104,
+          "column": 27
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 100,
-          "column": 65
+          "line": 104,
+          "column": 67
         }
       ]
     },
@@ -18165,7 +18304,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 82,
+          "line": 83,
           "column": 14
         }
       ]
@@ -18194,7 +18333,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 561,
+          "line": 562,
           "column": 60
         }
       ]
@@ -18378,18 +18517,6 @@
         }
       ]
     },
-    "d60565416388d30a": {
-      "source": "Devin 配置存在冲突，请查看下面的技术详情。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 497,
-          "column": 23
-        }
-      ]
-    },
     "d60669bb26a22f5d": {
       "source": "留空使用默认值",
       "kind": "text",
@@ -18419,7 +18546,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 259,
+          "line": 260,
           "column": 63
         }
       ]
@@ -18489,7 +18616,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 238,
+          "line": 239,
           "column": 13
         }
       ]
@@ -18500,19 +18627,9 @@
       "placeholders": [],
       "refs": [
         {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 129,
-          "column": 20
-        },
-        {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 582,
+          "line": 583,
           "column": 41
-        },
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 650,
-          "column": 14
         },
         {
           "file": "features/models/CursorModelEditor.tsx",
@@ -18665,7 +18782,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 493,
+          "line": 494,
           "column": 21
         }
       ]
@@ -18716,7 +18833,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 714,
+          "line": 717,
           "column": 13
         }
       ]
@@ -18728,7 +18845,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 331,
+          "line": 332,
           "column": 29
         }
       ]
@@ -18752,7 +18869,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 529,
+          "line": 526,
           "column": 47
         }
       ]
@@ -18814,7 +18931,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 383,
+          "line": 384,
           "column": 23
         }
       ]
@@ -18956,12 +19073,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 130,
-          "column": 18
-        },
-        {
-          "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 135,
+          "line": 183,
           "column": 31
         }
       ]
@@ -19048,7 +19160,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 90,
+          "line": 91,
           "column": 17
         }
       ]
@@ -19062,7 +19174,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 84,
+          "line": 85,
           "column": 12
         }
       ]
@@ -19074,7 +19186,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 221,
+          "line": 222,
           "column": 7
         }
       ]
@@ -19175,7 +19287,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 216,
+          "line": 217,
           "column": 11
         }
       ]
@@ -19187,7 +19299,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 292,
+          "line": 293,
           "column": 37
         }
       ]
@@ -19245,12 +19357,12 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 501,
+          "line": 502,
           "column": 41
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 438,
+          "line": 439,
           "column": 76
         }
       ]
@@ -19342,18 +19454,6 @@
         }
       ]
     },
-    "e00c63ff4cdeb469": {
-      "source": "网关固定监听 127.0.0.1，并限制单次请求体为 24 MiB。Devin 负责执行工具，本机网关负责模型调用和事件转发。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 664,
-          "column": 35
-        }
-      ]
-    },
     "e00d09a14266ee23": {
       "source": "检测到正在运行的 Cursor 使用的端口或模式与当前配置不一致，请完全退出并重新打开 Cursor。",
       "kind": "text",
@@ -19361,7 +19461,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 364,
+          "line": 365,
           "column": 50
         }
       ]
@@ -19502,7 +19602,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 158,
+          "line": 206,
           "column": 24
         }
       ]
@@ -19514,7 +19614,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 269,
+          "line": 270,
           "column": 16
         }
       ]
@@ -19550,7 +19650,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 258,
+          "line": 259,
           "column": 46
         }
       ]
@@ -19610,8 +19710,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 669,
-          "column": 50
+          "line": 672,
+          "column": 52
         }
       ]
     },
@@ -19648,12 +19748,12 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 86,
+          "line": 87,
           "column": 20
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 96,
+          "line": 97,
           "column": 18
         }
       ]
@@ -19696,7 +19796,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 581,
+          "line": 582,
           "column": 100
         }
       ]
@@ -19758,6 +19858,18 @@
           "file": "features/calls/CallFacts.tsx",
           "line": 137,
           "column": 46
+        }
+      ]
+    },
+    "e3f86eea934581aa": {
+      "source": "手工配置 Claude Desktop 时需要",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/claude/ClaudeGatewayCard.tsx",
+          "line": 122,
+          "column": 55
         }
       ]
     },
@@ -19828,7 +19940,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 88,
+          "line": 89,
           "column": 14
         },
         {
@@ -20096,12 +20208,12 @@
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 202,
+          "line": 203,
           "column": 15
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 372,
+          "line": 373,
           "column": 45
         },
         {
@@ -20176,7 +20288,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 135,
+          "line": 133,
           "column": 57
         },
         {
@@ -20333,7 +20445,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 168,
+          "line": 166,
           "column": 20
         }
       ]
@@ -20345,8 +20457,8 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 669,
-          "column": 27
+          "line": 672,
+          "column": 29
         }
       ]
     },
@@ -20422,7 +20534,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 556,
+          "line": 557,
           "column": 23
         }
       ]
@@ -20484,7 +20596,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 425,
+          "line": 426,
           "column": 15
         }
       ]
@@ -20496,7 +20608,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 107,
+          "line": 108,
           "column": 20
         }
       ]
@@ -20508,7 +20620,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 679,
+          "line": 682,
           "column": 99
         }
       ]
@@ -20582,6 +20694,18 @@
         }
       ]
     },
+    "ed7f95089962fdee": {
+      "source": "设置文件、扩展版本与兼容补丁状态。",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/devin/DevinSettingsPage.tsx",
+          "line": 677,
+          "column": 76
+        }
+      ]
+    },
     "ed940f2719f16106": {
       "source": "重启应用，让网关在保存的端口上监听",
       "kind": "text",
@@ -20615,7 +20739,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 528,
+          "line": 525,
           "column": 53
         }
       ]
@@ -20670,7 +20794,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 318,
+          "line": 319,
           "column": 19
         }
       ]
@@ -20744,7 +20868,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 184,
+          "line": 185,
           "column": 7
         }
       ]
@@ -20782,7 +20906,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 151,
+          "line": 149,
           "column": 55
         }
       ]
@@ -20808,7 +20932,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 293,
+          "line": 294,
           "column": 52
         }
       ]
@@ -20820,7 +20944,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 174,
+          "line": 172,
           "column": 20
         }
       ]
@@ -20885,7 +21009,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 532,
+          "line": 529,
           "column": 13
         }
       ]
@@ -20966,7 +21090,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 77,
+          "line": 78,
           "column": 16
         }
       ]
@@ -21019,7 +21143,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 218,
+          "line": 219,
           "column": 13
         }
       ]
@@ -21096,7 +21220,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 57,
+          "line": 58,
           "column": 42
         }
       ]
@@ -21132,7 +21256,7 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 69,
+          "line": 70,
           "column": 64
         }
       ]
@@ -21195,7 +21319,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 535,
+          "line": 532,
           "column": 13
         }
       ]
@@ -21272,7 +21396,7 @@
         },
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 71,
+          "line": 72,
           "column": 61
         },
         {
@@ -21351,7 +21475,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 603,
+          "line": 604,
           "column": 210
         }
       ]
@@ -21387,7 +21511,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 636,
+          "line": 637,
           "column": 34
         }
       ]
@@ -21411,7 +21535,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeDesktopTab.tsx",
-          "line": 169,
+          "line": 167,
           "column": 19
         }
       ]
@@ -21457,7 +21581,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 308,
+          "line": 309,
           "column": 9
         }
       ]
@@ -21617,7 +21741,7 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 457,
+          "line": 454,
           "column": 24
         }
       ]
@@ -21653,7 +21777,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 563,
+          "line": 564,
           "column": 72
         }
       ]
@@ -21747,7 +21871,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 679,
+          "line": 682,
           "column": 88
         }
       ]
@@ -21783,12 +21907,12 @@
       "refs": [
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 463,
+          "line": 460,
           "column": 36
         },
         {
           "file": "features/models/CursorSettingsPage.tsx",
-          "line": 466,
+          "line": 463,
           "column": 29
         }
       ]
@@ -21822,13 +21946,13 @@
       "refs": [
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 97,
-          "column": 25
+          "line": 101,
+          "column": 27
         },
         {
           "file": "features/codex/CodexSettingsForm.tsx",
-          "line": 98,
-          "column": 32
+          "line": 102,
+          "column": 34
         }
       ]
     },
@@ -21873,7 +21997,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 88,
+          "line": 89,
           "column": 15
         },
         {
@@ -21893,7 +22017,7 @@
         },
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 692,
+          "line": 695,
           "column": 137
         },
         {
@@ -21935,7 +22059,7 @@
       "refs": [
         {
           "file": "features/devin/DevinSettingsPage.tsx",
-          "line": 590,
+          "line": 591,
           "column": 26
         }
       ]
@@ -21949,7 +22073,7 @@
       "refs": [
         {
           "file": "features/claude/ClaudeGatewayCard.tsx",
-          "line": 214,
+          "line": 218,
           "column": 16
         }
       ]

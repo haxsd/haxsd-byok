@@ -4,6 +4,7 @@ import { ModelSelect } from "../../shared/ui/ModelSelect";
 import { Segmented } from "../../shared/ui/Segmented";
 import { portInputValue } from "../../shared/utils/portInput";
 import { Switch } from "../../shared/ui/Switch";
+import { DeveloperSettings } from "../harness/SettingsLayers";
 import { codexModelAvailability } from "./codexModelOptions";
 import styles from "./CodexSettingsPage.module.scss";
 
@@ -94,10 +95,14 @@ export function CodexSettingsForm({ draft, models, pluginModels, locked, lockRea
         </small>}
       </FormField>
       <FormField label={t("默认模型")}><ModelSelect mode="single" label={t("选择 Codex 默认模型")} options={selected} value={draft.default_model_hash ?? ""} disabled={locked || applied || selected.length === 0} onChange={default_model_hash => onChange({ ...draft, default_model_hash })} /></FormField>
-      <FormField label={t("Codex 配置目录")} hint={t("留空自动检测 .codex")}>
-        <TextInput aria-label={t("Codex 配置目录")} disabled={locked || applied} value={draft.home} placeholder={t("自动检测配置目录")} onChange={event => onChange({ ...draft, home: event.target.value })} />
-      </FormField>
-      <FormField label={t("Codex 网关端口")}><TextInput aria-label={t("Codex 网关端口")} disabled={locked || applied} type="number" min={1} max={65535} value={draft.port} onChange={event => onChange({ ...draft, port: portInputValue(event.target.value) })} /></FormField>
     </div>
+    <DeveloperSettings title={t("高级配置")} description={t("配置目录与网关端口")}>
+      <div className={styles.fields}>
+        <FormField label={t("Codex 配置目录")} hint={t("留空自动检测 .codex")}>
+          <TextInput aria-label={t("Codex 配置目录")} disabled={locked || applied} value={draft.home} placeholder={t("自动检测配置目录")} onChange={event => onChange({ ...draft, home: event.target.value })} />
+        </FormField>
+        <FormField label={t("Codex 网关端口")}><TextInput aria-label={t("Codex 网关端口")} disabled={locked || applied} type="number" min={1} max={65535} value={draft.port} onChange={event => onChange({ ...draft, port: portInputValue(event.target.value) })} /></FormField>
+      </div>
+    </DeveloperSettings>
   </div>;
 }
