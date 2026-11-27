@@ -1,4 +1,5 @@
 import type { ClaudeSettings, ClaudeStatus, Model } from "../../shared/api";
+import type { ReactNode } from "react";
 import { Button } from "../../shared/ui/Button";
 import { FormField, TextInput } from "../../shared/ui/FormControls";
 import { Icon } from "../../shared/ui/Icon";
@@ -34,6 +35,7 @@ export function ClaudeGatewayCard({
   onRotate,
   rotating,
   rotateBlockedReason,
+  children,
 }: {
   /** 服务端已保存的设置：状态结论以它为准。 */
   saved: ClaudeSettings | null;
@@ -50,6 +52,8 @@ export function ClaudeGatewayCard({
   rotating: boolean;
   /** Desktop 接管生效时服务端拒绝轮换：按钮禁用，并在令牌旁说明先撤销接管。 */
   rotateBlockedReason: string | null;
+  /** 合并进同一张卡的 Claude Desktop 内容。 */
+  children?: ReactNode;
 }) {
   const listening = status?.listening ?? false;
   const dirty = Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved));
@@ -222,6 +226,7 @@ export function ClaudeGatewayCard({
       {status?.last_error && <p className={styles.error} role="alert">
         {t("网关最近的错误：{error}", { error: clientErrorText(status.last_error) })}
       </p>}
+      {children}
     </div>
   </TitledCard>;
 }

@@ -8,9 +8,7 @@ import { ConfirmDialog } from "../../shared/ui/ConfirmDialog";
 import { PageTitle } from "../../shared/ui/PageTitle";
 import { StatusHero } from "../../shared/ui/StatusHero";
 import { StatusPill } from "../../shared/ui/StatusPill";
-import { TitledCard } from "../../shared/ui/TitledCard";
 import { useMessage } from "../../shared/ui/message";
-import { terminalIcon } from "../../shared/ui/icons";
 import { PageContent } from "../../shell/layout/PageContent";
 import { ClaudeDesktopTab } from "./ClaudeDesktopTab";
 import { ClaudeGatewayCard } from "./ClaudeGatewayCard";
@@ -234,32 +232,35 @@ export function ClaudeSettingsPage() {
       onRotate={rotateToken}
       rotating={busy?.scope === "gateway" && busy.action === "rotate"}
       rotateBlockedReason={rotation.reason}
-    />
-    <TitledCard
-      title="Claude Desktop"
-      description={claudeTakeover?.desktop.guided ? t("手工配置引导") : t("Desktop 模型列表")}
-      icon={terminalIcon}
-      action={busy?.scope === "desktop"
-        ? <StatusPill tone="warn">{t("应用中…")}</StatusPill>
-        : desktopModelsDirty ? <StatusPill tone="warn">{t("待重新应用")}</StatusPill> : undefined}
     >
-      <div className={styles.settingsBody}>
-        <ClaudeDesktopTab
-          draft={draft}
-          status={claudeStatus}
-          takeover={claudeTakeover?.desktop ?? null}
-          models={models}
-          desktopModels={desktopModels}
-          gate={gate}
-          busy={busy !== null}
-          error={error?.scope === "desktop" ? error.cause : null}
-          keptAfterUndo={desktopKept}
-          onDesktopModelsChange={setDesktopModels}
-          onCopy={copy}
-          developerMode={developerMode}
-        />
+      <div className={styles.desktopSection}>
+        <div className={styles.desktopHeading}>
+          <div>
+            <strong>Claude Desktop</strong>
+            <small>{claudeTakeover?.desktop.guided ? t("手工配置引导") : t("Desktop 模型列表")}</small>
+          </div>
+          {busy?.scope === "desktop"
+            ? <StatusPill tone="warn">{t("应用中…")}</StatusPill>
+            : desktopModelsDirty ? <StatusPill tone="warn">{t("待重新应用")}</StatusPill> : undefined}
+        </div>
+        <div className={styles.settingsBody}>
+          <ClaudeDesktopTab
+            draft={draft}
+            status={claudeStatus}
+            takeover={claudeTakeover?.desktop ?? null}
+            models={models}
+            desktopModels={desktopModels}
+            gate={gate}
+            busy={busy !== null}
+            error={error?.scope === "desktop" ? error.cause : null}
+            keptAfterUndo={desktopKept}
+            onDesktopModelsChange={setDesktopModels}
+            onCopy={copy}
+            developerMode={developerMode}
+          />
+        </div>
       </div>
-    </TitledCard>
+    </ClaudeGatewayCard>
     <HarnessCapabilities client="claude" collapsible />
   </div>;
 
