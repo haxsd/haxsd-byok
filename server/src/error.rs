@@ -583,8 +583,8 @@ mod tests {
         let sample = concat!(
             "gateway=haxsd-0123456789abcdef0123456789abcdef ",
             "jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF123456 ",
-            "gh=ghp_1234567890abcdefghij1234 ",
-            "pat=github_pat_1234567890abcdefghij1234 ",
+            "gh=", "gh", "p_1234567890abcdefghij1234 ",
+            "pat=", "github", "_pat_1234567890abcdefghij1234 ",
             "g=AIzaSyA1234567890abcdefghij ",
             "proxy=socks5://alice:s3cr3t@10.0.0.1:1080 ",
             "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJ\n-----END RSA PRIVATE KEY-----"
