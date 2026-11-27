@@ -52,7 +52,7 @@ export function CodexErrorAlert({ cause }: { cause: unknown }) {
 }
 
 export function CodexSettingsPage() {
-  const { models, plugins, codexStatus } = useAppStore();
+  const { models, plugins, codexStatus, developerMode } = useAppStore();
   const { locale } = useI18n();
   const navigate = useNavigate();
   const [saved, setSaved] = useState<CodexSettings | null>(null);
@@ -177,7 +177,7 @@ export function CodexSettingsPage() {
         footnotes={<div className={styles.facts}>
           <span>{t("已记录 {count} 次调用", { count: codexStatus?.calls ?? 0 })}</span>
           <span>{t("接入模式")}：{codexStatus?.mode === "hybrid" ? t("混合模式") : t("本地模式")}</span>
-          <span className={styles.home} title={codexStatus?.home}>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>
+          {developerMode && <span className={styles.home} title={codexStatus?.home}>{t("配置目录")}：{codexStatus?.home ?? t("读取中…")}</span>}
           {codexStatus && <span title={t("cloud/enterprise 策略未在本地核对")}>{t("受管要求：仅本地系统")}</span>}
         </div>}
       />

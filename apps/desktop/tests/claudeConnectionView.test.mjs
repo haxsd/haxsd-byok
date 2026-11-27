@@ -354,6 +354,32 @@ test("the guided view lists the exact fields Claude Desktop asks for", async () 
   assert.doesNotMatch(markup, /选择 Claude Desktop 模型/, "the model editor is replaced by the guide");
 });
 
+test("Desktop technical details stay behind developer mode", async () => {
+  const { ClaudeDesktopTab } = await loader.load("/src/features/claude/ClaudeDesktopTab.tsx");
+  const { claudeActionGate } = await loadClaude();
+  const props = {
+    draft: settings,
+    status,
+    takeover: takeover.desktop,
+    models: [libraryModel("aaaa1111", "Claude Sonnet")],
+    desktopModels: ["aaaa1111"],
+    gate: claudeActionGate(gateInput({ takeover })),
+    busy: false,
+    error: null,
+    keptAfterUndo: [],
+    onDesktopModelsChange: () => {},
+    onCopy: () => {},
+  };
+
+  const normal = await renderWithTooltip(createElement(ClaudeDesktopTab, props));
+  assert.doesNotMatch(normal, /技术详情/, "normal users do not get raw profile paths");
+  assert.doesNotMatch(normal, /aaaa1111/, "normal users do not get internal model hashes");
+
+  const developer = await renderWithTooltip(createElement(ClaudeDesktopTab, { ...props, developerMode: true }));
+  assert.match(developer, /技术详情/);
+  assert.match(developer, /aaaa1111/);
+});
+
 test("a running Claude Desktop is called out and cannot be applied or undone", async () => {
   const { ClaudeDesktopTab } = await loader.load("/src/features/claude/ClaudeDesktopTab.tsx");
   const { claudeActionGate } = await loadClaude();

@@ -105,6 +105,7 @@ export function DevinSettingsPage() {
   // made in the open one looked applied while nothing had been written.
   const [saved, setSaved] = useState<DevinSettings>(emptySettings);
   const models = useAppStoreSelector((state) => state.models);
+  const developerMode = useAppStoreSelector((state) => state.developerMode);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -663,7 +664,7 @@ export function DevinSettingsPage() {
           <TextInput value={hostInstallRoot} onChange={(event) => rememberHostInstallRoot(event.target.value)} onBlur={(event) => flushHostInstallRoot(event.target.value)} placeholder={t("留空自动探测")} />
         </FormField>
       </div>
-      <details className={styles.technical}>
+      {developerMode && <details className={styles.technical}>
         <summary>{t("技术详情")}</summary>
         <div className={styles.technicalBody}>
           {hostStatus?.path && <p>{t("设置文件：{path}", { path: hostStatus.path })}</p>}
@@ -674,7 +675,7 @@ export function DevinSettingsPage() {
           {hostStatus?.message && <p>{clientErrorText(hostStatus.message)}</p>}
           {hostStatus?.extension.message && <p>{clientErrorText(hostStatus.extension.message)}</p>}
         </div>
-      </details>
+      </details>}
       {!hostRestorable && <p className={styles.note}>{t("只有本应用写入的配置才能一键恢复。")}</p>}
     </TitledCard>
     <HarnessCapabilities client="devin" collapsible />

@@ -37,7 +37,7 @@ type Busy = { scope: ErrorScope; action: BusyAction };
  * 分开读：设置是页面的草稿（保存前不影响结论），状态与接管结果由 store 统一刷新。
  */
 export function ClaudeSettingsPage() {
-  const { models, claudeStatus, claudeTakeover } = useAppStore();
+  const { models, claudeStatus, claudeTakeover, developerMode } = useAppStore();
   const [saved, setSaved] = useState<ClaudeSettings | null>(null);
   const [draft, setDraft] = useState<ClaudeSettings | null>(null);
   const [desktopModels, setDesktopModels] = useState<string[]>([]);
@@ -256,6 +256,7 @@ export function ClaudeSettingsPage() {
           keptAfterUndo={desktopKept}
           onDesktopModelsChange={setDesktopModels}
           onCopy={copy}
+          developerMode={developerMode}
         />
       </div>
     </TitledCard>

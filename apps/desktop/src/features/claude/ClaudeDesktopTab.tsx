@@ -41,6 +41,7 @@ export function ClaudeDesktopTab({
   keptAfterUndo,
   onDesktopModelsChange,
   onCopy,
+  developerMode = false,
 }: {
   draft: ClaudeSettings | null;
   status: ClaudeStatus | null;
@@ -54,6 +55,8 @@ export function ClaudeDesktopTab({
   keptAfterUndo: ClaudeTakeoverConflict[];
   onDesktopModelsChange: (hashes: string[]) => void;
   onCopy: (text: string, done: string) => void;
+  /** 原始 profile 路径和模型哈希只在开发者模式显示。 */
+  developerMode?: boolean;
 }) {
   const guided = claudeDesktopGuided(takeover);
   const running = takeover?.running === true;
@@ -93,7 +96,7 @@ export function ClaudeDesktopTab({
       </div>
     </dl>
 
-    <details className={styles.advanced}>
+    {developerMode && <details className={styles.advanced}>
       <summary>{t("技术详情")}</summary>
       <div className={styles.advancedBody}>
         <dl className={styles.factList}>
@@ -107,7 +110,7 @@ export function ClaudeDesktopTab({
           </div>
         </dl>
       </div>
-    </details>
+    </details>}
 
     <ClaudeConflictList conflicts={takeover?.conflicts ?? []} stale={takeover?.state === "stale"} />
 
@@ -187,7 +190,7 @@ export function ClaudeDesktopTab({
               <span className={styles.modelIndex}>{index + 1}</span>
               <div className={styles.modelName}>
                 <strong>{claudeModelLabel(models, hash)}</strong>
-                <code>{hash}</code>
+                {developerMode && <code>{hash}</code>}
               </div>
               {index === 0 && <StatusPill tone="ok">{t("默认")}</StatusPill>}
               <div className={styles.modelActions}>
