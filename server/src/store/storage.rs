@@ -59,7 +59,7 @@ fn auto_compaction_needed(free_bytes: i64) -> bool {
 /// * `database_bytes`：SQLite 文件当前分配的全部页；
 /// * `database_used_bytes`：有效页，仍装着数据或索引；
 /// * `database_free_bytes`：`DELETE` 后留在 freelist 中、可供复用但尚未归还磁盘的页；
-/// * `observability_bytes`：可以手动清理的调用摘要与明细估算。
+/// * `observability_bytes`：调用摘要与可清理明细的合计估算。
 ///
 /// 对话消息与内容块、抓取缓存、落盘工件又各自单列：它们的生命周期和清理入口都不同。
 #[derive(Clone, Copy, Debug, Default, Serialize)]
@@ -72,11 +72,11 @@ pub struct StatisticsStorage {
     pub database_free_bytes: i64,
     /// SQLite 的 `-wal` 独立文件；正常由 checkpoint 自动截断，不属于主库页。
     pub wal_bytes: i64,
-    /// `llm_calls` 摘要与轨迹索引的估算大小；清空调用历史会删除它们。
+    /// `llm_calls` 摘要与轨迹索引的估算大小；统计摘要不参与自动清理。
     pub call_record_bytes: i64,
     /// 请求/响应正文和追踪附件的估算大小；清理详细记录只删这一部分。
     pub call_detail_bytes: i64,
-    /// `call_record_bytes + call_detail_bytes`，即清空调用历史会回收的估算总量。
+    /// `call_record_bytes + call_detail_bytes`，即当前可观测数据的估算总量。
     pub observability_bytes: i64,
     /// 请求/响应明细的自动回收窗口（天）：来自服务端的 `RETENTION_MS`。
     pub call_detail_retention_days: i64,
@@ -152,8 +152,7 @@ pub(crate) struct StorageMaintenanceState {
 pub enum StatisticsStorageScope {
     #[default]
     Details,
-    All,
-    /// 只清抓取结果缓存（文件系统）：它不进数据库，也就不该被"清理全部统计"顺手带走
+    /// 只清抓取结果缓存（文件系统）：它不进数据库，也就不该被"清理详细记录"顺手带走
     /// ——那是两个不同的东西，用户点哪一个应该清哪一个。
     WebCache,
 }
@@ -354,7 +353,6 @@ impl Store {
         tokio::spawn(async move {
             let cleared = match scope {
                 StatisticsStorageScope::Details => store.clear_statistics_storage().await,
-                StatisticsStorageScope::All => store.clear_all_statistics_storage().await,
                 StatisticsStorageScope::WebCache => store.clear_web_cache_at(None).await,
             };
             store
@@ -585,22 +583,6 @@ impl Store {
         self.statistics_storage().await
     }
 
-    pub async fn clear_all_statistics_storage(&self) -> Result<StatisticsStorage> {
-        let mut connection = self.maintenance_pool.acquire().await?;
-        self.clear_details(&mut connection).await?;
-        // 摘要行在明细之后删：级联（`llm_call_requests` / 响应分片 / 追踪工件）带走的那
-        // 部分已经空了，每批要干的活只剩摘要行自己。
-        for statement in [
-            "DELETE FROM llm_calls WHERE rowid IN (SELECT rowid FROM llm_calls LIMIT ?)",
-            "DELETE FROM cursor_run_traces WHERE rowid IN (SELECT rowid FROM cursor_run_traces LIMIT ?)",
-        ] {
-            self.delete_in_batches(&mut connection, statement).await?;
-        }
-        drop(connection);
-        self.invalidate_statistics_cache();
-        self.statistics_storage().await
-    }
-
     /// 可观测明细：请求/响应正文、追踪工件，以及只被这些工件引用的内容块。
     async fn clear_details(&self, connection: &mut SqliteConnection) -> Result<()> {
         for statement in [
@@ -654,7 +636,7 @@ impl Store {
     ///
     /// 每批一个独立事务：先把这一批的 `blob_id` 抄进临时表，删掉工件行，再删批里
     /// 已经没人引用的内容块。临时表是连接级的，所以整趟清理固定跑在一条连接上
-    /// （`clear_statistics_storage` 与 `clear_all_statistics_storage` 都是这样）。
+    /// （`clear_statistics_storage` 与 `clear_details` 都是这样）。
     async fn clear_trace_artifacts(&self, connection: &mut SqliteConnection) -> Result<()> {
         self.stage_clear_details(connection).await?;
         let created_before_ms = now_ms() - RETENTION_MS;
@@ -1319,7 +1301,7 @@ mod tests {
         let guard = store.writes.lock().await;
 
         let first = store
-            .start_clear_statistics_storage(StatisticsStorageScope::All)
+            .start_clear_statistics_storage(StatisticsStorageScope::Details)
             .await
             .unwrap();
         assert!(first.clearing.is_some());
@@ -1330,7 +1312,7 @@ mod tests {
             .store(7, Ordering::Relaxed);
 
         let second = store
-            .start_clear_statistics_storage(StatisticsStorageScope::All)
+            .start_clear_statistics_storage(StatisticsStorageScope::Details)
             .await
             .unwrap();
 

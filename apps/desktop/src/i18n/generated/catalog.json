@@ -158,8 +158,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 154,
-          "column": 9
+          "line": 147,
+          "column": 7
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
@@ -250,20 +250,6 @@
           "file": "features/home/overview/ModelUsageList.tsx",
           "line": 44,
           "column": 17
-        }
-      ]
-    },
-    "030bddc40398a8e7": {
-      "source": "将删除调用摘要、请求/响应正文与追踪记录，约 {size}。费用和用量历史会清空；对话消息、配置和抓取缓存不受影响。数据库文件不会因此立刻变小。",
-      "kind": "template",
-      "placeholders": [
-        "size"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 310,
-          "column": 13
         }
       ]
     },
@@ -647,7 +633,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 321,
+          "line": 315,
           "column": 17
         }
       ]
@@ -783,22 +769,6 @@
           "file": "features/models/ModelLibraryPage.tsx",
           "line": 611,
           "column": 73
-        }
-      ]
-    },
-    "07ff92cef6838645": {
-      "source": "{calls} 次调用 · {traces} 条追踪；请求/响应明细保留 {days} 天后自动回收",
-      "kind": "template",
-      "placeholders": [
-        "calls",
-        "traces",
-        "days"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 133,
-          "column": 7
         }
       ]
     },
@@ -1266,7 +1236,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 158,
+          "line": 151,
           "column": 24
         }
       ]
@@ -1444,7 +1414,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 182,
+          "line": 175,
           "column": 18
         }
       ]
@@ -1567,7 +1537,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 143,
+          "line": 140,
           "column": 7
         }
       ]
@@ -2205,7 +2175,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 144,
+          "line": 141,
           "column": 7
         }
       ]
@@ -2311,7 +2281,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 162,
+          "line": 155,
           "column": 88
         }
       ]
@@ -2421,7 +2391,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 295,
+          "line": 291,
           "column": 15
         }
       ]
@@ -2608,7 +2578,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 183,
+          "line": 176,
           "column": 18
         }
       ]
@@ -3490,7 +3460,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 188,
+          "line": 181,
           "column": 10
         }
       ]
@@ -3534,11 +3504,6 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 204,
-          "column": 16
-        },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 219,
@@ -3724,12 +3689,12 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 307,
+          "line": 303,
           "column": 100
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 318,
+          "line": 312,
           "column": 84
         },
         {
@@ -4057,7 +4022,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 161,
+          "line": 154,
           "column": 18
         }
       ]
@@ -5592,7 +5557,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 297,
+          "line": 293,
           "column": 13
         }
       ]
@@ -5885,6 +5850,11 @@
       "kind": "text",
       "placeholders": [],
       "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 204,
+          "column": 16
+        },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
           "line": 227,
@@ -6235,7 +6205,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 275,
+          "line": 271,
           "column": 22
         }
       ]
@@ -6579,7 +6549,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 273,
+          "line": 269,
           "column": 58
         }
       ]
@@ -6795,23 +6765,6 @@
         }
       ]
     },
-    "4c42ff136567893e": {
-      "source": "清空调用历史",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 152,
-          "column": 7
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 250,
-          "column": 201
-        }
-      ]
-    },
     "4c76dd0c9088fc4c": {
       "source": "当前已有可用的本地缓存。",
       "kind": "text",
@@ -6954,11 +6907,6 @@
           "file": "features/settings/SettingsPage.tsx",
           "line": 72,
           "column": 35
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 201,
-          "column": 18
         },
         {
           "file": "shared/store/appStore.ts",
@@ -8382,6 +8330,21 @@
         }
       ]
     },
+    "60638174f59155b6": {
+      "source": "{calls} 次调用 · {traces} 条追踪；概览、费用和用量统计，不会自动清理",
+      "kind": "template",
+      "placeholders": [
+        "calls",
+        "traces"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 132,
+          "column": 27
+        }
+      ]
+    },
     "6064641d0e1f97ce": {
       "source": "当前就是官方模式。",
       "kind": "text",
@@ -8823,7 +8786,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 320,
+          "line": 314,
           "column": 17
         }
       ]
@@ -9144,6 +9107,11 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 190,
+          "column": 16
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
           "line": 197,
           "column": 16
         }
@@ -9198,8 +9166,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 312,
-          "column": 15
+          "line": 306,
+          "column": 13
         }
       ]
     },
@@ -9348,8 +9316,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 313,
-          "column": 15
+          "line": 307,
+          "column": 13
         }
       ]
     },
@@ -9360,7 +9328,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 192,
+          "line": 185,
           "column": 54
         }
       ]
@@ -9436,7 +9404,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 162,
+          "line": 155,
           "column": 76
         },
         {
@@ -9663,18 +9631,6 @@
           "file": "features/tutorial/onboarding.ts",
           "line": 191,
           "column": 15
-        }
-      ]
-    },
-    "6d14288c58d3357a": {
-      "source": "确定清空调用历史吗？",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 147,
-          "column": 7
         }
       ]
     },
@@ -10881,7 +10837,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 287,
+          "line": 283,
           "column": 10
         }
       ]
@@ -11539,7 +11495,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 181,
+          "line": 174,
           "column": 18
         }
       ]
@@ -11760,13 +11716,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 155,
-          "column": 9
-        },
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 206,
-          "column": 179
+          "line": 148,
+          "column": 7
         }
       ]
     },
@@ -11815,18 +11766,6 @@
           "file": "shared/api.ts",
           "line": 1547,
           "column": 23
-        }
-      ]
-    },
-    "8bd65f3f16440594": {
-      "source": "更多清理与存储明细",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 247,
-          "column": 19
         }
       ]
     },
@@ -12643,7 +12582,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 296,
+          "line": 292,
           "column": 15
         }
       ]
@@ -12781,7 +12720,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 256,
+          "line": 252,
           "column": 22
         }
       ]
@@ -12829,7 +12768,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 194,
+          "line": 187,
           "column": 18
         }
       ]
@@ -12979,7 +12918,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 284,
+          "line": 280,
           "column": 10
         }
       ]
@@ -13116,8 +13055,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 149,
-          "column": 9
+          "line": 144,
+          "column": 7
         }
       ]
     },
@@ -13303,7 +13242,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 318,
+          "line": 312,
           "column": 46
         }
       ]
@@ -13734,7 +13673,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 266,
+          "line": 262,
           "column": 23
         }
       ]
@@ -14071,8 +14010,8 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 150,
-          "column": 9
+          "line": 145,
+          "column": 7
         }
       ]
     },
@@ -14432,7 +14371,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 254,
+          "line": 250,
           "column": 58
         }
       ]
@@ -14466,7 +14405,12 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 264,
+          "line": 201,
+          "column": 18
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 260,
           "column": 22
         }
       ]
@@ -14658,7 +14602,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 322,
+          "line": 316,
           "column": 58
         }
       ]
@@ -14817,6 +14761,33 @@
         }
       ]
     },
+    "ae02062298df87b4": {
+      "source": "{calls} 次调用 · {traces} 条追踪；概览、费用和用量的数据来源，不会自动清理",
+      "kind": "template",
+      "placeholders": [
+        "calls",
+        "traces"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 254,
+          "column": 23
+        }
+      ]
+    },
+    "ae2ffcd7e207c913": {
+      "source": "统计与用量",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 194,
+          "column": 18
+        }
+      ]
+    },
     "ae5882f620923720": {
       "source": "Codex 配置已恢复，但最终收据无法清理；请重试撤销。",
       "kind": "text",
@@ -14860,7 +14831,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 171,
+          "line": 164,
           "column": 14
         }
       ]
@@ -15220,7 +15191,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 318,
+          "line": 312,
           "column": 107
         }
       ]
@@ -15678,7 +15649,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 163,
+          "line": 156,
           "column": 31
         }
       ]
@@ -15831,7 +15802,7 @@
         },
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 303,
+          "line": 299,
           "column": 11
         },
         {
@@ -16180,7 +16151,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 290,
+          "line": 286,
           "column": 10
         }
       ]
@@ -16344,21 +16315,6 @@
           "file": "features/codex/codexConnectionView.ts",
           "line": 94,
           "column": 29
-        }
-      ]
-    },
-    "bd61db764ad1db84": {
-      "source": "{calls} 次调用 · {traces} 条追踪；清空后费用和用量历史会消失",
-      "kind": "template",
-      "placeholders": [
-        "calls",
-        "traces"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 258,
-          "column": 23
         }
       ]
     },
@@ -16885,6 +16841,11 @@
           "file": "features/devin/DevinSettingsPage.tsx",
           "line": 674,
           "column": 19
+        },
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 247,
+          "column": 19
         }
       ]
     },
@@ -17257,7 +17218,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 257,
+          "line": 253,
           "column": 22
         }
       ]
@@ -18841,7 +18802,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 177,
+          "line": 170,
           "column": 69
         }
       ]
@@ -18961,18 +18922,6 @@
           "file": "features/models/LegacyModelImport.tsx",
           "line": 69,
           "column": 56
-        }
-      ]
-    },
-    "dc0a349126d6c375": {
-      "source": "会删除调用摘要与用量历史；对话和配置不受影响。",
-      "kind": "text",
-      "placeholders": [],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 251,
-          "column": 21
         }
       ]
     },
@@ -19467,6 +19416,20 @@
           "file": "features/claude/ClaudeSettingsPage.tsx",
           "line": 187,
           "column": 13
+        }
+      ]
+    },
+    "e0c0c4173fb513a2": {
+      "source": "请求/响应明细保留 {days} 天后自动回收；清理它不会影响统计",
+      "kind": "template",
+      "placeholders": [
+        "days"
+      ],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 137,
+          "column": 7
         }
       ]
     },
@@ -20053,6 +20016,18 @@
         }
       ]
     },
+    "e66632c79890f5a0": {
+      "source": "立即清理",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 206,
+          "column": 179
+        }
+      ]
+    },
     "e6b889485a707045": {
       "source": "网关在运行，还差应用配置",
       "kind": "text",
@@ -20435,7 +20410,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 271,
+          "line": 267,
           "column": 23
         }
       ]
@@ -21249,21 +21224,6 @@
         }
       ]
     },
-    "f848b1a2fc6a0175": {
-      "source": "{calls} 次调用 · {traces} 条追踪",
-      "kind": "template",
-      "placeholders": [
-        "calls",
-        "traces"
-      ],
-      "refs": [
-        {
-          "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 138,
-          "column": 7
-        }
-      ]
-    },
     "f85537d1fd2ef6f6": {
       "source": "自定义概览筛选",
       "kind": "text",
@@ -21631,7 +21591,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 169,
+          "line": 162,
           "column": 46
         }
       ]
@@ -21645,7 +21605,7 @@
       "refs": [
         {
           "file": "features/settings/StorageSettingsCard.tsx",
-          "line": 277,
+          "line": 273,
           "column": 23
         }
       ]
@@ -21659,6 +21619,18 @@
           "file": "features/models/CursorSettingsPage.tsx",
           "line": 457,
           "column": 24
+        }
+      ]
+    },
+    "fcab1642ac7bcd11": {
+      "source": "请求/响应明细；清理它不会影响统计",
+      "kind": "text",
+      "placeholders": [],
+      "refs": [
+        {
+          "file": "features/settings/StorageSettingsCard.tsx",
+          "line": 138,
+          "column": 7
         }
       ]
     },

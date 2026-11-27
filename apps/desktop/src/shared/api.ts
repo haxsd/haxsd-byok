@@ -458,11 +458,11 @@ export interface StatisticsStorage {
   database_free_bytes: number;
   /** SQLite 的 `-wal` 独立文件；正常由 checkpoint 自动截断。 */
   wal_bytes: number;
-  /** `llm_calls` 摘要与轨迹索引的估算大小；清空调用历史会删除。 */
+  /** `llm_calls` 摘要与轨迹索引的估算大小；统计摘要不会被自动清理。 */
   call_record_bytes: number;
   /** 请求/响应正文与追踪附件的估算大小；清理详细记录只删这一部分。 */
   call_detail_bytes: number;
-  /** 清空调用历史会回收的估算总量。 */
+  /** 当前可观测数据的估算总量。 */
   observability_bytes: number;
   /** 请求/响应明细的自动回收窗口（天）：只读，来自服务端的回收常量。 */
   call_detail_retention_days: number;
@@ -512,10 +512,10 @@ export interface StatisticsStorage {
 /**
  * 清理作用域。
  *
- * `web_cache` 只删抓取缓存文件，不碰数据库：它不该被"清理全部统计"顺手带走——用户点哪一个
+ * `web_cache` 只删抓取缓存文件，不碰数据库：它不该被"清理详细记录"顺手带走——用户点哪一个
  * 应该清哪一个。
  */
-export type StatisticsStorageScope = "details" | "all" | "web_cache";
+export type StatisticsStorageScope = "details" | "web_cache";
 
 
 export type ProxyMode = "default" | "custom" | "direct";

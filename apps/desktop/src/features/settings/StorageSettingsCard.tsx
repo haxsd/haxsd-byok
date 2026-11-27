@@ -129,30 +129,23 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
       messages: storage?.message_count ?? 0,
       blobs: storage?.blob_count ?? 0,
     });
+  const callStatsDetail = t("{calls} 次调用 · {traces} 条追踪；概览、费用和用量统计，不会自动清理", {
+    calls: storage?.call_count ?? 0,
+    traces: storage?.trace_count ?? 0,
+  });
   const callDetail = callDetailDays > 0
-    ? t("{calls} 次调用 · {traces} 条追踪；请求/响应明细保留 {days} 天后自动回收", {
-      calls: storage?.call_count ?? 0,
-      traces: storage?.trace_count ?? 0,
-      days: callDetailDays,
-    })
-    : t("{calls} 次调用 · {traces} 条追踪", {
-      calls: storage?.call_count ?? 0,
-      traces: storage?.trace_count ?? 0,
-    });
+    ? t("请求/响应明细保留 {days} 天后自动回收；清理它不会影响统计", { days: callDetailDays })
+    : t("请求/响应明细；清理它不会影响统计");
   const artifactDetail = artifactDays > 0
     ? t("随会话一起回收；没有引用的文件最多再留 {days} 天", { days: artifactDays })
     : t("随会话一起回收");
 
-  const dialogTitle = dialog === "all"
-    ? t("确定清空调用历史吗？")
-    : dialog === "web_cache"
-      ? t("确定清除抓取缓存吗？")
-      : t("确定清理详细记录吗？");
-  const dialogConfirm = dialog === "all"
-    ? t("清空调用历史")
-    : dialog === "web_cache"
-      ? t("清除抓取缓存")
-      : t("清理详细记录");
+  const dialogTitle = dialog === "web_cache"
+    ? t("确定清除抓取缓存吗？")
+    : t("确定清理详细记录吗？");
+  const dialogConfirm = dialog === "web_cache"
+    ? t("清除抓取缓存")
+    : t("清理详细记录");
 
   return <>
     <TitledCard title={t("存储管理")}>
@@ -198,12 +191,19 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
           tagTone="idle"
         />
         <StorageRow
-          label={t("调用记录")}
-          value={formatBytes(storage?.observability_bytes ?? 0)}
+          label={t("统计与用量")}
+          value={formatBytes(storage?.call_record_bytes ?? 0)}
+          detail={callStatsDetail}
+          tag={t("保留")}
+          tagTone="idle"
+        />
+        <StorageRow
+          label={t("请求、响应正文与追踪附件")}
+          value={formatBytes(storage?.call_detail_bytes ?? 0)}
           detail={callDetail}
-          tag={t("可清理")}
-          tagTone="warn"
-          action={<Button size="small" disabled={!storage || actionBlocked || (storage?.call_detail_bytes ?? 0) === 0} onClick={() => { setError(null); setDialog("details"); }}>{t("清理详细记录")}</Button>}
+          tag={t("自动清理")}
+          tagTone="info"
+          action={<Button size="small" disabled={!storage || actionBlocked || (storage?.call_detail_bytes ?? 0) === 0} onClick={() => { setError(null); setDialog("details"); }}>{t("立即清理")}</Button>}
         />
         {freeBytes > 0 && <StorageRow
           label={t("数据库空闲页")}
@@ -243,19 +243,15 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
         />
       </div>
 
-      <details className={styles.storageAdvanced}>
-        <summary>{t("更多清理与存储明细")}</summary>
+      {developerMode && <details className={styles.storageAdvanced}>
+        <summary>{t("技术详情")}</summary>
         <div className={styles.storageAdvancedBody}>
-          <div className={styles.storageActions}>
-            <Button size="small" disabled={!storage || actionBlocked || ((storage?.call_count ?? 0) === 0 && (storage?.trace_count ?? 0) === 0)} onClick={() => { setError(null); setDialog("all"); }}>{t("清空调用历史")}</Button>
-            <small>{t("会删除调用摘要与用量历史；对话和配置不受影响。")}</small>
-          </div>
-          {developerMode && <div className={styles.storageTechnical}>
+          <div className={styles.storageTechnical}>
             <div className={styles.storageSectionLabel}>{t("数据库内部明细（估算，不与文件大小相加）")}</div>
             <StorageRow
               label={t("调用摘要与用量")}
               value={t("约 {size}", { size: formatBytes(storage?.call_record_bytes ?? 0) })}
-              detail={t("{calls} 次调用 · {traces} 条追踪；清空后费用和用量历史会消失", {
+              detail={t("{calls} 次调用 · {traces} 条追踪；概览、费用和用量的数据来源，不会自动清理", {
                 calls: storage?.call_count ?? 0,
                 traces: storage?.trace_count ?? 0,
               })}
@@ -276,9 +272,9 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
               value={formatBytes(storage?.web_cache_bytes ?? 0)}
               detail={t("{files} 个文件", { files: storage?.web_cache_files ?? 0 })}
             />
-          </div>}
+          </div>
         </div>
-      </details>
+      </details>}
 
       {storage?.compaction_requested && !storage.compacting && <p className={styles.storageStatus} role="status">
         {t("压缩已排队，正在等待当前 Agent 请求结束；不会打断正在进行的调用。")}
@@ -306,11 +302,9 @@ export function StorageSettingsCard({ visible, timers = browserTimers }: { visib
 
     <ConfirmDialog open={dialog !== null} destructive title={dialogTitle} busy={busy} cancelLabel={t("取消")} confirmLabel={dialogConfirm} onCancel={() => setDialog(null)} onConfirm={() => { if (dialog) void clear(dialog); }}>
       <div className={styles.confirmContent}>
-        <small>{dialog === "all"
-          ? t("将删除调用摘要、请求/响应正文与追踪记录，约 {size}。费用和用量历史会清空；对话消息、配置和抓取缓存不受影响。数据库文件不会因此立刻变小。", { size: formatBytes(storage?.observability_bytes ?? 0) })
-          : dialog === "web_cache"
-            ? t("只删除抓取结果缓存文件（{size} / {files} 个文件），调用记录、对话和配置都不受影响。", { size: formatBytes(storage?.web_cache_bytes ?? 0), files: storage?.web_cache_files ?? 0 })
-            : t("将删除请求、响应和追踪附件，约 {size}。调用摘要、统计指标、对话消息和配置都会保留；数据库文件不会因此立刻变小。", { size: formatBytes(storage?.call_detail_bytes ?? 0) })}</small>
+        <small>{dialog === "web_cache"
+          ? t("只删除抓取结果缓存文件（{size} / {files} 个文件），调用记录、对话和配置都不受影响。", { size: formatBytes(storage?.web_cache_bytes ?? 0), files: storage?.web_cache_files ?? 0 })
+          : t("将删除请求、响应和追踪附件，约 {size}。调用摘要、统计指标、对话消息和配置都会保留；数据库文件不会因此立刻变小。", { size: formatBytes(storage?.call_detail_bytes ?? 0) })}</small>
         {error && <small role="alert">{error}</small>}
       </div>
     </ConfirmDialog>

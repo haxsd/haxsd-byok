@@ -53,9 +53,7 @@ function installStorageBackend(initial = {}) {
     const scope = request.body?.scope ?? "details";
     stored = scope === "web_cache"
       ? { ...stored, web_cache_bytes: 0, web_cache_files: 0 }
-      : scope === "all"
-        ? { ...stored, observability_bytes: 0, call_record_bytes: 0, call_detail_bytes: 0, call_count: 0, trace_count: 0 }
-        : { ...stored, observability_bytes: stored.call_record_bytes, call_detail_bytes: 0 };
+      : { ...stored, observability_bytes: stored.call_record_bytes, call_detail_bytes: 0 };
     return { body: { ...stored } };
   });
   backend.route("POST", COMPACT, () => {
@@ -114,7 +112,7 @@ test("the progress of a cache clear reads deleted_files, not deleted_rows", asyn
   // 服务端只有 web_cache 作用域会动 deleted_files：另一个计数一直是 0，拿它显示会像卡住了。
   assert.equal(clearingCounter("web_cache", { deleted_rows: 0, deleted_files: 137 }), 137);
   assert.equal(clearingCounter("details", { deleted_rows: 4096, deleted_files: 0 }), 4096);
-  assert.equal(clearingCounter("all", { deleted_rows: 8192, deleted_files: 0 }), 8192);
+  assert.equal(clearingCounter("details", { deleted_rows: 8192, deleted_files: 0 }), 8192);
 });
 
 test("the in-progress clear is reported with its progress and polled until it disappears", async () => {
@@ -181,11 +179,14 @@ test("the storage card explains automatic maintenance and separates kept from cl
 
   assert.match(source, /自动维护已开启/, "users should see that cleanup runs automatically");
   assert.match(source, /空间去向/, "the card should lead with where the space goes");
-  assert.match(source, /t\("保留"\)/, "conversation data must be marked as kept");
-  assert.match(source, /t\("可清理"\)/, "observability data must be marked as cleanable");
+  assert.match(source, /t\("保留"\)/, "conversation and statistic data must be marked as kept");
+  assert.match(source, /t\("可清理"\)/, "disposable detail and cache data must be marked as cleanable");
   assert.match(source, /t\("可回收"\)/, "free pages must be marked as reclaimable");
   assert.match(source, /formatBytes\(storage\?\.conversation_bytes \?\? 0\)/, "conversation size stays visible");
-  assert.match(source, /formatBytes\(storage\?\.observability_bytes \?\? 0\)/, "call log size stays visible");
+  assert.match(source, /formatBytes\(storage\?\.call_record_bytes \?\? 0\)/, "statistics size stays visible");
+  assert.match(source, /formatBytes\(storage\?\.call_detail_bytes \?\? 0\)/, "request/response detail size stays visible");
+  assert.match(source, /统计与用量/, "statistics are a separate, kept row");
+  assert.match(source, /不会自动清理/, "the UI explicitly says statistics are not auto-deleted");
 });
 
 test("the storage card separates used pages from free pages and asks for compaction", async () => {
