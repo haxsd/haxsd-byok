@@ -51,6 +51,23 @@ npm --prefix apps/desktop run tauri:build -- --bundles nsis
 
 Windows 正式构建和本地测试均使用 MSVC 工具链；Windows CI 默认执行桌面单元测试。GNU 工具链出现原生依赖链接或加载器错误时，应区分环境问题与代码失败，不能以排除桌面后的检查代替桌面验证。
 
+## 本地热更新开发
+
+安装版运行时，直接 `npm run dev:web` 会和它争同一个数据目录的 `app.lock`。开发服务改用独立数据目录，安装版可以继续运行，避免关闭应用打断正在进行的会话：
+
+```powershell
+$env:HAXSD_BYOK_DATA_DIR = Join-Path $env:TEMP "haxsd-byok-dev-data"
+npm --prefix apps/desktop run dev:web
+```
+
+打开 `http://127.0.0.1:3000/__byok-api__/`。Rust 服务监听 `3000`，Vite 监听 `1420` 并提供 HMR；前端改动直接在浏览器刷新验证。
+
+- 前端改动：保存后由 Vite 热更新，不需要重新构建安装包。
+- Rust 改动：重启 `dev:web` 即可，不需要覆盖安装。
+- 需要真实统计或设置数据时，用 SQLite backup 把正式库复制到开发目录，不要直接复制正在写入的 `.db`、`-wal`、`-shm` 文件。
+- 开发副本如果启用了 Devin、Codex 或 Claude 网关，要先关闭这些网关，避免和正在运行的安装版抢回环端口。
+- 只有阶段完成、需要通过安装包验收或发布时才执行 `tauri:build` 并覆盖安装，不要每改一处就重建。
+
 Monaco 当前版本内置一份 DOMPurify 源码。两个 Vite 配置通过 `plugins/monaco-dompurify-plugin.ts` 将该内部导入统一解析到项目锁定的 DOMPurify；开发模式将 Monaco（含子路径导入）排除在依赖预打包外，并处理导入路径上的版本查询参数，避免绕过解析规则。仅更新 npm override 不会替换内置源码。`npm run test` 会检查开发配置与版本化导入，并实际构建 Monaco 消毒入口检查版本。升级 Monaco 或 DOMPurify 时，同步核对这条解析路径与测试。
 
 Windows 检出保持 LF，避免 CRLF 改变提示词前缀。可设置 `git config core.autocrlf false` 与 `git config core.eol lf`；不要为了改行尾覆盖工作区修改。
